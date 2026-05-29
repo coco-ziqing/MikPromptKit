@@ -794,3 +794,19 @@ body.dark-theme .viewer-btn-collect:hover { border-color: #6366f1; color: #a5b4f
     accent-color: #4f46e5;
     cursor: pointer;
 }
+
+/* ============ 视频播放器控制按钮 ============ */
+.vid-ctrl {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: 6px;
+    transition: all 0.15s;
+    font-family: inherit;
+    line-height: 1;
+}
+.vid-ctrl:hover {
+    background: rgba(255,255,255,0.1);
+    color: #fff !important;
+}

@@ -1853,6 +1853,7 @@ openImageViewer(filename, promptId) {
         var player = document.getElementById('vidViewerPlayer');
         var seek = document.getElementById('vidViewerSeek');
         var timeLabel = document.getElementById('vidViewerTime');
+        var durLabel = document.getElementById('vidViewerDuration');
         var playBtn = document.getElementById('vidPlayBtn');
 
         player.src = '/api/thumbnails/video/' + videoFilename;
@@ -1860,13 +1861,31 @@ openImageViewer(filename, promptId) {
         player.load();
         modal.style.display = 'flex';
 
-        // 渲染右侧详情面板
         this._renderViewerRight('vidViewer', promptId);
 
-        // 重置
+        // Reset
         seek.value = 0;
-        timeLabel.textContent = '00:00.0 / 00:00.0';
+        var durStr = '00:00.0';
+        timeLabel.textContent = durStr;
+        if (durLabel) durLabel.textContent = durStr;
         playBtn.innerHTML = '▶';
+
+        function fmt(sec) {
+            if (!sec || sec <= 0) return '00:00.0';
+            var m = Math.floor(sec / 60);
+            var s = (sec % 60).toFixed(1);
+            return String(m).padStart(2, '0') + ':' + String(s).padStart(4, '0');
+        }
+
+        function updateDisplay() {
+            var cur = player.currentTime || 0;
+            var dur = player.duration || 0;
+            timeLabel.textContent = fmt(cur);
+            if (durLabel) durLabel.textContent = fmt(dur);
+            if (dur > 0) {
+                seek.value = Math.round((cur / dur) * 1000);
+            }
+        }
 
         function closeVid() {
             player.pause();
@@ -1874,67 +1893,54 @@ openImageViewer(filename, promptId) {
             player.src = '';
             modal.style.display = 'none';
             player.ontimeupdate = null;
-            // 移除事件监听器（避免叠加）
-            seek.removeEventListener('input', seekHandler);
-            seek.removeEventListener('change', seekHandler);
+            seek.oninput = null;
             document.onkeydown = null;
         }
 
-        document.getElementById('vidViewerClose').onclick = closeVid;
-        modal.onclick = function(e) {
-            if (e.target === modal) closeVid();
-        };
+        // Close buttons
+        modal.onclick = function(e) { if (e.target === modal) closeVid(); };
+        document.onkeydown = function(e) { if (e.key === 'Escape') closeVid(); };
 
-        // 预加载全部数据以便快速定位
         player.preload = 'auto';
-        player.onclick = function(e) { e.preventDefault(); };
-        var seekThrottle = null;
 
-        function seekHandler(e) {
+        // --- CUSTOM SLIDER SEEK (NO THROTTLE, FRAME-ACCURATE) ---
+        var _isSeeking = false;
+        seek.oninput = function() {
             if (player.duration <= 0) return;
-            App._updateVidTime(player, seek, timeLabel);
-            if (e.type === 'input') {
-                player.pause();
-                if (!seekThrottle) {
-                    seekThrottle = setTimeout(function() {
-                        seekThrottle = null;
-                        var t = (parseFloat(seek.value) / 1000) * player.duration;
-                        player.currentTime = t;
-                    }, 120);
-                }
-            } else {
-                if (seekThrottle) { clearTimeout(seekThrottle); seekThrottle = null; }
-                var t = (parseFloat(seek.value) / 1000) * player.duration;
-                player.currentTime = t;
-            }
-        }
+            _isSeeking = true;
+            player.pause();
+            var t = (parseFloat(seek.value) / 1000) * player.duration;
+            // Linear frame estimate: assume ~30fps, step = duration/1000
+            // Just set currentTime directly
+            player.currentTime = t;
+            timeLabel.textContent = fmt(t);
+            if (durLabel && player.duration > 0) durLabel.textContent = fmt(player.duration);
+        };
 
-        seek.addEventListener('input', seekHandler);
-        seek.addEventListener('change', seekHandler);
+        // After seek completes, finalize display and clear seeking flag
+        player.onseeked = function() {
+            _isSeeking = false;
+            updateDisplay();
+        };
 
-        // 播放中同步更新时
-
-        // 播放中同步更新时间轴
+        // Playback sync
         player.ontimeupdate = function() {
-            if (player.duration > 0 && player.seeking) return;
-            if (player.duration > 0) {
-                var pct = (player.currentTime / player.duration) * 1000;
-                seek.value = Math.round(pct);
-                App._updateVidTime(player, seek, timeLabel);
+            if (!_isSeeking && player.duration > 0 && !player.seeking) {
+                seek.value = Math.round((player.currentTime / player.duration) * 1000);
+                timeLabel.textContent = fmt(player.currentTime);
+                if (durLabel) durLabel.textContent = fmt(player.duration);
             }
         };
 
-        // 播放/暂停按钮更新
+        // Duration display once metadata loaded
+        player.onloadedmetadata = function() {
+            if (durLabel && player.duration > 0) durLabel.textContent = fmt(player.duration);
+        };
+
+        // Play/pause button
         player.onplay = function() { playBtn.innerHTML = '⏸'; };
         player.onpause = function() { playBtn.innerHTML = '▶'; };
-
-        // Esc 关闭
-        document.onkeydown = function(e) {
-            if (e.key === 'Escape') closeVid();
-        };
-    },
-
-    closeVideoViewer() {
+    },    closeVideoViewer() {
         var m = document.getElementById('modalVideoViewer');
         m.style.display = 'none';
         var p = document.getElementById('vidViewerPlayer');
