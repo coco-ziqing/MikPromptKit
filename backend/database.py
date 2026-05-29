@@ -1,176 +1,210 @@
 """
-数据库模块 — SQLite 初始化与连接管理
+数据库模块 — SQLite 初始化与连接管理（加固版）
 """
 import sqlite3
 import os
 import threading
+import time
 
-# 数据库文件路径（默认在项目根目录 data/ 下）
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 DB_PATH = os.path.join(DB_DIR, "prompts.db")
 
-# 线程本地存储，避免多线程共用同一连接
 _local = threading.local()
 
+# 最大重试次数（WAL 模式下写冲突极少，但兜底）
+_MAX_RETRIES = 3
+_RETRY_DELAY = 0.05
+
+
 def get_db():
-    """获取当前线程的数据库连接"""
+    """获取当前线程的数据库连接（惰性创建）"""
     if not hasattr(_local, "conn") or _local.conn is None:
-        os.makedirs(DB_DIR, exist_ok=True)
-        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")       # 写入性能优化
-        conn.execute("PRAGMA foreign_keys=ON")         # 外键约束
-        _local.conn = conn
+        try:
+            os.makedirs(DB_DIR, exist_ok=True)
+            conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("PRAGMA synchronous=NORMAL")   # WAL 模式下 NORMAL 足够安全且更快
+            conn.execute("PRAGMA busy_timeout=5000")     # 忙等待 5 秒
+            _local.conn = conn
+        except sqlite3.Error as e:
+            print("[数据库] 连接失败:", e)
+            raise
     return _local.conn
 
+
 def close_db():
-    """关闭当前线程的数据库连接"""
+    """安全关闭当前线程的数据库连接"""
     if hasattr(_local, "conn") and _local.conn:
-        _local.conn.close()
+        try:
+            _local.conn.close()
+        except sqlite3.Error:
+            pass
         _local.conn = None
 
+
+def safe_execute(sql, params=None, commit=False):
+    """
+    安全执行 SQL（带重试机制）
+    返回 sqlite3.Cursor 或 None
+    """
+    for attempt in range(_MAX_RETRIES):
+        try:
+            db = get_db()
+            if params is not None:
+                cur = db.execute(sql, params)
+            else:
+                cur = db.execute(sql)
+            if commit:
+                db.commit()
+            return cur
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower() or "busy" in str(e).lower():
+                if attempt < _MAX_RETRIES - 1:
+                    time.sleep(_RETRY_DELAY * (attempt + 1))
+                    continue
+            print("[数据库] 执行失败:", sql[:80], e)
+            return None
+        except sqlite3.Error as e:
+            print("[数据库] 错误:", e)
+            return None
+
+
+def safe_commit():
+    """安全提交事务"""
+    try:
+        db = get_db()
+        db.commit()
+        return True
+    except sqlite3.Error as e:
+        print("[数据库] 提交失败:", e)
+        return False
+
+
 def init_db():
-    """建表（幂等）"""
+    """建表（幂等 + 事务保护）"""
     conn = get_db()
-    conn.executescript("""
-        -- ============================
-        -- 提示词主表
-        -- ============================
-        CREATE TABLE IF NOT EXISTS prompts (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            module      TEXT    NOT NULL,   -- emotion / color / tone / composition
-            category    TEXT    NOT NULL,   -- 二级分类名
-            subcategory TEXT    DEFAULT '', -- 三级分类名
-            content     TEXT    NOT NULL,   -- 提示词内容
-            meaning     TEXT    DEFAULT '', -- 释义
-            scene       TEXT    DEFAULT '', -- 适用场景
-            tags        TEXT    DEFAULT '[]', -- JSON 数组
-            usage_count INTEGER DEFAULT 0,
-            is_builtin  INTEGER DEFAULT 1, -- 1=内置词条, 0=用户自建
-            created_at  TEXT    DEFAULT (datetime('now','localtime'))
-        );
+    try:
+        conn.executescript("""
+            PRAGMA journal_mode=WAL;
+            PRAGMA foreign_keys=ON;
 
-        -- ============================
-        -- 全文搜索虚拟表（FTS5）
-        -- ============================
-        CREATE VIRTUAL TABLE IF NOT EXISTS prompts_fts USING fts5(
-            content,
-            meaning,
-            tags,
-            content='prompts',
-            content_rowid='id'
-        );
+            CREATE TABLE IF NOT EXISTS prompts (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                module      TEXT    NOT NULL DEFAULT '',
+                category    TEXT    NOT NULL DEFAULT '',
+                subcategory TEXT    DEFAULT '',
+                content     TEXT    NOT NULL DEFAULT '',
+                meaning     TEXT    DEFAULT '',
+                scene       TEXT    DEFAULT '',
+                tags        TEXT    DEFAULT '[]',
+                usage_count INTEGER DEFAULT 0,
+                is_builtin  INTEGER DEFAULT 1,
+                created_at  TEXT    DEFAULT (datetime('now','localtime'))
+            );
 
-        -- ============================
-        -- 系统配置表
-        -- ============================
-        CREATE TABLE IF NOT EXISTS config (
-            key   TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
+            CREATE VIRTUAL TABLE IF NOT EXISTS prompts_fts USING fts5(
+                content, meaning, tags,
+                content='prompts', content_rowid='id'
+            );
 
-        -- 触发器：prompts INSERT → FTS 同步
-        CREATE TRIGGER IF NOT EXISTS prompts_ai AFTER INSERT ON prompts BEGIN
-            INSERT INTO prompts_fts(rowid, content, meaning, tags)
-            VALUES (new.id, new.content, new.meaning, new.tags);
-        END;
+            CREATE TABLE IF NOT EXISTS config (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
 
-        -- 触发器：prompts DELETE → FTS 同步
-        CREATE TRIGGER IF NOT EXISTS prompts_ad AFTER DELETE ON prompts BEGIN
-            INSERT INTO prompts_fts(prompts_fts, rowid, content, meaning, tags)
-            VALUES ('delete', old.id, old.content, old.meaning, old.tags);
-        END;
+            CREATE TRIGGER IF NOT EXISTS prompts_ai AFTER INSERT ON prompts BEGIN
+                INSERT INTO prompts_fts(rowid, content, meaning, tags)
+                VALUES (new.id, new.content, new.meaning, new.tags);
+            END;
 
-        -- 触发器：prompts UPDATE → FTS 同步
-        CREATE TRIGGER IF NOT EXISTS prompts_au AFTER UPDATE ON prompts BEGIN
-            INSERT INTO prompts_fts(prompts_fts, rowid, content, meaning, tags)
-            VALUES ('delete', old.id, old.content, old.meaning, old.tags);
-            INSERT INTO prompts_fts(rowid, content, meaning, tags)
-            VALUES (new.id, new.content, new.meaning, new.tags);
-        END;
+            CREATE TRIGGER IF NOT EXISTS prompts_ad AFTER DELETE ON prompts BEGIN
+                INSERT INTO prompts_fts(prompts_fts, rowid, content, meaning, tags)
+                VALUES ('delete', old.id, old.content, old.meaning, old.tags);
+            END;
 
-        -- ============================
-        -- 提示词缩略图表
-        -- ============================
-        CREATE TABLE IF NOT EXISTS prompt_thumbnails (
-            prompt_id INTEGER PRIMARY KEY,
-            filename  TEXT NOT NULL,
-            media_type TEXT DEFAULT 'image',  -- 'image' 或 'video'
-            updated_at TEXT DEFAULT (datetime('now','localtime')),
-            FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE
-        );
+            CREATE TRIGGER IF NOT EXISTS prompts_au AFTER UPDATE ON prompts BEGIN
+                INSERT INTO prompts_fts(prompts_fts, rowid, content, meaning, tags)
+                VALUES ('delete', old.id, old.content, old.meaning, old.tags);
+                INSERT INTO prompts_fts(rowid, content, meaning, tags)
+                VALUES (new.id, new.content, new.meaning, new.tags);
+            END;
 
-        -- ============================
-        -- 提示词视频关联表
-        -- ============================
-        CREATE TABLE IF NOT EXISTS prompt_videos (
-            prompt_id INTEGER PRIMARY KEY,
-            filename  TEXT NOT NULL,
-            poster     TEXT DEFAULT '',       -- 封面图文件名
-            duration   REAL DEFAULT 0,
-            updated_at TEXT DEFAULT (datetime('now','localtime')),
-            FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE
-        );
-        -- ============================
-        -- 收藏分组表
-        -- ============================
-        CREATE TABLE IF NOT EXISTS collections (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            name      TEXT    NOT NULL,
-            icon      TEXT    DEFAULT '\u2b50',
-            sort_order INTEGER DEFAULT 0,
-            created_at TEXT    DEFAULT (datetime('now','localtime'))
-        );
+            CREATE TABLE IF NOT EXISTS prompt_thumbnails (
+                prompt_id INTEGER PRIMARY KEY,
+                filename  TEXT NOT NULL DEFAULT '',
+                media_type TEXT DEFAULT 'image',
+                updated_at TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE
+            );
 
-        -- 收藏词条关联表
-        CREATE TABLE IF NOT EXISTS collection_items (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            collection_id INTEGER NOT NULL,
-            prompt_id     INTEGER NOT NULL,
-            note          TEXT    DEFAULT '',
-            added_at      TEXT    DEFAULT (datetime('now','localtime')),
-            FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
-            FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE,
-            UNIQUE(collection_id, prompt_id)
-        );
+            CREATE TABLE IF NOT EXISTS prompt_videos (
+                prompt_id INTEGER PRIMARY KEY,
+                filename  TEXT NOT NULL DEFAULT '',
+                poster     TEXT DEFAULT '',
+                duration   REAL DEFAULT 0,
+                updated_at TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE
+            );
 
-        -- ============================
-        -- 用户词包表
-        -- ============================
-        CREATE TABLE IF NOT EXISTS wordpacks (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            name        TEXT    NOT NULL,
-            description TEXT    DEFAULT '',
-            sort_order  INTEGER DEFAULT 0,
-            created_at  TEXT    DEFAULT (datetime('now','localtime'))
-        );
+            CREATE TABLE IF NOT EXISTS collections (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                name      TEXT    NOT NULL DEFAULT '',
+                icon      TEXT    DEFAULT '\u2b50',
+                sort_order INTEGER DEFAULT 0,
+                created_at TEXT    DEFAULT (datetime('now','localtime'))
+            );
 
-        -- 词包-词条关联
-        CREATE TABLE IF NOT EXISTS wordpack_items (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            wordpack_id INTEGER NOT NULL,
-            prompt_id  INTEGER NOT NULL,
-            sort_order INTEGER DEFAULT 0,
-            added_at   TEXT    DEFAULT (datetime('now','localtime')),
-            FOREIGN KEY (wordpack_id) REFERENCES wordpacks(id) ON DELETE CASCADE,
-            FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE,
-            UNIQUE(wordpack_id, prompt_id)
-        );
+            CREATE TABLE IF NOT EXISTS collection_items (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                collection_id INTEGER NOT NULL DEFAULT 0,
+                prompt_id     INTEGER NOT NULL DEFAULT 0,
+                note          TEXT    DEFAULT '',
+                added_at      TEXT    DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+                FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE,
+                UNIQUE(collection_id, prompt_id)
+            );
 
-        -- ============================
-        -- 使用历史表
-        -- ============================
-        CREATE TABLE IF NOT EXISTS usage_history (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            prompt_id  INTEGER NOT NULL,
-            used_at    TEXT    DEFAULT (datetime('now','localtime')),
-            FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE
-        );
-    """)
-    conn.commit()
+            CREATE TABLE IF NOT EXISTS wordpacks (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT    NOT NULL DEFAULT '',
+                description TEXT    DEFAULT '',
+                sort_order  INTEGER DEFAULT 0,
+                created_at  TEXT    DEFAULT (datetime('now','localtime'))
+            );
+
+            CREATE TABLE IF NOT EXISTS wordpack_items (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                wordpack_id INTEGER NOT NULL DEFAULT 0,
+                prompt_id  INTEGER NOT NULL DEFAULT 0,
+                sort_order INTEGER DEFAULT 0,
+                added_at   TEXT    DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (wordpack_id) REFERENCES wordpacks(id) ON DELETE CASCADE,
+                FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE,
+                UNIQUE(wordpack_id, prompt_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS usage_history (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                prompt_id  INTEGER NOT NULL DEFAULT 0,
+                used_at    TEXT    DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE
+            );
+        """)
+        conn.commit()
+    except sqlite3.Error as e:
+        print("[数据库] 建表失败:", e)
+        conn.rollback()
+        raise
+
 
 def rebuild_fts():
-    """重建全文索引（首次导入数据后调用）"""
-    conn = get_db()
-    conn.execute("INSERT INTO prompts_fts(prompts_fts) VALUES('rebuild')")
-    conn.commit()
+    """重建全文索引（幂等，容错）"""
+    try:
+        db = get_db()
+        db.execute("INSERT INTO prompts_fts(prompts_fts) VALUES('rebuild')")
+        db.commit()
+    except sqlite3.Error as e:
+        print("[数据库] 全文索引重建失败:", e)

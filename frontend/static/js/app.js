@@ -43,7 +43,7 @@ const App = {
     // ============ 初始化 ============
     async init() {
         // 恢复主题
-        const savedTheme = localStorage.getItem('promptkit_theme') || 'light';
+        const savedTheme = ((typeof localStorage !== 'undefined' && localStorage.getItem) ? localStorage.getItem('promptkit_theme') : 'light') || 'light';
         this.applyTheme(savedTheme);
 
         // 恢复列数设置
@@ -161,12 +161,18 @@ const App = {
     // ============ 数据加载 ============
     async fetchJSON(url, options) {
         try {
-            const res = await fetch(url, options);
+            var controller = new AbortController();
+            var timer = setTimeout(function() { controller.abort(); }, 30000);
+            var res = await fetch(url, Object.assign({}, options || {}, { signal: controller.signal }));
+            clearTimeout(timer);
             if (!res.ok) return null;
             return await res.json();
         } catch (err) {
-            console.error('请求失败:', url, err);
-            this.showToast('网络请求失败，请检查服务是否运行', 'error');
+            if (err.name === 'AbortError') {
+                console.warn('请求超时:', url);
+            } else {
+                console.error('请求失败:', url, err.message);
+            }
             return null;
         }
     },
@@ -927,8 +933,8 @@ const App = {
     },
     // ============ 渲染：侧边栏 ============
     renderSidebar() {
-        const sidebar = document.getElementById('sidebar');
-        if (!sidebar) return;
+        var sidebar = document.getElementById('sidebar');
+        if (!sidebar || !this.state.modules) return;
         const icons = { emotion: '😊', color: '🎨', tone: '💡', composition: '📐', seedance: '🎬' };
         const names = { emotion: '人物表情', color: '场景色彩', tone: '画面色调', composition: '构图运镜', seedance: 'Seedance视频' };
         let html = '<div style="padding:8px 20px 10px;color:#64748b;font-size:11px;letter-spacing:1px;">功能模块</div>';
@@ -1070,6 +1076,7 @@ const App = {
         const bar = document.getElementById('paginationBar');
         if (!bar) return;
         const { page, totalPages } = this.state;
+        if (!bar) return;
         if (totalPages <= 1) { bar.innerHTML = ''; return; }
 
         let html = `<button class="page-btn" onclick="App.goPage(${page - 1})" ${page <= 1 ? 'disabled' : ''}>← 上一页</button>`;
@@ -1102,6 +1109,7 @@ const App = {
             return;
         }
 
+        if (!btnEl || !btnEl.getBoundingClientRect) { return; }
         var popover = document.createElement('div');
         popover.className = 'collect-popover';
         var html = '<div class="collect-popover-title">添加到收藏</div>';
@@ -2140,3 +2148,13 @@ openImageViewer(filename, promptId) {
 
 // ============ 启动 ============
 document.addEventListener('DOMContentLoaded', () => App.init());
+
+// ============ Global unhandled rejection guard ============
+window.addEventListener('unhandledrejection', function(e) {
+    console.warn('[Global] Unhandled Promise rejection:', (e.reason && e.reason.message) || e.reason);
+    e.preventDefault();
+});
+// ============ Global runtime error guard ============
+window.addEventListener('error', function(e) {
+    console.warn('[Global] Runtime error:', e.message);
+});

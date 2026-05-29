@@ -6,6 +6,7 @@ import io
 from fastapi import APIRouter, Query, HTTPException, Response
 from pydantic import BaseModel
 from database import get_db
+import traceback
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
 
