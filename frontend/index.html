@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>提示词检索工具 v3.0</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/static/css/style.css" rel="stylesheet">
+</head>
+<body>
+    <header class="navbar-tool">
+        <div class="brand" onclick="App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> PromptKit <small>v3.0</small></div>
+        <div class="search-box" id="globalSearchBox"><input type="text" id="searchInput" placeholder="搜索提示词，Ctrl+F 快速定位" autocomplete="off"><i class="bi bi-search search-icon"></i></div>
+        <div class="header-actions">
+            <button class="header-btn" onclick="App.switchView('home')" id="navHome" title="首页词库"><i class="bi bi-house-door"></i></button>
+            <button class="header-btn" onclick="App.toggleEditMode()" id="btnEditMode" title="编辑模式" style="color:#94a3b8;"><i class="bi bi-pencil"></i></button>
+            <button class="header-btn" onclick="App.switchView('collections')" id="navCollections" title="收藏夹"><i class="bi bi-bookmark-star"></i><span class="nav-badge" id="collectionBadge" style="display:none;">0</span></button>
+            <button class="header-btn" onclick="App.switchView('wordpacks')" id="navWordpacks" title="自定义词包"><i class="bi bi-folder"></i><span class="nav-badge" id="wordpackBadge" style="display:none;">0</span></button>
+            <button class="header-btn" onclick="App.switchView('history')" id="navHistory" title="最近使用"><i class="bi bi-clock-history"></i></button>
+            <div class="column-slider-wrap" title="调整卡片列数">
+                <button class="header-btn" onclick="App.decColumn()" style="font-size:16px;width:26px;height:26px;">-</button>
+                <input type="range" id="columnSlider" min="1" max="6" value="3" class="column-slider" oninput="App.onColumnSlider(this.value)">
+                <button class="header-btn" onclick="App.incColumn()" style="font-size:16px;width:26px;height:26px;">+</button>
+                <span id="columnLabel" class="column-label">3列</span>
+            </div>
+            <span class="header-divider"></span>
+            <button class="header-btn" onclick="App.toggleBatchMode()" id="btnBatch" title="批量选择"><i class="bi bi-check2-square"></i></button>
+            <button class="header-btn" onclick="App.toggleTheme()" id="btnTheme" title="切换深色模式"><i class="bi bi-moon-stars"></i></button>
+            <span class="header-divider"></span>
+            <span id="headerStats" class="badge bg-light text-dark" style="font-size:12px;">加载中...</span>
+        </div>
+    </header>
+    <nav class="sidebar" id="sidebar"></nav>
+    <aside class="recommend-panel" id="recommendPanel"><div class="rec-header"><span><i class="bi bi-stars"></i> 智能推荐</span><button class="header-btn-sm" onclick="App.closeRecommend()">&times;</button></div><div id="recommendList" class="rec-list"><div class="rec-empty">点击提示词查看推荐</div></div></aside>
+    <main class="main-content" id="mainContent">
+        <div id="viewHome" class="view-panel">
+            <div id="categoryTabs"></div>
+            <div class="page-header"><h3 id="pageTitle">提示词列表</h3><span class="count-info" id="countInfo">加载中...</span></div>
+            <div id="batchBar" class="batch-bar" style="display:none;">
+                <span id="batchCount">已选 0 项</span>
+                <button class="btn-batch" onclick="App.batchCopy()"><i class="bi bi-files"></i> 批量复制</button>
+                <button class="btn-batch" onclick="App.batchExport('txt')"><i class="bi bi-download"></i> 导出TXT</button>
+                <button class="btn-batch" onclick="App.batchExport('json')"><i class="bi bi-download"></i> 导出JSON</button>
+                <button class="btn-batch" onclick="App.batchAddToWordpack()"><i class="bi bi-folder-plus"></i> 添加到词包</button>
+                <button class="btn-batch btn-batch-cancel" onclick="App.toggleBatchMode()">取消</button>
+            </div>
+            <div id="promptList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">正在加载提示词库...</p></div></div>
+            <div id="paginationBar" class="pagination-bar"></div>
+        </div>
+        <div id="viewCollections" class="view-panel" style="display:none;">
+            <div class="page-header"><h3><i class="bi bi-bookmark-star"></i> 收藏夹</h3><button class="btn btn-primary btn-sm" onclick="App.showCreateCollectionModal()"><i class="bi bi-plus-lg"></i> 新建分组</button></div>
+            <div id="collectionGroups" class="collection-grid"></div>
+            <div id="collectionItems" style="display:none;"><button class="btn btn-outline-secondary btn-sm mb-3" onclick="App.backToCollections()"><i class="bi bi-arrow-left"></i> 返回分组列表</button><div id="collectionItemList"></div><div id="collectionPagination" class="pagination-bar"></div></div>
+        </div>
+        <div id="viewWordpacks" class="view-panel" style="display:none;">
+            <div class="page-header"><h3><i class="bi bi-folder"></i> 自定义词包</h3><button class="btn btn-primary btn-sm" onclick="App.showCreateWordpackModal()"><i class="bi bi-plus-lg"></i> 新建词包</button></div>
+            <div id="wordpackList" class="collection-grid"></div>
+            <div id="wordpackDetail" style="display:none;"><button class="btn btn-outline-secondary btn-sm mb-3" onclick="App.backToWordpacks()"><i class="bi bi-arrow-left"></i> 返回词包列表</button><div id="wordpackDetailHeader" class="mb-3"></div><div id="wordpackItemList"></div></div>
+        </div>
+        <div id="viewHistory" class="view-panel" style="display:none;">
+            <div class="page-header"><h3><i class="bi bi-clock-history"></i> 最近使用</h3><button class="btn btn-outline-danger btn-sm" onclick="App.clearHistory()" title="清空历史"><i class="bi bi-trash"></i> 清空</button></div><div id="historyList"></div>
+        </div>
+        <div id="viewSeedance" class="view-panel" style="display:none;">
+            <div class="seedance-tabs mb-3">
+                <button class="seedance-tab active" onclick="App.switchSeedanceTab('templates')" id="seedanceTabTemplates"><i class="bi bi-collection"></i> 场景模板</button>
+                <button class="seedance-tab" onclick="App.switchSeedanceTab('composer')" id="seedanceTabComposer"><i class="bi bi-tools"></i> 提示词组装器</button>
+                <button class="seedance-tab" onclick="App.switchSeedanceTab('gallery')" id="seedanceTabGallery"><i class="bi bi-images"></i> 精选画廊</button>
+                <button class="seedance-tab" onclick="App.switchSeedanceTab('glossary')" id="seedanceTabGlossary"><i class="bi bi-book"></i> 镜头语言速查</button>
+            </div>
+            <div id="seedanceTemplates" class="seedance-panel"><div id="seedanceCategoryTabs" class="category-tabs mb-3"></div><div id="seedanceTemplateList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载 Seedance 模板库...</p></div></div><div id="seedancePagination" class="pagination-bar"></div></div>
+            <div id="seedanceComposer" class="seedance-panel" style="display:none;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+                    <div>
+                        <div class="form-group"><label class="form-label">风格描述</label><input id="composerStyle" class="modal-input" placeholder="如：电影级写实" value="电影级写实"></div>
+                        <div style="display:flex;gap:10px;"><div class="form-group" style="flex:1;"><label class="form-label">时长（秒）</label><select id="composerDuration" class="modal-input"><option value="5">5秒</option><option value="10">10秒</option><option value="15" selected>15秒</option></select></div><div class="form-group" style="flex:1;"><label class="form-label">画面比例</label><select id="composerRatio" class="modal-input"><option value="16:9">横屏 16:9</option><option value="9:16">竖屏 9:16</option><option value="1:1">方形 1:1</option><option value="2.35:1">电影宽屏 2.35:1</option></select></div></div>
+                        <div class="form-group"><label class="form-label">氛围/色调</label><input id="composerMood" class="modal-input" placeholder="如：温馨暖色调" value="温馨暖色调"></div>
+                        <div class="form-group"><label class="form-label">声音设计</label><input id="composerSound" class="modal-input" placeholder="如：轻缓钢琴+环境音" value="轻缓钢琴+环境音"></div>
+                        <div class="form-group"><label class="form-label">参考素材（每行一个，如 @图片1 角色形象）</label><textarea id="composerRefs" class="modal-input" rows="2" placeholder="@图片1 角色形象"></textarea></div>
+                    </div>
+                    <div>
+                        <div class="form-group"><label class="form-label">分镜时间轴（每行一条）</label><textarea id="composerScenes" class="modal-input" rows="8" placeholder="0-3秒：开场建立场景，引入主体&#10;3-7秒：情节发展，核心动作">0-3秒：开场建立场景，引入主体
+3-7秒：情节发展，核心动作</textarea></div>
+                        <button class="btn btn-primary w-100" onclick="App.composePrompt()"><i class="bi bi-magic"></i> 组装提示词</button>
+                    </div>
+                </div>
+                <div id="composerResult" style="margin-top:16px;display:none;"><label class="form-label">生成的提示词</label><textarea id="composerOutput" class="modal-input" rows="10" readonly style="font-family:monospace;font-size:13px;"></textarea><button class="btn btn-primary btn-sm mt-2" onclick="App.copyComposerResult()"><i class="bi bi-clipboard"></i> 复制到剪贴板</button></div>
+            </div>
+            <div id="seedanceGallery" class="seedance-panel" style="display:none;"><div id="galleryList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载精选模板...</p></div></div></div>
+            <div id="seedanceGlossary" class="seedance-panel" style="display:none;"><div class="page-header"><h3><i class="bi bi-book"></i> 镜头语言速查表</h3><span class="count-info">共 20 种镜头技法</span></div><div id="glossaryTable"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载中...</p></div></div><div class="page-header mt-4"><h3><i class="bi bi-link-45deg"></i> 多模态引用语法</h3></div><div id="refSyntaxTable"></div></div>
+        </div>
+    </main>
+    <div class="modal-overlay" id="modalCreateCollection" style="display:none;z-index:400;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5>新建收藏分组</h5><button class="header-btn-sm" onclick="document.getElementById('modalCreateCollection').style.display='none'">&times;</button></div><div class="modal-body"><label>分组名称</label><input type="text" id="inputCollectionName" class="modal-input" placeholder="如：人像精选题"><label>图标</label><select id="inputCollectionIcon" class="modal-input icon-select"><option value="⭐">⭐ 星星</option><option value="📸">📸 相机</option><option value="🌄">🌄 风景</option><option value="❤️">❤️ 红心</option><option value="🔥">🔥 火焰</option><option value="🎯">🎯 靶心</option><option value="🌟">🌟 闪光</option><option value="💎">💎 钻石</option><option value="🏆">🏆 奖杯</option><option value="🎨">🎨 调色盘</option><option value="📷">📷 拍照</option><option value="🎬">🎬 场记板</option><option value="📁">📁 文件夹</option></select></div><div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalCreateCollection').style.display='none'">取消</button><button class="btn btn-primary btn-sm" onclick="App.createCollection()">创建</button></div></div></div>
+    <div class="modal-overlay" id="modalCreateWordpack" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5>新建自定义词包</h5><button class="header-btn-sm" onclick="document.getElementById('modalCreateWordpack').style.display='none'">&times;</button></div><div class="modal-body"><label>词包名称</label><input type="text" id="inputWordpackName" class="modal-input" placeholder="如：人像AI模板"><label>描述（选填）</label><textarea id="inputWordpackDesc" class="modal-input" rows="2" placeholder="词包用途说明"></textarea></div><div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalCreateWordpack').style.display='none'">取消</button><button class="btn btn-primary btn-sm" onclick="App.createWordpack()">创建</button></div></div></div>
+    <div class="modal-overlay" id="modalAddToWordpack" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5 id="modalAddToTitle">添加到词包</h5><button class="header-btn-sm" onclick="document.getElementById('modalAddToWordpack').style.display='none'">&times;</button></div><div class="modal-body" id="wordpackSelectList"><div style="color:#94a3b8;text-align:center;padding:20px;">加载中...</div></div></div></div>
+    <div class="modal-overlay" id="modalBatchResult" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content modal-wide" onclick="event.stopPropagation()"><div class="modal-header"><h5>批量复制结果</h5><button class="header-btn-sm" onclick="document.getElementById('modalBatchResult').style.display='none'">&times;</button></div><div class="modal-body"><textarea id="batchResultText" class="modal-input" rows="10" readonly></textarea></div><div class="modal-footer"><button class="btn btn-primary btn-sm" onclick="App.copyBatchResult()"><i class="bi bi-clipboard"></i> 复制全部</button><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalBatchResult').style.display='none'">关闭</button></div></div></div>
+    <div class="modal-overlay" id="modalThumbnail" style="display:none;z-index:200;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content modal-wide" onclick="event.stopPropagation()"><div class="modal-header"><h5>设置缩略图</h5><button class="header-btn-sm" onclick="document.getElementById('modalThumbnail').style.display='none'">&times;</button></div><div class="modal-body"><div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;"><label class="upload-btn"><i class="bi bi-cloud-upload"></i> 上传图片<input type="file" id="thumbUploadInput" accept="image/*" style="display:none" onchange="App.uploadThumbnail(event)"></label><label class="upload-btn" style="background:#7c3aed;"><i class="bi bi-film"></i> 上传视频<input type="file" id="videoUploadInput" accept="video/*" style="display:none" onchange="App.uploadVideo(event)"></label><button class="btn btn-outline-danger btn-sm" onclick="App.removeThumbnail()" id="btnRemoveThumb" style="display:none;"><i class="bi bi-trash"></i> 移除缩略图</button></div><div id="thumbLibraryGrid" class="thumb-grid"></div><div id="thumbPagination" class="pagination-bar" style="margin-top:12px;"></div></div></div></div>
+    
+    <div class="modal-overlay viewer-modal" id="modalVideoViewer" style="display:none;z-index:300;background:rgba(0,0,0,0.85);" onclick="if(event.target===this){App.closeVideoViewer()}">
+        <div class="viewer-split">
+            <div class="viewer-left" style="flex-direction:column;">
+                <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px;">
+                    <video id="vidViewerPlayer" style="max-width:100%;max-height:55vh;border-radius:8px;" controls playsinline></video>
+                </div>
+                <div style="padding:0 16px 12px;">
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+                        <input type="range" id="vidViewerSeek" min="0" max="1000" value="0" style="flex:1;height:6px;cursor:pointer;accent-color:#6366f1;">
+                        <span id="vidViewerTime" style="color:#fff;font-size:12px;font-family:monospace;min-width:110px;text-align:center;">00:00.0 / 00:00.0</span>
+                    </div>
+                    <div style="display:flex;gap:6px;justify-content:center;">
+                        <button class="header-btn" onclick="App.seekVideo(-10)" style="color:#fff;font-size:12px;">-10s</button>
+                        <button class="header-btn" onclick="App.seekVideo(-1)" style="color:#fff;font-size:14px;">-1s</button>
+                        <button class="header-btn" onclick="App.seekVideo(-0.1)" style="color:#fff;font-size:14px;">-0.1s</button>
+                        <button class="header-btn" onclick="App.toggleVideoPlay()" id="vidPlayBtn" style="color:#fff;font-size:18px;width:36px;height:36px;background:rgba(255,255,255,0.1);border-radius:50%;">&#9654;</button>
+                        <button class="header-btn" onclick="App.seekVideo(0.1)" style="color:#fff;font-size:14px;">+0.1s</button>
+                        <button class="header-btn" onclick="App.seekVideo(1)" style="color:#fff;font-size:14px;">+1s</button>
+                        <button class="header-btn" onclick="App.seekVideo(10)" style="color:#fff;font-size:12px;">+10s</button>
+                    </div>
+                </div>
+            </div>
+            <div class="viewer-right" id="vidViewerRight">
+                <div class="viewer-right-header">
+                    <span style="font-weight:600;">提示词详情</span>
+                    <button class="header-btn-sm" onclick="App.closeVideoViewer()" style="color:#fff;font-size:24px;">&times;</button>
+                </div>
+                <div class="viewer-right-body">
+                    <div class="viewer-badge" id="vidViewerModule">-</div>
+                    <div class="viewer-content" id="vidViewerContent">-</div>
+                    <div class="viewer-meaning" id="vidViewerMeaning"></div>
+                    <div class="viewer-tags" id="vidViewerTags"></div>
+                    <div class="viewer-collections" id="vidViewerCollections"></div>
+                    <div class="viewer-actions">
+                        <button class="viewer-btn viewer-btn-copy" onclick="App.copyVidViewerContent()"><i class="bi bi-clipboard"></i> 复制提示词</button>
+                        <button class="viewer-btn viewer-btn-collect" id="vidViewerCollectBtn" onclick="event.stopPropagation();App.collectVidViewerPrompt()"><i class="bi bi-bookmark"></i> 收藏</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay viewer-modal" id="modalImageViewer" style="display:none;z-index:300;background:rgba(0,0,0,0.85);" onclick="if(event.target===this){App.closeImageViewer()}">
+        <div class="viewer-split">
+            <div class="viewer-left">
+                <div id="imageViewerContainer" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;user-select:none;cursor:grab;">
+                    <img id="imageViewerImg" src="" style="transition:transform 0.05s;transform-origin:0 0;">
+                </div>
+            </div>
+            <div class="viewer-right" id="imgViewerRight">
+                <div class="viewer-right-header">
+                    <span style="font-weight:600;">提示词详情</span>
+                    <button class="header-btn-sm" onclick="App.closeImageViewer()" style="color:#fff;font-size:24px;">&times;</button>
+                </div>
+                <div class="viewer-right-body">
+                    <div class="viewer-badge" id="imgViewerModule">-</div>
+                    <div class="viewer-content" id="imgViewerContent">-</div>
+                    <div class="viewer-meaning" id="imgViewerMeaning"></div>
+                    <div class="viewer-tags" id="imgViewerTags"></div>
+                    <div class="viewer-collections" id="imgViewerCollections"></div>
+                    <div class="viewer-actions">
+                        <button class="viewer-btn viewer-btn-copy" onclick="App.copyImgViewerContent()"><i class="bi bi-clipboard"></i> 复制提示词</button>
+                        <button class="viewer-btn viewer-btn-collect" id="imgViewerCollectBtn" onclick="event.stopPropagation();App.collectImgViewerPrompt()"><i class="bi bi-bookmark"></i> 收藏</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal-overlay" id="modalVideoTrim" style="display:none;z-index:250;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:700px;">
+            <div class="modal-header">
+                <h5>视频裁剪与压缩</h5>
+                <button class="header-btn-sm" onclick="document.getElementById('modalVideoTrim').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="trimVideoContainer" style="background:#000;border-radius:8px;overflow:hidden;margin-bottom:12px;">
+                    <video id="trimVideoPlayer" controls style="width:100%;max-height:300px;display:block;"></video>
+                </div>
+                <div style="display:flex;gap:16px;margin-bottom:12px;">
+                    <div style="flex:1;">
+                        <label class="form-label">起始时间</label>
+                        <input type="range" id="trimStartSlider" min="0" max="100" value="0" class="column-slider" style="width:100%;" oninput="App.onTrimSlider()">
+                        <span id="trimStartLabel" style="font-size:13px;color:var(--text-muted);">00:00.0</span>
+                    </div>
+                    <div style="flex:1;">
+                        <label class="form-label">结束时间</label>
+                        <input type="range" id="trimEndSlider" min="0" max="100" value="100" class="column-slider" style="width:100%;" oninput="App.onTrimSlider()">
+                        <span id="trimEndLabel" style="font-size:13px;color:var(--text-muted);">00:00.0</span>
+                    </div>
+                </div>
+                <div style="display:flex;gap:16px;align-items:center;margin-bottom:12px;">
+                    <span style="font-size:13px;color:var(--text-muted);">截取时长: <strong id="trimDurationLabel">0.0秒</strong></span>
+                    <span style="font-size:13px;color:var(--text-muted);margin-left:auto;">压缩质量:</span>
+                    <select id="trimQuality" class="modal-input" style="width:auto;padding:4px 8px;">
+                        <option value="1">最低(小体积)</option>
+                        <option value="2">较低</option>
+                        <option value="3" selected>适中</option>
+                        <option value="4">较好</option>
+                        <option value="5">最高(原画质)</option>
+                    </select>
+                </div>
+                <div style="font-size:12px;color:#94a3b8;margin-bottom:12px;">
+                    原始: <span id="trimOrigInfo">-</span>
+                </div>
+                <button class="btn btn-primary w-100" onclick="App.processTrimmedVideo()" id="btnTrimProcess" style="padding:10px;">
+                    <i class="bi bi-scissors"></i> 裁剪并上传
+                </button>
+                <div id="trimProgress" style="display:none;text-align:center;padding:12px;color:var(--text-muted);">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"><span class="visually-hidden">处理中...</span></div>
+                    正在处理视频，请稍候...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+    <div class="modal-overlay" id="modalEditPrompt" style="display:none;z-index:400;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:600px;">
+            <div class="modal-header"><h5 id="editPromptTitle">编辑提示词</h5><button class="header-btn-sm" onclick="App.closeEditModal()">&times;</button></div>
+            <div class="modal-body">
+                <label>内容</label>
+                <textarea id="editContent" class="modal-input" rows="3" placeholder="提示词内容"></textarea>
+                <label>释义</label>
+                <input type="text" id="editMeaning" class="modal-input" placeholder="中文释义">
+                <label>适用场景</label>
+                <input type="text" id="editScene" class="modal-input" placeholder="如：人像写真/日常拍摄">
+                <label>模块</label>
+                <select id="editModule" class="modal-input">
+                    <option value="emotion">人物表情</option>
+                    <option value="color">场景色彩</option>
+                    <option value="tone">画面色调</option>
+                    <option value="composition">构图运镜</option>
+                    <option value="seedance">Seedance视频</option>
+                    <option value="custom">自定义</option>
+                </select>
+                <label>分类</label>
+                <input type="text" id="editCategory" class="modal-input" placeholder="二级分类名">
+                <label>标签（JSON数组）</label>
+                <input type="text" id="editTags" class="modal-input" placeholder='["自然","温暖"]'>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger btn-sm" onclick="App.deleteEditPrompt()" id="editDeleteBtn" style="margin-right:auto;">删除</button>
+                <button class="btn btn-secondary btn-sm" onclick="App.closeEditModal()">取消</button>
+                <button class="btn btn-primary btn-sm" onclick="App.saveEditPrompt()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastContainer" class="toast-container"></div>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

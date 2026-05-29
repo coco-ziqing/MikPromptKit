@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.spec
+
+# Data files (generated at runtime)
+data/prompts.db
+data/prompts.db-shm
+data/prompts.db-wal
+data/thumbnails/
+data/originals/
+data/videos/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Temp scripts (fix_*.py, fix_*.js, check_*.py, etc.)
+fix_*.py
+fix_*.js
+check_*.py
+add_*.py
+dedup*.py
+verify*.js
+debug*.js
+test_*.py
+restore_*.js
+*.bak
+out.js
+
+# OpenClaw runtime
+.openclaw/
+memory/.dreams/
+
+# Development docs (not part of source code)
+开发需求/
