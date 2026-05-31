@@ -91,6 +91,16 @@ body {
 }
 .search-box input:focus { background: #fff; border-color: var(--primary-light); box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
 .search-box .search-icon { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+.search-mode-btn {
+    position: absolute; right: 32px; top: 50%;
+    transform: translateY(-50%);
+    background: none; border: none;
+    font-size: 14px; cursor: pointer;
+    padding: 2px 4px; border-radius: 4px;
+    color: #94a3b8; line-height: 1;
+    z-index: 2;
+}
+.search-mode-btn:hover { background: var(--hover-bg,#f1f5f9); }
 .header-actions { display: flex; align-items: center; gap: 6px; margin-left: 12px; }
 .header-btn {
     width: 34px; height: 34px; border: none; border-radius: 8px;
@@ -138,13 +148,16 @@ body {
     margin-left: var(--sidebar-width);
     margin-top: var(--nav-height);
     padding: 20px 24px;
-    min-height: calc(100vh - var(--nav-height));
+    height: calc(100vh - var(--nav-height));
+    display: flex; flex-direction: column;
     transition: margin-right 0.3s;
+    overflow: hidden;
 }
 .main-content.with-rec { margin-right: var(--rec-width); }
 
 /* ============ 视图面板 ============ */
-.view-panel { display: block; }
+.view-panel { display: none; flex: 1; flex-direction: column; min-height: 0; }
+.view-panel.active-view { display: flex; }
 
 /* ============ 分类筛选标签 ============ */
 .category-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -195,7 +208,7 @@ body {
 /* ============ 批量操作栏 ============ */
 .batch-bar {
     display: flex; align-items: center; gap: 8px;
-    padding: 10px 16px; background: #ffffff;
+    padding: 10px 16px; background: var(--bg-card);
     border: 1px solid var(--border-color); border-radius: var(--radius);
     margin-bottom: 12px; flex-wrap: wrap;
 }
@@ -1160,6 +1173,21 @@ body.dark-theme #vidViewerSeek {
 /* 让 viewHome 成为拖拽定位参考 */
 #viewHome {
     position: relative;
+    height: 100%;
+}
+#viewHome.active-view {
+    display: flex;
+    flex-direction: column;
+}
+
+/* viewHome 分为上下两部分 */
+.view-home-top {
+    flex-shrink: 0;
+}
+.view-home-scroll {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 /* 新增 --hover-bg 变量 */

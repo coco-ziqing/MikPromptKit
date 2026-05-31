@@ -18,6 +18,7 @@ const App = {
         batchMode: false,
         batchSelected: new Set(),
         editMode: false,
+        _searchMode: 'keyword',  // 'keyword' | 'semantic'
         _editFilterQuery: '',
         _editFilterModule: '',
         _editFilterCollected: '',
@@ -25,6 +26,9 @@ const App = {
         _newPromptModule: '',
         _diIsPt: false,
         _diPtFile: null,
+        _exportQueue: null,
+        _diIsPng: false,
+        _diPngFile: null,
         // 收藏夹
         collections: [],
         currentCollection: null,
@@ -66,27 +70,39 @@ const App = {
 
         this.bindEvents();
         this._initDropZone();
-        await Promise.all([
-            this.loadModules(),
-            this.loadStats(),
-            this.loadCollections(),
-            this.loadWordpacks()
-        ]);
+        
+        // 初始默认显示 home 视图（防止 JS 错误时白屏）
+        this.switchView('home');
+        
+        try {
+            await Promise.all([
+                this.loadModules(),
+                this.loadStats(),
+                this.loadCollections(),
+                this.loadWordpacks()
+            ]);
 
-        // 恢复上次的视图状态
-        var savedView = localStorage.getItem('promptkit_view');
-        var savedModule = localStorage.getItem('promptkit_module');
+            // 恢复上次的视图状态
+            var savedView = localStorage.getItem('promptkit_view');
+            var savedModule = localStorage.getItem('promptkit_module');
 
-        if (savedView === 'seedance') {
-            this.switchView('seedance');
-            var savedSeedanceTab = localStorage.getItem('promptkit_seedance_tab') || 'templates';
-            setTimeout(function() { App.switchSeedanceTab(savedSeedanceTab); }, 100);
-        } else if (savedView === 'collections' || savedView === 'wordpacks' || savedView === 'history') {
-            this.switchView(savedView);
-        } else if (savedModule && this.state.modules.find(function(m) { return m.id === savedModule; })) {
-            this.switchModule(savedModule);
-        } else if (this.state.modules.length > 0) {
-            this.switchModule(this.state.modules[0].id);
+            if (savedView === 'seedance') {
+                this.switchView('seedance');
+                var savedSeedanceTab = localStorage.getItem('promptkit_seedance_tab') || 'templates';
+                setTimeout(function() { App.switchSeedanceTab(savedSeedanceTab); }, 100);
+            } else if (savedView === 'collections' || savedView === 'wordpacks' || savedView === 'history' || savedView === 'trash') {
+                this.switchView(savedView);
+            } else if (savedModule && this.state.modules && this.state.modules.find(function(m) { return m.id === savedModule; })) {
+                this.switchModule(savedModule);
+            } else if (this.state.modules && this.state.modules.length > 0) {
+                this.switchModule(this.state.modules[0].id);
+            } else {
+                this.loadPrompts();
+            }
+        } catch (e) {
+            console.warn('Init error, fallback to home:', e.message);
+            this.switchView('home');
+            this.loadPrompts();
         }
     },
 
@@ -99,7 +115,11 @@ const App = {
             debounceTimer = setTimeout(() => {
                 this.state.searchQuery = searchInput.value.trim();
                 this.state.page = 1;
-                this.loadPrompts();
+                if (this.state._searchMode === 'semantic' && this.state.searchQuery) {
+                    this._semanticSearch(this.state.searchQuery);
+                } else {
+                    this.loadPrompts();
+                }
             }, 300);
         });
 
@@ -121,7 +141,7 @@ const App = {
         try { localStorage.setItem('promptkit_view', view); } catch(e) {}
 
         // 隐藏所有视图
-        document.querySelectorAll('.view-panel').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('.view-panel').forEach(function(el) { el.classList.remove('active-view'); });
         // 导航按钮状态
         document.querySelectorAll('.header-btn[id^="nav"]').forEach(el => el.classList.remove('active'));
 
@@ -134,35 +154,35 @@ const App = {
         };
 
         if (view === 'home') {
-            document.getElementById('viewHome').style.display = 'block';
+            document.getElementById('viewHome').classList.add('active-view');
             document.getElementById(navMap[view]).classList.add('active');
             document.getElementById('globalSearchBox').style.display = 'flex';
             this.renderSidebar();
-            this.loadPrompts(); // 刷新卡片数据,确保视频缩略图即时显示
+            this.loadPrompts();
         } else if (view === 'collections') {
-            document.getElementById('viewCollections').style.display = 'block';
+            document.getElementById('viewCollections').classList.add('active-view');
             document.getElementById(navMap[view]).classList.add('active');
             document.getElementById('globalSearchBox').style.display = 'none';
             this.renderCollections();
         } else if (view === 'wordpacks') {
-            document.getElementById('viewWordpacks').style.display = 'block';
+            document.getElementById('viewWordpacks').classList.add('active-view');
             document.getElementById(navMap[view]).classList.add('active');
             document.getElementById('globalSearchBox').style.display = 'none';
             this.renderWordpacks();
         } else if (view === 'history') {
-            document.getElementById('viewHistory').style.display = 'block';
+            document.getElementById('viewHistory').classList.add('active-view');
             document.getElementById(navMap[view]).classList.add('active');
             document.getElementById('globalSearchBox').style.display = 'none';
             this.loadHistory();
         } else if (view === 'trash') {
-            document.getElementById('viewTrash').style.display = 'block';
+            document.getElementById('viewTrash').classList.add('active-view');
             document.getElementById(navMap[view]).classList.add('active');
             document.getElementById('globalSearchBox').style.display = 'none';
             this.loadTrash();
         } else if (view === 'seedance') {
             this.state.currentModule = 'seedance';
             this.renderSidebar();
-            document.getElementById('viewSeedance').style.display = 'block';
+            document.getElementById('viewSeedance').classList.add('active-view');
             document.getElementById('globalSearchBox').style.display = 'none';
             this.loadSeedanceCategories();
             this.loadSeedanceTemplates();
@@ -172,6 +192,103 @@ const App = {
         this.closeRecommend();
         // 退出批量模式
         if (this.state.batchMode) this.toggleBatchMode();
+    },
+
+    // ============ 搜索模式 ============
+
+    toggleSearchMode() {
+        var modes = { keyword: 'semantic', semantic: 'keyword' };
+        this.state._searchMode = modes[this.state._searchMode] || 'keyword';
+        var btn = document.getElementById('searchModeBtn');
+        if (btn) {
+            if (this.state._searchMode === 'semantic') {
+                btn.innerHTML = '<span style="font-weight:600;">🧠</span>';
+                btn.title = '语义搜索（点击切换回关键词）';
+                btn.style.color = '#818cf8';
+            } else {
+                btn.innerHTML = '🔤';
+                btn.title = '关键词搜索（点击切换为语义）';
+                btn.style.color = '#94a3b8';
+            }
+        }
+        // 如果当前有搜索词，重新搜索
+        if (this.state.searchQuery) {
+            this.state.page = 1;
+            if (this.state._searchMode === 'semantic') {
+                this._semanticSearch(this.state.searchQuery);
+            } else {
+                this.loadPrompts();
+            }
+        }
+        this.showToast('已切换到' + (this.state._searchMode === 'semantic' ? '🧠 语义搜索' : '🔤 关键词搜索'), 'info');
+    },
+
+    async _semanticSearch(query) {
+        var container = document.getElementById('promptList');
+        if (!container) return;
+        container.innerHTML = '<div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">语义搜索中...</span></div></div>';
+        try {
+            var data = await this.fetchJSON('/api/v2/search/semantic', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query, top_k: 50 })
+            });
+            if (!data || !data.items) {
+                container.innerHTML = '<div class="empty-state"><p>搜索失败</p></div>';
+                return;
+            }
+            this.state.prompts = data.items.map(function(item) {
+                return {
+                    id: item.id,
+                    content: item.content,
+                    meaning: item.meaning || '',
+                    module: item.module || '',
+                    category: item.category || '',
+                    tags: JSON.stringify(item.tags || []),
+                    semantic_score: item.score || 0,
+                    collections: [],
+                    usage_count: 0
+                };
+            });
+            this.state.totalItems = data.total;
+            this.state.totalPages = 1;
+            this.state.page = 1;
+            this._renderSemanticResults();
+            document.getElementById('countInfo').textContent = '🧠 语义搜索: ' + data.total + ' 条结果';
+        } catch (e) {
+            container.innerHTML = '<div class="empty-state" style="color:#ef4444;">语义搜索失败: ' + e.message + '</div>';
+        }
+    },
+
+    _renderSemanticResults() {
+        var container = document.getElementById('promptList');
+        if (!container) return;
+        var items = this.state.prompts;
+        if (items.length === 0) {
+            container.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><p>未找到语义相似的提示词</p></div>';
+            return;
+        }
+        var html = '<div class="prompt-grid">';
+        for (var i = 0; i < items.length; i++) {
+            var p = items[i];
+            var score = (p.semantic_score * 100).toFixed(0);
+            html += '<div class="prompt-card" data-id="' + p.id + '">';
+            html += '<div class="card-body">';
+            html += '<div style="font-size:10px;color:#818cf8;margin-bottom:4px;">🧠 相似度 ' + score + '%</div>';
+            html += '<div class="card-content">' + this._escape(p.content || '') + '</div>';
+            if (p.meaning) html += '<div class="card-meaning">' + this._escape(p.meaning) + '</div>';
+            html += '<div style="display:flex;gap:4px;">';
+            if (p.module) html += '<span class="card-badge">' + this._escape(p.module) + '</span>';
+            if (p.category) html += '<span class="card-badge" style="background:#f0fdf4;color:#059669;">' + this._escape(p.category) + '</span>';
+            html += '</div>';
+            html += '</div>';
+            html += '<div class="card-actions">';
+            html += '<button class="btn-copy" onclick="App.handleCopy(' + p.id + ', \'' + this._escape(p.content).replace(/'/g, "\\'") + '\')">复制</button>';
+            html += '</div>';
+            html += '</div>';
+        }
+        html += '</div>';
+        container.innerHTML = html;
     },
 
     // ============ 数据加载 ============
@@ -265,6 +382,7 @@ const App = {
         this._editFilterCollected = '';
         try { localStorage.setItem('promptkit_view', 'home'); localStorage.removeItem('promptkit_module'); } catch(e) {}
         this.renderSidebar();
+        this.switchView('home');
         this.renderCategories();
         this.loadPrompts();
     },
@@ -285,7 +403,11 @@ const App = {
 
     // ============ 复制 ============
     // 生成导出文件名：取第一条提示词内容前12字 + 条数
-    _makeExportFilename(items, fmt) {
+    // 若已有自定义名则优先使用
+    _makeExportFilename(items, fmt, customName) {
+        if (customName) {
+            return customName + '.' + fmt;
+        }
         var prefix = 'prompts';
         if (items && items.length > 0) {
             var firstItem = items[0];
@@ -410,7 +532,6 @@ const App = {
             this._editFilterCollected = '';
             if (eb) { eb.style.display = 'flex'; }
             if (fb) { fb.style.display = 'block'; }
-            // 填充模块筛选下拉
             this._populateEditFilterModules();
             this.updateBatchCount();
         } else {
@@ -628,7 +749,14 @@ const App = {
         if (ids.length === 0) { this.showToast('没有可导出的词条', 'error'); return; }
         var fmt = document.querySelector('input[name="epFmt"]:checked');
         fmt = fmt ? fmt.value : 'txt';
-        // 复用批量导出 API
+        document.getElementById('modalExportPreview').style.display = 'none';
+
+        if (fmt === 'png') {
+            this._exportQueue = { ids: ids, fmt: 'png' };
+            this._showExportNameDialog(ids, 'png');
+            return;
+        }
+
         try {
             var res = await fetch('/api/v2/batch/export', {
                 method: 'POST',
@@ -652,7 +780,8 @@ const App = {
     // ============ 拖拽导入 ============
 
     _initDropZone() {
-        var zone = document.getElementById('viewHome');
+        var zone = document.getElementById('viewHomeScroll');
+        if (!zone) zone = document.getElementById('viewHome');
         if (!zone) return;
         var overlay = document.getElementById('dropOverlay');
         if (!overlay) return;
@@ -702,7 +831,20 @@ const App = {
                 }
             }
             if (!dropFile) {
-                App.showToast('请拖入 JSON 或 .pt 格式的提示词文件', 'error');
+                // 没有 JSON/.pt 文件，检查是否有 PNG
+                var pngFile = null;
+                for (var i = 0; i < files.length; i++) {
+                    var name = files[i].name.toLowerCase();
+                    if (name.endsWith('.png') || files[i].type === 'image/png') {
+                        pngFile = files[i];
+                        break;
+                    }
+                }
+                if (pngFile) {
+                    App.handleDropPngFile(pngFile);
+                } else {
+                    App.showToast('请拖入 JSON / .pt / PNG 格式的提示词文件', 'error');
+                }
                 return;
             }
             if (isPt) {
@@ -711,6 +853,44 @@ const App = {
                 App._handleDropFile(dropFile);
             }
         }, false);
+    },
+
+    async handleDropPngFile(file) {
+        try {
+            var formData = new FormData();
+            formData.append('file', file);
+            var resp = await fetch('/api/export/preview-png', { method: 'POST', body: formData });
+            var preview = await resp.json();
+            if (!preview.ok || !preview.preview) {
+                this.showToast('该 PNG 不包含有效的提示词数据', 'error');
+                return;
+            }
+            var p = preview.preview;
+            var item = {
+                content: p.content || '',
+                meaning: p.meaning || '',
+                scene: p.scene || '',
+                module: p.module || 'custom',
+                category: p.category || '',
+                tags: p.tags || []
+            };
+            this._diFile = file;
+            this._diItems = [item];
+            this._diIsPt = false;
+            this._diIsPng = true;
+            this._diPngFile = file;
+            document.getElementById('diFileName').textContent = file.name;
+            document.getElementById('diFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB · 1 条提示词';
+            document.getElementById('diCount').textContent = '共 1 条提示词';
+            this._renderDiItems([item]);
+            document.getElementById('diSelectAll').checked = true;
+            document.getElementById('diResult').style.display = 'none';
+            document.getElementById('btnDiImport').disabled = false;
+            document.getElementById('btnDiImport').innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+            document.getElementById('modalDropImport').style.display = 'flex';
+        } catch (e) {
+            this.showToast('PNG 解析失败: ' + e.message, 'error');
+        }
     },
 
     async _handleDropFile(file) {
@@ -821,7 +1001,50 @@ const App = {
         btn.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div> 正在导入...';
 
         var data;
-        if (this._diIsPt) {
+        if (this._diIsPng && this._diPngFile) {
+            // PNG 导入：收集用户编辑覆盖
+            var conflict = document.getElementById('diConflictSelect').value;
+            var overrides = [];
+            for (var cbi = 0; cbi < cbs.length; cbi++) {
+                var idx = parseInt(cbs[cbi].getAttribute('data-idx'));
+                var contentInput = document.querySelector('.di-content-input[data-idx="' + idx + '"]');
+                var moduleSelect = document.querySelector('.di-module-select[data-idx="' + idx + '"]');
+                var categoryInput = document.querySelector('.di-category-input[data-idx="' + idx + '"]');
+                overrides.push({
+                    content: contentInput ? contentInput.value.trim() : null,
+                    module: moduleSelect ? moduleSelect.value : null,
+                    category: categoryInput ? categoryInput.value.trim() : null
+                });
+            }
+            var formData = new FormData();
+            formData.append('file', this._diPngFile);
+            formData.append('conflict', conflict);
+            formData.append('overrides', JSON.stringify(overrides));
+            try {
+                var resp = await fetch('/api/export/import-png', { method: 'POST', body: formData });
+                data = await resp.json();
+            } catch (e) {
+                this.showToast('PNG 导入失败', 'error');
+                btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+                return;
+            }
+            // 标准化返回值（后端 import-png 返回 {ok, result}，统一为 {created, skipped}）
+            if (data && data.ok) {
+                if (data.result && data.result.created) {
+                    data.created = 1;
+                    data.skipped = 0;
+                    data.failed = 0;
+                } else if (data.result && data.result.reason === 'skip') {
+                    data.created = 0;
+                    data.skipped = 1;
+                    data.failed = 0;
+                } else {
+                    data.created = 0;
+                    data.skipped = 0;
+                    data.failed = 1;
+                }
+            }
+        } else if (this._diIsPt) {
             // .pt 包导入：收集用户编辑覆盖 + 上传原文件
             var overrides = [];
             for (var cbi = 0; cbi < cbs.length; cbi++) {
@@ -962,41 +1185,202 @@ const App = {
     async batchExport(fmt) {
         const ids = [...this.state.batchSelected];
         if (ids.length === 0) { this.showToast('请先选择提示词', 'error'); return; }
-        // 通过隐藏下载触发
+        if (fmt === 'pt' || fmt === 'png') {
+            this._exportQueue = { ids: ids, fmt: fmt };
+            this._showExportNameDialog(ids, fmt);
+            return;
+        }
         try {
-            var url, a;
+            var res = await fetch('/api/v2/batch/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_ids: ids, format: fmt })
+            });
+            var blob = await res.blob();
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = App._makeExportFilename(ids, fmt);
+            a.click();
+            URL.revokeObjectURL(url);
+            this.showToast('导出成功 (' + ids.length + ' 条)', 'success');
+        } catch (e) {
+            this.showToast('导出失败', 'error');
+        }
+    },
+
+    // ============ 导出命名弹窗 ============
+
+    _showExportNameDialog(ids, fmt) {
+        var fmtNames = { pt: '.pt 提示词包', png: '导出 PNG 卡片' };
+        document.getElementById('exportNameTitle').textContent = '导出 ' + (fmtNames[fmt] || fmt.toUpperCase());
+        var defaultName = this._makeExportFilename(ids, fmt).replace('.' + fmt, '');
+        document.getElementById('exportNameInput').value = defaultName;
+        document.getElementById('exportNameCount').textContent = '共 ' + ids.length + ' 条 · 格式: ' + (fmt === 'pt' ? '.pt 提示词包' : 'PNG 卡片');
+
+        var savedPath = localStorage.getItem('promptkit_export_path') || '';
+        var pi = document.getElementById('exportPathInput');
+        var se = document.getElementById('exportPathStatus');
+        if (savedPath && (savedPath.includes(":\\") || savedPath.includes(":/"))) {
+            pi.value = savedPath;
+            if (se) { se.innerHTML = '\u2705 目录: <strong>' + savedPath + '</strong>'; se.style.color = '#059669'; }
+        } else if (savedPath) {
+            pi.value = '\U0001f4c1 ' + savedPath;
+            if (se) { se.innerHTML = '\u2705 文件夹: <strong>' + savedPath + '</strong>'; se.style.color = '#059669'; }
+        } else {
+            pi.value = '';
+            if (se) { se.innerHTML = '\U0001f4a1 点击输入框选择文件夹，或直接输入完整磁盘路径'; se.style.color = 'var(--text-muted)'; }
+        }
+
+        pi.oninput = function() {
+            var v = this.value.trim();
+            var s = document.getElementById('exportPathStatus');
+            if (!s) return;
+            if (!v) { s.innerHTML = '\U0001f4a1 点击输入框选择文件夹，或直接输入完整磁盘路径'; s.style.color = 'var(--text-muted)'; }
+            else if (v.includes(":\\") || v.includes(":/")) {
+                s.innerHTML = '\u23f3 验证路径...';
+                s.style.color = '#f59e0b';
+                clearTimeout(this._pathCheckTimer);
+                this._pathCheckTimer = setTimeout(function() {
+                    fetch('/api/utils/check-path', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: document.getElementById('exportPathInput').value.trim() })
+                    }).then(function(r) { return r.json(); }).then(function(d) {
+                        if (d.ok) { s.innerHTML = '\u2705 目录存在: <strong>' + d.path + '</strong>'; s.style.color = '#059669'; localStorage.setItem('promptkit_export_path', d.path); }
+                        else { s.innerHTML = '\u26a0\ufe0f ' + d.error; s.style.color = '#ef4444'; }
+                    }).catch(function() { s.innerHTML = ''; });
+                }, 500);
+            } else {
+                s.innerHTML = '';
+            }
+        };
+
+        var ext = fmt === 'pt' ? '.pt' : '.png';
+        document.getElementById('exportPathPreview').innerHTML = fmt === 'pt'
+            ? '\U0001f4c4 将保存为: <strong>' + defaultName + ext + '</strong>'
+            : '\U0001f4c4 将保存 <strong>' + ids.length + '</strong> 张 PNG 图片到目录: <strong>' + defaultName + '</strong>';
+
+        document.getElementById('exportNameInput').oninput = function() {
+            var val = this.value.trim() || defaultName;
+            var ext = fmt === 'pt' ? '.pt' : '.png';
+            document.getElementById('exportPathPreview').innerHTML = fmt === 'pt'
+                ? '\U0001f4c4 将保存为: <strong>' + val + ext + '</strong>'
+                : '\U0001f4c4 将保存 <strong>' + ids.length + '</strong> 张 PNG 图片到目录: <strong>' + val + '</strong>';
+        };
+
+        document.getElementById('btnConfirmExportName').onclick = function() { App._confirmBatchExport(); };
+        document.getElementById('modalExportName').style.display = 'flex';
+    },
+
+    async _confirmBatchExport() {
+        if (!this._exportQueue) return;
+        var ids = this._exportQueue.ids;
+        var fmt = this._exportQueue.fmt;
+        var customName = document.getElementById('exportNameInput').value.trim();
+
+        var saveDir = document.getElementById('exportPathInput').value.trim().replace(/^\U0001f4c1\s*/, '');
+        if (saveDir.includes(":\\") || saveDir.includes(":/")) {
+            localStorage.setItem('promptkit_export_path', saveDir);
+        } else {
+            saveDir = '';
+        }
+
+        document.getElementById('modalExportName').style.display = 'none';
+
+        try {
             if (fmt === 'pt') {
-                // .pt 包导出（含缩略图和视频）
-                var res = await fetch('/api/v2/pt/export', {
+                var r = await fetch('/api/v2/pt/export', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ prompt_ids: ids })
                 });
-                var blob = await res.blob();
-                url = URL.createObjectURL(blob);
-                a = document.createElement('a');
-                a.href = url;
-                // 从 Content-Disposition 取文件名，兜底
-                var contentDisp = res.headers.get('Content-Disposition') || '';
-                var match = contentDisp.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/);
-                a.download = match ? decodeURIComponent(match[1]) : App._makeExportFilename(ids, 'pt');
-            } else {
-                var res = await fetch('/api/v2/batch/export', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt_ids: ids, format: fmt })
-                });
-                var blob = await res.blob();
-                url = URL.createObjectURL(blob);
-                a = document.createElement('a');
-                a.href = url;
-                a.download = App._makeExportFilename(ids, fmt);
+                var b = await r.blob();
+                var cd = r.headers.get('Content-Disposition') || '';
+                var m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/);
+                var dn = customName ? (customName + '.pt') : (m ? decodeURIComponent(m[1]) : App._makeExportFilename(ids, 'pt'));
+
+                if (saveDir) {
+                    var ok = await App._saveBlobToPath(b, saveDir + '\\' + dn);
+                    if (ok) { App.showToast('导出成功 (' + ids.length + ' 条)', 'success'); }
+                    else { App._fallbackDownload(b, dn); App.showToast('写入失败，已改为下载', 'warning'); }
+                } else {
+                    App._fallbackDownload(b, dn);
+                    App.showToast('导出成功 (' + ids.length + ' 条)', 'success');
+                }
+            } else if (fmt === 'png') {
+                var saved = 0;
+                for (var i = 0; i < ids.length; i++) {
+                    var p = this.state.prompts ? this.state.prompts.find(function(x) { return x.id === ids[i]; }) : null;
+                    var pr = await fetch('/api/export/prompt-to-png/' + ids[i]);
+                    var pb = await pr.blob();
+                    var pn = App._makeExportFilename(p ? [p] : [{id: ids[i]}], 'png');
+                    if (saveDir) {
+                        var ok = await App._saveBlobToPath(pb, saveDir + '\\' + pn);
+                        if (ok) saved++;
+                        else App._fallbackDownload(pb, pn);
+                    } else {
+                        App._fallbackDownload(pb, pn);
+                        saved++;
+                    }
+                }
+                App.showToast('导出成功 (' + saved + '/' + ids.length + ' 张 PNG)', 'success');
             }
-            a.click();
-            URL.revokeObjectURL(url);
-            this.showToast(`导出成功 (${ids.length} 条)`, 'success');
         } catch (e) {
-            this.showToast('导出失败', 'error');
+            App.showToast('导出失败: ' + e.message, 'error');
+        }
+        this._exportQueue = null;
+    },
+
+    async _pickExportPath() {
+        try {
+            var r = await fetch('/api/utils/pick-folder', { method: 'POST' });
+            var d = await r.json();
+            if (d.ok && d.path) {
+                this._exportPath = d.path;
+                localStorage.setItem('promptkit_export_path', d.path);
+                document.getElementById('exportPathInput').value = d.path;
+                var s = document.getElementById('exportPathStatus');
+                if (s) { s.innerHTML = '\u2705 目录: <strong>' + d.path + '</strong>'; s.style.color = '#059669'; }
+            } else if (d.error && d.error !== '未选择目录') {
+                this.showToast('选择目录失败: ' + d.error, 'error');
+            }
+        } catch (e) {
+            this.showToast('目录选择器调用失败', 'error');
+        }
+    },
+
+    _fallbackDownload(blob, filename) {
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    },
+
+    _blobToBase64(blob) {
+        return new Promise(function(resolve, reject) {
+            var reader = new FileReader();
+            reader.onloadend = function() { resolve(reader.result.split(',')[1]); };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    },
+
+    async _saveBlobToPath(blob, fullPath) {
+        try {
+            var b64 = await this._blobToBase64(blob);
+            var r = await fetch('/api/utils/save-blob', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: fullPath, content: b64 })
+            });
+            var d = await r.json();
+            return d.ok;
+        } catch (e) {
+            console.warn('保存文件失败:', e.message);
+            return false;
         }
     },
 
@@ -1889,6 +2273,205 @@ const App = {
         localStorage.setItem('promptkit_theme', newTheme);
     },
 
+    // ============ 数据库备份 ============
+
+    async showBackupInfo() {
+        document.getElementById('modalBackup').style.display = 'flex';
+        document.getElementById('backupInfoBody').innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">正在获取备份状态...</p></div>';
+        document.getElementById('backupStatusText').textContent = '加载中...';
+        try {
+            var data = await this.fetchJSON('/api/backup/info');
+            if (!data) { throw new Error('获取失败'); }
+            this._renderBackupInfo(data);
+        } catch (e) {
+            document.getElementById('backupInfoBody').innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">❌ 获取备份信息失败: ' + e.message + '</div>';
+            document.getElementById('backupStatusText').textContent = '加载失败';
+        }
+    },
+
+    _renderBackupInfo(data) {
+        var body = document.getElementById('backupInfoBody');
+        var html = '';
+
+        // 当前数据库状态
+        var dbSize = data.db_size || 0;
+        var dbSizeStr = dbSize > 1048576 ? (dbSize / 1048576).toFixed(1) + ' MB' : (dbSize / 1024).toFixed(1) + ' KB';
+        html += '<div style="margin-bottom:16px;">';
+        html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px;">📊 数据库状态</div>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">';
+        html += '<div style="padding:8px 12px;background:var(--hover-bg,#f1f5f9);border-radius:6px;"><span style="color:var(--text-muted);">数据库大小</span><br><strong>' + dbSizeStr + '</strong></div>';
+        html += '<div style="padding:8px 12px;background:var(--hover-bg,#f1f5f9);border-radius:6px;"><span style="color:var(--text-muted);">备份数量</span><br><strong>' + (data.total_backups || 0) + '</strong></div>';
+        html += '<div style="padding:8px 12px;background:var(--hover-bg,#f1f5f9);border-radius:6px;"><span style="color:var(--text-muted);">备份目录大小</span><br><strong>' + (data.backup_dir_size > 1048576 ? (data.backup_dir_size/1048576).toFixed(1)+' MB' : (data.backup_dir_size/1024).toFixed(1)+' KB') + '</strong></div>';
+        html += '<div style="padding:8px 12px;background:var(--hover-bg,#f1f5f9);border-radius:6px;"><span style="color:var(--text-muted);">保留策略</span><br><strong>' + (data.keep_days || 7) + ' 天轮换</strong></div>';
+        html += '</div></div>';
+
+        // 最近备份时间
+        html += '<div style="margin-bottom:16px;">';
+        html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px;">⏰ 最近备份</div>';
+        if (data.last_backup_time_str) {
+            html += '<div style="font-size:12px;color:var(--text-muted);">上次备份: <strong>' + data.last_backup_time_str + '</strong></div>';
+        } else {
+            html += '<div style="font-size:12px;color:var(--text-muted);">尚未备份</div>';
+        }
+        if (data.last_error) {
+            html += '<div style="font-size:12px;color:#ef4444;margin-top:4px;">上次错误: ' + data.last_error + '</div>';
+        }
+        html += '</div>';
+
+        // 备份文件列表
+        var backups = data.recent_backups || [];
+        if (backups.length > 0) {
+            html += '<div style="margin-bottom:8px;">';
+            html += '<div style="font-size:13px;font-weight:600;margin-bottom:8px;">📁 备份文件（最近 10 个）</div>';
+            html += '<div style="max-height:200px;overflow-y:auto;font-size:11px;">';
+            for (var i = 0; i < backups.length; i++) {
+                var b = backups[i];
+                var bSize = b.size > 1048576 ? (b.size / 1048576).toFixed(1) + ' MB' : (b.size / 1024).toFixed(1) + ' KB';
+                html += '<div style="display:flex;justify-content:space-between;padding:4px 8px;border-bottom:1px solid var(--border-color);">';
+                html += '<span>' + this._escape(b.name) + '</span>';
+                html += '<span style="color:var(--text-muted);">' + bSize + '</span>';
+                html += '</div>';
+            }
+            html += '</div></div>';
+        }
+
+        body.innerHTML = html;
+
+        // 更新状态
+        document.getElementById('backupStatusText').textContent = '自动备份每 ' + (data.keep_days*24 || 168) + ' 小时执行一次';
+    },
+
+    async doBackupNow() {
+        document.getElementById('backupStatusText').textContent = '正在备份...';
+        try {
+            var data = await this.fetchJSON('/api/backup/now', { method: 'POST' });
+            if (data && data.ok) {
+                this.showToast('备份成功: ' + data.file + ' (' + (data.size/1024).toFixed(1) + ' KB)', 'success');
+                // 刷新信息
+                await this.showBackupInfo();
+            } else {
+                this.showToast('备份失败: ' + (data ? data.error : '未知错误'), 'error');
+                document.getElementById('backupStatusText').textContent = '备份失败';
+            }
+        } catch (e) {
+            this.showToast('备份失败: ' + e.message, 'error');
+            document.getElementById('backupStatusText').textContent = '备份失败';
+        }
+    },
+
+    // ============ 版本历史 ============
+
+    async showVersionHistory(promptId) {
+        document.getElementById('modalVersions').style.display = 'flex';
+        document.getElementById('versionTitle').textContent = '版本历史';
+        document.getElementById('versionBody').innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">加载版本历史...</p></div>';
+        try {
+            var data = await this.fetchJSON('/api/v2/versions/' + promptId);
+            if (!data) throw new Error('获取失败');
+            this._renderVersionList(promptId, data);
+        } catch (e) {
+            document.getElementById('versionBody').innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">❌ 获取版本历史失败: ' + e.message + '</div>';
+        }
+    },
+
+    _renderVersionList(promptId, data) {
+        var body = document.getElementById('versionBody');
+        var html = '';
+
+        // 当前版本
+        var cur = data.current || {};
+        html += '<div style="margin-bottom:16px;">';
+        html += '<div style="font-size:14px;font-weight:600;margin-bottom:8px;">当前版本（最新）</div>';
+        html += '<div style="background:var(--hover-bg,#f1f5f9);border-radius:8px;padding:10px 14px;border:1px solid var(--primary);font-size:12px;">';
+        html += '<div style="color:var(--text-muted);margin-bottom:4px;">' + this._escape(cur.content || '').substring(0, 80) + (cur.content && cur.content.length > 80 ? '...' : '') + '</div>';
+        html += '<div style="display:flex;gap:6px;color:var(--text-muted);font-size:11px;">';
+        html += '<span>模块: ' + this._escape(cur.module || '-') + '</span>';
+        html += '<span>分类: ' + this._escape(cur.category || '-') + '</span>';
+        html += '</div></div></div>';
+
+        // 历史版本列表
+        var versions = data.versions || [];
+        if (versions.length === 0) {
+            html += '<div style="padding:12px;text-align:center;color:var(--text-muted);font-size:13px;">暂无历史版本</div>';
+        } else {
+            html += '<div style="font-size:14px;font-weight:600;margin-bottom:8px;">历史版本（共 ' + versions.length + ' 个）</div>';
+            for (var i = 0; i < versions.length; i++) {
+                var v = versions[i];
+                var contentPreview = (v.content || '').substring(0, 60);
+                var isCurrent = false; // all historical
+                var bg = 'var(--hover-bg,#f1f5f9)';
+                html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;margin-bottom:6px;background:' + bg + ';border-radius:6px;font-size:12px;">';
+                html += '<div style="flex:1;min-width:0;">';
+                html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
+                html += '<strong>v' + v.version + '</strong>';
+                html += '<span style="color:var(--text-muted);">' + this._escape(v.created_at || '') + '</span>';
+                if (v.change_note) html += '<span style="color:#6366f1;">' + this._escape(v.change_note) + '</span>';
+                html += '</div>';
+                html += '<div style="color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + this._escape(contentPreview) + '</div>';
+                html += '</div>';
+                html += '<div style="display:flex;gap:4px;flex-shrink:0;">';
+                html += '<button class="btn btn-sm" style="border:1px solid #6366f1;color:#6366f1;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;" onclick="App._restoreVersion(' + promptId + ',' + v.id + ',' + v.version + ')">↩ 恢复</button>';
+                if (i < versions.length - 1) {
+                    html += '<button class="btn btn-sm" style="border:1px solid #22c55e;color:#22c55e;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;" onclick="App._showVersionDiff(' + promptId + ',' + versions[i+1].id + ',' + v.id + ')">⇄ diff</button>';
+                } else {
+                    // 对比当前 vs 最早版本
+                    html += '<button class="btn btn-sm" style="border:1px solid #22c55e;color:#22c55e;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;" onclick="App._showVersionDiff(' + promptId + ',' + promptId + ',' + v.id + ')">⇄ diff</button>';
+                }
+                html += '</div>';
+                html += '</div>';
+            }
+        }
+
+        body.innerHTML = html;
+    },
+
+    async _restoreVersion(promptId, versionId, versionNum) {
+        if (!confirm('确认恢复到 v' + versionNum + '？当前版本将自动存档')) return;
+        try {
+            var data = await this.fetchJSON('/api/v2/versions/' + promptId + '/restore/' + versionId, { method: 'POST' });
+            if (data && data.ok) {
+                this.showToast('已恢复到 v' + versionNum, 'success');
+                document.getElementById('modalVersions').style.display = 'none';
+                await this.loadPrompts();
+            } else {
+                this.showToast('恢复失败: ' + (data ? data.error : '未知'), 'error');
+            }
+        } catch (e) {
+            this.showToast('恢复失败: ' + e.message, 'error');
+        }
+    },
+
+    async _showVersionDiff(promptId, v1Id, v2Id) {
+        document.getElementById('modalVersionDiff').style.display = 'flex';
+        document.getElementById('diffTitle').textContent = '版本对比';
+        document.getElementById('diffBody').innerHTML = '<div style="text-align:center;padding:20px;font-family:sans-serif;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">正在对比...</p></div>';
+        try {
+            var data = await this.fetchJSON('/api/v2/versions/' + promptId + '/diff/' + v1Id + '/' + v2Id);
+            if (!data || !data.ok) throw new Error(data ? data.error : '获取失败');
+            var html = '';
+            var diffs = data.diffs || [];
+            if (diffs.length === 0) {
+                html = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-family:sans-serif;"><span style="font-size:40px;">✅</span><p style="margin-top:8px;">两个版本完全相同</p></div>';
+            } else {
+                html += '<div style="margin-bottom:12px;font-family:sans-serif;font-size:12px;color:var(--text-muted);">';
+                html += '对比: v' + data.v1.version + ' ↔ v' + data.v2.version + ' | 共 ' + data.total_changes + ' 处差异';
+                html += '</div>';
+                for (var d = 0; d < diffs.length; d++) {
+                    var diff = diffs[d];
+                    html += '<div style="margin-bottom:12px;border:1px solid var(--border-color);border-radius:6px;overflow:hidden;">';
+                    html += '<div style="background:var(--hover-bg,#f1f5f9);padding:6px 10px;font-size:11px;font-weight:600;font-family:sans-serif;">' + diff.field + '</div>';
+                    html += '<div style="padding:8px 10px;">';
+                    html += '<div style="background:#fef2f2;color:#ef4444;padding:6px 8px;border-radius:4px;margin-bottom:4px;font-size:12px;"><span style="font-weight:600;">旧</span> ' + this._escape(diff.old || '(空)') + '</div>';
+                    html += '<div style="background:#f0fdf4;color:#059669;padding:6px 8px;border-radius:4px;font-size:12px;"><span style="font-weight:600;">新</span> ' + this._escape(diff.new || '(空)') + '</div>';
+                    html += '</div></div>';
+                }
+            }
+            document.getElementById('diffBody').innerHTML = html;
+        } catch (e) {
+            document.getElementById('diffBody').innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-family:sans-serif;">❌ ' + e.message + '</div>';
+        }
+    },
+
     applyTheme(theme) {
         this.state.theme = theme;
         const btn = document.getElementById('btnTheme');
@@ -2288,6 +2871,11 @@ const App = {
     renderPagination() {
         const bar = document.getElementById('paginationBar');
         if (!bar) return;
+        // 语义搜索模式下隐藏翻页
+        if (this.state._searchMode === 'semantic' && this.state.searchQuery) {
+            bar.innerHTML = '';
+            return;
+        }
         const { page, totalPages } = this.state;
         if (!bar) return;
         if (totalPages <= 1) { bar.innerHTML = ''; return; }

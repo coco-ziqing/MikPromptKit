@@ -265,6 +265,30 @@ def init_db():
             )""")
         except Exception:
             pass
+        # 提示词版本管理表
+        try:
+            conn.execute("""CREATE TABLE IF NOT EXISTS prompt_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prompt_id INTEGER NOT NULL,
+                content TEXT NOT NULL DEFAULT '',
+                meaning TEXT DEFAULT '',
+                scene TEXT DEFAULT '',
+                module TEXT DEFAULT '',
+                category TEXT DEFAULT '',
+                subcategory TEXT DEFAULT '',
+                tags TEXT DEFAULT '[]',
+                change_note TEXT DEFAULT '',
+                version INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE
+            )""")
+        except Exception:
+            pass
+        # 兼容旧表（prompt_versions 列存在检查）
+        try:
+            conn.execute("ALTER TABLE prompt_versions ADD COLUMN change_note TEXT DEFAULT ''")
+        except Exception:
+            pass
         conn.commit()
     except sqlite3.Error as e:
         print("[数据库] 建表失败:", e)

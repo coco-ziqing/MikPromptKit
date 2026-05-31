@@ -177,6 +177,12 @@ def create_prompt(data: dict):
                     content, data.get("meaning", "") or "", data.get("scene", "") or "", data.get("tags", "[]") or "[]"])
         db.commit()
         new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        # 新建提示词时同步更新语义搜索向量
+        try:
+            from semantic import update_embedding
+            update_embedding(new_id, content)
+        except Exception:
+            pass
         return {"ok": True, "id": new_id}
     except HTTPException:
         raise
@@ -192,6 +198,14 @@ def update_prompt(prompt_id: int, data: dict):
         row = db.execute("SELECT id FROM prompts WHERE id=?", [prompt_id]).fetchone()
         if not row:
             raise HTTPException(404, "提示词不存在")
+
+        # 编辑前先存档当前版本（自动版本管理）
+        try:
+            from api.versions import save_version
+            save_version(prompt_id, change_note=data.get("change_note", ""))
+        except Exception:
+            pass  # 版本保存失败不影响编辑
+
         fields = []
         params = []
         for key in ["module", "category", "content", "meaning", "scene", "tags"]:
@@ -203,6 +217,14 @@ def update_prompt(prompt_id: int, data: dict):
         params.append(prompt_id)
         db.execute(f"UPDATE prompts SET {', '.join(fields)} WHERE id=?", params)
         db.commit()
+
+        # 更新语义搜索向量
+        try:
+            from semantic import update_embedding
+            update_embedding(prompt_id)
+        except Exception:
+            pass
+
         return {"ok": True}
     except HTTPException:
         raise

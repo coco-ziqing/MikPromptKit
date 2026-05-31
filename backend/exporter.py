@@ -8,24 +8,24 @@ from database import get_db
 from fastapi import HTTPException
 
 # 卡片尺寸
-CARD_WIDTH = 400
-CARD_HEIGHT = 560
-THUMB_SIZE = (360, 240)  # 卡片内缩略图区域
+CARD_WIDTH = 500
+CARD_HEIGHT = 700
+THUMB_SIZE = (460, 306)  # 卡片内缩略图区域（约 3:2）
 
-# 颜色方案（亮色主题）
+# 颜色方案（暗色主题 + 白色文字）
 COLORS = {
-    "bg": "#f8fafc",
-    "card_bg": "#ffffff",
-    "text": "#1e293b",
-    "text_muted": "#64748b",
-    "primary": "#4f46e5",
-    "border": "#e2e8f0",
-    "badge_bg": "#eef2ff",
-    "badge_text": "#4f46e5",
-    "tag_bg": "#f1f5f9",
-    "tag_text": "#475569",
-    "accent": "#10b981",
-    "shadow": (0, 0, 0, 0.08),
+    "bg": "#1e1e2e",
+    "card_bg": "#2a2a3e",
+    "text": "#f0f0f0",
+    "text_muted": "#a0a0c0",
+    "primary": "#818cf8",
+    "border": "#3a3a50",
+    "badge_bg": "#3b3b58",
+    "badge_text": "#c4b5fd",
+    "tag_bg": "#33334d",
+    "tag_text": "#c0c0e0",
+    "accent": "#34d399",
+    "shadow": (0, 0, 0, 0.3),
 }
 
 
@@ -118,7 +118,7 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
     # 读取缩略图原图
     thumbnail_bytes = None
     THUMB_DIR = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "data", "thumbnails"
     )
     if p.get("thumbnail"):
@@ -131,17 +131,17 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
     img = Image.new("RGB", (CARD_WIDTH, CARD_HEIGHT), _hex_to_rgb(COLORS["bg"]))
     draw = ImageDraw.Draw(img)
 
-    # 字体
-    font_title = _load_font(18)
-    font_body = _load_font(13)
-    font_small = _load_font(11)
-    font_badge = _load_font(11)
+    # 字体（加大）
+    font_title = _load_font(24)
+    font_body = _load_font(18)
+    font_small = _load_font(14)
+    font_badge = _load_font(14)
 
     y = 0
 
     # 1. 缩略图区域
     card_x, card_y = 20, 20
-    thumb_w, thumb_h = 360, 240
+    thumb_w, thumb_h = 460, 306
     # 绘制缩略图底框
     draw.rounded_rectangle(
         [card_x, card_y, card_x + thumb_w, card_y + thumb_h],
@@ -160,27 +160,26 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
     # 2. 分类徽标
     category = p.get("category", "")
     if category:
-        badge_w = draw.textlength(category, font=font_badge) + 20
-        badge_h = 22
+        badge_w = draw.textlength(category, font=font_badge) + 24
+        badge_h = 28
         draw.rounded_rectangle(
             [20, y, 20 + badge_w, y + badge_h],
-            radius=4, fill=_hex_to_rgb(COLORS["badge_bg"])
+            radius=6, fill=_hex_to_rgb(COLORS["badge_bg"])
         )
-        draw.text((30, y + 3), category, fill=_hex_to_rgb(COLORS["badge_text"]), font=font_badge)
-        y += badge_h + 8
+        draw.text((30, y + 4), category, fill=_hex_to_rgb(COLORS["badge_text"]), font=font_badge)
+        y += badge_h + 10
 
-    # 3. 提示词内容
+    # 3. 提示词内容（加大字体）
     content = p.get("content", "")
     lines = _wrap_text(content, font_body, draw, CARD_WIDTH - 40)
-    # 最多显示 6 行
-    display_lines = lines[:6]
+    display_lines = lines[:8]
     for line in display_lines:
         draw.text((20, y), line, fill=_hex_to_rgb(COLORS["text"]), font=font_body)
-        y += 20
-    if len(lines) > 6:
+        y += 28
+    if len(lines) > 8:
         draw.text((20, y), "...", fill=_hex_to_rgb(COLORS["text_muted"]), font=font_body)
-        y += 20
-    y += 4
+        y += 28
+    y += 6
 
     # 4. 标签
     tags = p.get("tags", "")
@@ -190,15 +189,15 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
         tag_list = []
     if tag_list:
         x = 20
-        for tag in tag_list[:4]:
-            tag_w = draw.textlength(tag, font=font_small) + 14
+        for tag in tag_list[:6]:
+            tag_w = draw.textlength(tag, font=font_small) + 18
             draw.rounded_rectangle(
-                [x, y, x + tag_w, y + 20],
-                radius=4, fill=_hex_to_rgb(COLORS["tag_bg"])
+                [x, y, x + tag_w, y + 26],
+                radius=5, fill=_hex_to_rgb(COLORS["tag_bg"])
             )
-            draw.text((x + 7, y + 3), tag, fill=_hex_to_rgb(COLORS["tag_text"]), font=font_small)
-            x += tag_w + 6
-        y += 26
+            draw.text((x + 9, y + 4), tag, fill=_hex_to_rgb(COLORS["tag_text"]), font=font_small)
+            x += tag_w + 8
+        y += 32
 
     # 5. 收藏分组
     if collections:
@@ -206,10 +205,10 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
         for coll in collections[:3]:
             coll_text = (coll.get("icon") or "⭐") + " " + coll["name"]
             draw.text((20, y), coll_text, fill=_hex_to_rgb(COLORS["text_muted"]), font=font_small)
-            y += 18
+            y += 22
 
     # 6. 底部信息
-    y = CARD_HEIGHT - 30
+    y = CARD_HEIGHT - 36
     module_text = p.get("module", "")
     usage_text = f"使用 {p.get('usage_count', 0)} 次"
     draw.text((20, y), module_text, fill=_hex_to_rgb(COLORS["text_muted"]), font=font_small)
@@ -306,7 +305,7 @@ def import_prompt_from_png(file_bytes: bytes, conflict: str = "skip") -> dict:
         try:
             thumb_bytes = base64.b64decode(thumbnail_base64)
             THUMB_DIR = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                 "data", "thumbnails"
             )
             os.makedirs(THUMB_DIR, exist_ok=True)

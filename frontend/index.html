@@ -10,8 +10,8 @@
 </head>
 <body>
     <header class="navbar-tool">
-        <div class="brand" onclick="App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> PromptKit <small>v3.0.0.2</small></div>
-        <div class="search-box" id="globalSearchBox"><input type="text" id="searchInput" placeholder="搜索提示词，Ctrl+F 快速定位" autocomplete="off"><i class="bi bi-search search-icon"></i></div>
+        <div class="brand" onclick="App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> PromptKit <small>v3.1.1</small></div>
+        <div class="search-box" id="globalSearchBox"><input type="text" id="searchInput" placeholder="搜索提示词，Ctrl+F 快速定位" autocomplete="off"><i class="bi bi-search search-icon"></i><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()" title="切换搜索模式">🔤</button></div>
         <div class="header-actions">
             <button class="header-btn" onclick="App.switchView('home')" id="navHome" title="首页词库"><i class="bi bi-house-door"></i></button>
             <button class="header-btn" onclick="App.toggleEditMode()" id="btnEditMode" title="编辑模式" style="color:#94a3b8;"><i class="bi bi-pencil"></i></button>
@@ -28,6 +28,7 @@
             <span class="header-divider"></span>
             <button class="header-btn" onclick="App.toggleBatchMode()" id="btnBatch" title="批量选择"><i class="bi bi-check2-square"></i></button>
             <button class="header-btn" onclick="App.toggleTheme()" id="btnTheme" title="切换深色模式"><i class="bi bi-moon-stars"></i></button>
+            <button class="header-btn" onclick="App.showBackupInfo()" id="btnBackup" title="数据库备份"><i class="bi bi-database"></i></button>
             <span class="header-divider"></span>
             <span id="headerStats" class="badge bg-light text-dark" style="font-size:12px;">加载中...</span>
         </div>
@@ -36,74 +37,81 @@
     <aside class="recommend-panel" id="recommendPanel"><div class="rec-header"><span><i class="bi bi-stars"></i> 智能推荐</span><button class="header-btn-sm" onclick="App.closeRecommend()">&times;</button></div><div id="recommendList" class="rec-list"><div class="rec-empty">点击提示词查看推荐</div></div></aside>
     <main class="main-content" id="mainContent">
         <div id="viewHome" class="view-panel">
-            <div id="categoryTabs"></div>
-            <div class="page-header"><h3 id="pageTitle">提示词列表</h3><span class="count-info" id="countInfo">加载中...</span></div>
-            <div id="batchBar" class="batch-bar" style="display:none;">
-                <span id="batchCount">已选 0 项</span>
-                <button class="btn-batch" onclick="App.batchCopy()"><i class="bi bi-files"></i> 批量复制</button>
-                <button class="btn-batch" onclick="App.batchExport('txt')"><i class="bi bi-download"></i> 导出TXT</button>
-                <button class="btn-batch" onclick="App.batchExport('json')"><i class="bi bi-download"></i> 导出JSON</button>
-                <button class="btn-batch" onclick="App.batchExport('pt')" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-box"></i> 导出 .pt 包</button>
-                <button class="btn-batch" onclick="App.batchAddToWordpack()"><i class="bi bi-folder-plus"></i> 添加到词包</button>
-                <button class="btn-batch" onclick="App.batchTrash()" style="border-color:#ef4444;color:#ef4444;"><i class="bi bi-trash"></i> 批量删除</button>
-                <button class="btn-batch btn-batch-cancel" onclick="App.toggleBatchMode()">取消</button>
-            </div>
-            <div id="editBatchBar" class="batch-bar" style="display:none;">
-                <span id="editBatchCount">已选 0 项</span>
-                <button class="btn-batch" onclick="App.selectAllPrompts()"><i class="bi bi-check-all"></i> 全选</button>
-                <button class="btn-batch" onclick="App.batchTrash()" style="border-color:#ef4444;color:#ef4444;"><i class="bi bi-trash"></i> 批量删除到回收站</button>
-                <button class="btn-batch" onclick="App.openAddPromptModal()" style="border-color:#22c55e;color:#22c55e;"><i class="bi bi-plus-lg"></i> 新建词条</button>
-                <button class="btn-batch" onclick="App.batchCopy()" style="border-color:#22c55e;color:#22c55e;"><i class="bi bi-files"></i> 批量复制</button>
-                <button class="btn-batch" onclick="App.showExportPreview()" style="border-color:#6366f1;color:#6366f1;"><i class="bi bi-eye"></i> 预览导出</button>
-                <button class="btn-batch" onclick="App.batchExport('txt')" style="border-color:#f59e0b;color:#f59e0b;"><i class="bi bi-file-text"></i> 导出TXT</button>
-                <button class="btn-batch" onclick="App.batchExport('json')" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-file-code"></i> 导出JSON</button>
-                <button class="btn-batch" onclick="App.batchExport('pt')" style="border-color:#06b6d4;color:#06b6d4;"><i class="bi bi-box"></i> 导出 .pt 包</button>
-                <button class="btn-batch btn-batch-cancel" onclick="App.clearEditSelection()">取消选择</button>
-            </div>
-            <!-- 编辑模式增强筛选栏（仅在编辑模式下显示） -->
-            <div id="editFilterBar" class="edit-filter-bar" style="display:none;margin-bottom:8px;" data-edit-only="1">
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                    <div style="position:relative;flex:1;min-width:160px;">
-                        <input type="text" id="editFilterInput" class="modal-input" placeholder="🔍 快速筛选当前页（回车确认）" style="padding:6px 10px 6px 30px;font-size:12px;" onkeydown="if(event.key==='Enter')App._applyEditFilter()">
-                        <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--text-muted);">🔍</span>
+            <div id="viewHomeTop" class="view-home-top">
+                <div id="categoryTabs"></div>
+                <div class="page-header"><h3 id="pageTitle">提示词列表</h3><span class="count-info" id="countInfo">加载中...</span></div>
+                <div id="batchBar" class="batch-bar" style="display:none;">
+                    <span id="batchCount">已选 0 项</span>
+                    <button class="btn-batch" onclick="App.batchCopy()"><i class="bi bi-files"></i> 批量复制</button>
+                    <button class="btn-batch" onclick="App.batchExport('png')" style="border-color:#059669;color:#059669;"><i class="bi bi-card-image"></i> 导出PNG</button>
+                    <button class="btn-batch" onclick="App.batchExport('txt')"><i class="bi bi-download"></i> 导出TXT</button>
+                    <button class="btn-batch" onclick="App.batchExport('json')"><i class="bi bi-download"></i> 导出JSON</button>
+                    <button class="btn-batch" onclick="App.batchExport('pt')" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-box"></i> 导出 .pt 包</button>
+                    <button class="btn-batch" onclick="App.batchAddToWordpack()"><i class="bi bi-folder-plus"></i> 添加到词包</button>
+                    <button class="btn-batch" onclick="App.batchTrash()" style="border-color:#ef4444;color:#ef4444;"><i class="bi bi-trash"></i> 批量删除</button>
+                    <button class="btn-batch btn-batch-cancel" onclick="App.toggleBatchMode()">取消</button>
+                </div>
+                <div id="editBatchBar" class="batch-bar" style="display:none;">
+                    <span id="editBatchCount">已选 0 项</span>
+                    <button class="btn-batch" onclick="App.selectAllPrompts()"><i class="bi bi-check-all"></i> 全选</button>
+                    <button class="btn-batch" onclick="App.batchTrash()" style="border-color:#ef4444;color:#ef4444;"><i class="bi bi-trash"></i> 批量删除到回收站</button>
+                    <button class="btn-batch" onclick="App.openAddPromptModal()" style="border-color:#22c55e;color:#22c55e;"><i class="bi bi-plus-lg"></i> 新建词条</button>
+                    <button class="btn-batch" onclick="App.batchCopy()" style="border-color:#22c55e;color:#22c55e;"><i class="bi bi-files"></i> 批量复制</button>
+                    <button class="btn-batch" onclick="App.showExportPreview()" style="border-color:#6366f1;color:#6366f1;"><i class="bi bi-eye"></i> 预览导出</button>
+                    <button class="btn-batch" onclick="App.batchExport('png')" style="border-color:#059669;color:#059669;"><i class="bi bi-card-image"></i> 导出PNG</button>
+                    <button class="btn-batch" onclick="App.batchExport('txt')" style="border-color:#f59e0b;color:#f59e0b;"><i class="bi bi-file-text"></i> 导出TXT</button>
+                    <button class="btn-batch" onclick="App.batchExport('json')" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-file-code"></i> 导出JSON</button>
+                    <button class="btn-batch" onclick="App.batchExport('pt')" style="border-color:#06b6d4;color:#06b6d4;"><i class="bi bi-box"></i> 导出 .pt 包</button>
+                    <button class="btn-batch btn-batch-cancel" onclick="App.clearEditSelection()">取消选择</button>
+                </div>
+                <!-- 编辑模式增强筛选栏（仅在编辑模式下显示） -->
+                <div id="editFilterBar" class="edit-filter-bar" style="display:none;margin-bottom:8px;" data-edit-only="1">
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <div style="position:relative;flex:1;min-width:160px;">
+                            <input type="text" id="editFilterInput" class="modal-input" placeholder="🔍 快速筛选当前页（回车确认）" style="padding:6px 10px 6px 30px;font-size:12px;" onkeydown="if(event.key==='Enter')App._applyEditFilter()">
+                            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--text-muted);">🔍</span>
+                        </div>
+                        <select id="editFilterModule" class="modal-input" style="width:auto;min-width:80px;font-size:12px;padding:6px 8px;" onchange="App._applyEditFilter()">
+                            <option value="">全部模块</option>
+                        </select>
+                        <select id="editFilterCollected" class="modal-input" style="width:auto;min-width:80px;font-size:12px;padding:6px 8px;" onchange="App._applyEditFilter()">
+                            <option value="">所有词条</option>
+                            <option value="collected">已收藏</option>
+                            <option value="uncollected">未收藏</option>
+                        </select>
+                        <span id="editFilterCount" style="font-size:11px;color:var(--text-muted);white-space:nowrap;"></span>
+                        <button class="btn-batch btn-batch-cancel" onclick="App._resetEditFilter()" style="font-size:11px;padding:4px 10px;">重置</button>
                     </div>
-                    <select id="editFilterModule" class="modal-input" style="width:auto;min-width:80px;font-size:12px;padding:6px 8px;" onchange="App._applyEditFilter()">
-                        <option value="">全部模块</option>
-                    </select>
-                    <select id="editFilterCollected" class="modal-input" style="width:auto;min-width:80px;font-size:12px;padding:6px 8px;" onchange="App._applyEditFilter()">
-                        <option value="">所有词条</option>
-                        <option value="collected">已收藏</option>
-                        <option value="uncollected">未收藏</option>
-                    </select>
-                    <span id="editFilterCount" style="font-size:11px;color:var(--text-muted);white-space:nowrap;"></span>
-                    <button class="btn-batch btn-batch-cancel" onclick="App._resetEditFilter()" style="font-size:11px;padding:4px 10px;">重置</button>
                 </div>
             </div>
-            <!-- 文件拖拽导入区域 -->
-            <div id="dropOverlay" class="drop-overlay" style="display:none;">
-                <div class="drop-overlay-inner">
-                    <div class="drop-icon">📂</div>
-                    <div class="drop-text">释放鼠标导入提示词</div>
-                    <div class="drop-sub">支持 JSON 导出文件</div>
+            <!-- 下方可滚动列表区 -->
+            <div id="viewHomeScroll" class="view-home-scroll">
+                <!-- 文件拖拽导入区域 -->
+                <div id="dropOverlay" class="drop-overlay" style="display:none;">
+                    <div class="drop-overlay-inner">
+                        <div class="drop-icon">📂</div>
+                        <div class="drop-text">释放鼠标导入提示词</div>
+                        <div class="drop-sub">支持 JSON / .pt / PNG 文件</div>
+                    </div>
                 </div>
+                <div id="promptList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">正在加载提示词库...</p></div></div>
+                <div id="paginationBar" class="pagination-bar"></div>
             </div>
-            <div id="promptList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">正在加载提示词库...</p></div></div>
-            <div id="paginationBar" class="pagination-bar"></div>
         </div>
-        <div id="viewCollections" class="view-panel" style="display:none;">
+        <div id="viewCollections" class="view-panel">
             <div class="page-header"><h3><i class="bi bi-bookmark-star"></i> 收藏夹</h3><button class="btn btn-primary btn-sm" onclick="App.showCreateCollectionModal()"><i class="bi bi-plus-lg"></i> 新建分组</button></div>
             <div id="collectionGroups" class="collection-grid"></div>
             <div id="collectionItems" style="display:none;"><button class="btn btn-outline-secondary btn-sm mb-3" onclick="App.backToCollections()"><i class="bi bi-arrow-left"></i> 返回分组列表</button><div id="collectionItemList"></div><div id="collectionPagination" class="pagination-bar"></div></div>
         </div>
-        <div id="viewWordpacks" class="view-panel" style="display:none;">
+        <div id="viewWordpacks" class="view-panel">
             <div class="page-header"><h3><i class="bi bi-folder"></i> 自定义词包</h3><button class="btn btn-primary btn-sm" onclick="App.showCreateWordpackModal()"><i class="bi bi-plus-lg"></i> 新建词包</button></div>
             <div id="wordpackList" class="collection-grid"></div>
             <div id="wordpackDetail" style="display:none;"><button class="btn btn-outline-secondary btn-sm mb-3" onclick="App.backToWordpacks()"><i class="bi bi-arrow-left"></i> 返回词包列表</button><div id="wordpackDetailHeader" class="mb-3"></div><div id="wordpackItemList"></div></div>
         </div>
-        <div id="viewHistory" class="view-panel" style="display:none;">
+        <div id="viewHistory" class="view-panel">
             <div class="page-header"><h3><i class="bi bi-clock-history"></i> 最近使用</h3><button class="btn btn-outline-danger btn-sm" onclick="App.clearHistory()" title="清空历史"><i class="bi bi-trash"></i> 清空</button></div><div id="historyList"></div>
         </div>
-        <div id="viewTrash" class="view-panel" style="display:none;">
+        <div id="viewTrash" class="view-panel">
             <div class="page-header"><h3><i class="bi bi-trash"></i> 回收站</h3>
                 <div style="display:flex;gap:8px;">
                     <button class="btn btn-sm btn-outline-primary" onclick="App.restoreAllTrash()" id="btnRestoreAllTrash" style="display:none;"><i class="bi bi-arrow-counterclockwise"></i> 全部恢复</button>
@@ -113,7 +121,7 @@
             <div id="trashList"><div class="empty-state"><div class="icon">🗑️</div><p>回收站为空</p></div></div>
             <div id="trashPagination" class="pagination-bar" style="margin-top:12px;"></div>
         </div>
-        <div id="viewSeedance" class="view-panel" style="display:none;">
+        <div id="viewSeedance" class="view-panel">
             <div class="seedance-tabs mb-3">
                 <button class="seedance-tab active" onclick="App.switchSeedanceTab('templates')" id="seedanceTabTemplates"><i class="bi bi-collection"></i> 场景模板</button>
                 <button class="seedance-tab" onclick="App.switchSeedanceTab('composer')" id="seedanceTabComposer"><i class="bi bi-tools"></i> 提示词组装器</button>
@@ -405,8 +413,92 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-danger btn-sm" onclick="App.deleteEditPrompt()" id="editDeleteBtn" style="margin-right:auto;">删除</button>
+                <button class="btn btn-sm" style="border:1px solid #6366f1;color:#6366f1;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="App.showVersionHistory(App._editingPromptId)">📋 历史版本</button>
                 <button class="btn btn-secondary btn-sm" onclick="App.closeEditModal()">取消</button>
                 <button class="btn btn-primary btn-sm" onclick="App.saveEditPrompt()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 备份信息弹窗 -->
+    <div class="modal-overlay" id="modalBackup" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:500px;">
+            <div class="modal-header">
+                <h5><i class="bi bi-database"></i> 数据库备份</h5>
+                <button class="header-btn-sm" onclick="document.getElementById('modalBackup').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body" id="backupInfoBody">
+                <div style="text-align:center;padding:20px;">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p style="margin-top:12px;color:var(--text-muted);">正在获取备份状态...</p>
+                </div>
+            </div>
+            <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;">
+                <span id="backupStatusText" style="font-size:11px;color:var(--text-muted);"></span>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-primary btn-sm" onclick="App.doBackupNow()"><i class="bi bi-cloud-arrow-up"></i> 立即备份</button>
+                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalBackup').style.display='none'">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导出命名弹窗 -->
+    <div class="modal-overlay" id="modalExportName" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:400px;">
+            <div class="modal-header">
+                <h5><i class="bi bi-pencil"></i> <span id="exportNameTitle">导出设置</span></h5>
+                <button class="header-btn-sm" onclick="document.getElementById('modalExportName').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body">
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">文件名</label>
+                <input type="text" id="exportNameInput" class="modal-input" placeholder="输入文件名（不含扩展名）" style="margin-bottom:12px;">
+                <div id="exportNameCount" style="font-size:11px;color:var(--text-muted);margin-bottom:8px;"></div>
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">导出位置</label>
+                <div style="display:flex;gap:6px;align-items:stretch;">
+                    <input type="text" id="exportPathInput" class="modal-input" style="width:100%;font-size:11px;color:var(--text-main);font-family:monospace;background:var(--bg-card,#fff);border:1px solid var(--border-color,#cbd5e1);border-radius:6px;padding:6px 8px;cursor:text;" placeholder='C:\Users\ASUS\Desktop\PromptKit导出' onclick='App._pickExportPath()' title='点击使用目录选择器，或直接输入完整路径'>
+                </div>
+                <div id="exportPathStatus" style="margin-top:6px;font-size:11px;color:var(--text-muted);min-height:18px;"></div>
+                <div style="margin-top:10px;padding:8px;background:var(--hover-bg,#f1f5f9);border-radius:6px;font-size:11px;color:var(--text-muted);">
+                    <span id="exportPathPreview">📄 将保存为: <strong>文件名.格式</strong></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalExportName').style.display='none'">取消</button>
+                <button class="btn btn-primary btn-sm" onclick="App._confirmBatchExport()" id="btnConfirmExportName"><i class="bi bi-download"></i> 确认导出</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 版本历史弹窗 -->
+    <div class="modal-overlay" id="modalVersions" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:650px;max-height:80vh;display:flex;flex-direction:column;">
+            <div class="modal-header">
+                <h5><i class="bi bi-clock-history"></i> <span id="versionTitle">版本历史</span></h5>
+                <button class="header-btn-sm" onclick="document.getElementById('modalVersions').style.display='none'">&times;</button>
+            </div>
+            <div id="versionBody" class="modal-body" style="flex:1;overflow-y:auto;">
+                <div style="text-align:center;padding:20px;">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p style="margin-top:12px;color:var(--text-muted);">加载版本历史...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalVersions').style.display='none'">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 版本对比弹窗 -->
+    <div class="modal-overlay" id="modalVersionDiff" style="display:none;z-index:510;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:700px;max-height:80vh;display:flex;flex-direction:column;">
+            <div class="modal-header">
+                <h5><i class="bi bi-file-diff"></i> <span id="diffTitle">版本对比</span></h5>
+                <button class="header-btn-sm" onclick="document.getElementById('modalVersionDiff').style.display='none'">&times;</button>
+            </div>
+            <div id="diffBody" class="modal-body" style="flex:1;overflow-y:auto;font-family:monospace;font-size:12px;white-space:pre-wrap;"></div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalVersionDiff').style.display='none'">关闭</button>
             </div>
         </div>
     </div>

@@ -56,13 +56,15 @@ async def preview_png_import(file: UploadFile = File(...)):
         return {
             "ok": True,
             "preview": {
-                "content": str(data.get("content", ""))[:100],
-                "meaning": str(data.get("meaning", ""))[:80],
+                "content": str(data.get("content", "")),
+                "meaning": str(data.get("meaning", "")),
                 "category": data.get("category", ""),
                 "module": data.get("module", ""),
                 "tags": data.get("tags", []),
                 "collections": data.get("collections", []),
-                "has_thumbnail": bool(data.get("thumbnail_base64")),
+                "thumbnail_base64": data.get("thumbnail_base64"),
+                "thumbnail_filename": data.get("thumbnail_filename", ""),
+                "scene": data.get("scene", ""),
             }
         }
     except HTTPException:
@@ -74,13 +76,40 @@ async def preview_png_import(file: UploadFile = File(...)):
 @router.post("/import-png")
 async def import_single_png(
     file: UploadFile = File(...),
-    conflict: str = Form("skip")
+    conflict: str = Form("skip"),
+    overrides: str = Form("[]")
 ):
     """导入单条 PNG 提示词卡片"""
     if conflict not in ("skip", "overwrite", "rename"):
         conflict = "skip"
     file_bytes = await file.read()
     result = import_prompt_from_png(file_bytes, conflict=conflict)
+    # 应用 overrides 覆盖
+    import json
+    try:
+        ov_list = json.loads(overrides) if overrides and overrides != "[]" else []
+        if ov_list and len(ov_list) > 0:
+            ov = ov_list[0]
+            # 如果创建成功，update 字段
+            if result.get("created") and result.get("id"):
+                db = get_db()
+                updates = []
+                params = []
+                if ov.get("module"):
+                    updates.append("module=?")
+                    params.append(ov["module"])
+                if ov.get("category"):
+                    updates.append("category=?")
+                    params.append(ov["category"])
+                if ov.get("content"):
+                    updates.append("content=?")
+                    params.append(ov["content"])
+                if updates:
+                    params.append(result["id"])
+                    db.execute(f"UPDATE prompts SET {','.join(updates)} WHERE id=?", params)
+                    db.commit()
+    except Exception:
+        pass
     return {"ok": True, "result": result}
 
 

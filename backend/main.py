@@ -13,11 +13,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database import init_db, rebuild_fts, get_db, safe_commit
 from seed_data import SEED_PROMPTS, get_builtin_count
+from backup import start_auto_backup, stop_auto_backup, do_backup, get_backup_info
 from api.prompts import router as prompts_router
 from api.v2 import router as v2_router
 from api.seedance import router as seedance_router
 from api.thumbnails import router as thumbnails_router
 from api.exporter import router as exporter_router
+from api.versions import router as versions_router
+from api.search import router as search_router
 
 
 @asynccontextmanager
@@ -42,6 +45,20 @@ async def lifespan(app: FastAPI):
         traceback.print_exc()
 
     host_ip = _get_local_ip()
+
+    # 启动自动备份
+    start_auto_backup()
+
+    # 异步重建语义搜索索引
+    try:
+        from semantic import rebuild_all_embeddings
+        import threading
+        t = threading.Thread(target=rebuild_all_embeddings, daemon=True)
+        t.start()
+        print("[语义搜索] 索引重建已异步启动")
+    except Exception as e:
+        print("[语义搜索] 启动失败:", e)
+
     try:
         total = db.execute("SELECT COUNT(*) as cnt FROM prompts").fetchone()["cnt"]
     except Exception:
@@ -56,6 +73,7 @@ async def lifespan(app: FastAPI):
     print()
     yield
     print("[关闭] 服务停止")
+    stop_auto_backup()
 
 
 app = FastAPI(
@@ -78,6 +96,22 @@ app.include_router(v2_router)
 app.include_router(seedance_router)
 app.include_router(thumbnails_router)
 app.include_router(exporter_router)
+app.include_router(versions_router)
+app.include_router(search_router)
+
+
+# ============ 备份管理 API ============
+@app.get("/api/backup/info")
+async def backup_info():
+    """获取备份状态"""
+    return get_backup_info()
+
+
+@app.post("/api/backup/now")
+async def backup_now():
+    """手动触发一次备份"""
+    result = do_backup()
+    return result
 
 
 # ============ 全局异常处理器 ============
@@ -115,6 +149,63 @@ def serve_index():
     if os.path.exists(index_path):
         return FileResponse(index_path)
     return JSONResponse(status_code=404, content={"error": "前端页面未找到"})
+
+
+@app.post("/api/utils/check-path")
+def check_path(data: dict = None):
+    """验证本地路径是否存在且为目录"""
+    if not data or "path" not in data:
+        return {"ok": False, "error": "缺少路径参数"}
+    p = data["path"].strip()
+    if not p:
+        return {"ok": False, "error": "路径为空"}
+    p = os.path.abspath(p)
+    if os.path.isdir(p):
+        return {"ok": True, "path": p, "name": os.path.basename(p)}
+    elif os.path.exists(p):
+        return {"ok": False, "error": "路径已存在但不是一个目录"}
+    else:
+        return {"ok": False, "error": "目录不存在，请先创建"}
+
+
+@app.post("/api/utils/pick-folder")
+def pick_folder():
+    """弹出 Windows 原生文件夹选择对话框，返回真实完整路径"""
+    try:
+        import tkinter
+        from tkinter import filedialog
+        root = tkinter.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        folder = filedialog.askdirectory(title="选择导出文件夹")
+        root.destroy()
+        if folder:
+            folder = os.path.abspath(folder)
+            return {"ok": True, "path": folder, "name": os.path.basename(folder)}
+        return {"ok": False, "error": "未选择目录"}
+    except Exception as e:
+        return {"ok": False, "error": f"打开目录选择器失败: {e}"}
+
+
+@app.post("/api/utils/save-blob")
+def save_blob(data: dict = None):
+    """将 base64 数据写入指定路径"""
+    import base64
+    if not data:
+        return {"ok": False, "error": "缺少数据"}
+    path = data.get("path", "")
+    content_b64 = data.get("content", "")
+    if not path or not content_b64:
+        return {"ok": False, "error": "缺少路径或内容"}
+    try:
+        path = os.path.abspath(path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        raw = base64.b64decode(content_b64)
+        with open(path, "wb") as f:
+            f.write(raw)
+        return {"ok": True, "path": path}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def _get_local_ip() -> str:
