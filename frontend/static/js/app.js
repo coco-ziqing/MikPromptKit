@@ -2510,6 +2510,10 @@ const App = {
     },
 
 
+    showWorkflowHelp() {
+        document.getElementById('modalWorkflow').style.display = 'flex';
+    },
+
     // ============ 标签自动补全 ============
 
     _onTagInput() {

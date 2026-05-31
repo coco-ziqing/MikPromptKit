@@ -32,6 +32,7 @@
             <button class="header-btn" onclick="App.openPlayground()" id="btnPlayground" title="LLM Playground 测试提示词"><i class="bi bi-cpu"></i></button>
             <button class="header-btn" onclick="App.showBackupInfo()" id="btnBackup" title="数据库备份"><i class="bi bi-database"></i></button>
             <button class="header-btn" onclick="App.showDashboard()" id="btnDashboard" title="统计仪表盘"><i class="bi bi-bar-chart"></i></button>
+            <button class="header-btn" onclick="App.showWorkflowHelp()" id="btnWorkflow" title="AI 工作流集成"><i class="bi bi-link-45deg"></i></button>
             <span class="header-divider"></span>
             <span id="headerStats" class="badge bg-light text-dark" style="font-size:12px;">加载中...</span>
         </div>
@@ -506,6 +507,57 @@
             <div id="diffBody" class="modal-body" style="flex:1;overflow-y:auto;font-family:monospace;font-size:12px;white-space:pre-wrap;"></div>
             <div class="modal-footer">
                 <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalVersionDiff').style.display='none'">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI 工作流集成面板 -->
+    <div class="modal-overlay" id="modalWorkflow" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:680px;max-height:80vh;display:flex;flex-direction:column;">
+            <div class="modal-header">
+                <h5><i class="bi bi-link-45deg"></i> AI 工作流集成</h5>
+                <button class="header-btn-sm" onclick="document.getElementById('modalWorkflow').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body" style="flex:1;overflow-y:auto;font-size:13px;">
+                <p style="color:var(--text-muted);margin-bottom:16px;">以下 API 端点供 ComfyUI / AutoGPT / 外部脚本调用，无需认证，返回 JSON 或纯文本格式。</p>
+
+                <div style="margin-bottom:16px;">
+                    <div style="font-weight:600;margin-bottom:4px;">🎲 随机取词</div>
+                    <code style="display:block;background:var(--hover-bg,#f1f5f9);padding:8px 12px;border-radius:6px;font-size:11px;">curl http://192.168.0.103:8080/api/v2/workflow/random<br>curl http://192.168.0.103:8080/api/v2/workflow/random?fmt=text</code>
+                </div>
+
+                <div style="margin-bottom:16px;">
+                    <div style="font-weight:600;margin-bottom:4px;">🆕 最新词条</div>
+                    <code style="display:block;background:var(--hover-bg,#f1f5f9);padding:8px 12px;border-radius:6px;font-size:11px;">curl http://192.168.0.103:8080/api/v2/workflow/latest?count=5</code>
+                </div>
+
+                <div style="margin-bottom:16px;">
+                    <div style="font-weight:600;margin-bottom:4px;">📁 按模块取词</div>
+                    <code style="display:block;background:var(--hover-bg,#f1f5f9);padding:8px 12px;border-radius:6px;font-size:11px;">curl http://192.168.0.103:8080/api/v2/workflow/by-module/emotion<br>curl http://192.168.0.103:8080/api/v2/workflow/by-module/camera_move<br>curl http://192.168.0.103:8080/api/v2/workflow/by-module/seedance<br>可用模块: emotion(表情) color(色彩) tone(色调) storyboard(构图) camera_move(运镜) seedance(视频)</code>
+                </div>
+
+                <div style="margin-bottom:16px;">
+                    <div style="font-weight:600;margin-bottom:4px;">🔍 搜索</div>
+                    <code style="display:block;background:var(--hover-bg,#f1f5f9);padding:8px 12px;border-radius:6px;font-size:11px;">curl http://192.168.0.103:8080/api/v2/workflow/search?q=微笑<br>curl http://192.168.0.103:8080/api/v2/workflow/search?q=人像&count=3&fmt=text</code>
+                </div>
+
+                <div style="margin-bottom:16px;">
+                    <div style="font-weight:600;margin-bottom:4px;">🔗 按 ID 取词</div>
+                    <code style="display:block;background:var(--hover-bg,#f1f5f9);padding:8px 12px;border-radius:6px;font-size:11px;">curl http://192.168.0.103:8080/api/v2/workflow/1<br>curl http://192.168.0.103:8080/api/v2/workflow/42?fmt=text</code>
+                </div>
+
+                <div style="margin-bottom:8px;">
+                    <div style="font-weight:600;margin-bottom:4px;">🐍 Python 示例</div>
+                    <pre style="background:#0f172a;color:#e2e8f0;padding:12px 16px;border-radius:6px;font-size:11px;line-height:1.5;overflow-x:auto;">import requests<br><br># 随机取一条纯文本格式的提示词<br>r = requests.get("http://192.168.0.103:8080/api/v2/workflow/random?fmt=text")<br>prompt = r.json()["prompt"]<br>print(prompt)</pre>
+                </div>
+
+                <div style="font-size:11px;color:var(--text-muted);border-top:1px solid var(--border-color);padding-top:12px;">
+                  💡 所有端点支持 <code>?fmt=text</code> 参数返回纯文本，方便管道操作。<br>
+                  🌐 仅局域网内可用（192.168.x.x），无公网暴露，数据安全。
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalWorkflow').style.display='none'">关闭</button>
             </div>
         </div>
     </div>

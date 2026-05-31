@@ -25,6 +25,7 @@ from api.playground import router as playground_router
 from api.tags import router as tags_router
 from api.stats import router as stats_router
 from api.templates import router as templates_router
+from api.workflow import router as workflow_router
 
 
 @asynccontextmanager
@@ -106,6 +107,7 @@ app.include_router(playground_router)
 app.include_router(tags_router)
 app.include_router(stats_router)
 app.include_router(templates_router)
+app.include_router(workflow_router)
 
 
 # ============ 备份管理 API ============
