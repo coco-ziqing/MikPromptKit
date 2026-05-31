@@ -1,44 +1,36 @@
+# .gitignore — PromptKit v3.0.0.2
 # Python
 __pycache__/
-*.py[cod]
+*.pyc
+*.pyo
 *.egg-info/
 dist/
 build/
 *.spec
 
-# Data files (generated at runtime)
-data/prompts.db
-data/prompts.db-shm
-data/prompts.db-wal
-data/thumbnails/
-data/originals/
-data/videos/
+# Data (tracked separately)
+data/thumbnails/*
+!data/thumbnails/.gitkeep
+data/videos/*
+!data/videos/.gitkeep
+data/originals/*
+!data/originals/.gitkeep
+*.db-shm
+*.db-wal
 
-# Editor / OS
-.vscode/
+# IDE
 .idea/
 *.swp
 *.swo
 *~
-.DS_Store
+
+# OS
 Thumbs.db
+.DS_Store
 
-# Temp scripts (fix_*.py, fix_*.js, check_*.py, etc.)
-fix_*.py
-fix_*.js
-check_*.py
-add_*.py
-dedup*.py
-verify*.js
-debug*.js
-test_*.py
-restore_*.js
-*.bak
-out.js
-
-# OpenClaw runtime
-.openclaw/
-memory/.dreams/
-
-# Development docs (not part of source code)
-开发需求/
+# Temp
+_version_check.py
+_release.ps1
+_temp.txt
+_replacement.py
+_hb.ps1

@@ -1,21 +1,31 @@
-# PromptKit — 提示词检索工具 v3.0
+# PromptKit — 提示词检索工具
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit)
-- 版本：v3.0.0
+- 版本：v3.0.0.2 (2026-05-31)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\start.bat`
 - 默认端口：8080
 - 局域网地址：http://192.168.0.103:8080
-- Tailscale 地址：http://100.68.22.78:8080
 
 ## 技术栈
 - Python 3.10+ / FastAPI / Uvicorn / SQLite (WAL + FTS5)
-- 前端：Bootstrap 5 CDN + Vanilla JS SPA (~2200 行)
+- 前端：Bootstrap 5 CDN + Vanilla JS SPA (~3768 行)
 - 图片处理：Pillow（自动 3:2 裁剪）
 - 视频处理：ffmpeg（封面提取 + 裁剪压缩）
+- 版本管理：Git + Git tag
 
-## 已完成功能清单（5 大模块、20+ 功能）
+## 项目规模
+- 后端 API 端点：82 个
+- 源代码总量：~9000 行（Python 3446 + JS 3768 + CSS 1239 + HTML 501）
+- 数据库表：19 张
+- 种子词条：165 条（5 模块）
+
+## Git Tag 节点
+- `v3.0.0.2` — .pt 包系统 + 导出名称优化 + 拖拽增强（2026-05-31）
+- `v3.0.0.1` — 基础版本（2026-05-30，首版 Git 记录）
+
+## v3.0.0.2 新增功能清单
 
 ### 词库浏览
 - 5 模块：表情(26) / 色彩(31) / 色调(23) / 构图(52) / Seedance(19) = **151 条种子数据**

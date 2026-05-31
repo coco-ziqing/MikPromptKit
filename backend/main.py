@@ -17,6 +17,7 @@ from api.prompts import router as prompts_router
 from api.v2 import router as v2_router
 from api.seedance import router as seedance_router
 from api.thumbnails import router as thumbnails_router
+from api.exporter import router as exporter_router
 
 
 @asynccontextmanager
@@ -60,7 +61,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="提示词检索工具",
     description="Windows桌面端AI创作提示词检索工具 WebUI",
-    version="3.0.0",
+    version="3.0.0.1",
     lifespan=lifespan
 )
 
@@ -76,6 +77,7 @@ app.include_router(prompts_router)
 app.include_router(v2_router)
 app.include_router(seedance_router)
 app.include_router(thumbnails_router)
+app.include_router(exporter_router)
 
 
 # ============ 全局异常处理器 ============

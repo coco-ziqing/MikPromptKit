@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "updatedAt": "2026-05-29T12:07:18.806Z",
+  "entries": {
+    "memory:memory/2026-05-29.md:88:118": {
+      "key": "memory:memory/2026-05-29.md:88:118",
+      "path": "memory/2026-05-29.md",
+      "startLine": 88,
+      "endLine": 118,
+      "source": "memory",
+      "snippet": "│ └── thumbnails.py # 缩略图上传/裁剪/图库/原图 ├── frontend/ │ ├── index.html # WebUI 主页面(5视图+8模态框) │ └── static/ │ ├── css/style.css # 完整样式(~460行) │ └── js/app.js # SPA 交互逻辑(~1500行) ├── data/ │ ├── prompts.db # SQLite 数据库 │ ├── thumbnails/ # 裁剪后缩略图(240x160) │ └── originals/ # 上传原图 ├── firewall_open.bat/ps1/vbs # 防火墙一键放行脚本 └── memory/ # 会话记忆目录 ``` ## 网络 - 本机：http://127.0.0.1:8080 - 局域网：http://192.168.0.103:8080 - Tailscale：http://100.68.22.78:8080 - 防火墙放行：TCP 8080 入站（规则名 PromptKit / PromptKit 8080） ## 待修复/改进记录 - 缩略图缩放光标居中公式已验证可用，无需调整 - 收藏 popover 点击关闭机制已稳定 - 无更多已知 bug #",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1.4451307683629038,
+      "maxScore": 0.812565200622459,
+      "firstRecalledAt": "2026-05-29T12:06:44.011Z",
+      "lastRecalledAt": "2026-05-29T12:07:18.806Z",
+      "queryHashes": [
+        "78769e3e1bc4",
+        "9f397e3437d8"
+      ],
+      "recallDays": [
+        "2026-05-29"
+      ],
+      "conceptTags": [
+        "网络",
+        "thumbnails.py",
+        "缩略图上传/裁剪/图库/原图",
+        "index.html",
+        "css/style.css",
+        "js/app.js",
+        "prompts.db",
+        "firewall-open.bat/ps1/vbs"
+      ]
+    },
+    "memory:memory/2026-05-29.md:1:36": {
+      "key": "memory:memory/2026-05-29.md:1:36",
+      "path": "memory/2026-05-29.md",
+      "startLine": 1,
+      "endLine": 36,
+      "source": "memory",
+      "snippet": "# Memory Flush — 2026-05-29 20:01 (Full Session Archive) ## 项目版本 - 名称：提示词检索工具 (PromptKit) - 当前版本：v3.0.0 - 工作目录：`C:\\Users\\ASUS\\.openclaw\\workspace\\prompt-tool-dev` - 启动方式：`python backend/main.py` 或 `./start.bat` - 默认端口：8080（局域网 `192.168.0.103:8080`，Tailscale `100.68.22.78:8080`） ## 技术栈 - Python 3.10+, FastAPI, Uvicorn, SQLite (WAL + FTS5) - Bootstrap 5 CDN, Vanilla JS SPA (~1500 行) - Pillow（图片裁剪缩放） ## 已完成的 3 个 Phase ### Phase 1 — 基准版 - FastAPI 骨架 + SQLite 8 表（含 FTS5 全文索引） - 4 模块 132 条种子提示词 - WebUI 侧边栏 + 分类筛选 + 搜索 + 分页 + 复制 - `start.bat` 端口检测 + 局域网 IP 显示 - ✅ F5 刷新保持当前视图（localStorage） ### Phase 2 — 增强版 - 收藏夹（多分组 CRUD + 词条增删） - 自定义词包（创建/管理/批量添加/TXT+JSON 导出） - 使用历史（自动记录/清空/单删） - 批量操作（复选/复制/导",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1.4429647197484003,
+      "maxScore": 0.8114823597278676,
+      "firstRecalledAt": "2026-05-29T12:06:44.011Z",
+      "lastRecalledAt": "2026-05-29T12:07:18.806Z",
+      "queryHashes": [
+        "78769e3e1bc4",
+        "9f397e3437d8"
+      ],
+      "recallDays": [
+        "2026-05-29"
+      ],
+      "conceptTags": [
+        "v3.0.0",
+        "prompt-tool-dev",
+        "backend/main.py",
+        "start.bat",
+        "192.168.0.103",
+        "100.68.22.78",
+        "3.10",
+        "创建/管理/批量添加/txt"
+      ]
+    }
+  }
+}

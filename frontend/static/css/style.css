@@ -46,6 +46,7 @@ body.dark-theme .rec-item { background: var(--bg-card); border-color: #334155; }
 body.dark-theme .modal-content { background: #1e293b; color: #e2e8f0; }
 body.dark-theme .modal-input { background: #334155; border-color: #475569; color: #e2e8f0; }
 body.dark-theme .collection-card { background: var(--bg-card); border-color: #334155; }
+body.dark-theme .collection-card { border-color: #334155; }
 body.dark-theme .batch-bar { background: #1e293b; border-color: #334155; }
 body.dark-theme .header-actions .badge { background: #334155 !important; color: #e2e8f0 !important; }
 body.dark-theme .recommend-panel { background: #1e293b; border-color: #334155; }
@@ -184,9 +185,10 @@ body {
 }
 .prompt-card .card-actions .btn-copy:hover { background: var(--primary); color: #fff; }
 .prompt-card .card-checkbox {
-    position: absolute; top: 8px; right: 8px; display: none;
+    display: none;
 }
-.prompt-card.batch-mode .card-checkbox { display: block; }
+.prompt-card.batch-mode .card-checkbox,
+.prompt-card.edit-mode .card-checkbox { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; }
 .prompt-card .card-checkbox input { width: 16px; height: 16px; cursor: pointer; }
 .prompt-card.selected { border-color: var(--primary); background: #eef2ff; }
 
@@ -208,21 +210,117 @@ body {
 
 /* ============ 收藏/词包网格 ============ */
 .collection-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
 }
 .collection-card {
     background: var(--bg-card); border-radius: var(--radius);
-    box-shadow: var(--card-shadow); padding: 18px;
+    box-shadow: var(--card-shadow); padding: 14px 16px;
     cursor: pointer; transition: all 0.2s;
-    border: 1px solid transparent; text-align: center;
+    border: 1px solid transparent;
+    display: flex; gap: 12px;
+    position: relative;
+    align-items: stretch;
 }
-.collection-card:hover { box-shadow: var(--card-hover-shadow); border-color: var(--border-color); }
-.collection-card .card-icon { font-size: 32px; margin-bottom: 8px; }
-.collection-card .card-name { font-size: 14px; font-weight: 600; color: var(--text-main); }
-.collection-card .card-count { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+.coll-left {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    justify-content: space-between;
+}
+body.dark-theme .collection-card:hover { box-shadow: var(--card-hover-shadow); border-color: var(--border-color); }
+.collection-card .card-icon .icon-picker {
+    font-size: 16px;
+    padding: 0 4px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    text-align: center;
+    outline: none;
+    width: 60px;
+    appearance: auto;
+    opacity: 0.8;
+    transition: opacity 0.15s;
+}
+.collection-card .card-icon .icon-picker:hover { opacity: 1; }
+.collection-card .card-icon .icon-picker option {
+    font-size: 18px;
+}
+.collection-card .card-name { font-size: 14px; font-weight: 600; color: var(--text-main); line-height: 1.2; }
+.collection-card .card-count { font-size: 12px; color: var(--text-muted); }
+/* 收藏夹统一操作按钮（图标） */
 .collection-card .card-actions {
-    margin-top: 10px; display: flex; gap: 6px; justify-content: center;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    align-items: center;
+    flex-shrink: 0;
+    padding-right: 4px;
+    justify-content: flex-end;
 }
+.card-action-btn {
+    font-size: 15px;
+    padding: 3px 4px;
+    border-radius: 5px;
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    color: #94a3b8;
+}
+
+/* 图标选择器放在操作按钮列底部 */
+.icon-select-wrap {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px dashed #e2e8f0;
+    display: flex;
+    justify-content: center;
+}
+.icon-select-wrap .icon-picker {
+    font-size: 16px;
+    padding: 0 2px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    text-align: center;
+    outline: none;
+    width: 36px;
+    appearance: auto;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+}
+.icon-select-wrap .icon-picker:hover { opacity: 1; }
+.icon-select-wrap .icon-picker option { font-size: 18px; }
+body.dark-theme .icon-select-wrap { border-top-color: #475569; }
+.card-action-btn:hover {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+}
+.card-action-btn[title="删除分组"]:hover {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #ef4444;
+}
+.card-action-btn[title="复制分组"]:hover {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+    color: #22c55e;
+}
+body.dark-theme .card-action-btn { color: #94a3b8; }
+body.dark-theme .card-action-btn:hover { background: #334155; border-color: #475569; }
+body.dark-theme .card-action-btn[title="删除分组"]:hover { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+body.dark-theme .card-action-btn[title="复制分组"]:hover { background: rgba(34,197,94,0.1); border-color: rgba(34,197,94,0.3); color: #86efac; }
 
 /* ============ 智能推荐面板 ============ */
 .recommend-panel {
@@ -366,10 +464,10 @@ body.dark-theme .seedance-tab:hover { background: #334155; }
 .card-collections {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
     align-items: center;
     justify-content: flex-start;
-    padding-top: 4px;
+    padding-top: 2px;
     min-width: 28px;
     flex-shrink: 0;
 }
@@ -393,6 +491,84 @@ body.dark-theme .seedance-tab:hover { background: #334155; }
     transform: scale(1.1);
 }
 body.dark-theme .coll-badge { background: #334155; }
+
+/* 收藏夹缩略图 — 与提示词卡片缩略图一致的 3:2 比例 */
+.coll-thumb {
+    width: 100%;
+    max-width: 200px;
+    height: 134px;
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    position: relative;
+    transition: border-color 0.2s;
+}
+.coll-thumb:hover { border-color: var(--primary); }
+.coll-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.coll-thumb-empty {
+    background: #f1f5f9;
+}
+.coll-thumb-add {
+    font-size: 20px;
+    color: #94a3b8;
+    font-weight: 600;
+}
+.coll-thumb-edit {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    font-size: 10px;
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    border-radius: 3px;
+    padding: 1px 3px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.coll-thumb:hover .coll-thumb-edit { opacity: 1; }
+body.dark-theme .coll-thumb { background: #334155; border-color: #475569; }
+
+/* 收藏夹视频缩略图悬停播放 */
+.coll-thumb-video {
+    position: relative;
+    overflow: hidden;
+}
+.coll-thumb-video img {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    z-index: 1;
+}
+.coll-thumb-video video {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    z-index: 0;
+    opacity: 0;
+}
+.coll-thumb-video:hover img {
+    z-index: 0;
+}
+.coll-thumb-video:hover video {
+    z-index: 2;
+    opacity: 1;
+}
+
 .coll-add-btn {
     display: flex;
     align-items: center;
@@ -471,24 +647,8 @@ body.dark-theme .collect-popover-item:hover { background: #334155; }
     font-weight: 600;
 }
 
-/* ============ 收藏分组图标选择器 ============ */
-.collection-card .card-icon .icon-picker {
-    font-size: 28px;
-    padding: 2px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    text-align: center;
-    outline: none;
-    width: 56px;
-    appearance: auto;
-}
-.collection-card .card-icon .icon-picker option {
-    font-size: 20px;
-}
-body.dark-theme .collection-card .card-icon .icon-picker {
-    color: inherit;
-}
+/* ============ 收藏弹出菜单 ============ */
+
 .card-thumb {
     width: var(--thumb-w, 100px);
     min-width: var(--thumb-w, 100px);
@@ -526,6 +686,38 @@ body.dark-theme .collection-card .card-icon .icon-picker {
     height: 100%;
     object-fit: cover;
     display: block;
+}
+/* 视频封面预览容器 */
+.thumb-video-wrap-preview {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+.thumb-video-wrap-preview .thumb-video-poster {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    z-index: 1;
+}
+.thumb-video-wrap-preview .thumb-video {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    z-index: 0;
+    opacity: 0;
+}
+.thumb-video-wrap-preview:hover .thumb-video {
+    z-index: 2;
+    opacity: 1;
+}
+.thumb-video-wrap-preview:hover .thumb-video-poster {
+    z-index: 0;
 }
 .thumb-zoom-btn {
     position: absolute;
@@ -592,11 +784,22 @@ body.dark-theme .card-thumb-inner { background: #334155; border-color: #475569; 
     border: 2px solid transparent;
     transition: all 0.2s;
     position: relative;
+}
+.thumb-item .thumb-video-wrap {
+    width: 100%;
     aspect-ratio: 3/2;
+    overflow: hidden;
+    background: #1e293b;
+}
+.thumb-item .thumb-video-wrap video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
 }
 .thumb-item img {
     width: 100%;
-    height: 100%;
+    aspect-ratio: 3/2;
     object-fit: cover;
     display: block;
 }
@@ -611,6 +814,62 @@ body.dark-theme .card-thumb-inner { background: #334155; border-color: #475569; 
     font-size: 10px;
     padding: 2px 6px;
     border-radius: 4px;
+}
+
+.thumb-item-footer {
+    display: flex;
+    align-items: center;
+    padding: 2px 4px;
+}
+.thumb-item-name {
+    flex: 1;
+    font-size: 10px;
+    color: #94a3b8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.thumb-item-del {
+    font-size: 14px;
+    color: #ef4444;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+}
+.thumb-item-del:hover { opacity: 1; }
+
+/* 拖拽选框 */
+.drag-select-box {
+    position: absolute;
+    z-index: 100;
+    background: rgba(99,102,241,0.15);
+    border: 1.5px solid #6366f1;
+    border-radius: 4px;
+    pointer-events: none;
+    box-sizing: border-box;
+}
+.thumb-grid {
+    position: relative;
+}
+.thumb-item.drag-hover {
+    background: rgba(99,102,241,0.08);
+    border-color: #6366f1;
+}
+.thumb-item.drag-hover img,
+.thumb-item.drag-hover .thumb-video-wrap {
+    opacity: 0.8;
+}
+.thumb-batch-cb {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    z-index: 3;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #f59e0b;
 }
 
 /* ============ 收藏下拉菜单 ============ */
@@ -659,11 +918,13 @@ body.dark-theme .collect-select {
 .viewer-left {
     flex: 1;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
     overflow: hidden;
     position: relative;
     min-width: 0;
+    width: 100%;
 }
 .viewer-right {
     width: 300px;
@@ -809,4 +1070,220 @@ body.dark-theme .viewer-btn-collect:hover { border-color: #6366f1; color: #a5b4f
 .vid-ctrl:hover {
     background: rgba(255,255,255,0.1);
     color: #fff !important;
+}
+
+/* ============ 视频播放器时间轴滑块 ============ */
+#vidSeekRow {
+    width: 100%;
+    padding: 0 10px 0 10px;
+    margin: 0;
+    background: #000;
+    box-sizing: border-box;
+}
+#vidViewerSeek {
+    width: 100%;
+    margin: 0;
+    padding: 2px 0;
+    cursor: pointer;
+    accent-color: #6366f1;
+    height: 6px;
+    display: block;
+    box-sizing: border-box;
+    outline: none;
+}
+
+/* 深色主题适配 */
+body.dark-theme #vidViewerSeek {
+    accent-color: #a5b4fc;
+}
+
+/* WebKit 滑块 thumb */
+#vidViewerSeek::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+#vidViewerSeek::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    border: 2px solid #1e293b;
+}
+
+/* ===== 编辑模式筛选栏 ===== */
+/* ===== 文件拖拽导入遮罩 ===== */
+.drop-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(79,70,229,0.08);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 3px dashed var(--primary);
+    border-radius: 16px;
+    pointer-events: none;
+}
+.drop-overlay-inner {
+    background: var(--bg-card);
+    border-radius: 16px;
+    padding: 40px 60px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+}
+.drop-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+.drop-text {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+.drop-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+/* 让 viewHome 成为拖拽定位参考 */
+#viewHome {
+    position: relative;
+}
+
+/* 新增 --hover-bg 变量 */
+:root {
+    --hover-bg: #f1f5f9;
+}
+body.dark-theme {
+    --hover-bg: #1e293b;
+}
+
+/* ===== 拖拽导入弹窗样式修正 ===== */
+#modalDropImport .modal-input {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+#modalDropImport .modal-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(79,70,229,0.15);
+}
+.di-module-input, .di-module-select, .di-category-input, .di-content-input {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-main) !important;
+    border-radius: 4px !important;
+    padding: 3px 5px !important;
+    font-size: 11px !important;
+    width: 100% !important;
+    min-width: 60px !important;
+    outline: none !important;
+    box-sizing: border-box !important;
+    transition: border-color 0.15s;
+}
+.di-module-select {
+    cursor: pointer;
+    appearance: auto;
+    -webkit-appearance: auto;
+}
+.di-module-input:focus, .di-module-select:focus, .di-category-input:focus, .di-content-input:focus {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 2px rgba(79,70,229,0.12) !important;
+}
+/* 深色模式下模块提示 */
+body.dark-theme .di-module-hint {
+    background: rgba(99,102,241,0.08);
+    color: #4f46e5;
+}
+body.dark-theme .di-module-hint {
+    background: rgba(99,102,241,0.15) !important;
+    color: #a5b4fc !important;
+}
+/* diItemList 表格样式 */
+#diItemList table {
+    border-collapse: collapse;
+    width: 100%;
+}
+#diItemList table th {
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
+    padding: 4px 6px;
+    font-size: 11px;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    background: var(--bg-card);
+    z-index: 1;
+}
+#diItemList table td {
+    border-bottom: 1px dashed var(--border-color);
+    padding: 4px 6px;
+    font-size: 11px;
+    color: var(--text-main);
+}
+#diItemList table tr:hover {
+    background: var(--hover-bg);
+}
+/* 复选框主题适配 */
+.di-item-cb {
+    accent-color: var(--primary);
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
+.edit-filter-bar {
+    padding: 8px 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    transition: all 0.2s;
+}
+.edit-filter-bar .modal-input {
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-main);
+}
+.edit-filter-bar .modal-input:focus {
+    border-color: var(--primary);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(79,70,229,0.15);
+}
+
+/* ===== 导出预览弹窗 ===== */
+#epItemList table {
+    font-size: 12px;
+}
+#epItemList table th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-card);
+    z-index: 1;
+}
+#epItemList tr:hover {
+    background: var(--hover-bg, rgba(79,70,229,0.04));
+}
+#epContent {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 11px;
+    line-height: 1.6;
 }

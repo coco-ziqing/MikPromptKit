@@ -1,6 +1,6 @@
 /**
- * WebUI 提示词检索工具 v2.0 — 完整应用逻辑
- * 单页应用，零框架依赖
+ * WebUI 提示词检索工具 v2.0 - 完整应用逻辑
+ * 单页应用,零框架依赖
  */
 const App = {
     // ============ 状态 ============
@@ -17,6 +17,14 @@ const App = {
         stats: { total_prompts: 0, total_usage: 0 },
         batchMode: false,
         batchSelected: new Set(),
+        editMode: false,
+        _editFilterQuery: '',
+        _editFilterModule: '',
+        _editFilterCollected: '',
+        _epItems: [],
+        _newPromptModule: '',
+        _diIsPt: false,
+        _diPtFile: null,
         // 收藏夹
         collections: [],
         currentCollection: null,
@@ -57,6 +65,7 @@ const App = {
         this.applyColumns();
 
         this.bindEvents();
+        this._initDropZone();
         await Promise.all([
             this.loadModules(),
             this.loadStats(),
@@ -120,7 +129,8 @@ const App = {
             home: 'navHome',
             collections: 'navCollections',
             wordpacks: 'navWordpacks',
-            history: 'navHistory'
+            history: 'navHistory',
+            trash: 'navTrash'
         };
 
         if (view === 'home') {
@@ -128,6 +138,7 @@ const App = {
             document.getElementById(navMap[view]).classList.add('active');
             document.getElementById('globalSearchBox').style.display = 'flex';
             this.renderSidebar();
+            this.loadPrompts(); // 刷新卡片数据,确保视频缩略图即时显示
         } else if (view === 'collections') {
             document.getElementById('viewCollections').style.display = 'block';
             document.getElementById(navMap[view]).classList.add('active');
@@ -143,6 +154,11 @@ const App = {
             document.getElementById(navMap[view]).classList.add('active');
             document.getElementById('globalSearchBox').style.display = 'none';
             this.loadHistory();
+        } else if (view === 'trash') {
+            document.getElementById('viewTrash').style.display = 'block';
+            document.getElementById(navMap[view]).classList.add('active');
+            document.getElementById('globalSearchBox').style.display = 'none';
+            this.loadTrash();
         } else if (view === 'seedance') {
             this.state.currentModule = 'seedance';
             this.renderSidebar();
@@ -228,10 +244,29 @@ const App = {
         this.state.searchQuery = '';
         this.state.page = 1;
         document.getElementById('searchInput').value = '';
+        this._editFilterQuery = '';
+        this._editFilterModule = '';
+        this._editFilterCollected = '';
         this.renderSidebar();
         this.switchView('home');
         await this.loadCategories(moduleId);
         await this.loadPrompts();
+    },
+
+    /* 全部词库：重置所有筛选 */
+    switchAllModules() {
+        this.state.currentModule = null;
+        this.state.currentCategory = null;
+        this.state.searchQuery = '';
+        this.state.page = 1;
+        document.getElementById('searchInput').value = '';
+        this._editFilterQuery = '';
+        this._editFilterModule = '';
+        this._editFilterCollected = '';
+        try { localStorage.setItem('promptkit_view', 'home'); localStorage.removeItem('promptkit_module'); } catch(e) {}
+        this.renderSidebar();
+        this.renderCategories();
+        this.loadPrompts();
     },
 
     async switchCategory(category) {
@@ -249,6 +284,28 @@ const App = {
     },
 
     // ============ 复制 ============
+    // 生成导出文件名：取第一条提示词内容前12字 + 条数
+    _makeExportFilename(items, fmt) {
+        var prefix = 'prompts';
+        if (items && items.length > 0) {
+            var firstItem = items[0];
+            var text = '';
+            if (typeof firstItem === 'object' && firstItem !== null) {
+                text = firstItem.content || '';
+            } else if (typeof firstItem === 'number') {
+                // 从当前词库找内容
+                var found = this.state.prompts.find(function(p) { return p.id === firstItem; });
+                if (found) text = found.content || '';
+            }
+            var clean = ('' + text).replace(/[\\/:*?"<>|\n\r]/g, '').trim();
+            prefix = clean.slice(0, 12) || 'prompts';
+        }
+        if (items && items.length > 1) {
+            prefix += '_等' + items.length + '条';
+        }
+        return prefix + '.' + fmt;
+    },
+
     async copyText(content, msg) {
         try {
             await navigator.clipboard.writeText(content);
@@ -344,6 +401,23 @@ const App = {
             if (document.getElementById('batchBar')) document.getElementById('batchBar').style.display = 'none';
             if (document.getElementById('btnBatch')) document.getElementById('btnBatch').classList.remove('active');
         }
+        var eb = document.getElementById('editBatchBar');
+        var fb = document.getElementById('editFilterBar');
+        if (this.state.editMode) {
+            this.state.batchSelected.clear();
+            this._editFilterQuery = '';
+            this._editFilterModule = '';
+            this._editFilterCollected = '';
+            if (eb) { eb.style.display = 'flex'; }
+            if (fb) { fb.style.display = 'block'; }
+            // 填充模块筛选下拉
+            this._populateEditFilterModules();
+            this.updateBatchCount();
+        } else {
+            this.state.batchSelected.clear();
+            if (eb) eb.style.display = 'none';
+            if (fb) fb.style.display = 'none';
+        }
         var btn = document.getElementById('btnEditMode');
         if (this.state.editMode) {
             btn.style.color = '#4f46e5';
@@ -353,6 +427,79 @@ const App = {
             btn.classList.remove('active');
         }
         this.renderPrompts();
+        this.renderSidebar();
+    },
+
+    _populateEditFilterModules() {
+        var select = document.getElementById('editFilterModule');
+        if (!select || !this.state.modules) return;
+        var currentVal = select.value || '';
+        select.innerHTML = '<option value="">全部模块</option>';
+        for (var i = 0; i < this.state.modules.length; i++) {
+            var m = this.state.modules[i];
+            if (m.id === 'custom' || m.id === 'seedance') continue;
+            var opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = m.name;
+            if (m.id === currentVal) opt.selected = true;
+            select.appendChild(opt);
+        }
+    },
+
+    // 编辑模式筛选
+    _applyEditFilter() {
+        this._editFilterQuery = (document.getElementById('editFilterInput').value || '').trim().toLowerCase();
+        this._editFilterModule = document.getElementById('editFilterModule').value || '';
+        this._editFilterCollected = document.getElementById('editFilterCollected').value || '';
+        this._updateFilteredDisplay();
+    },
+
+    _resetEditFilter() {
+        if (document.getElementById('editFilterInput')) document.getElementById('editFilterInput').value = '';
+        if (document.getElementById('editFilterModule')) document.getElementById('editFilterModule').value = '';
+        if (document.getElementById('editFilterCollected')) document.getElementById('editFilterCollected').value = '';
+        this._editFilterQuery = '';
+        this._editFilterModule = '';
+        this._editFilterCollected = '';
+        this._updateFilteredDisplay();
+    },
+
+    _updateFilteredDisplay() {
+        // 编辑模式下对渲染的卡片做客户端过滤（只隐藏，不重新请求后端）
+        var allCards = document.querySelectorAll('#promptList .prompt-card');
+        var visibleCount = 0;
+        var self = this;
+        allCards.forEach(function(card) {
+            var id = parseInt(card.getAttribute('data-id'));
+            var promptData = self.state.prompts.find(function(p) { return p.id === id; });
+            if (!promptData) { card.style.display = 'none'; return; }
+            var show = true;
+            // 关键词筛选
+            if (self._editFilterQuery) {
+                var q = self._editFilterQuery;
+                var contentMatch = (promptData.content || '').toLowerCase().indexOf(q) >= 0;
+                var meaningMatch = (promptData.meaning || '').toLowerCase().indexOf(q) >= 0;
+                var catMatch = (promptData.category || '').toLowerCase().indexOf(q) >= 0;
+                if (!contentMatch && !meaningMatch && !catMatch) show = false;
+            }
+            // 模块筛选
+            if (show && self._editFilterModule) {
+                if ((promptData.module || '') !== self._editFilterModule) show = false;
+            }
+            // 收藏筛选
+            if (show && self._editFilterCollected) {
+                var colls = promptData.collections || [];
+                if (self._editFilterCollected === 'collected' && colls.length === 0) show = false;
+                if (self._editFilterCollected === 'uncollected' && colls.length > 0) show = false;
+            }
+            card.style.display = show ? '' : 'none';
+            if (show) visibleCount++;
+        });
+        var countEl = document.getElementById('editFilterCount');
+        if (countEl) {
+            var total = allCards.length;
+            countEl.textContent = visibleCount < total ? (visibleCount + '/' + total + ' 条匹配') : '';
+        }
     },
 
     toggleSelect(promptId) {
@@ -367,6 +514,430 @@ const App = {
 
     updateBatchCount() {
         document.getElementById('batchCount').textContent = `已选 ${this.state.batchSelected.size} 项`;
+        var editBar = document.getElementById('editBatchBar');
+        if (this.state.editMode) {
+            editBar.style.display = 'flex';
+            document.getElementById('editBatchCount').textContent = `已选 ${this.state.batchSelected.size} 项`;
+        } else if (editBar) {
+            editBar.style.display = 'none';
+        }
+    },
+
+    selectAllPrompts() {
+        for (const p of this.state.prompts) {
+            this.state.batchSelected.add(p.id);
+        }
+        this.renderPrompts();
+        this.updateBatchCount();
+    },
+
+    async exportSelected() {
+        // 将 editMode 下的选中项传给导出弹窗的「已选择的词条」模式
+        var ids = [...this.state.batchSelected];
+        if (ids.length === 0) { this.showToast('请先勾选要导出的词条', 'error'); return; }
+        document.getElementById('modalImportExport').style.display = 'flex';
+        this.switchIETab('export');
+        // 自动选中「已选择的词条」范围
+        document.getElementById('ieExportScope').value = 'selected';
+        this._updateExportBtn();
+    },
+
+    // ============ 导出预览（编辑模式优化） ============
+
+    async showExportPreview() {
+        var ids = [...this.state.batchSelected];
+        if (ids.length === 0) { this.showToast('请先勾选要导出的词条', 'error'); return; }
+        document.getElementById('modalExportPreview').style.display = 'flex';
+        document.getElementById('epCount').textContent = '选中 ' + ids.length + ' 条';
+        document.getElementById('epItemList').innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px 0;">加载词条详情...</div>';
+        document.getElementById('epContent').value = '加载中...';
+
+        // 获取词条详情
+        var data = await this.fetchJSON('/api/v2/batch/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt_ids: ids })
+        });
+        if (!data || !data.items) {
+            document.getElementById('epItemList').innerHTML = '<div style="color:#ef4444;text-align:center;padding:20px 0;">加载失败</div>';
+            return;
+        }
+        this._epItems = data.items;
+        this._renderExportPreviewList(data.items);
+        this._refreshExportPreview();
+    },
+
+    _renderExportPreviewList(items) {
+        var container = document.getElementById('epItemList');
+        var html = '<table style="width:100%;border-collapse:collapse;">';
+        html += '<thead><tr style="background:var(--hover-bg,#f1f5f9);"><th style="padding:4px 6px;text-align:left;font-size:11px;border-bottom:1px solid var(--border-color);">#</th><th style="padding:4px 6px;text-align:left;font-size:11px;border-bottom:1px solid var(--border-color);">模块</th><th style="padding:4px 6px;text-align:left;font-size:11px;border-bottom:1px solid var(--border-color);">分类</th><th style="padding:4px 6px;text-align:left;font-size:11px;border-bottom:1px solid var(--border-color);">内容预览</th><th style="padding:4px 6px;text-align:left;font-size:11px;border-bottom:1px solid var(--border-color);">使用</th></tr></thead><tbody>';
+        for (var i = 0; i < items.length; i++) {
+            var p = items[i];
+            var preview = (p.content || '').length > 50 ? (p.content || '').slice(0, 50) + '...' : (p.content || '');
+            html += '<tr>';
+            html += '<td style="padding:4px 6px;font-size:11px;color:var(--text-muted);border-bottom:1px dashed var(--border-color);">' + (i + 1) + '</td>';
+            html += '<td style="padding:4px 6px;font-size:11px;border-bottom:1px dashed var(--border-color);">' + this._escape(p.module || '') + '</td>';
+            html += '<td style="padding:4px 6px;font-size:11px;border-bottom:1px dashed var(--border-color);">' + this._escape(p.category || '') + '</td>';
+            html += '<td style="padding:4px 6px;font-size:11px;border-bottom:1px dashed var(--border-color);color:var(--text-muted);">' + this._escape(preview) + '</td>';
+            html += '<td style="padding:4px 6px;font-size:11px;border-bottom:1px dashed var(--border-color);text-align:center;">' + (p.usage_count || 0) + '</td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    },
+
+    _refreshExportPreview() {
+        var items = this._epItems || [];
+        if (items.length === 0) {
+            document.getElementById('epContent').value = '';
+            return;
+        }
+        var fmt = document.querySelector('input[name="epFmt"]:checked');
+        fmt = fmt ? fmt.value : 'txt';
+        var content = '';
+        if (fmt === 'json') {
+            var exportData = {
+                exported_at: new Date().toISOString(),
+                count: items.length,
+                prompts: items.map(function(p) {
+                    return { id: p.id, content: p.content, meaning: p.meaning, module: p.module, category: p.category, tags: p.tags };
+                })
+            };
+            content = JSON.stringify(exportData, null, 2);
+        } else {
+            var lines = [
+                '# 提示词导出 - ' + new Date().toLocaleString('zh-CN'),
+                '# 共 ' + items.length + ' 条',
+                '', '---', ''
+            ];
+            for (var i = 0; i < items.length; i++) {
+                var p = items[i];
+                lines.push('[' + (i + 1) + '] [' + (p.module || '') + '/' + (p.category || '') + '] ' + (p.content || ''));
+                if (p.meaning) lines.push('    释义: ' + p.meaning);
+                if (p.scene) lines.push('    场景: ' + p.scene);
+                lines.push('');
+            }
+            content = lines.join('\n');
+        }
+        document.getElementById('epContent').value = content;
+        document.getElementById('epCount').textContent = '选中 ' + items.length + ' 条 · ' + (fmt === 'json' ? 'JSON 格式' : 'TXT 格式');
+    },
+
+    async _doExportPreview() {
+        var ids = this._epItems ? this._epItems.map(function(p) { return p.id; }) : [];
+        if (ids.length === 0) { this.showToast('没有可导出的词条', 'error'); return; }
+        var fmt = document.querySelector('input[name="epFmt"]:checked');
+        fmt = fmt ? fmt.value : 'txt';
+        // 复用批量导出 API
+        try {
+            var res = await fetch('/api/v2/batch/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_ids: ids, format: fmt })
+            });
+            var blob = await res.blob();
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = this._makeExportFilename(this._epItems || [], fmt);
+            a.click();
+            URL.revokeObjectURL(url);
+            this.showToast('导出成功 (' + ids.length + ' 条)', 'success');
+            document.getElementById('modalExportPreview').style.display = 'none';
+        } catch (e) {
+            this.showToast('导出失败: ' + e.message, 'error');
+        }
+    },
+
+    // ============ 拖拽导入 ============
+
+    _initDropZone() {
+        var zone = document.getElementById('viewHome');
+        if (!zone) return;
+        var overlay = document.getElementById('dropOverlay');
+        if (!overlay) return;
+
+        zone.addEventListener('dragenter', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            overlay.style.display = 'flex';
+        }, false);
+
+        zone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            overlay.style.display = 'flex';
+        }, false);
+
+        zone.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            // 只有离开 zone 时才隐藏
+            var rect = zone.getBoundingClientRect();
+            var x = e.clientX, y = e.clientY;
+            if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
+                overlay.style.display = 'none';
+            }
+        }, false);
+
+        zone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            overlay.style.display = 'none';
+            var files = e.dataTransfer.files;
+            if (!files || files.length === 0) return;
+            // 处理 .json 或 .pt 文件
+            var dropFile = null;
+            var isPt = false;
+            for (var i = 0; i < files.length; i++) {
+                var name = files[i].name.toLowerCase();
+                if (name.endsWith('.json')) {
+                    dropFile = files[i];
+                    isPt = false;
+                    break;
+                } else if (name.endsWith('.pt')) {
+                    dropFile = files[i];
+                    isPt = true;
+                    break;
+                }
+            }
+            if (!dropFile) {
+                App.showToast('请拖入 JSON 或 .pt 格式的提示词文件', 'error');
+                return;
+            }
+            if (isPt) {
+                App._handleDropPtFile(dropFile);
+            } else {
+                App._handleDropFile(dropFile);
+            }
+        }, false);
+    },
+
+    async _handleDropFile(file) {
+        // 读取并解析 JSON
+        var text = await file.text();
+        var data;
+        try {
+            data = JSON.parse(text);
+        } catch(e) {
+            this.showToast('JSON 解析失败：' + e.message, 'error');
+            return;
+        }
+        // 兼容两种格式：{prompts: [...]} 或直接数组
+        var items = data.prompts || data;
+        if (!Array.isArray(items) || items.length === 0) {
+            this.showToast('未找到有效的提示词数据', 'error');
+            return;
+        }
+        // 规范化：确保每个 item 有 content
+        items = items.filter(function(item) {
+            return item.content || item.prompt;
+        }).map(function(item) {
+            // 兼容 prompt 字段
+            if (!item.content && item.prompt) item.content = item.prompt;
+            return item;
+        });
+        if (items.length === 0) {
+            this.showToast('未找到有效的提示词条目', 'error');
+            return;
+        }
+
+        this._diFile = file;
+        this._diItems = items;
+        this._diIsPt = false;
+
+        // 填充弹窗信息
+        document.getElementById('diFileName').textContent = file.name;
+        document.getElementById('diFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB · ' + items.length + ' 条提示词';
+        document.getElementById('diCount').textContent = '共 ' + items.length + ' 条提示词';
+
+        // 统一渲染预览列表
+        this._renderDiItems(items);
+
+        document.getElementById('diSelectAll').checked = true;
+        document.getElementById('diResult').style.display = 'none';
+        document.getElementById('btnDiImport').disabled = false;
+        document.getElementById('btnDiImport').innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+
+        // 显示弹窗
+        document.getElementById('modalDropImport').style.display = 'flex';
+    },
+
+    // ============ 导入预览渲染（JSON / .pt 共用） ============
+
+    _renderDiItems(items) {
+        var container = document.getElementById('diItemList');
+        var moduleOpts = '';
+        var modList = this.state.modules || [];
+        for (var mi = 0; mi < modList.length; mi++) {
+            var m = modList[mi];
+            if (m.id === 'seedance') continue;
+            moduleOpts += '<option value="' + this._escape(m.id) + '">' + this._escape(m.name || m.id) + '</option>';
+        }
+        var html = '<table>';
+        html += '<thead><tr><th style="width:30px;"></th><th>模块</th><th>分类</th><th>词条内容（点击编辑）</th></tr></thead><tbody>';
+        var limit = Math.min(50, items.length);
+        for (var i = 0; i < limit; i++) {
+            var item = items[i];
+            var escContent = this._escape(item.content || '');
+            var itemModule = item.module || 'custom';
+            var escCategory = this._escape(item.category || '通用');
+            var optHtml = moduleOpts.replace('value="' + itemModule + '"', 'value="' + itemModule + '" selected');
+            var hasModule = modList.some(function(m) { return m.id === itemModule; });
+            if (!hasModule) {
+                optHtml = '<option value="' + this._escape(itemModule) + '" selected>' + this._escape(itemModule) + '</option>' + optHtml;
+            }
+            html += '<tr>';
+            html += '<td><input type="checkbox" class="di-item-cb" data-idx="' + i + '" checked onchange="App._updateDiCount()"></td>';
+            html += '<td><select class="di-module-select" data-idx="' + i + '">' + optHtml + '</select></td>';
+            html += '<td><input class="di-category-input" data-idx="' + i + '" value="' + escCategory + '"></td>';
+            html += '<td><input class="di-content-input" data-idx="' + i + '" value="' + escContent + '"></td>';
+            html += '</tr>';
+        }
+        if (items.length > 50) {
+            html += '<tr><td colspan="4" style="padding:8px;text-align:center;font-size:11px;color:var(--text-muted);">... 还有 ' + (items.length - 50) + ' 条（导入时全部导入）</td></tr>';
+        }
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    },
+
+    _updateDiCount() {
+        var checkboxes = document.querySelectorAll('.di-item-cb:checked');
+        document.getElementById('diCount').textContent = '已选 ' + checkboxes.length + ' / ' + this._diItems.length + ' 条';
+    },
+
+    _toggleDiSelectAll() {
+        var checked = document.getElementById('diSelectAll').checked;
+        var cbs = document.querySelectorAll('.di-item-cb');
+        for (var i = 0; i < cbs.length; i++) cbs[i].checked = checked;
+        this._updateDiCount();
+    },
+
+    async _confirmDropImport() {
+        var cbs = document.querySelectorAll('.di-item-cb:checked');
+        if (cbs.length === 0) { this.showToast('请至少选择一条提示词', 'error'); return; }
+        var btn = document.getElementById('btnDiImport');
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div> 正在导入...';
+
+        var data;
+        if (this._diIsPt) {
+            // .pt 包导入：收集用户编辑覆盖 + 上传原文件
+            var overrides = [];
+            for (var cbi = 0; cbi < cbs.length; cbi++) {
+                var idx = parseInt(cbs[cbi].getAttribute('data-idx'));
+                var contentInput = document.querySelector('.di-content-input[data-idx="' + idx + '"]');
+                var moduleSelect = document.querySelector('.di-module-select[data-idx="' + idx + '"]');
+                var categoryInput = document.querySelector('.di-category-input[data-idx="' + idx + '"]');
+                overrides.push({
+                    content: contentInput ? contentInput.value.trim() : null,
+                    module: moduleSelect ? moduleSelect.value : null,
+                    category: categoryInput ? categoryInput.value.trim() : null
+                });
+            }
+            var formData = new FormData();
+            formData.append('file', this._diPtFile);
+            formData.append('conflict', document.getElementById('diConflictSelect').value);
+            formData.append('overrides', JSON.stringify(overrides));
+            try {
+                var resp = await fetch('/api/v2/pt/import', { method: 'POST', body: formData });
+                data = await resp.json();
+            } catch (e) {
+                this.showToast('导入失败', 'error');
+                btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+                return;
+            }
+        } else {
+            // JSON 导入：收集编辑后的值
+            var items = [];
+            for (var i = 0; i < cbs.length; i++) {
+                var idx = parseInt(cbs[i].getAttribute('data-idx'));
+                var original = this._diItems[idx];
+                var contentInput = document.querySelector('.di-content-input[data-idx="' + idx + '"]');
+                var moduleSelect = document.querySelector('.di-module-select[data-idx="' + idx + '"]');
+                var categoryInput = document.querySelector('.di-category-input[data-idx="' + idx + '"]');
+                items.push({
+                    content: contentInput ? contentInput.value.trim() : (original.content || ''),
+                    meaning: original.meaning || '',
+                    scene: original.scene || '',
+                    module: moduleSelect ? moduleSelect.value : (original.module || 'custom'),
+                    category: categoryInput ? categoryInput.value.trim() : (original.category || '通用'),
+                    tags: original.tags || []
+                });
+            }
+            var conflict = document.getElementById('diConflictSelect').value;
+            data = await this.fetchJSON('/api/v2/import/from-json-data', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: items, conflict: conflict })
+            });
+        }
+
+        if (!data) {
+            btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+            this.showToast('导入失败，请重试', 'error');
+            return;
+        }
+
+        var resultEl = document.getElementById('diResult');
+        resultEl.style.display = 'block';
+        if (data.failed > 0) {
+            resultEl.style.color = '#ef4444';
+            resultEl.innerHTML = '导入完成：' + data.created + ' 成功, ' + data.skipped + ' 跳过, ' + data.failed + ' 失败';
+        } else {
+            resultEl.style.color = '#059669';
+            resultEl.innerHTML = '✅ 导入成功！' + data.created + ' 条提示词已添加';
+        }
+
+        btn.disabled = false; btn.innerHTML = '✅ 已完成';
+        btn.onclick = function() { document.getElementById('modalDropImport').style.display = 'none'; };
+
+        if (data.created > 0) {
+            this.state.page = 1;
+            await this.loadPrompts();
+            this.showToast('成功导入 ' + data.created + ' 条提示词', 'success');
+        }
+    },
+
+    // ============ .pt 包拖拽导入 ============
+
+    async _handleDropPtFile(file) {
+        var formData = new FormData();
+        formData.append('file', file);
+        var resp = await fetch('/api/v2/pt/preview', { method: 'POST', body: formData });
+        if (!resp.ok) {
+            var errText = await resp.text();
+            this.showToast('预览失败: ' + errText, 'error');
+            return;
+        }
+        var data = await resp.json();
+        if (!data || !data.items || data.items.length === 0) {
+            this.showToast('未找到有效的提示词数据', 'error');
+            return;
+        }
+        this._diPtFile = file;
+        this._diIsPt = true;
+        this._diItems = data.items;
+        document.getElementById('diFileName').textContent = file.name;
+        document.getElementById('diFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB \u00B7 ' + data.count + ' \u6761\u63D0\u793A\u8BCD';
+        document.getElementById('diCount').textContent = '共 ' + data.count + ' 条提示词';
+        this._renderDiItems(data.items);
+        document.getElementById('diSelectAll').checked = true;
+        document.getElementById('diResult').style.display = 'none';
+        document.getElementById('btnDiImport').disabled = false;
+        document.getElementById('btnDiImport').innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+        document.getElementById('modalDropImport').style.display = 'flex';
+    },
+
+    _copyExportPreview() {
+        var text = document.getElementById('epContent').value;
+        if (!text) { this.showToast('没有内容可复制', 'error'); return; }
+        this.copyText(text, '已复制导出内容');
+    },
+
+    clearEditSelection() {
+        this.state.batchSelected.clear();
+        this.renderPrompts();
+        this.updateBatchCount();
     },
 
     async batchCopy() {
@@ -393,16 +964,34 @@ const App = {
         if (ids.length === 0) { this.showToast('请先选择提示词', 'error'); return; }
         // 通过隐藏下载触发
         try {
-            const res = await fetch('/api/v2/batch/export', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt_ids: ids, format: fmt })
-            });
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `prompts_export.${fmt}`;
+            var url, a;
+            if (fmt === 'pt') {
+                // .pt 包导出（含缩略图和视频）
+                var res = await fetch('/api/v2/pt/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt_ids: ids })
+                });
+                var blob = await res.blob();
+                url = URL.createObjectURL(blob);
+                a = document.createElement('a');
+                a.href = url;
+                // 从 Content-Disposition 取文件名，兜底
+                var contentDisp = res.headers.get('Content-Disposition') || '';
+                var match = contentDisp.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/);
+                a.download = match ? decodeURIComponent(match[1]) : App._makeExportFilename(ids, 'pt');
+            } else {
+                var res = await fetch('/api/v2/batch/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt_ids: ids, format: fmt })
+                });
+                var blob = await res.blob();
+                url = URL.createObjectURL(blob);
+                a = document.createElement('a');
+                a.href = url;
+                a.download = App._makeExportFilename(ids, fmt);
+            }
             a.click();
             URL.revokeObjectURL(url);
             this.showToast(`导出成功 (${ids.length} 条)`, 'success');
@@ -421,7 +1010,7 @@ const App = {
             return;
         }
         document.getElementById('modalAddToTitle').textContent = '添加到词包';
-        let html = '<p style="margin-bottom:12px;font-size:13px;color:var(--text-muted);">选择要添加到的词包：</p>';
+        let html = '<p style="margin-bottom:12px;font-size:13px;color:var(--text-muted);">选择要添加到的词包:</p>';
         for (const wp of data.items) {
             html += `<div class="cat-tab" style="display:block;margin-bottom:6px;text-align:left;" onclick="App.doAddToWordpack(${wp.id}, '${this._escape(wp.name)}')">
                 📁 ${this._escape(wp.name)} (${wp.item_count} 条)
@@ -429,6 +1018,285 @@ const App = {
         }
         document.getElementById('wordpackSelectList').innerHTML = html;
         document.getElementById('modalAddToWordpack').style.display = 'flex';
+    },
+
+    // ============ 弹窗模块下拉填充 ============
+
+    _populateModuleOptions(selectedVal) {
+        var select = document.getElementById('editModule');
+        var modules = this.state.modules || [];
+        select.innerHTML = '';
+        for (var i = 0; i < modules.length; i++) {
+            var m = modules[i];
+            if (m.id === 'custom') continue;
+            var opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = m.name;
+            if (m.id === selectedVal) opt.selected = true;
+            select.appendChild(opt);
+        }
+    },
+
+    // ============ 回收站相关 ============
+
+    openAddPromptModal() {
+        document.getElementById('editPromptTitle').textContent = '新建提示词';
+        document.getElementById('editContent').value = '';
+        document.getElementById('editMeaning').value = '';
+        document.getElementById('editScene').value = '';
+        // 记住当前模块，确保新建的词条自动归属到当前浏览的功能模块
+        this._newPromptModule = this.state.currentModule || '';
+        this._populateModuleOptions(this._newPromptModule);
+        document.getElementById('editCategory').value = '';
+        document.getElementById('editTags').value = '[]';
+        document.getElementById('editDeleteBtn').style.display = 'none';
+        // 重置缩略图
+        this._editThumbFilename = null;
+        this._editVideoFilename = null;
+        this._editHadThumbOriginal = false;
+        this._editThumbnailCleared = false;
+        this._editThumbnailMode = false;
+        this.updateEditThumbDisplay();
+        this._editingPromptId = null;
+        // 替换保存按钮行为
+        var saveBtn = document.querySelector('#modalEditPrompt .btn-primary');
+        saveBtn.onclick = null;
+        saveBtn.onclick = function() { App.createNewPrompt(); };
+        document.getElementById('modalEditPrompt').style.display = 'flex';
+    },
+
+    async createNewPrompt() {
+        // 优先使用打开弹窗时记住的模块，其次取下拉框值，最后兜底 'custom'
+        var moduleVal = this._newPromptModule || document.getElementById('editModule').value || 'custom';
+        var data = {
+            content: document.getElementById('editContent').value.trim(),
+            meaning: document.getElementById('editMeaning').value.trim(),
+            scene: document.getElementById('editScene').value.trim(),
+            module: moduleVal,
+            category: document.getElementById('editCategory').value.trim() || '自定义',
+            tags: document.getElementById('editTags').value.trim() || '[]'
+        };
+        if (!data.content) { this.showToast('内容不能为空', 'error'); return; }
+        var result = await this.fetchJSON('/api/prompts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (result) {
+            // 新建词条后保存缩略图
+            var newId = result.id;
+            if (newId && (this._editThumbFilename || this._editVideoFilename)) {
+                await this._saveEditThumbnail(newId);
+            }
+            this.closeEditModal();
+            this.showToast('新建成功', 'success');
+            this.state.batchSelected.clear();
+            var eb = document.getElementById('editBatchBar');
+            if (eb) eb.style.display = 'none';
+            // 如果新建的模块和当前浏览模块一致，维持筛选；否则重置到全部
+            if (this.state.currentModule && this.state.currentModule !== moduleVal) {
+                this.state.currentModule = null;
+                this.state.currentCategory = null;
+                this.renderSidebar();
+                this.renderCategories();
+            }
+            await this.loadPrompts();
+        }
+    },
+
+    async trashPrompt(promptId) {
+        if (!confirm('确认将此词条移入回收站？')) return;
+        try {
+            var res = await fetch('/api/prompts/' + promptId, { method: 'DELETE' });
+            var data = await res.json();
+            if (data.trashed) {
+                this.showToast('已移入回收站', 'info');
+                this.loadPrompts();
+            } else if (data.detail) {
+                this.showToast(data.detail, 'error');
+            }
+        } catch(e) {
+            this.showToast('操作失败: ' + e.message, 'error');
+        }
+    },
+
+    async batchTrash() {
+        const ids = [...this.state.batchSelected];
+        if (ids.length === 0) { this.showToast('请先选择词条', 'error'); return; }
+        if (!confirm('确认将选中的 ' + ids.length + ' 个词条移入回收站？')) return;
+        const data = await this.fetchJSON('/api/v2/trash/batch-trash', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt_ids: ids })
+        });
+        if (data) {
+            this.showToast('已移入回收站 ' + data.trashed + ' 条', 'success');
+            if (this.state.editMode) {
+                this.state.batchSelected.clear();
+                var eb = document.getElementById('editBatchBar');
+                if (eb) eb.style.display = 'none';
+                this.loadPrompts();
+            } else {
+                this.toggleBatchMode();
+                this.loadPrompts();
+            }
+        }
+    },
+
+    // ============ 导入/导出 ============
+
+    showImportModal() {
+        document.getElementById('modalImportExport').style.display = 'flex';
+        this.switchIETab('import');
+    },
+
+    showExportModal() {
+        document.getElementById('modalImportExport').style.display = 'flex';
+        this.switchIETab('export');
+        this._updateExportBtn();
+    },
+
+    switchIETab(tab) {
+        document.getElementById('ieTabImport').className = tab === 'import' ? 'seedance-tab active' : 'seedance-tab';
+        document.getElementById('ieTabExport').className = tab === 'export' ? 'seedance-tab active' : 'seedance-tab';
+        document.getElementById('ieImportPanel').style.display = tab === 'import' ? 'block' : 'none';
+        document.getElementById('ieExportPanel').style.display = tab === 'export' ? 'block' : 'none';
+        document.getElementById('modalIETitle').textContent = tab === 'import' ? '导入提示词' : '导出提示词';
+    },
+
+    _updateExportBtn() {
+        var scope = document.getElementById('ieExportScope').value;
+        var moduleArea = document.getElementById('ieModuleSelectArea');
+        if (moduleArea) {
+            moduleArea.style.display = scope === 'module' ? 'block' : 'none';
+            if (scope === 'module' && this.state.modules) {
+                // 渲染模块多选复选框
+                var cbContainer = document.getElementById('ieModuleCheckboxes');
+                if (cbContainer) {
+                    var ch = '';
+                    for (var mi = 0; mi < this.state.modules.length; mi++) {
+                        var m = this.state.modules[mi];
+                        ch += '<label style="font-size:12px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border:1px solid var(--border-color);border-radius:4px;">' +
+                            '<input type="checkbox" value="' + m.id + '" checked> ' + m.name +
+                            '</label>';
+                    }
+                    cbContainer.innerHTML = ch;
+                }
+            }
+        }
+    },
+
+    async doImport() {
+        var files = document.getElementById('ieFileInput').files;
+        if (!files || files.length === 0) { this.showToast('请先选择文件', 'error'); return; }
+        var conflict = document.getElementById('ieConflictSelect').value;
+        var btn = document.getElementById('btnDoImport');
+        btn.disabled = true; btn.textContent = '正在导入...';
+        var created = 0, skipped = 0, failed = 0;
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            var formData = new FormData();
+            formData.append('file', file);
+            try {
+                var name = file.name.toLowerCase();
+                var endpoint;
+                if (name.endsWith('.json')) {
+                    endpoint = '/api/export/import-json';
+                } else if (name.endsWith('.pt')) {
+                    endpoint = '/api/v2/pt/import';
+                } else {
+                    endpoint = '/api/export/import-png';
+                }
+                formData.append('conflict', conflict);
+                var resp = await fetch(endpoint, { method: 'POST', body: formData });
+                var data = await resp.json();
+                if (data.ok) {
+                    if (data.result && data.result.created) created++;
+                    else if (data.result && data.result.reason === 'skip') skipped++;
+                    else if (data.created) created += data.created;
+                    else if (data.skipped) skipped += data.skipped;
+                    else if (data.created === 0 && data.total > 0) skipped++;
+                    else failed++;
+                } else failed++;
+            } catch(e) { failed++; }
+        }
+        btn.disabled = false; btn.textContent = '开始导入';
+        var el = document.getElementById('ieImportResult');
+        el.style.display = 'block';
+        el.style.color = failed > 0 ? '#ef4444' : '#059669';
+        el.innerHTML = '导入完成: ' + created + ' 成功, ' + skipped + ' 跳过, ' + failed + ' 失败';
+        if (created > 0) await this.loadPrompts();
+    },
+
+    async doExport() {
+        var fmt = document.querySelector('input[name="exportFmt"]:checked');
+        fmt = fmt ? fmt.value : 'png';
+        var scope = document.getElementById('ieExportScope').value;
+        var btn = document.getElementById('btnDoExport');
+        btn.disabled = true; btn.textContent = '正在导出...';
+        var ids = [];
+        if (scope === 'selected') {
+            ids = [...this.state.batchSelected];
+            if (ids.length === 0) { this.showToast('请先选择词条', 'error'); btn.disabled = false; btn.textContent = '导出'; return; }
+        } else if (scope === 'collection-item' && this.state.currentCollection) {
+            ids = (this.state.collectionItems || []).map(function(p) { return p.id; });
+        } else if (scope === 'all') {
+            var allData = await this.fetchJSON('/api/prompts?page_size=500');
+            if (allData && allData.items) ids = allData.items.map(function(p) { return p.id; });
+        } else if (scope === 'module') {
+            // 按模块导出：收集所有选中模块的 ids
+            var modCbs = document.querySelectorAll('#ieModuleCheckboxes input[type="checkbox"]:checked');
+            var mods = [];
+            for (var mi = 0; mi < modCbs.length; mi++) mods.push(modCbs[mi].value);
+            if (mods.length === 0) { this.showToast('请选择至少一个模块', 'error'); btn.disabled = false; btn.textContent = '导出'; return; }
+            var allData = await this.fetchJSON('/api/prompts?page_size=500');
+            if (allData && allData.items) {
+                ids = allData.items.filter(function(p) { return mods.indexOf(p.module) >= 0; }).map(function(p) { return p.id; });
+            }
+        }
+        if (ids.length === 0) { this.showToast('没有可导出的词条', 'error'); btn.disabled = false; btn.textContent = '导出'; return; }
+        try {
+            if (fmt === 'png') {
+                if (ids.length === 1) {
+                    var resp = await fetch('/api/export/prompt-to-png/' + ids[0]);
+                    var blob = await resp.blob();
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a'); a.href = url; a.download = 'prompt_' + ids[0] + '.png'; a.click();
+                    URL.revokeObjectURL(url);
+                } else {
+                    var resp = await fetch('/api/export/batch-to-png', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt_ids: ids })
+                    });
+                    var blob = await resp.blob();
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a'); a.href = url; a.download = 'prompt_cards_' + new Date().toISOString().slice(0,10) + '.zip'; a.click();
+                    URL.revokeObjectURL(url);
+                }
+            } else {
+                var resp = await fetch('/api/v2/batch/export', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt_ids: ids, format: fmt })
+                });
+                var blob = await resp.blob();
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a'); a.href = url;
+                // 取第一条提示词内容做文件名
+                var firstItem = null;
+                if (this.state.prompts) firstItem = this.state.prompts.find(function(p) { return p.id === (ids[0] || 0); });
+                a.download = this._makeExportFilename(firstItem ? [firstItem] : [], fmt);
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+            document.getElementById('ieExportResult').style.display = 'block';
+            document.getElementById('ieExportResult').style.color = '#059669';
+            document.getElementById('ieExportResult').innerHTML = '导出成功，' + ids.length + ' 条词条已下载';
+        } catch(e) {
+            document.getElementById('ieExportResult').style.display = 'block';
+            document.getElementById('ieExportResult').style.color = '#ef4444';
+            document.getElementById('ieExportResult').innerHTML = '导出失败: ' + e.message;
+        }
+        btn.disabled = false; btn.textContent = '导出';
     },
 
     async doAddToWordpack(wpId, wpName) {
@@ -469,12 +1337,10 @@ const App = {
         container.style.display = 'grid';
 
         if (this.state.collections.length === 0) {
-            container.innerHTML = '<div class="empty-state"><div class="icon">📁</div><p>暂无收藏分组，点击右上角新建</p></div>';
+            container.innerHTML = '<div class="empty-state"><div class="icon">📁</div><p>暂无收藏分组,点击右上角新建</p></div>';
             return;
         }
-        // 图标候选列表
         var iconOptions = ['⭐','📸','🌄','❤️','🔥','🎯','🌟','💎','🏆','🎨','📷','🎬','📁','🏔️','🎭','🌈','🌸','🍁','🌊','☀️','🌙','✨','💡','🔖','📌','💜','🧡','💚','💙'];
-        var iconSelectHtml = '<select class="icon-picker" onchange="App.changeCollectionIcon(';
 
         let html = '';
         for (const c of this.state.collections) {
@@ -483,22 +1349,63 @@ const App = {
                 var sel = iconOptions[ii] === c.icon ? 'selected' : '';
                 iconOpts += '<option value="' + iconOptions[ii] + '" ' + sel + '>' + iconOptions[ii] + '</option>';
             }
+            var thumbHtml = c.thumbnail
+                ? (c.video_filename
+                    ? `<div class="coll-thumb coll-thumb-video"><img src="/api/thumbnails/file/${c.thumbnail}"><video class="coll-thumb-vid" src="/api/thumbnails/video/${c.video_filename}" loop muted playsinline preload="none"></video></div>`
+                    : `<div class="coll-thumb"><img src="/api/thumbnails/file/${c.thumbnail}"></div>`
+                  )
+                : `<div class="coll-thumb coll-thumb-empty"></div>`;
             html += `
                 <div class="collection-card" onclick="App.openCollection(${c.id})">
-                    <div class="card-icon">
-                        <select class="icon-picker" onchange="App.changeCollectionIcon(${c.id}, this)" onclick="event.stopPropagation()">
-                            ${iconOpts}
-                        </select>
+                    <div class="coll-left">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div class="card-name">${this._escape(c.name)}</div>
+                            <div class="card-count">${c.item_count} 条</div>
+                        </div>
+                        ${thumbHtml}
                     </div>
-                    <div class="card-name">${this._escape(c.name)}</div>
-                    <div class="card-count">${c.item_count} 条</div>
                     <div class="card-actions">
-                        <button class="wp-btn" onclick="event.stopPropagation();App.deleteCollection(${c.id})">删除</button>
+                        <button class="card-action-btn" onclick="event.stopPropagation();App.setCollectionThumbnail(${c.id})" title="设置缩略图">🖼</button>
+                        <button class="card-action-btn" onclick="event.stopPropagation();App.copyCollection(${c.id})" title="复制分组">📋</button>
+                        <button class="card-action-btn" onclick="event.stopPropagation();App.deleteCollection(${c.id})" title="删除分组">🗑</button>
+                        <div class="icon-select-wrap"><select class="icon-picker" onchange="App.changeCollectionIcon(${c.id}, this)" onclick="event.stopPropagation()">
+                            ${iconOpts}
+                        </select></div>
                     </div>
                 </div>
             `;
         }
         container.innerHTML = html;
+        this._bindCollVideoHover();
+    },
+
+    _bindCollVideoHover() {
+        var wrappers = document.querySelectorAll('.coll-thumb-video');
+        for (var i = 0; i < wrappers.length; i++) {
+            var w = wrappers[i];
+            var v = w.querySelector('.coll-thumb-vid');
+            if (!v) continue;
+            w.removeEventListener('mouseenter', App._playCollVideo);
+            w.removeEventListener('mouseleave', App._pauseCollVideo);
+            w.addEventListener('mouseenter', App._playCollVideo);
+            w.addEventListener('mouseleave', App._pauseCollVideo);
+        }
+    },
+
+    _playCollVideo(e) {
+        var w = e.currentTarget;
+        var v = w.querySelector('.coll-thumb-vid');
+        if (!v) return;
+        v.preload = 'auto';
+        v.play().catch(function(){});
+    },
+
+    _pauseCollVideo(e) {
+        var w = e.currentTarget;
+        var v = w.querySelector('.coll-thumb-vid');
+        if (!v) return;
+        v.pause();
+        v.currentTime = 0;
     },
 
     async openCollection(cid) {
@@ -536,22 +1443,50 @@ const App = {
         }
         let html = '<div class="prompt-grid">';
         for (const p of items) {
+            const tags = JSON.parse(p.tags || '[]');
+            const tagHtml = tags.map(t => `<span class="card-badge">${this._escape(t)}</span>`).join('');
             html += `
                 <div class="prompt-card" data-id="${p.id}">
-                    <div style="display:flex;align-items:center;margin-bottom:6px;">
-                        <span class="card-badge">${this._escape(p.category)}</span>
-                    </div>
-                    <div class="card-content">${this._escape(p.content)}</div>
-                    ${p.meaning ? `<div class="card-meaning">${this._escape(p.meaning)}</div>` : ''}
-                    <div class="card-actions">
-                        <button class="btn-copy" onclick="App.trackUsage(${p.id});App.copyText('${this._escape(p.content).replace(/'/g, "\\'")}')">📋 复制</button>
-                        <button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.removeFromCollection(${this.state.currentCollection}, ${p.id})">移除</button>
+                    <div class="card-body">
+                        <div class="card-thumb">
+                            <div class="card-thumb-inner" onclick="App.showThumbnailPicker(${p.id})">
+                                ${p.thumbnail
+                                    ? (p.video_filename
+                                        ? `<div class="thumb-video-wrap-preview">`
+                                          + `<img class="thumb-video-poster" src="/api/thumbnails/file/${p.thumbnail}" alt="" loading="lazy">`
+                                          + `<video class="thumb-video" src="/api/thumbnails/video/${p.video_filename}" loop muted playsinline preload="none"></video>`
+                                          + `</div>`
+                                        : `<img src="/api/thumbnails/file/${p.thumbnail}" alt="缩略图">`
+                                      )
+                                    : `<div class="thumb-placeholder">
+                                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                                      </div>`
+                                }
+                            </div>
+                            ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (p.video_filename ? 'App.openVideoViewer(\'' + p.video_filename + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (p.video_filename ? '查看原视频' : '查看原图') + '">' + (p.video_filename ? '▶' : '🔍') + '</span>' : ''}
+                        </div>
+                        <div class="card-text">
+                            <div style="display:flex;align-items:center;margin-bottom:6px;gap:4px;">
+                                <span class="card-badge">${this._escape(p.category)}</span>
+                                ${p.subcategory ? `<span style="font-size:10px;color:#94a3b8;">${this._escape(p.subcategory)}</span>` : ''}
+                            </div>
+                            <div class="card-content">${this._escape(p.content)}</div>
+                            ${p.meaning ? `<div class="card-meaning">${this._escape(p.meaning)}</div>` : ''}
+                            ${p.scene ? `<div class="card-scene">🎯 ${this._escape(p.scene)}</div>` : ''}
+                            <div style="font-size:10px;color:#cbd5e1;margin-bottom:6px;">${tagHtml}</div>
+                            <div class="card-actions">
+                                <span style="font-size:11px;color:#94a3b8;margin-right:auto;">使用 ${p.usage_count} 次</span>
+                                <button class="btn-copy" onclick="App.trackUsage(${p.id});App.copyText('${this._escape(p.content).replace(/'/g, "\\'")}')">📋 复制</button>
+                                <button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.removeFromCollection(${this.state.currentCollection}, ${p.id})">移除</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
         }
         html += '</div>';
         container.innerHTML = html;
+        this.bindVideoHover();
     },
 
     async removeFromCollection(cid, pid) {
@@ -569,11 +1504,43 @@ const App = {
     },
 
     async deleteCollection(cid) {
-        if (!confirm('确定删除此收藏分组？')) return;
+        var c = this.state.collections.find(function(x) { return x.id === cid; });
+        var name = c ? c.name : '此收藏分组';
+        if (!confirm('确认删除「' + name + '」?分组内的词条不会被删除,仅移除分组关联。')) return;
         await this.fetchJSON(`/api/v2/collections/${cid}`, { method: 'DELETE' });
         this.showToast('已删除', 'info');
         await this.loadCollections();
         this.renderCollections();
+    },
+
+    async copyCollection(cid) {
+        var data = await this.fetchJSON('/api/v2/collections/' + cid + '/copy', { method: 'POST' });
+        if (data) {
+            this.showToast('已复制为「' + data.name + '」', 'success');
+            await this.loadCollections();
+            this.renderCollections();
+            // 自动打开编辑弹窗,允许修改名称
+            var newColl = this.state.collections.find(function(x) { return x.id === data.id; });
+            if (newColl) {
+                document.getElementById('inputCollectionName').value = data.name;
+                document.getElementById('inputCollectionIcon').value = newColl.icon || '⭐';
+                App._pendingEditCollection = data.id;
+                App._pendingEditRefresh = function() { App.loadCollections(); App.renderCollections(); };
+                document.getElementById('modalCreateCollection').querySelector('h5').textContent = '重命名分组';
+                document.getElementById('modalCreateCollection').style.display = 'flex';
+            }
+        }
+    },
+
+    setCollectionThumbnail(cid) {
+        // 复用缩略图选取弹窗,关联到分组而非提示词
+        this._thumbnailPromptId = null;
+        this._thumbnailCollectionId = cid;
+        this._thumbnailPage = 1;
+        document.getElementById('modalThumbnail').style.display = 'flex';
+        this._thumbnailTab = 'images';
+        this._thumbnailPage = 1;
+        this.loadThumbLibrary();
     },
 
     async changeCollectionIcon(cid, selectEl) {
@@ -624,7 +1591,7 @@ const App = {
         container.style.display = 'grid';
 
         if (this.state.wordpacks.length === 0) {
-            container.innerHTML = '<div class="empty-state"><div class="icon">📂</div><p>暂无词包，点击右上角新建</p></div>';
+            container.innerHTML = '<div class="empty-state"><div class="icon">📂</div><p>暂无词包,点击右上角新建</p></div>';
             return;
         }
         let html = '';
@@ -706,7 +1673,7 @@ const App = {
     },
 
     async deleteWordpack(wid) {
-        if (!confirm('确定删除此词包？')) return;
+        if (!confirm('确定删除此词包?')) return;
         await this.fetchJSON(`/api/v2/wordpacks/${wid}`, { method: 'DELETE' });
         this.showToast('已删除', 'info');
         await this.loadWordpacks();
@@ -789,7 +1756,7 @@ const App = {
     },
 
     async clearHistory() {
-        if (!confirm('确定清空所有使用记录？')) return;
+        if (!confirm('确定清空所有使用记录?')) return;
         await this.fetchJSON('/api/v2/history', { method: 'DELETE' });
         this.showToast('已清空', 'info');
         this.loadHistory();
@@ -799,6 +1766,114 @@ const App = {
         await this.fetchJSON(`/api/v2/history/${pid}`, { method: 'DELETE' });
         this.showToast('已移除', 'info');
         this.loadHistory();
+    },
+
+    // ============ 回收站 ============
+
+    _trashPage: 1,
+
+    async loadTrash() {
+        var grid = document.getElementById('trashList');
+        grid.innerHTML = '<div class="loading-spinner"><p>加载中...</p></div>';
+        var data = await this.fetchJSON('/api/v2/trash?page=' + this._trashPage + '&page_size=50');
+        if (!data) { grid.innerHTML = '<div class="empty-state"><div class="icon">🗑️</div><p>回收站为空</p></div>'; return; }
+        var html = '';
+        if (data.items.length === 0) {
+            html = '<div class="empty-state"><div class="icon">🗑️</div><p>回收站为空</p></div>';
+        } else {
+            html = '<div class="prompt-grid">';
+            for (var i = 0; i < data.items.length; i++) {
+                var p = data.items[i];
+                const tags = JSON.parse(p.tags || '[]');
+                const tagHtml = tags.map(t => `<span class="card-badge">${this._escape(t)}</span>`).join('');
+                html += '<div class="prompt-card" style="opacity:0.85;">' +
+                    '<div class="card-body">' +
+                    '<div class="card-thumb">' +
+                    '<div class="card-thumb-inner">' +
+                    (p.thumbnail
+                        ? (p.video_filename
+                            ? '<div class="thumb-video-wrap-preview"><img class="thumb-video-poster" src="/api/thumbnails/file/' + p.thumbnail + '" alt="" loading="lazy"><video class="thumb-video" src="/api/thumbnails/video/' + p.video_filename + '" loop muted playsinline preload="none"></video></div>'
+                            : '<img src="/api/thumbnails/file/' + p.thumbnail + '" alt="缩略图">'
+                          )
+                        : '<div class="thumb-placeholder"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>'
+                    ) +
+                    '</div>' +
+                    '</div>' +
+                    '<div class="card-text">' +
+                    '<div style="display:flex;align-items:center;margin-bottom:6px;gap:4px;">' +
+                    '<span class="card-badge">' + this._escape(p.category) + '</span>' +
+                    (p.subcategory ? '<span style="font-size:10px;color:#94a3b8;">' + this._escape(p.subcategory) + '</span>' : '') +
+                    '</div>' +
+                    '<div class="card-content">' + this._escape(p.content) + '</div>' +
+                    (p.meaning ? '<div class="card-meaning">' + this._escape(p.meaning) + '</div>' : '') +
+                    (p.scene ? '<div class="card-scene">🎯 ' + this._escape(p.scene) + '</div>' : '') +
+                    '<div style="font-size:10px;color:#cbd5e1;margin-bottom:6px;">' + tagHtml + '</div>' +
+                    '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">使用 ' + p.usage_count + ' 次 · 删除于 ' + (p.deleted_at || '') + '</div>' +
+                    '<div class="card-actions" style="margin-top:6px;">' +
+                    '<button class="btn-copy" onclick="App.restoreFromTrash(' + p.id + ')" style="border-color:#10b981;color:#10b981;">↩ 恢复</button>' +
+                    '<button class="btn-copy" onclick="App.permanentDelete(' + p.id + ')" style="border-color:#ef4444;color:#ef4444;">🗑 永久删除</button>' +
+                    '</div></div></div></div>';
+            }
+            html += '</div>';
+        }
+        grid.innerHTML = html;
+        // 绑定视频悬停播放
+        this.bindVideoHover();
+        // 注册拖拽导入（首页词库视图）
+        if (this.state.currentView === 'home' && !this._dropAttached) {
+            this._dropAttached = true;
+            container.addEventListener('dragover', App._onDragOver);
+            container.addEventListener('dragleave', App._onDragLeave);
+            container.addEventListener('drop', App._onDropPng);
+        }
+
+        var pbar = document.getElementById('trashPagination');
+        if (data.total_pages <= 1) { pbar.innerHTML = ''; } else {
+            var ph = '';
+            for (var pi = 1; pi <= data.total_pages; pi++) {
+                ph += '<button class="page-btn ' + (pi === this._trashPage ? 'active' : '') + '" onclick="App._trashPage=' + pi + ';App.loadTrash()">' + pi + '</button>';
+            }
+            pbar.innerHTML = ph;
+        }
+        var b1 = document.getElementById('btnRestoreAllTrash');
+        var b2 = document.getElementById('btnEmptyTrash');
+        if (b1) b1.style.display = data.total > 0 ? 'inline-flex' : 'none';
+        if (b2) b2.style.display = data.total > 0 ? 'inline-flex' : 'none';
+    },
+
+    async restoreFromTrash(pid) {
+        await this.fetchJSON('/api/v2/trash/' + pid + '/restore', { method: 'POST' });
+        this.showToast('已恢复', 'success');
+        this.loadTrash();
+        this.loadPrompts();
+    },
+
+    async restoreAllTrash() {
+        if (!confirm('确认全部恢复？')) return;
+        var data = await this.fetchJSON('/api/v2/trash?page_size=500');
+        if (!data || data.items.length === 0) return;
+        var ids = data.items.map(function(p) { return p.id; });
+        await this.fetchJSON('/api/v2/trash/batch-restore', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt_ids: ids })
+        });
+        this.showToast('已全部恢复', 'success');
+        this.loadTrash();
+        this.loadPrompts();
+    },
+
+    async permanentDelete(pid) {
+        if (!confirm('永久删除后无法恢复，确认删除？')) return;
+        await this.fetchJSON('/api/v2/trash/' + pid, { method: 'DELETE' });
+        this.showToast('已永久删除', 'info');
+        this.loadTrash();
+    },
+
+    async emptyTrash() {
+        if (!confirm('确认清空回收站？所有词条将被永久删除！')) return;
+        await this.fetchJSON('/api/v2/trash/empty', { method: 'POST' });
+        this.showToast('回收站已清空', 'info');
+        this.loadTrash();
     },
 
     // ============ 主题切换 ============
@@ -875,11 +1950,18 @@ const App = {
         var data = await this.fetchJSON('/api/prompts/' + promptId);
         if (!data) return;
         this._editingPromptId = promptId;
+        // 加载当前缩略图/视频
+        this._editThumbFilename = data.thumbnail || null;
+        this._editVideoFilename = data.video_filename || null;
+        this._editHadThumbOriginal = !!(data.thumbnail || data.video_filename);
+        this._editThumbnailCleared = false;
+        this._editThumbnailMode = false;
+        this.updateEditThumbDisplay();
         document.getElementById('editPromptTitle').textContent = promptId > 151 ? '编辑提示词' : '查看提示词';
         document.getElementById('editContent').value = data.content || '';
         document.getElementById('editMeaning').value = data.meaning || '';
         document.getElementById('editScene').value = data.scene || '';
-        document.getElementById('editModule').value = data.module || '';
+        this._populateModuleOptions(data.module || '');
         document.getElementById('editCategory').value = data.category || '';
         document.getElementById('editTags').value = data.tags || '[]';
         var delBtn = document.getElementById('editDeleteBtn');
@@ -888,6 +1970,10 @@ const App = {
         } else {
             delBtn.style.display = 'inline-block';
         }
+        // 恢复保存按钮为编辑保存
+        var saveBtn = document.querySelector('#modalEditPrompt .btn-primary');
+        saveBtn.onclick = null;
+        saveBtn.onclick = function() { App.saveEditPrompt(); };
         document.getElementById('modalEditPrompt').style.display = 'flex';
     },
 
@@ -909,16 +1995,39 @@ const App = {
             body: JSON.stringify(data)
         });
         if (result) {
+            // 保存缩略图变更
+            await this._saveEditThumbnail(pid);
             this.closeEditModal();
             this.showToast('保存成功', 'success');
             await this.loadPrompts();
         }
     },
 
+    async _saveEditThumbnail(pid) {
+        var setThumb = this._editThumbFilename;
+        var setVideo = this._editVideoFilename;
+        if (setThumb) {
+            await this.fetchJSON('/api/thumbnails/assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_id: pid, filename: setThumb })
+            });
+        } else if (setVideo) {
+            await this.fetchJSON('/api/thumbnails/assign-video-from-library', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_id: pid, video_filename: setVideo })
+            });
+        } else if (this._editThumbnailCleared) {
+            await this.fetchJSON('/api/thumbnails/assign/' + pid, { method: 'DELETE' });
+            await this.fetchJSON('/api/thumbnails/video-assign/' + pid, { method: 'DELETE' });
+        }
+    },
+
     async deleteEditPrompt() {
         var pid = this._editingPromptId;
         if (!pid || pid <= 151) { this.showToast('内置词条不可删除', 'error'); return; }
-        if (!confirm('确定删除此提示词？')) return;
+        if (!confirm('确定删除此提示词?')) return;
         var result = await this.fetchJSON('/api/prompts/' + pid, { method: 'DELETE' });
         if (result) {
             this.closeEditModal();
@@ -931,31 +2040,93 @@ const App = {
         document.getElementById('modalEditPrompt').style.display = 'none';
         this._editingPromptId = null;
     },
-    // ============ 渲染：侧边栏 ============
+    // ============ 渲染:侧边栏 ============
     renderSidebar() {
         var sidebar = document.getElementById('sidebar');
         if (!sidebar || !this.state.modules) return;
-        const icons = { emotion: '😊', color: '🎨', tone: '💡', composition: '📐', seedance: '🎬' };
-        const names = { emotion: '人物表情', color: '场景色彩', tone: '画面色调', composition: '构图运镜', seedance: 'Seedance视频' };
-        let html = '<div style="padding:8px 20px 10px;color:#64748b;font-size:11px;letter-spacing:1px;">功能模块</div>';
+        const icons = { emotion: '😊', color: '🎨', tone: '💡', storyboard: '📋', camera_move: '🎥', seedance: '🎬' };
+        const names = { emotion: '人物表情', color: '场景色彩', tone: '画面色调', storyboard: '分镜构图', camera_move: '运镜模版', seedance: '视频模版' };
+        var editClass = this.state.editMode ? '' : 'style="display:none;"';
+        let html = '<div style="padding:8px 20px 10px;color:#64748b;font-size:11px;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;">' +
+            '<span>功能模块</span>' +
+            '<div ' + editClass + ' style="display:flex;gap:4px;">' +
+            '<button class="header-btn-sm" onclick="App.showCreateModuleModal()" title="新建分组" style="font-size:13px;padding:2px 6px;">➕</button>' +
+            '</div></div>';
+        // 全部选项
+        var allActive = this.state.currentModule === null ? 'active' : '';
+        html += '<div class="module-item ' + allActive + '" onclick="App.switchAllModules()">' +
+            '<span class="icon">📚</span>' +
+            '<span>全部词库</span>' +
+            '<span class="count-badge">' + (this.state.stats.total_prompts || '') + '</span>' +
+            '</div>';
         for (const m of this.state.modules) {
             const active = m.id === this.state.currentModule ? 'active' : '';
-            // Seedance 不通过 switchModule，直接跳转 Seedance 视图
             const clickHandler = m.id === 'seedance'
                 ? `App.switchView('seedance')`
                 : `App.switchModule('${m.id}')`;
+            var deleteBtn = '';
+            if (!m.builtin && this.state.editMode) {
+                deleteBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.deleteCustomModule(\'' + m.id + '\')" title="删除分组" style="font-size:11px;color:#ef4444;padding:0 4px;opacity:0.6;">✕</button>';
+            }
             html += `
                 <div class="module-item ${active}" onclick="${clickHandler}">
                     <span class="icon">${icons[m.id] || '📋'}</span>
                     <span>${names[m.id] || m.id}</span>
                     <span class="count-badge">${m.count}</span>
+                    ${deleteBtn}
                 </div>
             `;
         }
         sidebar.innerHTML = html;
+
+        sidebar.innerHTML += `
+            <div ${editClass} style="margin-top:auto;padding:12px;border-top:1px solid #334155;display:flex;gap:6px;flex-wrap:wrap;">
+                <button onclick="App.showImportModal()" style="flex:1;padding:6px 8px;background:transparent;border:1px solid #475569;border-radius:6px;color:#94a3b8;cursor:pointer;font-size:11px;transition:all 0.15s;" onmouseenter="this.style.borderColor='#6366f1';this.style.color='#a5b4fc'" onmouseleave="this.style.borderColor='#475569';this.style.color='#94a3b8'">
+                    <i class="bi bi-upload"></i> 导入
+                </button>
+                <button onclick="App.showExportModal()" style="flex:1;padding:6px 8px;background:transparent;border:1px solid #475569;border-radius:6px;color:#94a3b8;cursor:pointer;font-size:11px;transition:all 0.15s;" onmouseenter="this.style.borderColor='#6366f1';this.style.color='#a5b4fc'" onmouseleave="this.style.borderColor='#475569';this.style.color='#94a3b8'">
+                    <i class="bi bi-download"></i> 导出
+                </button>
+            </div>
+        `;
     },
 
-    // ============ 渲染：分类标签 ============
+    // ============ 自定义模块管理 ============
+
+    showCreateModuleModal() {
+        document.getElementById('inputModuleName').value = '';
+        document.getElementById('modalCreateModule').style.display = 'flex';
+    },
+
+    async createCustomModule() {
+        var name = document.getElementById('inputModuleName').value.trim();
+        if (!name) { this.showToast('请输入分组名称', 'error'); return; }
+        var data = await this.fetchJSON('/api/modules', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name })
+        });
+        if (data) {
+            document.getElementById('modalCreateModule').style.display = 'none';
+            this.showToast('分组「' + name + '」已创建', 'success');
+            await this.loadModules();
+        }
+    },
+
+    async deleteCustomModule(modName) {
+        if (!confirm('确认删除分组「' + modName + '」？关联词条将自动移至「自定义」分类')) return;
+        var data = await this.fetchJSON('/api/modules/' + encodeURIComponent(modName), { method: 'DELETE' });
+        if (data) {
+            this.showToast('分组已删除', 'info');
+            if (this.state.currentModule === modName) {
+                this.state.currentModule = null;
+            }
+            await this.loadModules();
+            await this.loadPrompts();
+        }
+    },
+
+    // ============ 渲染:分类标签 ============
     renderCategories() {
         const container = document.getElementById('categoryTabs');
         if (!container) return;
@@ -971,7 +2142,7 @@ const App = {
         container.innerHTML = html;
     },
 
-    // ============ 渲染：提示词卡片 ============
+    // ============ 渲染:提示词卡片 ============
     renderPrompts() {
         const container = document.getElementById('promptList');
         if (!container) return;
@@ -991,6 +2162,7 @@ const App = {
             const tagHtml = tags.map(t => `<span class="card-badge">${this._escape(t)}</span>`).join('');
             const isSelected = this.state.batchSelected.has(p.id);
             const batchClass = this.state.batchMode ? 'batch-mode' : '';
+            const editClass = this.state.editMode ? 'edit-mode' : '';
             const selectedClass = isSelected ? 'selected' : '';
 
             var colls = p.collections || [];
@@ -999,20 +2171,20 @@ const App = {
                 var cc = colls[ci];
                 collHtml += '<span class="coll-badge" ondblclick="App.switchView(\'collections\');App.openCollection(' + cc.id + ')" title="双击进入「' + this._escape(cc.name) + '」收藏分组">' + (cc.icon || '⭐') + '</span>';
             }
-            // 添加收藏按钮（竖排末尾）
+            // 添加收藏按钮(竖排末尾)
             collHtml += '<span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(' + p.id + ', this)" title="添加到收藏分组">+</span>';
 
             html += `
-                <div class="prompt-card ${batchClass} ${selectedClass}" data-id="${p.id}">
-                    <div class="card-checkbox">
-                        <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="App.toggleSelect(${p.id})">
-                    </div>
+                <div class="prompt-card ${batchClass} ${selectedClass} ${editClass}" data-id="${p.id}">
                     <div class="card-body">
                         <div class="card-thumb">
                             <div class="card-thumb-inner" onclick="App.showThumbnailPicker(${p.id})">
                                 ${p.thumbnail
                                     ? (p.video_filename
-                                        ? `<video class="thumb-video" src="/api/thumbnails/video/${p.video_filename}" poster="/api/thumbnails/file/${p.thumbnail}" loop muted playsinline preload="none"></video>`
+                                        ? `<div class="thumb-video-wrap-preview">`
+                                          + `<img class="thumb-video-poster" src="/api/thumbnails/file/${p.thumbnail}" alt="" loading="lazy">`
+                                          + `<video class="thumb-video" src="/api/thumbnails/video/${p.video_filename}" loop muted playsinline preload="none"></video>`
+                                          + `</div>`
                                         : `<img src="/api/thumbnails/file/${p.thumbnail}" alt="缩略图">`
                                       )
                                     : `<div class="thumb-placeholder">
@@ -1020,7 +2192,7 @@ const App = {
                                       </div>`
                                 }
                             </div>
-                            ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (p.video_filename ? 'App.openVideoViewer(\'' + p.video_filename + '\', \'' + p.thumbnail + '\', \'' + p.id + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (p.video_filename ? '查看原视频' : '查看原图') + '">' + (p.video_filename ? '▶' : '🔍') + '</span>' : ''}
+                            ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (p.video_filename ? 'App.openVideoViewer(\'' + p.video_filename + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (p.video_filename ? '查看原视频' : '查看原图') + '">' + (p.video_filename ? '▶' : '🔍') + '</span>' : ''}
                         </div>
                         <div class="card-text">
                             <div style="display:flex;align-items:center;margin-bottom:6px;gap:4px;">
@@ -1035,9 +2207,15 @@ const App = {
                                 <span style="font-size:11px;color:#94a3b8;margin-right:auto;">使用 ${p.usage_count} 次</span>
                                 ${App.state.editMode ? '<button class="btn-copy" style="border-color:#eab308;color:#eab308;padding:3px 10px;" onclick="App.openEditModal(' + p.id + ')">\u270f \u7f16\u8f91</button>' : ''}
                                 <button class="btn-copy" onclick="App.handleCopy(${p.id}, '${this._escape(p.content).replace(/'/g, "\\'")}')">📋 复制</button>
+                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;padding:3px 10px;" onclick="App.trashPrompt(' + p.id + ')">🗑 删除</button>' : ''}
                             </div>
                         </div>
-                        <div class="card-collections">${collHtml}</div>
+                        <div class="card-collections">
+                            <div class="card-checkbox">
+                                <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="App.toggleSelect(${p.id})">
+                            </div>
+                            ${collHtml}
+                        </div>
                     </div>
                 </div>
             `;
@@ -1047,18 +2225,40 @@ const App = {
         this.applyColumns();
         // 绑定视频悬停播放
         this.bindVideoHover();
+        // 编辑模式下应用客户端筛选
+        if (this.state.editMode) {
+            this._updateFilteredDisplay();
+        }
     },
 
     // ============ 视频悬停播放 ============
     bindVideoHover() {
-        var videos = document.querySelectorAll('.thumb-video');
-        for (var i = 0; i < videos.length; i++) {
-            var v = videos[i];
-            v.removeEventListener('mouseenter', App._playVideo);
-            v.removeEventListener('mouseleave', App._pauseVideo);
-            v.addEventListener('mouseenter', App._playVideo);
-            v.addEventListener('mouseleave', App._pauseVideo);
+        var wrappers = document.querySelectorAll('.thumb-video-wrap-preview');
+        for (var i = 0; i < wrappers.length; i++) {
+            var w = wrappers[i];
+            var v = w.querySelector('.thumb-video');
+            if (!v) continue;
+            w.removeEventListener('mouseenter', App._playVideoWrap);
+            w.removeEventListener('mouseleave', App._pauseVideoWrap);
+            w.addEventListener('mouseenter', App._playVideoWrap);
+            w.addEventListener('mouseleave', App._pauseVideoWrap);
         }
+    },
+
+    _playVideoWrap(e) {
+        var w = e.currentTarget;
+        var v = w.querySelector('.thumb-video');
+        if (!v) return;
+        v.preload = 'auto';
+        v.play().catch(function() {});
+    },
+
+    _pauseVideoWrap(e) {
+        var w = e.currentTarget;
+        var v = w.querySelector('.thumb-video');
+        if (!v) return;
+        v.pause();
+        v.currentTime = 0;
     },
 
     _playVideo(e) {
@@ -1072,6 +2272,19 @@ const App = {
         v.pause();
         v.currentTime = 0;
     },
+
+    // 视频库缩略图悬停播放
+    _bindVideoLibHover() {
+        var videos = document.querySelectorAll('.thumb-video-preview');
+        for (var i = 0; i < videos.length; i++) {
+            var v = videos[i];
+            v.removeEventListener('mouseenter', App._playVideo);
+            v.removeEventListener('mouseleave', App._pauseVideo);
+            v.addEventListener('mouseenter', App._playVideo);
+            v.addEventListener('mouseleave', App._pauseVideo);
+        }
+    },
+
     renderPagination() {
         const bar = document.getElementById('paginationBar');
         if (!bar) return;
@@ -1089,7 +2302,7 @@ const App = {
         bar.innerHTML = html;
     },
 
-    // ============ 一键收藏（下拉菜单） ============
+    // ============ 一键收藏(下拉菜单) ============
 
     async quickCollect(promptId, btnEl) {
         // 移除所有旧弹窗和监听器
@@ -1133,12 +2346,12 @@ const App = {
         document.body.classList.add('popover-open');
         document.body.style.overflow = 'hidden';
 
-        // 弹窗内部点击不冒泡，避免触发关闭
+        // 弹窗内部点击不冒泡,避免触发关闭
         popover.addEventListener('click', function(e) {
             e.stopPropagation();
         });
 
-        // 点击弹窗外部关闭 —— 使用一次性监听，避免累积
+        // 点击弹窗外部关闭 -- 使用一次性监听,避免累积
         function _closePopHandler(e) {
             var p = document.querySelector('.collect-popover');
             if (!p) return;
@@ -1207,6 +2420,24 @@ const App = {
         const name = document.getElementById('inputCollectionName').value.trim();
         const icon = document.getElementById('inputCollectionIcon').value.trim() || '⭐';
         if (!name) { this.showToast('请输入分组名称', 'error'); return; }
+
+        // 如果有待编辑的分组,执行改名
+        if (this._pendingEditCollection) {
+            const cid = this._pendingEditCollection;
+            this._pendingEditCollection = null;
+            const data = await this.fetchJSON('/api/v2/collections/' + cid, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, icon: icon })
+            });
+            if (data) {
+                document.getElementById('modalCreateCollection').style.display = 'none';
+                this.showToast('分组已更新', 'success');
+                await this.loadCollections();
+                if (this.state.currentView === 'collections') this.renderCollections();
+            }
+            return;
+        }
         const data = await this.fetchJSON('/api/v2/collections', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1217,7 +2448,7 @@ const App = {
             await this.loadCollections();
             // 刷新收藏夹视图
             if (this.state.currentView === 'collections') this.renderCollections();
-            // 如果查看器开着，刷新右侧勾选列表
+            // 如果查看器开着,刷新右侧勾选列表
             if (document.getElementById('modalImageViewer').style.display !== 'none') {
                 var pid = document.getElementById('imgViewerContent').getAttribute('data-prompt-id');
                 if (pid) {
@@ -1391,7 +2622,7 @@ const App = {
         for (var idx = 0; idx < lines.length; idx++) {
             var trimmed = lines[idx].trim();
             if (!trimmed) continue;
-            var match = trimmed.match(/^(\d+[\-~]\d+)秒?[：:]\s*(.+)/);
+            var match = trimmed.match(/^(\d+[\-~]\d+)秒?[::]\s*(.+)/);
             if (match) {
                 scenes.push({ time: match[1], description: match[2] });
             } else {
@@ -1471,37 +2702,377 @@ const App = {
     },
 
     // ============ 更新卡片上的收藏徽标 ============
-    // 不再需要下拉刷新，因为收藏通过 +popover 操作后调用 loadPrompts 全量刷新
+    // 不再需要下拉刷新,因为收藏通过 +popover 操作后调用 loadPrompts 全量刷新
 
     // ============ 缩略图管理 ============
 
     _thumbnailPromptId: null,  // 当前正在设置缩略图的提示词ID
+    _editThumbFilename: null, // 编辑弹窗中暂存的缩略图文件名
+    _editVideoFilename: null, // 编辑弹窗中暂存的视频文件名
+    _editHadThumbOriginal: false, // 打开编辑弹窗时是否有原缩略图
     _thumbnailPage: 1,
+    _thumbEditMode: false,   // 图库/视频库编辑模式
+    _thumbBatchSelected: {}, // 已选中的文件名（编辑模式下）
+    _thumbnailCollectionId: null, // 设置收藏夹缩略图时的分组ID
+
+    // ============ 编辑弹窗缩略图管理 ============
+
+    _editThumbnailMode: false,  // 是否在编辑弹窗中选择缩略图
+
+    openEditThumbnailPicker() {
+        this._editThumbnailMode = true;
+        this._thumbnailPromptId = null;
+        this._thumbnailCollectionId = null;
+        this._thumbnailPage = 1;
+        if (this._thumbEditMode) this.toggleThumbEditMode();
+        document.getElementById('modalThumbnail').style.display = 'flex';
+        this.switchThumbTab('images');
+    },
+
+    openEditVideoPicker() {
+        this._editThumbnailMode = true;
+        this._thumbnailPromptId = null;
+        this._thumbnailCollectionId = null;
+        this._thumbnailPage = 1;
+        if (this._thumbEditMode) this.toggleThumbEditMode();
+        document.getElementById('modalThumbnail').style.display = 'flex';
+        this.switchThumbTab('videos');
+    },
+
+    updateEditThumbDisplay() {
+        var preview = document.getElementById('editThumbPreview');
+        var name = document.getElementById('editThumbName');
+        if (this._editVideoFilename) {
+            preview.innerHTML = '<video src="/api/thumbnails/video/' + this._editVideoFilename + '" style="width:120px;height:80px;object-fit:cover;" muted loop playsinline></video>';
+            preview.querySelector('video').play().catch(function(){});
+            name.textContent = '视频: ' + this._editVideoFilename;
+            document.getElementById('editClearThumbBtn').style.display = 'inline-block';
+        } else if (this._editThumbFilename) {
+            preview.innerHTML = '<img src="/api/thumbnails/file/' + this._editThumbFilename + '" style="width:120px;height:80px;object-fit:cover;">';
+            name.textContent = this._editThumbFilename;
+            document.getElementById('editClearThumbBtn').style.display = 'inline-block';
+        } else {
+            preview.innerHTML = '<span style="font-size:24px;color:#cbd5e1;">🖼</span>';
+            name.textContent = '未设置';
+            document.getElementById('editClearThumbBtn').style.display = 'none';
+        }
+    },
+
+    clearEditThumbnail() {
+        this._editThumbFilename = null;
+        this._editVideoFilename = null;
+        this._editThumbnailCleared = this._editHadThumbOriginal;
+        this.updateEditThumbDisplay();
+    },
+
+    setEditThumbnail() {
+        this.openEditThumbnailPicker();
+    },
 
     async showThumbnailPicker(promptId) {
         this._thumbnailPromptId = promptId;
+        this._thumbnailCollectionId = null;
         this._thumbnailPage = 1;
-        // 检查是否已有缩略图
-        try {
-            var p = this.state.prompts.find(function(x) { return x.id === promptId; });
-            if (p && p.thumbnail) {
-                document.getElementById('btnRemoveThumb').style.display = 'inline-block';
-            } else {
-                document.getElementById('btnRemoveThumb').style.display = 'none';
-            }
-        } catch(e) {
-            document.getElementById('btnRemoveThumb').style.display = 'none';
-        }
+        if (this._thumbEditMode) this.toggleThumbEditMode();
         document.getElementById('modalThumbnail').style.display = 'flex';
-        await this.loadThumbLibrary();
+        this.switchThumbTab('images');
+    },
+
+    // ============ 图库/视频库批量操作 ============
+
+    toggleThumbEditMode() {
+        this._thumbEditMode = !this._thumbEditMode;
+        this._thumbBatchSelected = {};
+        var btn = document.getElementById('btnEditMode');
+        var delBtn = document.getElementById('btnBatchDelete');
+        var sBtn = document.getElementById('btnSelectAll');
+        if (this._thumbEditMode) {
+            btn.style.borderColor = '#ef4444';
+            btn.style.color = '#ef4444';
+            btn.style.background = 'rgba(239,68,68,0.08)';
+            delBtn.style.display = 'inline-flex';
+            if (sBtn) sBtn.style.display = 'inline-flex';
+        } else {
+            btn.style.borderColor = '#64748b';
+            btn.style.color = '#94a3b8';
+            btn.style.background = 'transparent';
+            delBtn.style.display = 'none';
+            if (sBtn) sBtn.style.display = 'none';
+        }
+        // 刷新当前 tab
+        this.switchThumbTab(this._thumbnailTab);
+    },
+
+    // ============ 拖拽框选 ============
+
+    _initThumbDragSelect() {
+        var grids = ['thumbLibraryGrid', 'videoLibraryGrid'];
+        for (var gi = 0; gi < grids.length; gi++) {
+            var grid = document.getElementById(grids[gi]);
+            if (!grid) continue;
+            if (grid.dataset.dragInit) continue;
+            grid.dataset.dragInit = '1';
+            grid.addEventListener('mousedown', function(e) {
+                App._onThumbGridMouseDown(e);
+            });
+        }
+    },
+
+    _onThumbGridMouseDown(e) {
+        if (!App._thumbEditMode) return;
+        // 忽略 checkbox / delete button 等交互元素
+        if (e.target.closest('.thumb-batch-cb') || e.target.closest('.thumb-item-del')) return;
+        // 忽略滚动条
+        if (e.offsetX > e.currentTarget.clientWidth - 16) return;
+
+        e.preventDefault();
+        var grid = e.currentTarget;
+        var rect = grid.getBoundingClientRect();
+        var startX = e.clientX - rect.left;
+        var startY = e.clientY - rect.top;
+
+        // 创建选框
+        var box = document.createElement('div');
+        box.className = 'drag-select-box';
+        box.style.left = startX + 'px';
+        box.style.top = startY + 'px';
+        box.style.width = '0px';
+        box.style.height = '0px';
+        grid.appendChild(box);
+
+        var items = grid.querySelectorAll('.thumb-item');
+
+        function onMove(ev) {
+            var cr = grid.getBoundingClientRect();
+            var cx = ev.clientX - cr.left;
+            var cy = ev.clientY - cr.top;
+            var l = Math.min(startX, cx);
+            var t = Math.min(startY, cy);
+            var w = Math.abs(cx - startX);
+            var h = Math.abs(cy - startY);
+            box.style.left = l + 'px';
+            box.style.top = t + 'px';
+            box.style.width = w + 'px';
+            box.style.height = h + 'px';
+            // 实时高亮被框中的项目
+            var br = box.getBoundingClientRect();
+            for (var i = 0; i < items.length; i++) {
+                var ir = items[i].getBoundingClientRect();
+                var overlap = !(ir.right < br.left || ir.left > br.right || ir.bottom < br.top || ir.top > br.bottom);
+                items[i].classList.toggle('drag-hover', overlap);
+            }
+        }
+
+        function onUp(ev) {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            // 收集被框中的项
+            var br = box.getBoundingClientRect();
+            // 如果选框太小(<5px),视为点击,不框选
+            if (br.width < 5 && br.height < 5) {
+                box.remove();
+                return;
+            }
+            for (var i = 0; i < items.length; i++) {
+                var ir = items[i].getBoundingClientRect();
+                var overlap = !(ir.right < br.left || ir.left > br.right || ir.bottom < br.top || ir.top > br.bottom);
+                if (overlap) {
+                    var cb = items[i].querySelector('.thumb-batch-cb');
+                    if (cb) {
+                        cb.checked = true;
+                        App._thumbBatchSelected[cb.dataset.filename] = true;
+                    }
+                }
+                items[i].classList.remove('drag-hover');
+            }
+            box.remove();
+        }
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    },
+
+    toggleThumbBatchItem(cb) {
+        if (cb.checked) {
+            this._thumbBatchSelected[cb.dataset.filename] = true;
+        } else {
+            delete this._thumbBatchSelected[cb.dataset.filename];
+        }
+    },
+
+    async deleteSingleThumb(filename) {
+        if (!confirm('确认删除缩略图文件「' + filename + '」?')) return;
+        var data = await this.fetchJSON('/api/thumbnails/file/' + filename, { method: 'DELETE' });
+        if (data) {
+            this.showToast('已删除', 'success');
+            this.loadThumbLibrary();
+        }
+    },
+
+    async deleteSingleVideo(filename) {
+        if (!confirm('确认删除视频文件「' + filename + '」?')) return;
+        var data = await this.fetchJSON('/api/thumbnails/video-file/' + filename, { method: 'DELETE' });
+        if (data) {
+            this.showToast('已删除', 'success');
+            this.loadVideoLibrary();
+        }
+    },
+
+    async batchDeleteThumbItems() {
+        var filenames = Object.keys(this._thumbBatchSelected);
+        if (filenames.length === 0) {
+            this.showToast('请先选择文件', 'info');
+            return;
+        }
+        if (!confirm('确认删除选中的 ' + filenames.length + ' 个文件?此操作不可恢复!')) return;
+        var tab = this._thumbnailTab;
+        var ep = tab === 'videos' ? '/api/thumbnails/batch-delete-videos' : '/api/thumbnails/batch-delete-thumbnails';
+        var data = await this.fetchJSON(ep, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filenames: filenames })
+        });
+        if (data) {
+            this.showToast('已删除 ' + data.deleted_count + ' 个文件', 'success');
+            this._thumbBatchSelected = {};
+            this._thumbnailPage = 1;
+            if (tab === 'videos') this.loadVideoLibrary(); else this.loadThumbLibrary();
+        }
+    },
+
+    toggleSelectAllThumb() {
+        var gridId = this._thumbnailTab === 'videos' ? 'videoLibraryGrid' : 'thumbLibraryGrid';
+        var grid = document.getElementById(gridId);
+        if (!grid) return;
+        var cbs = grid.querySelectorAll('.thumb-batch-cb');
+        var allChecked = true;
+        for (var i = 0; i < cbs.length; i++) {
+            if (!cbs[i].checked) { allChecked = false; break; }
+        }
+        var check = !allChecked;
+        for (var i = 0; i < cbs.length; i++) {
+            cbs[i].checked = check;
+            if (check) {
+                this._thumbBatchSelected[cbs[i].dataset.filename] = true;
+            } else {
+                delete this._thumbBatchSelected[cbs[i].dataset.filename];
+            }
+        }
+        var sBtn = document.getElementById('btnSelectAll');
+        if (sBtn) {
+            sBtn.innerHTML = check ? '<i class="bi bi-x-square"></i> 取消全选' : '<i class="bi bi-check-all"></i> 全选';
+        }
+    },
+
+    // 切换缩略图 Tab
+    switchThumbTab(tab) {
+        this._thumbnailTab = tab;
+        this._thumbnailPage = 1;
+        this._thumbBatchSelected = {};
+        var sBtn = document.getElementById('btnSelectAll');
+        if (sBtn) sBtn.innerHTML = '<i class="bi bi-check-all"></i> 全选';
+        document.getElementById('thumbTabImages').className = tab === 'images' ? 'seedance-tab active' : 'seedance-tab';
+        document.getElementById('thumbTabVideos').className = tab === 'videos' ? 'seedance-tab active' : 'seedance-tab';
+        document.getElementById('thumbLibraryGrid').style.display = tab === 'images' ? 'grid' : 'none';
+        document.getElementById('videoLibraryGrid').style.display = tab === 'videos' ? 'grid' : 'none';
+        if (tab === 'images') this.loadThumbLibrary();
+        else this.loadVideoLibrary();
+    },
+
+    async loadVideoLibrary() {
+        var grid = document.getElementById('videoLibraryGrid');
+        grid.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:20px;">加载视频库中...</div>';
+        var data = await this.fetchJSON('/api/thumbnails/video-library?page=' + this._thumbnailPage + '&page_size=50');
+        if (!data) { grid.innerHTML = '<div class="empty-state"><p>视频库为空</p></div>'; return; }
+        var bm = this._thumbEditMode;
+        var html = '';
+        for (var i = 0; i < data.items.length; i++) {
+            var item = data.items[i];
+            var selectedClass = '';
+            if (item.used_by === this._thumbnailPromptId) selectedClass = 'thumb-selected';
+            var usedBadge = (item.used_by && item.used_by !== this._thumbnailPromptId) ? '<span class="thumb-used-badge">已使用</span>' : '';
+            var cover = item.cover_url || '';
+            var info = '<span style="font-size:10px;color:#94a3b8;position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,0.6);padding:1px 4px;border-radius:3px;">' + item.duration + 's</span>';
+            var isChecked = this._thumbBatchSelected[item.filename] ? ' checked' : '';
+            var clickAttr = bm ? '' : ' onclick="App.selectVideoThumbnail(\'' + item.filename + '\')"';
+            html += '<div class="thumb-item ' + selectedClass + '"' + clickAttr + '>' +
+                (bm ? '<input type="checkbox" class="thumb-batch-cb" data-filename="' + item.filename + '" onchange="App.toggleThumbBatchItem(this)"' + isChecked + '>' : '') +
+                (cover ? '<div class="thumb-video-wrap"><video class="thumb-video-preview" src="/api/thumbnails/video/' + item.filename + '" poster="' + cover + '" loop muted playsinline preload="none"></video></div>' : '<div style="background:#334155;width:100%;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:28px;">&#9654;</div>') +
+                usedBadge + info +
+                '<div class="thumb-item-footer">' +
+                  '<span class="thumb-item-name" title="' + (item.original_name || item.filename) + '">' + (item.original_name || item.filename) + '</span>' +
+                  (!bm ? '<span class="thumb-item-del" onclick="event.stopPropagation();App.deleteSingleVideo(\'' + item.filename + '\')" title="删除">&times;</span>' : '') +
+                '</div>' +
+                '</div>';
+        }
+        if (data.items.length === 0) html = '<div class="empty-state"><p>视频库为空,请先上传视频</p></div>';
+        grid.innerHTML = html;
+        this._initThumbDragSelect();
+        // 绑定视频悬停播放
+        this._bindVideoLibHover();
+        // 分页
+        var pbar = document.getElementById('thumbPagination');
+        if (data.total_pages <= 1) { pbar.innerHTML = ''; return; }
+        var ph = '';
+        for (var pi = 1; pi <= data.total_pages; pi++) {
+            ph += '<button class="page-btn ' + (pi === this._thumbnailPage ? 'active' : '') + '" onclick="App._thumbnailPage=' + pi + ';App.loadVideoLibrary()">' + pi + '</button>';
+        }
+        pbar.innerHTML = ph;
+    },
+
+    async selectVideoThumbnail(videoFilename) {
+        // 编辑弹窗缩略图模式：暂存不提交
+        if (this._editThumbnailMode) {
+            this._editVideoFilename = videoFilename;
+            this._editThumbFilename = null;
+            this._editThumbnailMode = false;
+            document.getElementById('modalThumbnail').style.display = 'none';
+            this.updateEditThumbDisplay();
+            return;
+        }
+        // 收藏夹缩略图模式：提取视频封面设为分组缩略图
+        if (this._thumbnailCollectionId) {
+            this.showToast('正在获取封面...', 'info');
+            var info = await this.fetchJSON('/api/thumbnails/video-info/' + videoFilename, { method: 'GET' });
+            if (info && info.poster) {
+                var data = await this.fetchJSON('/api/v2/collections/' + this._thumbnailCollectionId, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ thumbnail: info.poster, video_filename: videoFilename })
+                });
+                if (data) {
+                    document.getElementById('modalThumbnail').style.display = 'none';
+                    this.showToast('收藏夹缩略图已设置', 'success');
+                    this._thumbnailCollectionId = null;
+                    await this.loadCollections();
+                    this.renderCollections();
+                }
+            } else {
+                this.showToast('无法获取视频封面', 'error');
+            }
+            return;
+        }
+        var data = await this.fetchJSON('/api/thumbnails/assign-video-from-library', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt_id: this._thumbnailPromptId, video_filename: videoFilename })
+        });
+        if (data) {
+            document.getElementById('modalThumbnail').style.display = 'none';
+            this.showToast('视频已关联', 'success');
+            await this.loadPrompts();
+        } else {
+            this.showToast('关联失败', 'error');
+        }
     },
 
     async loadThumbLibrary() {
         var grid = document.getElementById('thumbLibraryGrid');
         grid.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:20px;">加载图库中...</div>';
         var data = await this.fetchJSON('/api/thumbnails/library?page=' + this._thumbnailPage + '&page_size=50');
-        if (!data) { grid.innerHTML = '<div class="empty-state"><p>图库为空，请上传图片</p></div>'; return; }
+        if (!data) { grid.innerHTML = '<div class="empty-state"><p>图库为空,请上传图片</p></div>'; return; }
 
+        var bm = this._thumbEditMode;
         var html = '';
         for (var i = 0; i < data.items.length; i++) {
             var item = data.items[i];
@@ -1509,15 +3080,21 @@ const App = {
             var usedBadge = '';
             if (item.used_by === this._thumbnailPromptId) selectedClass = 'thumb-selected';
             if (item.used_by && item.used_by !== this._thumbnailPromptId) usedBadge = '<span class="thumb-used-badge">已使用</span>';
-            html += '<div class="thumb-item ' + selectedClass + '" onclick="App.selectThumbnail(\'' + item.filename + '\')">' +
+            var isChecked = this._thumbBatchSelected[item.filename] ? ' checked' : '';
+            var clickAttr = bm ? '' : ' onclick="App.selectThumbnail(\'' + item.filename + '\')"';
+            html += '<div class="thumb-item ' + selectedClass + '"' + clickAttr + '>' +
+                (bm ? '<input type="checkbox" class="thumb-batch-cb" data-filename="' + item.filename + '" onchange="App.toggleThumbBatchItem(this)"' + isChecked + '>' : '') +
                 '<img src="/api/thumbnails/file/' + item.filename + '" loading="lazy">' +
                 usedBadge +
+                '<div class="thumb-item-footer">' +
+                  '<span class="thumb-item-name" title="' + (item.original_name || item.filename) + '">' + (item.original_name || item.filename) + '</span>' +
+                  (!bm ? '<span class="thumb-item-del" onclick="event.stopPropagation();App.deleteSingleThumb(\'' + item.filename + '\')" title="删除">&times;</span>' : '') +
+                '</div>' +
                 '</div>';
         }
         if (data.items.length === 0) html = '<div class="empty-state"><p>图库为空</p></div>';
         grid.innerHTML = html;
-
-        // 分页
+        this._initThumbDragSelect();
         var pbar = document.getElementById('thumbPagination');
         if (data.total_pages <= 1) { pbar.innerHTML = ''; return; }
         var ph = '';
@@ -1528,75 +3105,117 @@ const App = {
     },
 
     async uploadThumbnail(event) {
-        var file = event.target.files[0];
-        if (!file) return;
-        var formData = new FormData();
-        formData.append('file', file);
-        try {
-            var resp = await fetch('/api/thumbnails/upload', { method: 'POST', body: formData });
-            var data = await resp.json();
-            if (data.ok) {
-                this.showToast('上传成功', 'success');
-                // 自动关联到当前提示词
-                await this.fetchJSON('/api/thumbnails/assign', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt_id: this._thumbnailPromptId, filename: data.filename })
-                });
-                document.getElementById('modalThumbnail').style.display = 'none';
-                // 刷新当前页
-                await this.loadPrompts();
+        var files = event.target.files;
+        if (!files || files.length === 0) return;
+        var first = true;
+        for (var fi = 0; fi < files.length; fi++) {
+            var file = files[fi];
+            var formData = new FormData();
+            formData.append('file', file);
+            try {
+                var resp = await fetch('/api/thumbnails/upload', { method: 'POST', body: formData });
+                var data = await resp.json();
+                if (data.ok) {
+                    if (data.duplicate) {
+                        this.showToast('已跳过重复图片', 'info');
+                        if (first) {
+                            // 重复文件也尝试关联
+                            await this.fetchJSON('/api/thumbnails/assign', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ prompt_id: this._thumbnailPromptId, filename: data.filename })
+                            });
+                            await this.loadPrompts();
+                            first = false;
+                        }
+                    } else {
+                        if (first) {
+                            this.showToast('上传成功', 'success');
+                            await this.fetchJSON('/api/thumbnails/assign', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ prompt_id: this._thumbnailPromptId, filename: data.filename })
+                            });
+                            await this.loadPrompts();
+                            first = false;
+                        } else {
+                            this.showToast('已上传 ' + (fi + 1) + '/' + files.length, 'info');
+                        }
+                    }
+                }
+            } catch(e) {
+                this.showToast('上传失败: ' + file.name, 'error');
             }
-        } catch(e) {
-            this.showToast('上传失败', 'error');
+        }
+        if (files.length > 0) {
+            await this.loadThumbLibrary();
         }
         event.target.value = '';
     },
 
     async uploadVideo(event) {
-        var file = event.target.files[0];
-        if (!file) return;
-        var formData = new FormData();
-        formData.append('file', file);
-        try {
-            this.showToast('正在准备视频...', 'info');
-            var resp = await fetch('/api/thumbnails/prepare-upload', { method: 'POST', body: formData });
-            var data = await resp.json();
-            if (data.ok) {
-                if (data.needs_trim) {
-                    // 大视频，弹出裁剪界面
-                    this._trimTempFile = data.temp_file;
-                    this._trimDuration = data.duration;
-                    this._trimOrigInfo = data.original_name + ' (' + data.size_mb + 'MB, ' + data.duration + '秒)';
-                    this.showTrimModal(data.temp_file, data.duration);
-                } else {
-                    // 小视频，直接上传
-                    var resp2 = await fetch('/api/thumbnails/upload-video', { method: 'POST', body: formData });
-                    var data2 = await resp2.json();
-                    if (data2.ok) {
-                        this.showToast('视频上传成功', 'success');
-                        await this.fetchJSON('/api/thumbnails/assign-video', {
+        var files = event.target.files;
+        if (!files || files.length === 0) return;
+        var first = true;
+        for (var fi = 0; fi < files.length; fi++) {
+            var file = files[fi];
+            var formData = new FormData();
+            formData.append('file', file);
+            try {
+                this.showToast('正在准备 ' + file.name + '...', 'info');
+                // 先通过 prepare 判断是否需裁剪
+                var resp = await fetch('/api/thumbnails/prepare-upload', { method: 'POST', body: formData });
+                var data = await resp.json();
+                if (data.ok) {
+                    if (data.needs_trim) {
+                        // 大视频：prepare 已保存文件，弹出裁剪界面
+                        this.showToast(file.name + ' 需要裁剪,暂不支持批量', 'info');
+                        this._trimTempFile = data.temp_file;
+                        this._trimDuration = data.duration;
+                        this._trimOrigSizeMb = data.size_mb;
+                        this._trimOrigInfo = file.name + ' (' + data.size_mb + 'MB, ' + data.duration + '秒)';
+                        this.showTrimModal(data.temp_file, data.duration);
+                    } else {
+                        // 小视频：prepare 已保存文件，直接用返回的 filename 提交（不需再传文件）
+                        var resp2 = await fetch('/api/thumbnails/finalize-upload', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                prompt_id: this._thumbnailPromptId,
-                                video_filename: data2.video_filename,
-                                poster_filename: data2.poster_filename || '',
-                                duration: data2.duration || 0
+                                temp_filename: data.temp_file,
+                                original_name: file.name
                             })
                         });
-                        document.getElementById('modalThumbnail').style.display = 'none';
-                        await this.loadPrompts();
+                        var data2 = await resp2.json();
+                        if (data2.ok) {
+                            this.showToast('已上传 ' + file.name, 'success');
+                            if (first) {
+                                await this.fetchJSON('/api/thumbnails/assign-video', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        prompt_id: this._thumbnailPromptId,
+                                        video_filename: data2.video_filename,
+                                        poster_filename: data2.poster_filename || '',
+                                        duration: data2.duration || 0
+                                    })
+                                });
+                                await this.loadPrompts();
+                                first = false;
+                            }
+                        }
                     }
                 }
+            } catch(e) {
+                this.showToast(file.name + ' 上传失败', 'error');
             }
-        } catch(e) {
-            this.showToast('视频上传失败: ' + (e.message || e), 'error');
+        }
+        if (files.length > 0) {
+            await this.loadVideoLibrary();
         }
         event.target.value = '';
     },
 
-    // ============ 视频裁剪弹窗 ============
+    // ============ 视频裁剪弹窗（精简版） ============
 
     showTrimModal(tempFile, duration) {
         document.getElementById('modalThumbnail').style.display = 'none';
@@ -1605,40 +3224,201 @@ const App = {
         player.src = '/api/thumbnails/video/' + tempFile;
         player.load();
 
-        // 重置滑块
+        // 重置控件
         document.getElementById('trimStartSlider').value = 0;
         document.getElementById('trimEndSlider').value = 100;
         document.getElementById('trimProgress').style.display = 'none';
         document.getElementById('btnTrimProcess').style.display = 'block';
         this._trimMaxDuration = duration;
-        this.onTrimSlider();
+        this.onTrimSlider('start');
         document.getElementById('modalVideoTrim').style.display = 'flex';
+
+        this._updateTrimPlayIcon(true);
+        var overlayInit = document.getElementById('trimPlayOverlay');
+        if (overlayInit) { overlayInit.style.backgroundColor = ''; overlayInit.style.pointerEvents = 'auto'; }
+        this._updateTrimSizeEstimate();
+
+        player.ontimeupdate = function() {
+            if (player.duration > 0) {
+                var cur = player.currentTime || 0;
+                var dur = player.duration;
+                var pct = Math.min(100, (cur / dur) * 100);
+                document.getElementById('trimViewerTime').textContent = App._fmtTime(cur);
+                document.getElementById('trimViewerDuration').textContent = App._fmtTime(dur);
+                var fill = document.getElementById('trimProgressBarFill');
+                if (fill) fill.style.width = pct + '%';
+            }
+        };
+
+        player.onloadedmetadata = function() {
+            if (player.duration > 0) {
+                document.getElementById('trimViewerDuration').textContent = App._fmtTime(player.duration);
+            }
+        };
+
+        player.onended = function() {
+            App._updateTrimPlayIcon(true);
+        };
+
+        function _setupTrimSlider(id) {
+            var el = document.getElementById(id);
+            el.addEventListener('mousedown', function() {
+                var p = document.getElementById('trimVideoPlayer');
+                if (p) {
+                    p.pause();
+                    App._updateTrimPlayIcon(true);
+                }
+            });
+            el.addEventListener('input', function() {
+                App.onTrimSlider(id === 'trimEndSlider' ? 'end' : 'start');
+                App._trimSeekToSlider(id === 'trimEndSlider' ? 'end' : 'start');
+            });
+            el.addEventListener('change', function() {
+                // 松手：跳到目标位置，稍后暂停锁定帧
+                App.onTrimSlider(id === 'trimEndSlider' ? 'end' : 'start');
+                App._trimSeekAndStop(id === 'trimEndSlider' ? 'end' : 'start');
+            });
+        }
+        _setupTrimSlider('trimStartSlider');
+        _setupTrimSlider('trimEndSlider');
     },
 
-    onTrimSlider() {
+    toggleTrimPlay() {
+        var player = document.getElementById('trimVideoPlayer');
+        if (!player) return;
+        if (player.paused) {
+            player.play();
+            this._updateTrimPlayIcon(false);
+            // 播放时图片按钮隐藏（鼠标移出后不显示）
+            var overlay = document.getElementById('trimPlayOverlay');
+            if (overlay) overlay.style.backgroundColor = 'transparent';
+        } else {
+            player.pause();
+            this._updateTrimPlayIcon(true);
+        }
+    },
+
+    _updateTrimPlayIcon(paused) {
+        var icon = document.getElementById('trimPlayIcon');
+        if (!icon) return;
+        icon.innerHTML = paused ? '\u25b6' : '\u23f8';
+        icon.style.opacity = paused ? '1' : '0';
+        var overlay = document.getElementById('trimPlayOverlay');
+        if (overlay) overlay.style.backgroundColor = paused ? '' : 'transparent';
+    },
+
+    onTrimQualityChange() {
+        this._updateTrimSizeEstimate();
+    },
+
+    _updateTrimSizeEstimate() {
+        var dur = this._trimMaxDuration || 0;
+        var startPct = parseFloat(document.getElementById('trimStartSlider').value);
+        var endPct = parseFloat(document.getElementById('trimEndSlider').value);
+        var trimSec = (endPct - startPct) * dur / 100;
+        var quality = parseInt(document.getElementById('trimQuality').value);
+        // 基于原始大小等比估算
+        var origSizeMb = this._trimOrigSizeMb || 0;
+        var ratio = dur > 0 ? trimSec / dur : 0;
+        // 品质系数: 1=0.5, 2=0.7, 3=1.0, 4=1.3, 5=1.6
+        var qualityFactor = 0.5 + (quality - 1) * 0.3;
+        var estMB = (origSizeMb * ratio * qualityFactor).toFixed(1);
+        var label = document.getElementById('trimSizeLabel');
+        if (label) {
+            label.textContent = estMB + ' MB';
+        }
+    },
+
+    _trimSeekToSlider(src) {
+        var player = document.getElementById('trimVideoPlayer');
+        if (!player || player.duration <= 0) return;
+        var dur = player.duration;
+        var pct = src === 'end'
+            ? parseFloat(document.getElementById('trimEndSlider').value)
+            : parseFloat(document.getElementById('trimStartSlider').value);
+        var jumpSec = pct * dur / 100;
+        // seek 到目标（浏览器渲染帧）
+        player.currentTime = jumpSec;
+        // 进度条 + 时间标签同步
+        document.getElementById('trimViewerTime').textContent = App._fmtTime(jumpSec);
+        var fill = document.getElementById('trimProgressBarFill');
+        if (fill) fill.style.width = pct + '%';
+    },
+
+    _trimSeekAndStop(src) {
+        var player = document.getElementById('trimVideoPlayer');
+        if (!player || player.duration <= 0) return;
+        var dur = player.duration;
+        var pct = src === 'end'
+            ? parseFloat(document.getElementById('trimEndSlider').value)
+            : parseFloat(document.getElementById('trimStartSlider').value);
+        var jumpSec = pct * dur / 100;
+
+        // 先 seek，暂停态下 play 驱动 seeked 渲染帧后再停
+        player.currentTime = jumpSec;
+        if (player.paused) {
+            var _onSeeked = function() {
+                player.removeEventListener('seeked', _onSeeked);
+                player.pause();
+                App._updateTrimPlayIcon(true);
+                // 确保进度条停在最终位置
+                var fill = document.getElementById('trimProgressBarFill');
+                if (fill) fill.style.width = pct + '%';
+            };
+            player.addEventListener('seeked', _onSeeked);
+            player.play();
+        } else {
+            player.pause();
+            App._updateTrimPlayIcon(true);
+            var fill = document.getElementById('trimProgressBarFill');
+            if (fill) fill.style.width = pct + '%';
+        }
+    },
+
+    _showTrimPlayIcon() {
+        var player = document.getElementById('trimVideoPlayer');
+        if (!player) return;
+        var icon = document.getElementById('trimPlayIcon');
+        if (!icon) return;
+        icon.style.opacity = '1';
+        var overlay = document.getElementById('trimPlayOverlay');
+        if (overlay) overlay.style.backgroundColor = '';
+    },
+
+    _hideTrimPlayIcon() {
+        var player = document.getElementById('trimVideoPlayer');
+        if (!player) return;
+        // 播放中且暂停标记为 false 时，隐藏图标
+        if (!player.paused) {
+            var icon = document.getElementById('trimPlayIcon');
+            if (icon) icon.style.opacity = '0';
+            var overlay = document.getElementById('trimPlayOverlay');
+            if (overlay) overlay.style.backgroundColor = 'transparent';
+        }
+    },
+
+    onTrimSlider(source) {
         var dur = this._trimMaxDuration || 0;
         var startPct = parseFloat(document.getElementById('trimStartSlider').value);
         var endPct = parseFloat(document.getElementById('trimEndSlider').value);
 
         // 确保 start <= end
         if (startPct >= endPct) {
-            document.getElementById('trimStartSlider').value = Math.max(0, endPct - 5);
-            startPct = Math.max(0, endPct - 5);
+            if (source === 'start') {
+                document.getElementById('trimStartSlider').value = Math.max(0, endPct - 2);
+                startPct = Math.max(0, endPct - 2);
+            } else {
+                document.getElementById('trimEndSlider').value = Math.min(100, startPct + 2);
+                endPct = Math.min(100, startPct + 2);
+            }
         }
 
         var startSec = dur * startPct / 100;
         var endSec = dur * endPct / 100;
-        var trimDur = Math.max(0, endSec - startSec);
-
         document.getElementById('trimStartLabel').textContent = this._fmtTime(startSec);
         document.getElementById('trimEndLabel').textContent = this._fmtTime(endSec);
-        document.getElementById('trimDurationLabel').textContent = trimDur.toFixed(1) + '秒';
-
-        // 预览跳转到起始位置
-        var player = document.getElementById('trimVideoPlayer');
-        if (player.readyState >= 1) {
-            player.currentTime = startSec;
-        }
+        document.getElementById('trimDurationLabel').textContent = (endSec - startSec).toFixed(1) + '秒';
+        this._updateTrimSizeEstimate();
     },
 
     async processTrimmedVideo() {
@@ -1669,8 +3449,12 @@ const App = {
 
         if (data && data.ok) {
             document.getElementById('modalVideoTrim').style.display = 'none';
-            this.showToast('视频处理完成，已关联到提示词', 'success');
+            // 重新打开缩略图模态框,刷新图库
+            document.getElementById('modalThumbnail').style.display = 'flex';
+            this._thumbnailPage = 1;
+            await this.loadThumbLibrary();
             await this.loadPrompts();
+            this.showToast('视频处理完成,已关联到提示词', 'success');
         } else {
             this.showToast('处理失败', 'error');
         }
@@ -1683,6 +3467,31 @@ const App = {
     },
 
     async selectThumbnail(filename) {
+        // 编辑弹窗缩略图模式：暂存不提交
+        if (this._editThumbnailMode) {
+            this._editThumbFilename = filename;
+            this._editVideoFilename = null;
+            this._editThumbnailMode = false;
+            document.getElementById('modalThumbnail').style.display = 'none';
+            this.updateEditThumbDisplay();
+            return;
+        }
+        // 如果是在设置收藏夹缩略图
+        if (this._thumbnailCollectionId) {
+            var data = await this.fetchJSON('/api/v2/collections/' + this._thumbnailCollectionId, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ thumbnail: filename, video_filename: '' })
+            });
+            if (data) {
+                document.getElementById('modalThumbnail').style.display = 'none';
+                this.showToast('收藏夹缩略图已设置', 'success');
+                this._thumbnailCollectionId = null;
+                await this.loadCollections();
+                this.renderCollections();
+            }
+            return;
+        }
         var data = await this.fetchJSON('/api/thumbnails/assign', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1695,17 +3504,8 @@ const App = {
         }
     },
 
-    async removeThumbnail() {
-        if (!this._thumbnailPromptId) return;
-        var data = await this.fetchJSON('/api/thumbnails/assign/' + this._thumbnailPromptId, { method: 'DELETE' });
-        if (data) {
-            document.getElementById('modalThumbnail').style.display = 'none';
-            this.showToast('缩略图已移除', 'info');
-            await this.loadPrompts();
-        }
-    },
 
-    // ============ 原图查看器（滚轮缩放 + 拖拽移动） ============
+    // ============ 原图查看器(滚轮缩放 + 拖拽移动) ============
 
 openImageViewer(filename, promptId) {
         var modal = document.getElementById('modalImageViewer');
@@ -1792,7 +3592,7 @@ openImageViewer(filename, promptId) {
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
 
-        // 滚轮缩放：以鼠标位置为中心
+        // 滚轮缩放:以鼠标位置为中心
         img.onwheel = function(e) {
             e.preventDefault();
             var rect = img.getBoundingClientRect();
@@ -1854,14 +3654,19 @@ openImageViewer(filename, promptId) {
 
 
 
-    // ============ 视频查看器（逐帧控制） ============
+    // ============ 视频查看器(逐帧控制) ============
 
-    openVideoViewer(videoFilename, posterFilename, promptId) {
+    openVideoViewer(videoFilename, posterFilename, promptId, videoFps) {
+        var fps = parseFloat(videoFps) > 0 ? parseFloat(videoFps) : 30;
+
+        this._videoFps = fps;
+
         var modal = document.getElementById('modalVideoViewer');
         var player = document.getElementById('vidViewerPlayer');
         var seek = document.getElementById('vidViewerSeek');
         var timeLabel = document.getElementById('vidViewerTime');
         var durLabel = document.getElementById('vidViewerDuration');
+        var fpsLabel = document.getElementById('vidViewerFps');
         var playBtn = document.getElementById('vidPlayBtn');
 
         player.src = '/api/thumbnails/video/' + videoFilename;
@@ -1876,6 +3681,7 @@ openImageViewer(filename, promptId) {
         var durStr = '00:00.0';
         timeLabel.textContent = durStr;
         if (durLabel) durLabel.textContent = durStr;
+        if (fpsLabel) fpsLabel.textContent = fps > 0 ? fps + 'fps' : '';
         playBtn.innerHTML = '▶';
 
         function fmt(sec) {
@@ -1885,24 +3691,19 @@ openImageViewer(filename, promptId) {
             return String(m).padStart(2, '0') + ':' + String(s).padStart(4, '0');
         }
 
-        function updateDisplay() {
-            var cur = player.currentTime || 0;
-            var dur = player.duration || 0;
-            timeLabel.textContent = fmt(cur);
-            if (durLabel) durLabel.textContent = fmt(dur);
-            if (dur > 0) {
-                seek.value = Math.round((cur / dur) * 1000);
-            }
-        }
-
         function closeVid() {
             player.pause();
             player.currentTime = 0;
             player.src = '';
             modal.style.display = 'none';
             player.ontimeupdate = null;
+            player.onseeked = null;
             seek.oninput = null;
+            seek.onchange = null;
             document.onkeydown = null;
+            _seekTarget = -1;
+            _seekBusy = false;
+            window._vidSeekReset = null;
         }
 
         // Close buttons
@@ -1911,44 +3712,91 @@ openImageViewer(filename, promptId) {
 
         player.preload = 'auto';
 
-        // --- CUSTOM SLIDER SEEK (NO THROTTLE, FRAME-ACCURATE) ---
-        var _isSeeking = false;
-        seek.oninput = function() {
-            if (player.duration <= 0) return;
-            _isSeeking = true;
+        // --- 时间轴滑块 & 逐帧控制(惰性 seek,防堆积) ---
+        // 快速拖拽时最多允许 1 个 seek 在途,保证画面紧追最新位置
+        var _seekTarget = -1;       // 目标时间(用户期望的位置)
+        var _seekBusy = false;      // 是否有 seek 正在处理中
+
+        // 执行 seek 到目标(仅当无在途 seek 时)
+        function _doSeek() {
+            if (_seekTarget < 0 || _seekBusy || player.duration <= 0) return;
+            _seekBusy = true;
             player.pause();
-            var t = (parseFloat(seek.value) / 1000) * player.duration;
-            // Linear frame estimate: assume ~30fps, step = duration/1000
-            // Just set currentTime directly
-            player.currentTime = t;
+            player.currentTime = _seekTarget;
+        }
+        // 暴露给全局 seekFrame/seekVideo 使用
+        window._vidSeekReset = function() { _seekTarget = -1; _seekBusy = false; };
+
+        // 滑块拖拽中:只存目标时间+更新标签,不立刻 seek(由 RAF 驱动)
+        seek.oninput = function(e) {
+            if (player.duration <= 0) return;
+            var t = (parseFloat(this.value) / 1000) * player.duration;
+            _seekTarget = t;
             timeLabel.textContent = fmt(t);
             if (durLabel && player.duration > 0) durLabel.textContent = fmt(player.duration);
+            // 如果空闲则启动 seek
+            _doSeek();
         };
 
-        // After seek completes, finalize display and clear seeking flag
+        // seek 完成:帧已渲染,同步 UI + 检查是否有更新的目标
         player.onseeked = function() {
-            _isSeeking = false;
-            updateDisplay();
-        };
-
-        // Playback sync
-        player.ontimeupdate = function() {
-            if (!_isSeeking && player.duration > 0 && !player.seeking) {
-                seek.value = Math.round((player.currentTime / player.duration) * 1000);
-                timeLabel.textContent = fmt(player.currentTime);
-                if (durLabel) durLabel.textContent = fmt(player.duration);
+            _seekBusy = false;
+            if (player.duration > 0) {
+                var cur = player.currentTime || 0;
+                var tar = _seekTarget;
+                // 如果最新目标与当前帧差距 > 1帧(≈0.03s),立即再次 seek
+                if (tar >= 0 && Math.abs(cur - tar) > 0.03) {
+                    _doSeek();
+                } else {
+                    // 到位了,同步 UI
+                    seqSync(player, seek, timeLabel, durLabel);
+                }
             }
         };
 
-        // Duration display once metadata loaded
+        // 拖拽结束:精确同步 + 确保最终帧到位
+        seek.onchange = function() {
+            if (player.duration > 0) {
+                var cur = player.currentTime || 0;
+                var tar = _seekTarget;
+                if (tar >= 0 && Math.abs(cur - tar) > 0.03) {
+                    _seekBusy = false; // 允许重试
+                    _doSeek();
+                } else {
+                    seqSync(player, seek, timeLabel, durLabel);
+                }
+            }
+        };
+
+        // 播放中持续同步
+        player.ontimeupdate = function() {
+            if (player.duration > 0 && !_seekBusy) {
+                seqSync(player, seek, timeLabel, durLabel);
+            }
+        };
+
+        // 时长加载
         player.onloadedmetadata = function() {
             if (durLabel && player.duration > 0) durLabel.textContent = fmt(player.duration);
         };
 
-        // Play/pause button
+        // 播放/暂停按钮
         player.onplay = function() { playBtn.innerHTML = '⏸'; };
         player.onpause = function() { playBtn.innerHTML = '▶'; };
-    },    closeVideoViewer() {
+
+        // 共用同步函数
+        function seqSync(p, s, tl, dl) {
+            var cur = p.currentTime || 0;
+            var dur = p.duration || 0;
+            var pct = dur > 0 ? Math.round((cur / dur) * 1000) : 0;
+            s.value = pct;
+            tl.textContent = fmt(cur);
+            if (dl && dur > 0) dl.textContent = fmt(dur);
+            document.getElementById('vidSeekRow').style.setProperty('--vid-progress', pct + '%');
+        }
+    },
+
+    closeVideoViewer() {
         var m = document.getElementById('modalVideoViewer');
         m.style.display = 'none';
         var p = document.getElementById('vidViewerPlayer');
@@ -1967,17 +3815,48 @@ openImageViewer(filename, promptId) {
         if (player.paused) { player.play(); } else { player.pause(); }
     },
 
+    // 视频 UI 同步(供 seekFrame / seekVideo / closeVid 调用)
+    _syncVidUI(player, seek, timeLabel, durLabel) {
+        if (!player || player.duration <= 0) return;
+        var cur = player.currentTime || 0;
+        var dur = player.duration;
+        var pct = Math.round((cur / dur) * 1000);
+        if (seek) seek.value = pct;
+        if (timeLabel) timeLabel.textContent = App._fmtTime(cur);
+        if (durLabel && dur > 0) durLabel.textContent = App._fmtTime(dur);
+        document.getElementById('vidSeekRow').style.setProperty('--vid-progress', pct + '%');
+    },
+
+    // 帧跳转(使用自动探测的 fps)
+    seekFrame(frames) {
+        var player = document.getElementById('vidViewerPlayer');
+        var seek = document.getElementById('vidViewerSeek');
+        var timeLabel = document.getElementById('vidViewerTime');
+        var durLabel = document.getElementById('vidViewerDuration');
+        if (player.duration <= 0) return;
+        var fps = this._videoFps || 30;
+        var seconds = frames / fps;
+        var newTime = Math.max(0, Math.min(player.duration, (player.currentTime || 0) + seconds));
+        player.pause();
+        // 清除惰性 seek 目标,防止 onseeked 回跳
+        if (window._vidSeekReset) window._vidSeekReset();
+        player.currentTime = newTime;
+        // 即时更新界面
+        this._syncVidUI(player, seek, timeLabel, durLabel);
+    },
+
     seekVideo(seconds) {
         var player = document.getElementById('vidViewerPlayer');
         var seek = document.getElementById('vidViewerSeek');
         var timeLabel = document.getElementById('vidViewerTime');
+        var durLabel = document.getElementById('vidViewerDuration');
         if (player.duration <= 0) return;
+        player.pause();
+        if (window._vidSeekReset) window._vidSeekReset();
         var newTime = Math.max(0, Math.min(player.duration, (player.currentTime || 0) + seconds));
         player.currentTime = newTime;
-        var pct = (newTime / player.duration) * 1000;
-        seek.value = Math.round(pct);
-        this._updateVidTime(player, seek, timeLabel);
-    },    // 查看器收藏徽标：双击跳转到收藏分组
+        this._syncVidUI(player, seek, timeLabel, durLabel);
+    },    // 查看器收藏徽标:双击跳转到收藏分组
     async _toggleViewerCollect(cid, pid, checkbox) {
         if (checkbox.checked) {
             // 添加到收藏
@@ -2085,7 +3964,7 @@ openImageViewer(filename, promptId) {
             for (var ci = 0; ci < pColls.length; ci++) {
                 checked[pColls[ci].id] = true;
             }
-            var ch = '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">收藏分组：</div>';
+            var ch = '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">收藏分组:</div>';
             if (allC && allC.length > 0) {
                 for (var ci2 = 0; ci2 < allC.length; ci2++) {
                     var cc = allC[ci2];
@@ -2138,6 +4017,65 @@ openImageViewer(filename, promptId) {
     },
 
         // ============ 工具 ============
+
+    // --- PNG 拖拽导入处理器 ---
+    _dropAttached: false,
+
+    _onDragOver: function(e) {
+        e.preventDefault();
+        e.currentTarget.style.outline = '2px dashed #6366f1';
+        e.currentTarget.style.outlineOffset = '-2px';
+        e.currentTarget.style.borderRadius = '8px';
+    },
+
+    _onDragLeave: function(e) {
+        e.currentTarget.style.outline = '';
+        e.currentTarget.style.outlineOffset = '';
+    },
+
+    _onDropPng: async function(e) {
+        e.preventDefault();
+        e.currentTarget.style.outline = '';
+        var files = e.dataTransfer.files;
+        if (!files || files.length === 0) return;
+        var pngFiles = [];
+        for (var fi = 0; fi < files.length; fi++) {
+            if (files[fi].type === 'image/png' || files[fi].name.toLowerCase().endsWith('.png')) {
+                pngFiles.push(files[fi]);
+            }
+        }
+        if (pngFiles.length === 0) {
+            App.showToast('请拖拽 PNG 文件', 'error');
+            return;
+        }
+        // 对每个 PNG 文件预览并确认
+        var created = 0;
+        for (var fi2 = 0; fi2 < pngFiles.length; fi2++) {
+            var file = pngFiles[fi2];
+            var formData = new FormData();
+            formData.append('file', file);
+            try {
+                var resp = await fetch('/api/export/preview-png', { method: 'POST', body: formData });
+                var preview = await resp.json();
+                if (preview.ok && preview.preview) {
+                    var p = preview.preview;
+                    if (!confirm('拖入提示词卡片: \n内容: ' + (p.content || '').substring(0, 60) + '\n模块: ' + (p.module || '') + '\n分类: ' + (p.category || '') + '\n\n确认导入？')) continue;
+                    var resp2 = await fetch('/api/export/import-png?conflict=rename', { method: 'POST', body: formData });
+                    var result = await resp2.json();
+                    if (result.ok && result.result.created) created++;
+                } else {
+                    App.showToast('无法识别文件: ' + file.name, 'error');
+                }
+            } catch(err) {
+                App.showToast('导入失败: ' + file.name, 'error');
+            }
+        }
+        if (created > 0) {
+            App.showToast('成功导入 ' + created + ' 条词条', 'success');
+            await App.loadPrompts();
+        }
+    },
+
     _escape(str) {
         if (!str) return '';
         const d = document.createElement('div');
@@ -2158,3 +4096,4 @@ window.addEventListener('unhandledrejection', function(e) {
 window.addEventListener('error', function(e) {
     console.warn('[Global] Runtime error:', e.message);
 });
+

@@ -1,0 +1,18 @@
+onTrimSlider('start');
+        document.getElementById('modalVideoTrim').style.display = 'flex';
+
+        // === 播放控制：复用主播放器惰性 seek ===
+        var _seekTarget = -1;
+        var _seekBusy = false;
+
+        function _doSeek() {
+            if (_seekTarget < 0 || _seekBusy || player.duration <= 0) return;
+            _seekBusy = true;
+            player.currentTime = _seekTarget;
+        }
+
+        function _syncUI() {
+            if (player.duration <= 0) return;
+            var cur = player.currentTime || 0;
+            var dur = player.duration;
+            var pct = Math.round((cur / dur) * 

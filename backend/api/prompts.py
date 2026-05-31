@@ -1,6 +1,7 @@
 """
 API 路由 — 提示词 CRUD、搜索、统计（加固版）
 """
+import os
 import traceback
 from fastapi import APIRouter, Query, HTTPException
 from database import get_db
@@ -12,7 +13,8 @@ def _safe_int(val, default=0):
     except: return default
 
 def _module_name(module_id):
-    names = {"emotion": "人物表情", "color": "场景色彩", "tone": "画面色调", "composition": "构图运镜", "seedance": "Seedance视频"}
+    names = {"emotion": "人物表情", "color": "场景色彩", "tone": "画面色调",
+             "storyboard": "分镜构图", "camera_move": "运镜模版", "seedance": "视频模版"}
     return names.get(module_id, module_id)
 
 def _safe_tags(tags_str):
@@ -30,8 +32,26 @@ def _safe_tags(tags_str):
 def list_modules():
     try:
         db = get_db()
-        rows = db.execute("SELECT module, COUNT(*) as cnt FROM prompts WHERE is_builtin=1 GROUP BY module ORDER BY module").fetchall()
-        return {"modules": [{"id": r["module"], "name": _module_name(r["module"]), "count": r["cnt"]} for r in rows]}
+        # 内置模块：所有非删除词条的 module 统计
+        rows = db.execute("SELECT module, COUNT(*) as cnt FROM prompts WHERE deleted_at IS NULL GROUP BY module ORDER BY module").fetchall()
+        seen = {}
+        result = []
+        for r in rows:
+            mid = r["module"]
+            if mid not in seen:
+                seen[mid] = True
+                result.append({"id": mid, "name": _module_name(mid), "count": r["cnt"], "builtin": mid in ("emotion","color","tone","storyboard","camera_move","seedance")})
+        # 自定义模块（无词条的也显示，排除 custom）
+        custom = db.execute("SELECT name, sort_order FROM custom_modules ORDER BY sort_order, id").fetchall()
+        for c in custom:
+            mid = c["name"]
+            if mid not in seen:
+                cnt = db.execute("SELECT COUNT(*) FROM prompts WHERE module=? AND deleted_at IS NULL", [mid]).fetchone()[0]
+                result.append({"id": mid, "name": mid, "count": cnt, "builtin": False})
+                seen[mid] = True
+        # 过滤掉 custom（内部默认模块）
+        result = [x for x in result if x["id"] != "custom"]
+        return {"modules": result}
     except Exception:
         traceback.print_exc()
         return {"modules": []}
@@ -64,10 +84,10 @@ def list_prompts(
         params = []
         if search:
             like = f"%{search}%"
-            where = " WHERE (p.content LIKE ? OR p.meaning LIKE ? OR p.tags LIKE ?) "
+            where = " WHERE p.deleted_at IS NULL AND (p.content LIKE ? OR p.meaning LIKE ? OR p.tags LIKE ?) "
             params = [like, like, like]
         else:
-            where = " WHERE 1=1 "
+            where = " WHERE p.deleted_at IS NULL AND 1=1 "
         from_clause = " FROM prompts p LEFT JOIN prompt_thumbnails pt ON pt.prompt_id = p.id LEFT JOIN prompt_videos pv ON pv.prompt_id = p.id "
         if module:
             where += " AND p.module=? "
@@ -82,12 +102,19 @@ def list_prompts(
         offset = (page - 1) * page_size
         rows = db.execute(f"""
             SELECT p.id, p.module, p.category, p.subcategory, p.content, p.meaning, p.scene, p.tags,
-                   p.usage_count, pt.filename as thumbnail, pv.filename as video_filename, pv.poster as video_poster
+                   p.usage_count, pt.filename as thumbnail, pv.filename as video_filename, pv.poster as video_poster, pv.fps as video_fps, pv.duration as video_duration
             {from_clause} {where}
             ORDER BY p.usage_count DESC, p.id ASC LIMIT ? OFFSET ?
         """, params + [page_size, offset]).fetchall()
 
         items = [dict(r) for r in rows] if rows else []
+
+        # 验证缩略图文件是否存在，不存在则清空
+        THUMB_DIR2 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "thumbnails")
+        for item in items:
+            if item.get("thumbnail"):
+                if not os.path.exists(os.path.join(THUMB_DIR2, item["thumbnail"])):
+                    item["thumbnail"] = None
 
         # 收藏归属
         if items:
@@ -191,13 +218,13 @@ def delete_prompt(prompt_id: int):
         row = db.execute("SELECT is_builtin FROM prompts WHERE id=?", [prompt_id]).fetchone()
         if not row:
             raise HTTPException(404, "提示词不存在")
-        if row["is_builtin"] == 1:
-            raise HTTPException(403, "内置提示词不可删除")
-        for tbl in ["collection_items", "wordpack_items", "usage_history", "prompt_thumbnails", "prompt_videos"]:
-            db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [prompt_id])
-        db.execute("DELETE FROM prompts WHERE id=?", [prompt_id])
+        # 软删除：标记 deleted_at，所有词条（含内置）均可移入回收站
+        db.execute("UPDATE prompts SET deleted_at=datetime('now','localtime') WHERE id=?", [prompt_id])
+        # 清除收藏/词包关联避免空引用
+        db.execute("DELETE FROM collection_items WHERE prompt_id=?", [prompt_id])
+        db.execute("DELETE FROM wordpack_items WHERE prompt_id=?", [prompt_id])
         db.commit()
-        return {"ok": True}
+        return {"ok": True, "trashed": True}
     except HTTPException:
         raise
     except Exception:
@@ -230,3 +257,43 @@ def get_top_prompts(limit: int = Query(10, ge=1, le=100)):
     except Exception:
         traceback.print_exc()
         return {"items": []}
+
+
+# ==================== 自定义模块管理 ====================
+
+@router.post("/modules")
+def create_custom_module(data: dict):
+    """创建自定义模块"""
+    name = (data.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "模块名称不能为空")
+    if name in ("emotion","color","tone","storyboard","camera_move","seedance"):
+        raise HTTPException(400, "模块名称与内置模块冲突")
+    db = get_db()
+    try:
+        db.execute("INSERT INTO custom_modules (name) VALUES (?)", [name])
+        db.commit()
+        return {"ok": True, "name": name}
+    except Exception as e:
+        raise HTTPException(400, f"创建失败，可能名称已存在: {e}")
+
+
+@router.delete("/modules/{module_name}")
+def delete_custom_module(module_name: str):
+    """删除自定义模块（并不删除关联词条，仅移除模块记录）"""
+    if module_name in ("emotion","color","tone","storyboard","camera_move","seedance"):
+        raise HTTPException(400, "内置模块不可删除")
+    db = get_db()
+    db.execute("DELETE FROM custom_modules WHERE name=?", [module_name])
+    db.commit()
+    # 将已关联词条设为默认分类
+    db.execute("UPDATE prompts SET module='custom' WHERE module=?", [module_name])
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/modules/custom")
+def list_custom_modules():
+    db = get_db()
+    rows = db.execute("SELECT * FROM custom_modules ORDER BY sort_order, id").fetchall()
+    return {"items": [dict(r) for r in rows]}

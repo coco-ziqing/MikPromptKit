@@ -144,6 +144,9 @@ def init_db():
                 filename  TEXT NOT NULL DEFAULT '',
                 poster     TEXT DEFAULT '',
                 duration   REAL DEFAULT 0,
+                fps        REAL DEFAULT 0,
+                width      INTEGER DEFAULT 0,
+                height     INTEGER DEFAULT 0,
                 updated_at TEXT DEFAULT (datetime('now','localtime')),
                 FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE
             );
@@ -193,6 +196,75 @@ def init_db():
                 FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE
             );
         """)
+        # 迁移：为旧表添加 fps/width/height 列
+        try:
+            conn.execute("ALTER TABLE prompt_videos ADD COLUMN fps REAL DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE prompt_videos ADD COLUMN width INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE prompt_videos ADD COLUMN height INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        # 视频缓存表
+        try:
+            conn.execute("""CREATE TABLE IF NOT EXISTS video_cache (
+                filename    TEXT PRIMARY KEY,
+                fps         REAL DEFAULT 0,
+                width       INTEGER DEFAULT 0,
+                height      INTEGER DEFAULT 0,
+                duration    REAL DEFAULT 0,
+                cover_exists INTEGER DEFAULT 0,
+                cached_at   TEXT DEFAULT (datetime('now','localtime'))
+            )""")
+        except Exception:
+            pass
+        # 缩略图 hash 缓存表（去重）和元数据表
+        try:
+            conn.execute("""CREATE TABLE IF NOT EXISTS thumb_hash (
+                filename TEXT PRIMARY KEY,
+                hash     TEXT NOT NULL,
+                size     INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now','localtime'))
+            )""")
+        except Exception:
+            pass
+        try:
+            conn.execute("""CREATE TABLE IF NOT EXISTS thumb_meta (
+                filename      TEXT PRIMARY KEY,
+                original_name TEXT NOT NULL DEFAULT '',
+                media_type    TEXT DEFAULT 'image',
+                created_at    TEXT DEFAULT (datetime('now','localtime'))
+            )""")
+        except Exception:
+            pass
+        # collections 表加缩略图字段
+        try:
+            conn.execute("ALTER TABLE collections ADD COLUMN thumbnail TEXT DEFAULT ''")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE collections ADD COLUMN video_filename TEXT DEFAULT ''")
+        except Exception:
+            pass
+        # prompts 表加回收站标记
+        try:
+            conn.execute("ALTER TABLE prompts ADD COLUMN deleted_at TEXT DEFAULT NULL")
+        except Exception:
+            pass
+        # 自定义模块表
+        try:
+            conn.execute("""CREATE TABLE IF NOT EXISTS custom_modules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                sort_order INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now','localtime'))
+            )""")
+        except Exception:
+            pass
         conn.commit()
     except sqlite3.Error as e:
         print("[数据库] 建表失败:", e)
