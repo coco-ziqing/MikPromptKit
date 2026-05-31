@@ -1887,6 +1887,8 @@ const App = {
             document.getElementById('collectionPagination').innerHTML = '';
         }
         this.renderCollectionItems();
+        // 初始化拖拽排序
+        setTimeout(function() { App._initCollectionSort(); }, 100);
     },
 
     renderCollectionItems() {
@@ -1901,7 +1903,7 @@ const App = {
             const tags = JSON.parse(p.tags || '[]');
             const tagHtml = tags.map(t => `<span class="card-badge">${this._escape(t)}</span>`).join('');
             html += `
-                <div class="prompt-card" data-id="${p.id}">
+                <div class="prompt-card" data-id="${p.id}" draggable="true">
                     <div class="card-body">
                         <div class="card-thumb">
                             <div class="card-thumb-inner" onclick="App.showThumbnailPicker(${p.id})">
@@ -2096,7 +2098,7 @@ const App = {
         let html = '<div class="prompt-grid">';
         for (const p of items) {
             html += `
-                <div class="prompt-card">
+                <div class="prompt-card" draggable="true" data-id="${p.id}">
                     <span class="card-badge">${this._escape(p.category)}</span>
                     <div class="card-content">${this._escape(p.content)}</div>
                     ${p.meaning ? `<div class="card-meaning">${this._escape(p.meaning)}</div>` : ''}
@@ -2507,6 +2509,213 @@ const App = {
         }
 
         document.getElementById('dashboardBody').innerHTML = html;
+    },
+
+
+    // ============ ComfyUI 集成 ============
+
+    async openComfyConfig() {
+        document.getElementById('modalComfyUI').style.display = 'flex';
+        document.getElementById('comfyUIConfigBody').innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">加载配置...</p></div>';
+        try {
+            var data = await this.fetchJSON('/api/v2/comfyui/config');
+            if (!data || !data.config) throw new Error('获取失败');
+            this._comfyConfig = data.config;
+            this._renderComfyConfig(data.config);
+        } catch(e) {
+            document.getElementById('comfyUIConfigBody').innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">❌ ' + e.message + '</div>';
+        }
+    },
+
+    _renderComfyConfig(cfg) {
+        var html = '';
+        html += '<div style="margin-bottom:12px;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">ComfyUI 服务器地址</label>';
+        html += '<input type="text" id="comfyServerUrl" class="modal-input" value="' + this._escape(cfg.server_url || 'http://127.0.0.1:8188') + '" placeholder="http://127.0.0.1:8188"></div>';
+
+        html += '<div style="margin-bottom:12px;"><label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">';
+        html += '<input type="checkbox" id="comfyEnabled" ' + (cfg.enabled ? 'checked' : '') + '> 启用 ComfyUI 集成</label></div>';
+
+        // 工作流模板列表
+        var wfs = cfg.workflows || [];
+        html += '<div style="margin-bottom:8px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;">工作流模板</div>';
+        if (wfs.length === 0) {
+            html += '<div style="font-size:12px;color:var(--text-muted);padding:8px;background:var(--hover-bg,#f1f5f9);border-radius:6px;">暂无工作流模板，请先在工作流导入界面导出 API 格式的工作流 JSON</div>';
+        }
+        for (var i = 0; i < wfs.length; i++) {
+            var w = wfs[i];
+            html += '<div style="background:var(--hover-bg,#f1f5f9);border-radius:6px;padding:10px;margin-bottom:8px;">';
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
+            html += '<input type="radio" name="comfyWorkflow" value="' + this._escape(w.id || '') + '" ' + (w.id === cfg.active_workflow ? 'checked' : '') + '>';
+            html += '<strong style="font-size:13px;">' + this._escape(w.name || '未命名') + '</strong>';
+            html += '<span style="font-size:11px;color:var(--text-muted);">' + this._escape(w.description || '') + '</span>';
+            html += '</div>';
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;">';
+            html += '<label>提示词节点 ID: <input type="text" class="wf-param" data-idx="' + i + '" data-field="prompt_node_id" value="' + this._escape(w.prompt_node_id || '6') + '" style="width:50px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;"></label>';
+            html += '<label>提示词字段: <input type="text" class="wf-param" data-idx="' + i + '" data-field="prompt_field" value="' + this._escape(w.prompt_field || 'text') + '" style="width:80px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;"></label>';
+            html += '<label>输出图片节点: <input type="text" class="wf-param" data-idx="' + i + '" data-field="image_output_node_id" value="' + this._escape(w.image_output_node_id || '9') + '" style="width:50px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;"></label>';
+            html += '</div></div>';
+        }
+
+        // 导入工作流 JSON
+        html += '<div style="margin-top:8px;"><button class="btn btn-sm" style="border:1px solid #6366f1;color:#6366f1;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;" onclick="document.getElementById(\'comfyWorkflowFile\').click()">📂 导入工作流 JSON</button>';
+        html += '<input type="file" id="comfyWorkflowFile" accept=".json" style="display:none;" onchange="App._importComfyWorkflow(this)"></div>';
+
+        html += '<div id="comfyImportStatus" style="margin-top:8px;font-size:11px;color:var(--text-muted);"></div>';
+
+        document.getElementById('comfyUIConfigBody').innerHTML = html;
+    },
+
+    _importComfyWorkflow(input) {
+        var file = input.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                var wf = JSON.parse(e.target.result);
+                if (!wf || typeof wf !== 'object') throw new Error('无效的工作流 JSON');
+                var status = document.getElementById('comfyImportStatus');
+                if (!status) return;
+                // 提取节点信息
+                var textNodes = [];
+                for (var key in wf) {
+                    var node = wf[key];
+                    if (node && node.class_type && (node.class_type === 'CLIPTextEncode' || node.class_type === 'CLIPPromptEncode' || (node.inputs && node.inputs.text))) {
+                        textNodes.push(key);
+                    }
+                }
+                var promptNode = textNodes[0] || '6';
+                status.innerHTML = '✅ 已导入工作流，检测到 ' + Object.keys(wf).length + ' 个节点。提示词节点: ' + promptNode;
+                status.style.color = '#059669';
+                // 保存到临时变量
+                App._importedWorkflow = wf;
+                App._importedPromptNode = promptNode;
+            } catch(err) {
+                var status = document.getElementById('comfyImportStatus');
+                if (status) {
+                    status.innerHTML = '❌ ' + err.message;
+                    status.style.color = '#ef4444';
+                }
+            }
+        };
+        reader.readAsText(file);
+    },
+
+    async _saveComfyConfig() {
+        var cfg = {
+            server_url: document.getElementById('comfyServerUrl').value.trim() || 'http://127.0.0.1:8188',
+            enabled: document.getElementById('comfyEnabled').checked,
+            workflows: [],
+            active_workflow: ''
+        };
+        // 收集现有工作流参数
+        var params = document.querySelectorAll('.wf-param');
+        var wfMap = {};
+        for (var i = 0; i < params.length; i++) {
+            var p = params[i];
+            var idx = parseInt(p.getAttribute('data-idx'));
+            var field = p.getAttribute('data-field');
+            if (!wfMap[idx]) wfMap[idx] = {};
+            wfMap[idx][field] = p.value;
+        }
+        // 读取已有工作流
+        var oldCfg = this._comfyConfig || {};
+        var oldWfs = oldCfg.workflows || [];
+        for (var i = 0; i < oldWfs.length; i++) {
+            var w = Object.assign({}, oldWfs[i]);
+            if (wfMap[i]) {
+                if (wfMap[i].prompt_node_id) w.prompt_node_id = wfMap[i].prompt_node_id;
+                if (wfMap[i].prompt_field) w.prompt_field = wfMap[i].prompt_field;
+                if (wfMap[i].image_output_node_id) w.image_output_node_id = wfMap[i].image_output_node_id;
+            }
+            cfg.workflows.push(w);
+        }
+        // 如果有新导入的工作流
+        if (this._importedWorkflow) {
+            var name = prompt('命名此工作流模板:', '文生图');
+            if (name) {
+                var wfId = 'wf_' + Date.now();
+                var wfItem = {
+                    id: wfId,
+                    name: name,
+                    description: '从 JSON 导入',
+                    prompt_node_id: this._importedPromptNode || '6',
+                    prompt_field: 'text',
+                    image_output_node_id: '9',
+                    workflow_json: this._importedWorkflow
+                };
+                cfg.workflows.push(wfItem);
+                cfg.active_workflow = wfId;
+                this._importedWorkflow = null;
+            }
+        }
+        // 选中的工作流
+        var radio = document.querySelector('input[name="comfyWorkflow"]:checked');
+        if (radio) cfg.active_workflow = radio.value;
+
+        var data = await this.fetchJSON('/api/v2/comfyui/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config: cfg })
+        });
+        if (data && data.ok) {
+            this._comfyConfig = cfg;
+            this.showToast('ComfyUI 配置已保存', 'success');
+        } else {
+            this.showToast('保存失败', 'error');
+        }
+    },
+
+    async generateComfyThumbnail() {
+        var pid = this._editingPromptId;
+        if (!pid) { this.showToast('请先打开编辑弹窗', 'error'); return; }
+
+        var cfg = await this.fetchJSON('/api/v2/comfyui/config');
+        if (!cfg || !cfg.config || !cfg.config.enabled) {
+            this.showToast('ComfyUI 未启用，请先配置', 'warning');
+            this.openComfyConfig();
+            return;
+        }
+        if (!cfg.config.active_workflow && (!cfg.config.workflows || cfg.config.workflows.length === 0)) {
+            this.showToast('请先导入 ComfyUI 工作流模板', 'warning');
+            this.openComfyConfig();
+            return;
+        }
+
+        // 取当前编辑框里的提示词
+        var promptText = document.getElementById('editContent').value.trim();
+        if (!promptText) { this.showToast('请先输入提示词内容', 'error'); return; }
+
+        this.showToast('⏳ 正在发送到 ComfyUI 生成...', 'info');
+        var btn = document.querySelector('[onclick*="generateComfyThumbnail"]');
+        if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+
+        try {
+            var body = {
+                prompt_id: pid,
+                prompt_text: promptText,
+                workflow_id: cfg.config.active_workflow || ''
+            };
+            var data = await this.fetchJSON('/api/v2/comfyui/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (data && data.ok) {
+                this.showToast('✅ 生成完成，缩略图已更新', 'success');
+                // 刷新编辑弹窗的缩略图
+                if (data.thumbnail) {
+                    var preview = document.getElementById('editThumbPreview');
+                    if (preview) preview.innerHTML = '<img src="/api/thumbnails/file/' + data.thumbnail + '" style="width:120px;height:80px;object-fit:cover;border-radius:6px;">';
+                    var nameEl = document.getElementById('editThumbName');
+                    if (nameEl) nameEl.textContent = data.thumbnail;
+                }
+            } else {
+                this.showToast('生成失败: ' + (data ? data.error : '未知错误'), 'error');
+            }
+        } catch(e) {
+            this.showToast('生成失败: ' + e.message, 'error');
+        }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-magic"></i> AI 生成'; }
     },
 
 

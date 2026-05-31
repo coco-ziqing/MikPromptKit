@@ -289,6 +289,11 @@ def init_db():
             conn.execute("ALTER TABLE prompt_versions ADD COLUMN change_note TEXT DEFAULT ''")
         except Exception:
             pass
+        # 兼容旧表（collection_items 加 sort_order）
+        try:
+            conn.execute("ALTER TABLE collection_items ADD COLUMN sort_order INTEGER DEFAULT 0")
+        except Exception:
+            pass
         conn.commit()
     except sqlite3.Error as e:
         print("[数据库] 建表失败:", e)

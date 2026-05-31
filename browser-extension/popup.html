@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PromptKit</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; width: 320px; padding: 12px; background: #1e293b; color: #e2e8f0; }
+        .logo { font-size: 16px; font-weight: 700; color: #818cf8; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+        .logo small { font-size: 10px; color: #64748b; font-weight: 400; }
+        .status { font-size: 11px; color: #94a3b8; margin-bottom: 12px; padding: 8px; background: #0f172a; border-radius: 6px; }
+        .status.ok { color: #34d399; }
+        .status.err { color: #ef4444; }
+        label { font-size: 11px; color: #94a3b8; display: block; margin-bottom: 4px; }
+        input, textarea { width: 100%; padding: 6px 8px; border: 1px solid #334155; border-radius: 4px; background: #0f172a; color: #e2e8f0; font-size: 12px; margin-bottom: 8px; }
+        textarea { height: 80px; resize: vertical; }
+        button { width: 100%; padding: 8px; background: #818cf8; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; margin-bottom: 6px; }
+        button:hover { background: #6366f1; }
+        button.secondary { background: #334155; }
+        button.secondary:hover { background: #475569; }
+        .hint { font-size: 10px; color: #64748b; margin-bottom: 8px; }
+        .toast { display: none; padding: 8px; border-radius: 6px; font-size: 11px; margin-bottom: 8px; text-align: center; }
+        .toast.success { display: block; background: #065f46; color: #34d399; }
+        .toast.error { display: block; background: #7f1d1d; color: #fca5a5; }
+    </style>
+</head>
+<body>
+    <div class="logo"><span style="font-size:20px;">🔍</span> PromptKit <small>v3.2</small></div>
+    <div id="status" class="status">检查连接中...</div>
+    
+    <div id="toast" class="toast"></div>
+    
+    <label>服务器地址</label>
+    <input type="text" id="serverUrl" value="http://192.168.0.103:8080">
+    
+    <label>提示词内容 (选中文本自动填入)</label>
+    <textarea id="promptContent" placeholder="在此输入或右键选中文本保存..."></textarea>
+    
+    <label>释义 (可选)</label>
+    <input type="text" id="promptMeaning" placeholder="当前页面标题">
+    
+    <button id="btnSave"><i class="bi bi-save"></i> 保存到 PromptKit</button>
+    <button class="secondary" onclick="window.open('http://192.168.0.103:8080')">打开 PromptKit</button>
+    
+    <div class="hint">💡 在任意页面选中文本 → 右键 → 「保存到 PromptKit」</div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

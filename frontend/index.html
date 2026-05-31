@@ -50,6 +50,8 @@
                     <button class="btn-batch" onclick="App.batchCopy()"><i class="bi bi-files"></i> 批量复制</button>
                     <button class="btn-batch" onclick="App.batchExport('png')" style="border-color:#059669;color:#059669;"><i class="bi bi-card-image"></i> 导出PNG</button>
                     <button class="btn-batch" onclick="App.batchExport('txt')"><i class="bi bi-download"></i> 导出TXT</button>
+                <button class="btn-batch" onclick="App.batchExport('md')"><i class="bi bi-download"></i> 导出MD</button>
+                    <button class="btn-batch" onclick="App.batchExport('md')"><i class="bi bi-download"></i> 导出MD</button>
                     <button class="btn-batch" onclick="App.batchExport('json')"><i class="bi bi-download"></i> 导出JSON</button>
                     <button class="btn-batch" onclick="App.batchExport('pt')" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-box"></i> 导出 .pt 包</button>
                     <button class="btn-batch" onclick="App.batchAddToWordpack()"><i class="bi bi-folder-plus"></i> 添加到词包</button>
@@ -65,6 +67,7 @@
                     <button class="btn-batch" onclick="App.showExportPreview()" style="border-color:#6366f1;color:#6366f1;"><i class="bi bi-eye"></i> 预览导出</button>
                     <button class="btn-batch" onclick="App.batchExport('png')" style="border-color:#059669;color:#059669;"><i class="bi bi-card-image"></i> 导出PNG</button>
                     <button class="btn-batch" onclick="App.batchExport('txt')" style="border-color:#f59e0b;color:#f59e0b;"><i class="bi bi-file-text"></i> 导出TXT</button>
+                <button class="btn-batch" onclick="App.batchExport('md')" style="border-color:#10b981;color:#10b981;"><i class="bi bi-markdown"></i> 导出MD</button>
                     <button class="btn-batch" onclick="App.batchExport('json')" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-file-code"></i> 导出JSON</button>
                     <button class="btn-batch" onclick="App.batchExport('pt')" style="border-color:#06b6d4;color:#06b6d4;"><i class="bi bi-box"></i> 导出 .pt 包</button>
                     <button class="btn-batch btn-batch-cancel" onclick="App.clearEditSelection()">取消选择</button>
@@ -393,6 +396,7 @@
                         <button class="btn btn-sm" style="border:1px solid #6366f1;color:#6366f1;background:transparent;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="App.openEditThumbnailPicker()">图片</button>
                         <button class="btn btn-sm" style="border:1px solid #8b5cf6;color:#8b5cf6;background:transparent;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="App.openEditVideoPicker()">视频</button>
                         <button class="btn btn-sm" style="border:1px solid #ef4444;color:#ef4444;background:transparent;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" id="editClearThumbBtn" onclick="App.clearEditThumbnail()">清除</button>
+                        <button class="btn btn-sm" style="border:1px solid #8b5cf6;color:#8b5cf6;background:transparent;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="App.generateComfyThumbnail()" title="用 ComfyUI 生成缩略图"><i class="bi bi-magic"></i> AI 生成</button>
                     </div>
                 </div>
                 <label>内容</label>
@@ -507,6 +511,25 @@
             <div id="diffBody" class="modal-body" style="flex:1;overflow-y:auto;font-family:monospace;font-size:12px;white-space:pre-wrap;"></div>
             <div class="modal-footer">
                 <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalVersionDiff').style.display='none'">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ComfyUI 配置弹窗 -->
+    <div class="modal-overlay" id="modalComfyUI" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:600px;max-height:80vh;display:flex;flex-direction:column;">
+            <div class="modal-header">
+                <h5><i class="bi bi-magic"></i> ComfyUI 集成配置</h5>
+                <button class="header-btn-sm" onclick="document.getElementById('modalComfyUI').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body" style="flex:1;overflow-y:auto;">
+                <div id="comfyUIConfigBody">
+                    <div style="text-align:center;padding:20px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">加载配置...</p></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary btn-sm" onclick="App._saveComfyConfig()"><i class="bi bi-check"></i> 保存配置</button>
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalComfyUI').style.display='none'">关闭</button>
             </div>
         </div>
     </div>

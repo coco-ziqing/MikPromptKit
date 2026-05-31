@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "PromptKit 收藏助手",
+  "version": "1.0.0",
+  "description": "右键保存提示词到 PromptKit，支持选中文本一键收藏",
+  "permissions": ["contextMenus", "storage", "activeTab"],
+  "host_permissions": ["http://192.168.0.103:8080/*", "http://127.0.0.1:8080/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["content.js"]
+  }],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

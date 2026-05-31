@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-31T10:31:36.449Z",
+  "updatedAt": "2026-05-31T15:00:05.766Z",
   "entries": {
     "memory:memory/2026-05-29.md:88:118": {
       "key": "memory:memory/2026-05-29.md:88:118",
@@ -73,17 +73,18 @@
       "endLine": 31,
       "source": "memory",
       "snippet": "# 2026-05-29 Session — Phase 3 Completion + Polish (23:02) ## 本日开发成果 从 Phase 1 基准版到 Phase 3 完整功能，再经大量细节打磨，完成 v3.0 正式版本。 ### Phase 1 — 基准版 (13:53) - FastAPI + SQLite (FTS5) 骨架 - 4 模块 132 条种子数据 - WebUI 侧边栏、分类筛选、搜索、分页、复制 ### Phase 2 — 增强版 (16:00) - 收藏夹（多分组 CRUD + 卡片竖排徽标 + popover 菜单） - 自定义词包（创建/批量添加/TXT+JSON 导出） - 批量操作（复选/复制/导出/加词包） - 最近使用 / 智能推荐 / 深色主题 / 列数滑块 / F5 保持视图 ### Phase 3 — Seedance (16:30) - 第五模块 `seedance` 19 条场景模板 - 提示词组装器 / 镜头速查 / 引用语法 / 画廊 ### 缩略图系统 (17:00-17:30) - 上传 + Pillow 3:2 裁剪 + 图库 + 原图查看器（滚轮缩放+拖拽） - 视频上传 + ffmpeg 封面提取 + 悬停循环播放 - 视频裁剪压缩弹窗（滑块选起止时间 + 质量选择） - 视频播放器（时间轴滑块 + 逐帧控制 ±0.1s） ### 查看器分栏改造 (20:00-21:00) - 原图/原视频查看器改为左右分栏 - 右栏显示：模块名 + 提示词内容 + 释义 + 标签 + 复制按钮 + 收藏按钮",
-      "recallCount": 3,
+      "recallCount": 4,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 3,
+      "totalScore": 4,
       "maxScore": 1,
       "firstRecalledAt": "2026-05-31T06:54:47.333Z",
-      "lastRecalledAt": "2026-05-31T10:31:36.449Z",
+      "lastRecalledAt": "2026-05-31T15:00:05.766Z",
       "queryHashes": [
         "b5e9294593d8",
         "40caf6bd9065",
-        "451b2b60fd5f"
+        "451b2b60fd5f",
+        "599d8b4b7412"
       ],
       "recallDays": [
         "2026-05-31"

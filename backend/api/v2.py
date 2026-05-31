@@ -38,7 +38,7 @@ def list_collections():
                 SELECT pt.filename FROM collection_items ci
                 LEFT JOIN prompt_thumbnails pt ON pt.prompt_id = ci.prompt_id
                 WHERE ci.collection_id = ? AND pt.filename IS NOT NULL
-                ORDER BY ci.id DESC LIMIT 1
+                ORDER BY ci.sort_order ASC, ci.id DESC LIMIT 1
             """, [item["id"]]).fetchone()
             item["thumbnail"] = thumb["filename"] if thumb else None
         # 补充 video_filename：从最新关联的词条取
@@ -47,7 +47,7 @@ def list_collections():
                 SELECT pv.filename FROM collection_items ci
                 LEFT JOIN prompt_videos pv ON pv.prompt_id = ci.prompt_id
                 WHERE ci.collection_id = ? AND pv.filename IS NOT NULL
-                ORDER BY ci.id DESC LIMIT 1
+                ORDER BY ci.sort_order ASC, ci.id DESC LIMIT 1
             """, [item["id"]]).fetchone()
             if vrow:
                 item["video_filename"] = vrow["filename"]
@@ -179,6 +179,18 @@ def add_to_collection(cid: int, data: dict):
         return {"ok": True}
     except Exception:
         raise HTTPException(409, "该词条已在收藏中")
+
+
+@router.post("/collections/{cid}/reorder")
+def reorder_collection(cid: int, data: dict):
+    """重排收藏夹内词条顺序"""
+    db = get_db()
+    order = data.get("order", [])
+    for idx, pid in enumerate(order):
+        db.execute("UPDATE collection_items SET sort_order=? WHERE collection_id=? AND prompt_id=?",
+                   [idx, cid, pid])
+    db.commit()
+    return {"ok": True}
 
 
 @router.delete("/collections/{cid}/items/{prompt_id}")
@@ -527,6 +539,20 @@ def batch_export(data: dict):
         content = json.dumps(export_data, ensure_ascii=False, indent=2)
         return Response(content=content, media_type="application/json",
                         headers={"Content-Disposition": 'attachment; filename="prompts_export.json"'})
+    elif fmt == "md":
+        lines = [f"# 提示词批量导出\n",
+                 f"导出时间: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')}  |  共 {len(rows)} 条\n",
+                 "---\n"]
+        for i, r in enumerate(rows, 1):
+            lines.append(f"### {i}. {r['content']}\n")
+            lines.append(f"- **模块**: {r['module']}  |  **分类**: {r['category']}")
+            if r["meaning"]:
+                lines.append(f"- **释义**: {r['meaning']}")
+            lines.append("")
+        content = "\n".join(lines)
+        filename = "prompts_export.md"
+        return Response(content=content, media_type="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="' + filename + '"'})
     else:
         lines = [f"# 批量导出 - {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')}",
                  f"# 共 {len(rows)} 条", "", "---", ""]

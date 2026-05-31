@@ -26,6 +26,8 @@ from api.tags import router as tags_router
 from api.stats import router as stats_router
 from api.templates import router as templates_router
 from api.workflow import router as workflow_router
+from api.comfyui import router as comfyui_router
+from api.ocr import router as ocr_router
 
 
 @asynccontextmanager
@@ -108,6 +110,8 @@ app.include_router(tags_router)
 app.include_router(stats_router)
 app.include_router(templates_router)
 app.include_router(workflow_router)
+app.include_router(comfyui_router)
+app.include_router(ocr_router)
 
 
 # ============ 备份管理 API ============
