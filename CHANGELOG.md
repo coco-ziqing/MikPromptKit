@@ -1,6 +1,46 @@
 # Changelog — PromptKit
 
-## v3.1.1 (2026-05-31) — 语义搜索 + 版本管理
+## v3.1.3 (2026-05-31) — 提示词模板变量
+
+### 📝 模板变量系统
+- **`{{variable}}` 语法**：提示词中嵌入 `{{style}}`、`{{subject}}` 等运行时变量
+- **自动识别填充弹窗**：点击复制时自动检测模板变量，弹出填充分窗
+- **实时预览**：弹窗顶部显示变量替换后的效果预览
+- **未填充提醒**：复制时如果有变量未填充，自动警告提示
+- **后端 API**：`POST /api/v2/templates/parse` + `POST /api/v2/templates/render`
+
+## v3.1.2 (2026-05-31) — LLM Playground + 体验打磨
+
+### 🎮 LLM Playground
+- **Ollama 支持**：本地模型在线测试（`http://localhost:11434`）
+- **OpenAI 兼容 API**：支持任何 OpenAI 格式的远程 API
+- **配置持久化**：provider / model / temperature / system_prompt 存储到数据库
+- **Token 统计**：输入/输出 token 数显示
+- **深色终端风格结果区**：LLM 响应以等宽字体展示
+- **后端 API**：`GET/POST /api/playground/config` + `POST /api/playground/test`
+
+### ⌨️ 快捷键系统
+- `Ctrl+N` 新建提示词 | `Ctrl+E` 切换编辑模式
+- `Ctrl+D` 批量删除 | `Ctrl+S` 保存编辑弹窗
+- `?` 显示快捷键帮助面板
+
+### 🏷️ 标签自动补全 + 批量标签编辑
+- 编辑弹窗标签输入框自动建议已有标签（269 个）
+- 编辑模式工具栏「批量标签」按钮：批量添加/移除标签
+- 后端 API：`GET /api/v2/tags/list` + `POST /api/v2/tags/batch`
+
+### 📊 统计仪表盘
+- 概览卡片：总词条 / 今日使用 / 收藏 / 回收站
+- 模块分布：横向柱状图展示各模块词条数
+- 使用频率 TOP 10：按使用次数排名
+- 标签云 TOP 20：字号随使用量变化
+- 后端 API：`GET /api/v2/stats/dashboard`
+
+### 📱 移动端适配
+- 768px 以下汉堡菜单 `☰` + 侧栏遮罩层
+- 导航栏收缩、列数滑块隐藏、卡片单列
+- 批量操作栏水平滚动、弹窗 95vw 自适应
+- 筛选栏自动堆叠、自动关闭侧栏
 
 ### 🧠 v3.1.1 — 语义搜索
 - **Sentence-BERT 向量搜索引擎**：基于 `all-MiniLM-L6-v2` 模型，384维语义向量

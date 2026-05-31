@@ -2,7 +2,7 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit)
-- 版本：v3.1.1 (2026-05-31)
+- 版本：v3.1.3 (2026-05-31)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\start.bat`
 - 默认端口：8080
@@ -10,14 +10,24 @@
 
 ## 技术栈
 - Python 3.10+ / FastAPI / Uvicorn / SQLite (WAL + FTS5)
-- 前端：Bootstrap 5 CDN + Vanilla JS SPA (~4500 行)
+- 前端：Bootstrap 5 CDN + Vanilla JS SPA (~4700 行)
 - 图片处理：Pillow（自动 3:2 裁剪）
 - 视频处理：ffmpeg（封面提取 + 裁剪压缩）
 - 语义搜索：sentence-transformers + all-MiniLM-L6-v2
 - 版本管理：Git + Git tag
 
 ## 项目规模
-- 后端 API 端点：86+ 个
+- 后端 API 端点：100+ 个
+- 源代码总量：~12000 行
+- 数据库表：22 张
+- 种子词条：165 条（5 模块）
+
+## Git Tag 节点
+- `v3.1.3` — 提示词模板变量（当前）
+- `v3.1.2` — LLM Playground + 快捷键 + 标签 + 统计 + 移动端
+- `v3.1.1` — 语义搜索 + 版本管理
+- `v3.0.0.2` — .pt 包系统 + 导出名称优化 + 拖拽增强
+- `v3.0.0.1` — 基础版本
 - 源代码总量：~11000 行
 - 数据库表：21 张
 - 种子词条：165 条（5 模块）

@@ -350,6 +350,25 @@ body.dark-theme .card-action-btn[title="复制分组"]:hover { background: rgba(
     font-size: 14px; font-weight: 600;
 }
 .rec-list { padding: 12px; flex: 1; overflow-y: auto; }
+
+/* 标签自动补全 */
+.tag-suggestions {
+    position: absolute;
+    top: 100%; left: 0; right: 0;
+    max-height: 150px; overflow-y: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 0 0 6px 6px;
+    z-index: 10;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+.tag-suggestions .tag-sug-item {
+    padding: 6px 10px; font-size: 12px; cursor: pointer;
+    color: var(--text-main);
+}
+.tag-suggestions .tag-sug-item:hover {
+    background: var(--hover-bg,#f1f5f9);
+}
 .rec-empty { text-align: center; color: #94a3b8; padding: 40px 0; font-size: 13px; }
 .rec-item {
     background: var(--bg-card); border: 1px solid var(--border-color);
@@ -428,13 +447,45 @@ body.dark-theme .card-action-btn[title="复制分组"]:hover { background: rgba(
 /* ============ 响应式 ============ */
 @media (max-width: 768px) {
     .sidebar { display: none; }
+    .sidebar.mobile-show { display: block; position: fixed; z-index: 200; width: 260px; top: var(--nav-height); left: 0; bottom: 0; background: var(--bg-sidebar,#f8fafc); overflow-y: auto; }
+    #btnMenu { display: inline-flex !important; }
     .main-content { margin-left: 0; padding: 12px; }
     .main-content.with-rec { margin-right: 0; }
+    .main-content.sidebar-open { margin-left: 0; }
     .prompt-grid { grid-template-columns: 1fr; }
     .search-box { max-width: 100%; }
     .header-actions .badge { display: none; }
     .recommend-panel { width: 100%; }
+    .navbar-tool { padding: 0 8px; overflow-x: auto; gap: 2px; }
+    .navbar-tool .brand { font-size: 14px; margin-right: 8px; flex-shrink: 0; }
+    .navbar-tool .brand small { display: none; }
+    .header-btn { width: 32px; height: 32px; font-size: 14px; flex-shrink: 0; }
+    .column-slider-wrap { display: none; }
+    .search-box input { font-size: 12px; height: 30px; padding: 0 28px 0 10px; }
+    .search-mode-btn { right: 24px; font-size: 12px; }
+    .batch-bar { flex-wrap: nowrap; overflow-x: auto; padding: 8px 10px; gap: 4px; }
+    .batch-bar .btn-batch { font-size: 11px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0; }
+    .modal-content { width: 95vw; max-width: 95vw; margin: 10px auto; }
+    .modal-wide { width: 98vw; max-width: 98vw; }
+    .view-home-scroll { padding: 0; }
+    .page-header h3 { font-size: 15px; }
+    .count-info { font-size: 11px; }
+    .prompt-card .card-content { font-size: 13px; }
+    .edit-filter-bar > div { flex-direction: column; }
+    .edit-filter-bar input, .edit-filter-bar select { width: 100% !important; min-width: 0 !important; }
+    .header-actions .badge { display: none; }
+    #headerStats { font-size: 10px; padding: 2px 6px; }
 }
+
+/* 侧栏遮罩 */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 150;
+}
+.sidebar-overlay.show { display: block; }
 
 /* ============ Seedance 视图 ============ */
 .seedance-tabs {

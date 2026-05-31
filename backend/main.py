@@ -21,6 +21,10 @@ from api.thumbnails import router as thumbnails_router
 from api.exporter import router as exporter_router
 from api.versions import router as versions_router
 from api.search import router as search_router
+from api.playground import router as playground_router
+from api.tags import router as tags_router
+from api.stats import router as stats_router
+from api.templates import router as templates_router
 
 
 @asynccontextmanager
@@ -98,6 +102,10 @@ app.include_router(thumbnails_router)
 app.include_router(exporter_router)
 app.include_router(versions_router)
 app.include_router(search_router)
+app.include_router(playground_router)
+app.include_router(tags_router)
+app.include_router(stats_router)
+app.include_router(templates_router)
 
 
 # ============ 备份管理 API ============

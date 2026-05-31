@@ -10,7 +10,8 @@
 </head>
 <body>
     <header class="navbar-tool">
-        <div class="brand" onclick="App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> PromptKit <small>v3.1.1</small></div>
+        <button class="header-btn" id="btnMenu" onclick="App.toggleMobileMenu()" style="display:none;" title="菜单"><i class="bi bi-list"></i></button>
+        <div class="brand" onclick="App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> PromptKit <small>v3.1.3</small></div>
         <div class="search-box" id="globalSearchBox"><input type="text" id="searchInput" placeholder="搜索提示词，Ctrl+F 快速定位" autocomplete="off"><i class="bi bi-search search-icon"></i><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()" title="切换搜索模式">🔤</button></div>
         <div class="header-actions">
             <button class="header-btn" onclick="App.switchView('home')" id="navHome" title="首页词库"><i class="bi bi-house-door"></i></button>
@@ -28,11 +29,14 @@
             <span class="header-divider"></span>
             <button class="header-btn" onclick="App.toggleBatchMode()" id="btnBatch" title="批量选择"><i class="bi bi-check2-square"></i></button>
             <button class="header-btn" onclick="App.toggleTheme()" id="btnTheme" title="切换深色模式"><i class="bi bi-moon-stars"></i></button>
+            <button class="header-btn" onclick="App.openPlayground()" id="btnPlayground" title="LLM Playground 测试提示词"><i class="bi bi-cpu"></i></button>
             <button class="header-btn" onclick="App.showBackupInfo()" id="btnBackup" title="数据库备份"><i class="bi bi-database"></i></button>
+            <button class="header-btn" onclick="App.showDashboard()" id="btnDashboard" title="统计仪表盘"><i class="bi bi-bar-chart"></i></button>
             <span class="header-divider"></span>
             <span id="headerStats" class="badge bg-light text-dark" style="font-size:12px;">加载中...</span>
         </div>
     </header>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="App.toggleMobileMenu()"></div>
     <nav class="sidebar" id="sidebar"></nav>
     <aside class="recommend-panel" id="recommendPanel"><div class="rec-header"><span><i class="bi bi-stars"></i> 智能推荐</span><button class="header-btn-sm" onclick="App.closeRecommend()">&times;</button></div><div id="recommendList" class="rec-list"><div class="rec-empty">点击提示词查看推荐</div></div></aside>
     <main class="main-content" id="mainContent">
@@ -409,7 +413,10 @@
                 <label>分类</label>
                 <input type="text" id="editCategory" class="modal-input" placeholder="二级分类名">
                 <label>标签（JSON数组）</label>
-                <input type="text" id="editTags" class="modal-input" placeholder='["自然","温暖"]'>
+                <div style="position:relative;">
+                    <input type="text" id="editTags" class="modal-input" placeholder='["自然","温暖"]' autocomplete="off">
+                    <div id="tagSuggestions" class="tag-suggestions" style="display:none;"></div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-danger btn-sm" onclick="App.deleteEditPrompt()" id="editDeleteBtn" style="margin-right:auto;">删除</button>
@@ -499,6 +506,73 @@
             <div id="diffBody" class="modal-body" style="flex:1;overflow-y:auto;font-family:monospace;font-size:12px;white-space:pre-wrap;"></div>
             <div class="modal-footer">
                 <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalVersionDiff').style.display='none'">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 统计仪表盘弹窗 -->
+    <div class="modal-overlay" id="modalDashboard" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:640px;max-height:80vh;display:flex;flex-direction:column;">
+            <div class="modal-header">
+                <h5><i class="bi bi-bar-chart"></i> 统计仪表盘</h5>
+                <button class="header-btn-sm" onclick="document.getElementById('modalDashboard').style.display='none'">&times;</button>
+            </div>
+            <div id="dashboardBody" class="modal-body" style="flex:1;overflow-y:auto;">
+                <div style="text-align:center;padding:30px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">加载统计数据...</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模板变量填充弹窗 -->
+    <div class="modal-overlay" id="modalTemplateVars" style="display:none;z-index:510;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:480px;">
+            <div class="modal-header">
+                <h5><i class="bi bi-pencil-square"></i> 填写模板变量</h5>
+                <button class="header-btn-sm" onclick="document.getElementById('modalTemplateVars').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="tmplPreview" style="font-size:12px;color:var(--text-muted);background:var(--hover-bg,#f1f5f9);padding:10px 12px;border-radius:6px;margin-bottom:12px;white-space:pre-wrap;word-break:break-word;"></div>
+                <div id="tmplFields"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalTemplateVars').style.display='none'">取消</button>
+                <button class="btn btn-primary btn-sm" onclick="App._tmplCopy()"><i class="bi bi-copy"></i> 复制并填充</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LLM Playground 弹窗 -->
+    <div class="modal-overlay" id="modalPlayground" style="display:none;z-index:510;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:720px;max-height:85vh;display:flex;flex-direction:column;">
+            <div class="modal-header">
+                <h5><i class="bi bi-cpu"></i> LLM Playground</h5>
+                <button class="header-btn-sm" onclick="document.getElementById('modalPlayground').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+                <!-- 配置栏 -->
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px;background:var(--hover-bg,#f1f5f9);border-radius:8px;flex-shrink:0;">
+                    <select id="pgProvider" class="modal-input" style="width:auto;font-size:12px;padding:4px 8px;" onchange="App._pgToggleProvider()">
+                        <option value="ollama">🦙 Ollama (本地)</option>
+                        <option value="openai">☁️ OpenAI 兼容</option>
+                    </select>
+                    <input type="text" id="pgModel" class="modal-input" placeholder="模型名" style="width:130px;font-size:12px;padding:4px 8px;">
+                    <input type="text" id="pgUrl" class="modal-input" placeholder="API 地址" style="flex:1;min-width:120px;font-size:12px;padding:4px 8px;">
+                    <input type="password" id="pgKey" class="modal-input" placeholder="API Key (OpenAI)" style="width:150px;font-size:12px;padding:4px 8px;display:none;" id="pgKeyField">
+                    <label style="font-size:11px;color:var(--text-muted);white-space:nowrap;">🌡️ <input type="number" id="pgTemp" value="0.7" step="0.1" min="0" max="2" style="width:50px;font-size:12px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-main);"></label>
+                </div>
+                <!-- 系统提示词 -->
+                <textarea id="pgSystem" class="modal-input" placeholder="系统提示词（可选）" rows="1" style="font-size:12px;padding:6px 8px;flex-shrink:0;"></textarea>
+                <!-- 用户提示词 -->
+                <textarea id="pgPrompt" class="modal-input" placeholder="输入提示词内容..." rows="4" style="font-size:13px;padding:8px 10px;flex:1;min-height:80px;font-family:var(--font-mono,monospace);"></textarea>
+                <!-- 操作按钮 -->
+                <div style="display:flex;gap:8px;flex-shrink:0;">
+                    <button class="btn btn-primary btn-sm" onclick="App._pgRun()" id="btnPgRun" style="flex:1;"><i class="bi bi-play-fill"></i> 运行</button>
+                    <button class="btn btn-secondary btn-sm" onclick="App._pgClear()">清空</button>
+                    <button class="btn btn-sm" style="border:1px solid var(--border-color);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;" onclick="App._pgSettings()">⚙️</button>
+                </div>
+                <!-- 结果区 -->
+                <div id="pgResult" style="display:none;padding:10px 12px;background:#0f172a;color:#e2e8f0;border-radius:8px;font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto;font-family:monospace;"></div>
+                <div id="pgStatus" style="font-size:11px;color:var(--text-muted);text-align:center;flex-shrink:0;"></div>
             </div>
         </div>
     </div>

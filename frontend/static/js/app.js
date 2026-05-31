@@ -450,6 +450,12 @@ const App = {
     },
 
     handleCopy(id, content) {
+        // 检查是否包含模板变量 {{...}}
+        var varMatch = content.match(/\{\{\w+\}\}/g);
+        if (varMatch && varMatch.length > 0) {
+            this._showTemplateFillModal(id, content);
+            return;
+        }
         this.copyText(content);
         this.trackUsage(id);
         const card = document.querySelector(`.prompt-card[data-id="${id}"]`);
@@ -459,6 +465,71 @@ const App = {
         }
         // 打开推荐
         this.showRecommend(id);
+    },
+
+    // ============ 模板变量 ============
+
+    async _showTemplateFillModal(id, content) {
+        try {
+            var data = await this.fetchJSON('/api/v2/templates/parse', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: content })
+            });
+            if (!data || !data.variables || data.variables.length === 0) {
+                this.copyText(content);
+                this.trackUsage(id);
+                return;
+            }
+            this._tmplPromptId = id;
+            this._tmplOriginal = content;
+            this._tmplVars = data.variables;
+            document.getElementById('tmplPreview').textContent = data.preview;
+            var fieldsHtml = '';
+            for (var i = 0; i < data.variables.length; i++) {
+                var v = data.variables[i];
+                fieldsHtml += '<div style="margin-bottom:8px;">';
+                fieldsHtml += '<label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:2px;">' + this._escape(v.name) + '</label>';
+                fieldsHtml += '<input type="text" class="modal-input tmpl-var-input" data-var="' + v.name + '" placeholder="输入 ' + v.name + '" style="font-size:13px;">';
+                fieldsHtml += '</div>';
+            }
+            document.getElementById('tmplFields').innerHTML = fieldsHtml;
+            document.getElementById('modalTemplateVars').style.display = 'flex';
+            setTimeout(function() {
+                var first = document.querySelector('.tmpl-var-input');
+                if (first) first.focus();
+            }, 100);
+        } catch (e) {
+            this.copyText(content);
+            this.trackUsage(id);
+        }
+    },
+
+    async _tmplCopy() {
+        var values = {};
+        var inputs = document.querySelectorAll('.tmpl-var-input');
+        for (var i = 0; i < inputs.length; i++) {
+            values[inputs[i].getAttribute('data-var')] = inputs[i].value.trim() || ('{{' + inputs[i].getAttribute('data-var') + '}}');
+        }
+        try {
+            var data = await this.fetchJSON('/api/v2/templates/render', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: this._tmplOriginal, values: values })
+            });
+            if (data && data.ok && data.rendered) {
+                this.copyText(data.rendered);
+                if (this._tmplPromptId) this.trackUsage(this._tmplPromptId);
+                document.getElementById('modalTemplateVars').style.display = 'none';
+                if (data.has_unfilled) {
+                    this.showToast('部分变量未填充: ' + data.unfilled.join(', '), 'warning');
+                } else {
+                    this.showToast('已复制（模板已填充）', 'success');
+                }
+            }
+        } catch (e) {
+            this.showToast('模板渲染失败', 'error');
+        }
     },
 
     // ============ 智能推荐 ============
@@ -2359,7 +2430,152 @@ const App = {
         }
     },
 
-    // ============ 版本历史 ============
+        // ============ 统计仪表盘 ============
+
+    async showDashboard() {
+        document.getElementById('modalDashboard').style.display = 'flex';
+        document.getElementById('dashboardBody').innerHTML = '<div style="text-align:center;padding:30px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">加载统计数据...</p></div>';
+        try {
+            var data = await this.fetchJSON('/api/v2/stats/dashboard');
+            if (!data) throw new Error('获取失败');
+            this._renderDashboard(data);
+        } catch(e) {
+            document.getElementById('dashboardBody').innerHTML = '<div style="padding:30px;text-align:center;color:#ef4444;">❌ ' + e.message + '</div>';
+        }
+    },
+
+    _renderDashboard(d) {
+        var html = '';
+
+        // 概览卡片
+        html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">';
+        var cards = [
+            {label:'总词条', val:d.total_prompts, icon:'📝'},
+            {label:'今日使用', val:d.today_usage, icon:'☀️'},
+            {label:'收藏', val:d.total_collections, icon:'⭐'},
+            {label:'回收站', val:d.trash_count, icon:'🗑️'}
+        ];
+        for (var i = 0; i < cards.length; i++) {
+            html += '<div style="background:var(--hover-bg,#f1f5f9);border-radius:8px;padding:12px;text-align:center;">';
+            html += '<div style="font-size:20px;">' + cards[i].icon + '</div>';
+            html += '<div style="font-size:20px;font-weight:700;">' + cards[i].val + '</div>';
+            html += '<div style="font-size:11px;color:var(--text-muted);">' + cards[i].label + '</div></div>';
+        }
+        html += '</div>';
+
+        // 模块分布
+        if (d.modules && d.modules.length > 0) {
+            html += '<div style="margin-bottom:16px;"><div style="font-size:14px;font-weight:600;margin-bottom:8px;">📊 模块分布</div>';
+            var maxCount = d.modules[0].count;
+            for (var i = 0; i < d.modules.length; i++) {
+                var m = d.modules[i];
+                var pct = maxCount > 0 ? (m.count / maxCount * 100).toFixed(0) : 0;
+                html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px;">';
+                html += '<span style="width:80px;flex-shrink:0;">' + this._escape(m.name) + '</span>';
+                html += '<div style="flex:1;height:18px;background:var(--border-color);border-radius:4px;overflow:hidden;">';
+                html += '<div style="width:' + pct + '%;height:100%;background:#818cf8;border-radius:4px;display:flex;align-items:center;padding-left:6px;color:#fff;font-size:10px;">' + (pct > 15 ? m.count : '') + '</div></div>';
+                html += '<span style="width:30px;text-align:right;color:var(--text-muted);">' + m.count + '</span></div>';
+            }
+            html += '</div>';
+        }
+
+        // 使用频率 TOP 10
+        if (d.top_used && d.top_used.length > 0) {
+            html += '<div style="margin-bottom:16px;"><div style="font-size:14px;font-weight:600;margin-bottom:8px;">🏆 使用频率 TOP 10</div>';
+            html += '<div style="font-size:11px;">';
+            for (var i = 0; i < d.top_used.length; i++) {
+                var t = d.top_used[i];
+                html += '<div style="display:flex;align-items:center;padding:4px 8px;border-bottom:1px solid var(--border-color);gap:8px;">';
+                html += '<span style="color:var(--text-muted);width:20px;">#' + (i+1) + '</span>';
+                html += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + this._escape(t.content) + '</span>';
+                html += '<span style="color:var(--text-muted);">' + t.usage_count + ' 次</span>';
+                html += '</div>';
+            }
+            html += '</div></div>';
+        }
+
+        // 标签 TOP 20
+        if (d.tags && d.tags.length > 0) {
+            html += '<div style="margin-bottom:8px;"><div style="font-size:14px;font-weight:600;margin-bottom:8px;">🏷️ 标签分布 TOP 20</div>';
+            html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+            for (var i = 0; i < d.tags.length; i++) {
+                var tg = d.tags[i];
+                var sz = Math.min(16, Math.max(11, 10 + tg.count));
+                html += '<span style="font-size:' + sz + 'px;padding:3px 10px;background:var(--hover-bg,#f1f5f9);border-radius:12px;color:var(--text-main);">' + this._escape(tg.name) + '<span style="color:var(--text-muted);margin-left:4px;font-size:10px;">×' + tg.count + '</span></span>';
+            }
+            html += '</div></div>';
+        }
+
+        document.getElementById('dashboardBody').innerHTML = html;
+    },
+
+
+    // ============ 标签自动补全 ============
+
+    _onTagInput() {
+        var inp = document.getElementById('editTags');
+        var sug = document.getElementById('tagSuggestions');
+        if (!inp || !sug || !this._allTags) return;
+        var val = inp.value;
+        var cp = inp.selectionStart || 0;
+        var bef = val.substring(0, cp);
+        var lq = bef.lastIndexOf('"');
+        var cur = lq >= 0 ? bef.substring(lq + 1) : val;
+        cur = cur.replace(/[\[\],\s"]/g, '');
+        if (!cur) { sug.style.display = 'none'; return; }
+        var ms = this._allTags.filter(function(t) {
+            return t.toLowerCase().indexOf(cur.toLowerCase()) >= 0;
+        });
+        if (ms.length === 0) { sug.style.display = 'none'; return; }
+        var h = '';
+        for (var i = 0; i < Math.min(ms.length, 8); i++) {
+            var tag = ms[i];
+            h += '<div class="tag-sug-item" onmousedown="App._pickTag(\'' + tag.replace(/'/g, "\\'") + '\')">' + this._escape(tag) + '</div>';
+        }
+        sug.innerHTML = h;
+        sug.style.display = 'block';
+    },
+
+    _pickTag(tag) {
+        var inp = document.getElementById('editTags');
+        if (!inp) return;
+        try {
+            var arr = JSON.parse(inp.value || '[]');
+            if (!Array.isArray(arr)) arr = [];
+            if (arr.indexOf(tag) < 0) arr.push(tag);
+            inp.value = JSON.stringify(arr);
+        } catch(e) {
+            var cur = inp.value.trim();
+            inp.value = cur ? cur + ',"' + tag + '"' : '["' + tag + '"]';
+        }
+        var sug = document.getElementById('tagSuggestions');
+        if (sug) sug.style.display = 'none';
+        inp.focus();
+    },
+
+    async batchTag() {
+        var ids = [...this.state.batchSelected];
+        if (ids.length === 0) { this.showToast('请先选择词条', 'error'); return; }
+        var tags = prompt('输入标签（多个用逗号分隔）:\n例如: 自然,温暖,户外');
+        if (!tags) return;
+        var list = tags.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t; });
+        if (list.length === 0) return;
+        var mode = confirm('确定添加标签？\n\n取消 = 移除这些标签') ? 'add' : 'remove';
+        var data = await this.fetchJSON('/api/v2/tags/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt_ids: ids, tags: list, mode: mode })
+        });
+        if (data && data.ok) {
+            this.showToast('已' + (mode === 'add' ? '添加' : '移除') + ' ' + data.updated + ' 条词条的标签', 'success');
+            this.loadPrompts();
+        } else {
+            this.showToast('操作失败', 'error');
+        }
+    },
+
+
+// ============ 版本历史 ============
 
     async showVersionHistory(promptId) {
         document.getElementById('modalVersions').style.display = 'flex';
@@ -2530,6 +2746,21 @@ const App = {
     // ============ 编辑模式 ============
 
     async openEditModal(promptId) {
+        try {
+            var td = await this.fetchJSON('/api/v2/tags/list');
+            if (td && td.tags) this._allTags = td.tags;
+        } catch(e) {}
+        var ti = document.getElementById('editTags');
+        if (ti && !ti._bound) {
+            ti._bound = true;
+            var self = this;
+            ti.addEventListener('input', function() { self._onTagInput(); });
+            ti.addEventListener('blur', function() { setTimeout(function() {
+                var el = document.getElementById('tagSuggestions');
+                if (el) el.style.display = 'none';
+            }, 200); });
+            ti.addEventListener('focus', function() { if (this.value) self._onTagInput(); });
+        }
         var data = await this.fetchJSON('/api/prompts/' + promptId);
         if (!data) return;
         this._editingPromptId = promptId;
