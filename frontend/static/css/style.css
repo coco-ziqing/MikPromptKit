@@ -175,8 +175,23 @@ body {
     background: var(--bg-card); border-radius: var(--radius);
     box-shadow: var(--card-shadow); padding: 14px 16px;
     transition: all 0.2s; border: 1px solid transparent; position: relative;
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
 }
 .prompt-card:hover { box-shadow: var(--card-hover-shadow); border-color: var(--border-color); }
+
+/* ============ 缩略图 ============ */
+.card-thumb {
+    width: 100%;
+    aspect-ratio: 3 / 2;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 10px;
+    position: relative;
+    background: var(--hover-bg,#f1f5f9);
+    flex-shrink: 0;
+}
 .prompt-card .card-badge {
     display: inline-block; font-size: 10px; padding: 2px 8px;
     border-radius: 4px; background: #eef2ff; color: var(--primary); margin-bottom: 6px;
@@ -524,6 +539,7 @@ body.dark-theme .seedance-tab:hover { background: #334155; }
 .prompt-card .card-body {
     display: flex;
     gap: 12px;
+    min-width: 0;
 }
 .card-collections {
     display: flex;

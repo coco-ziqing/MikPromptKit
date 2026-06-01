@@ -7,9 +7,9 @@ from PIL import Image, ImageDraw, ImageFont, PngImagePlugin
 from database import get_db
 from fastapi import HTTPException
 
-# 卡片尺寸
+# 卡片尺寸（加大高度，自适应内容）
 CARD_WIDTH = 500
-CARD_HEIGHT = 700
+CARD_HEIGHT = 960  # 足够容纳所有信息
 THUMB_SIZE = (460, 306)  # 卡片内缩略图区域（约 3:2）
 
 # 颜色方案（暗色主题 + 白色文字）
@@ -107,6 +107,13 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
 
     p = dict(row)
 
+    # 查询中文翻译（如果有）
+    translation_row = db.execute(
+        "SELECT content FROM translations WHERE prompt_id=? AND lang='zh'",
+        [prompt_id]
+    ).fetchone()
+    translation = translation_row["content"] if translation_row else None
+
     # 查询收藏归属
     coll_rows = db.execute("""
         SELECT c.name, c.icon FROM collection_items ci
@@ -131,18 +138,18 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
     img = Image.new("RGB", (CARD_WIDTH, CARD_HEIGHT), _hex_to_rgb(COLORS["bg"]))
     draw = ImageDraw.Draw(img)
 
-    # 字体（加大）
+    # 字体
     font_title = _load_font(24)
-    font_body = _load_font(18)
-    font_small = _load_font(14)
-    font_badge = _load_font(14)
+    font_body = _load_font(17)
+    font_small = _load_font(13)
+    font_badge = _load_font(13)
+    font_tiny = _load_font(12)
 
-    y = 0
+    y = 20
 
     # 1. 缩略图区域
     card_x, card_y = 20, 20
     thumb_w, thumb_h = 460, 306
-    # 绘制缩略图底框
     draw.rounded_rectangle(
         [card_x, card_y, card_x + thumb_w, card_y + thumb_h],
         radius=8, fill=_hex_to_rgb(COLORS["card_bg"]),
@@ -155,65 +162,134 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
             img.paste(thumb_img, (card_x, card_y))
         except Exception:
             pass
-    y = card_y + thumb_h + 16
+    y = card_y + thumb_h + 20
 
-    # 2. 分类徽标
+    # 2. 模块 + 分类徽标（并排）
+    module_text = p.get("module", "")
     category = p.get("category", "")
+    label_parts = []
+    if module_text:
+        label_parts.append(module_text)
     if category:
-        badge_w = draw.textlength(category, font=font_badge) + 24
+        label_parts.append(category)
+    if label_parts:
+        label_str = " / ".join(label_parts)
+        badge_w = draw.textlength(label_str, font=font_badge) + 28
         badge_h = 28
         draw.rounded_rectangle(
             [20, y, 20 + badge_w, y + badge_h],
             radius=6, fill=_hex_to_rgb(COLORS["badge_bg"])
         )
-        draw.text((30, y + 4), category, fill=_hex_to_rgb(COLORS["badge_text"]), font=font_badge)
-        y += badge_h + 10
+        draw.text((34, y + 5), label_str, fill=_hex_to_rgb(COLORS["badge_text"]), font=font_badge)
+        y += badge_h + 12
 
-    # 3. 提示词内容（加大字体）
+    # 3. 英文内容
     content = p.get("content", "")
-    lines = _wrap_text(content, font_body, draw, CARD_WIDTH - 40)
-    display_lines = lines[:8]
-    for line in display_lines:
-        draw.text((20, y), line, fill=_hex_to_rgb(COLORS["text"]), font=font_body)
-        y += 28
-    if len(lines) > 8:
-        draw.text((20, y), "...", fill=_hex_to_rgb(COLORS["text_muted"]), font=font_body)
-        y += 28
-    y += 6
+    if content:
+        # 英文标签
+        en_label = "[EN]"
+        en_w = draw.textlength(en_label, font=font_small) + 16
+        draw.rounded_rectangle([20, y, 20 + en_w, y + 24], radius=4, fill=_hex_to_rgb(COLORS["primary"]))
+        draw.text((28, y + 4), en_label, fill=_hex_to_rgb(COLORS["bg"]), font=font_small)
+        en_x = 20 + en_w + 8
+        en_lines = _wrap_text(content, font_body, draw, CARD_WIDTH - en_x - 20)
+        for line in en_lines[:5]:
+            draw.text((en_x, y), line, fill=_hex_to_rgb(COLORS["text"]), font=font_body)
+            y += 27
+        if len(en_lines) > 5:
+            draw.text((en_x, y), "...", fill=_hex_to_rgb(COLORS["text_muted"]), font=font_body)
+            y += 27
+        y += 4
 
-    # 4. 标签
+    # 4. 中文翻译（如果有）
+    if translation:
+        draw.line([20, y, CARD_WIDTH - 20, y], fill=_hex_to_rgb(COLORS["border"]), width=1)
+        y += 10
+        cn_label = "[CN]"
+        cn_w = draw.textlength(cn_label, font=font_small) + 16
+        draw.rounded_rectangle([20, y, 20 + cn_w, y + 24], radius=4, fill=_hex_to_rgb(COLORS["accent"]))
+        draw.text((28, y + 4), cn_label, fill=_hex_to_rgb(COLORS["bg"]), font=font_small)
+        cn_x = 20 + cn_w + 8
+        cn_lines = _wrap_text(translation, font_body, draw, CARD_WIDTH - cn_x - 20)
+        for line in cn_lines[:5]:
+            draw.text((cn_x, y), line, fill=_hex_to_rgb(COLORS["text"]), font=font_body)
+            y += 27
+        if len(cn_lines) > 5:
+            draw.text((cn_x, y), "...", fill=_hex_to_rgb(COLORS["text_muted"]), font=font_body)
+            y += 27
+        y += 4
+
+    # 5. 释义（meaning）
+    meaning = p.get("meaning", "")
+    if meaning:
+        draw.line([20, y, CARD_WIDTH - 20, y], fill=_hex_to_rgb(COLORS["border"]), width=1)
+        y += 10
+        draw.text((20, y), "📖 释义", fill=_hex_to_rgb(COLORS["text_muted"]), font=font_small)
+        y += 22
+        meaning_lines = _wrap_text(meaning, font_body, draw, CARD_WIDTH - 40)
+        for line in meaning_lines[:3]:
+            draw.text((20, y), line, fill=_hex_to_rgb(COLORS["text"]), font=font_body)
+            y += 25
+        if len(meaning_lines) > 3:
+            draw.text((20, y), "...", fill=_hex_to_rgb(COLORS["text_muted"]), font=font_body)
+            y += 25
+        y += 2
+
+    # 6. 适用场景（scene）
+    scene = p.get("scene", "")
+    if scene:
+        draw.line([20, y, CARD_WIDTH - 20, y], fill=_hex_to_rgb(COLORS["border"]), width=1)
+        y += 10
+        draw.text((20, y), "🎯 适用场景", fill=_hex_to_rgb(COLORS["text_muted"]), font=font_small)
+        y += 22
+        scene_lines = _wrap_text(scene, font_body, draw, CARD_WIDTH - 40)
+        for line in scene_lines[:3]:
+            draw.text((20, y), line, fill=_hex_to_rgb(COLORS["text"]), font=font_body)
+            y += 25
+        if len(scene_lines) > 3:
+            draw.text((20, y), "...", fill=_hex_to_rgb(COLORS["text_muted"]), font=font_body)
+            y += 25
+        y += 2
+
+    # 7. 标签
     tags = p.get("tags", "")
     try:
         tag_list = json.loads(tags) if tags else []
     except Exception:
         tag_list = []
     if tag_list:
+        draw.line([20, y, CARD_WIDTH - 20, y], fill=_hex_to_rgb(COLORS["border"]), width=1)
+        y += 10
         x = 20
-        for tag in tag_list[:6]:
-            tag_w = draw.textlength(tag, font=font_small) + 18
+        for tag in tag_list[:8]:
+            tag_w = draw.textlength(tag, font=font_tiny) + 16
+            if x + tag_w > CARD_WIDTH - 20:
+                x = 20
+                y += 24
             draw.rounded_rectangle(
-                [x, y, x + tag_w, y + 26],
-                radius=5, fill=_hex_to_rgb(COLORS["tag_bg"])
+                [x, y, x + tag_w, y + 22],
+                radius=4, fill=_hex_to_rgb(COLORS["tag_bg"])
             )
-            draw.text((x + 9, y + 4), tag, fill=_hex_to_rgb(COLORS["tag_text"]), font=font_small)
-            x += tag_w + 8
-        y += 32
+            draw.text((x + 8, y + 3), tag, fill=_hex_to_rgb(COLORS["tag_text"]), font=font_tiny)
+            x += tag_w + 6
+        y += 28
 
-    # 5. 收藏分组
+    # 8. 收藏分组
     if collections:
-        y += 4
-        for coll in collections[:3]:
+        y += 2
+        draw.text((20, y), "⭐ 已收藏至:", fill=_hex_to_rgb(COLORS["text_muted"]), font=font_small)
+        y += 22
+        for coll in collections[:4]:
             coll_text = (coll.get("icon") or "⭐") + " " + coll["name"]
-            draw.text((20, y), coll_text, fill=_hex_to_rgb(COLORS["text_muted"]), font=font_small)
-            y += 22
+            draw.text((24, y), coll_text, fill=_hex_to_rgb(COLORS["text_muted"]), font=font_tiny)
+            y += 20
 
-    # 6. 底部信息
+    # 9. 底部信息
     y = CARD_HEIGHT - 36
-    module_text = p.get("module", "")
     usage_text = f"使用 {p.get('usage_count', 0)} 次"
-    draw.text((20, y), module_text, fill=_hex_to_rgb(COLORS["text_muted"]), font=font_small)
-    draw.text((CARD_WIDTH - 20 - draw.textlength(usage_text, font=font_small), y),
-              usage_text, fill=_hex_to_rgb(COLORS["text_muted"]), font=font_small)
+    draw.text((20, y), f"PromptKit v3.5", fill=_hex_to_rgb(COLORS["text_muted"]), font=font_tiny)
+    draw.text((CARD_WIDTH - 20 - draw.textlength(usage_text, font=font_tiny), y),
+              usage_text, fill=_hex_to_rgb(COLORS["text_muted"]), font=font_tiny)
 
     # ===== 写入元数据 =====
     meta = {
@@ -231,6 +307,7 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
                 "tags": tag_list,
                 "collections": collections,
                 "usage_count": p.get("usage_count", 0),
+                "translation": translation,
                 "thumbnail_base64": base64.b64encode(thumbnail_bytes).decode("utf-8") if thumbnail_bytes else None,
                 "thumbnail_filename": p.get("thumbnail", ""),
             }

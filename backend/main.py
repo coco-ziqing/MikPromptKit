@@ -205,7 +205,7 @@ def pick_folder():
 
 @app.post("/api/utils/save-blob")
 def save_blob(data: dict = None):
-    """将 base64 数据写入指定路径"""
+    """将 base64 数据写入指定路径，文件已存在时自动新建副本不覆盖"""
     import base64
     if not data:
         return {"ok": False, "error": "缺少数据"}
@@ -216,6 +216,13 @@ def save_blob(data: dict = None):
     try:
         path = os.path.abspath(path)
         os.makedirs(os.path.dirname(path), exist_ok=True)
+        # 如果文件已存在，自动新建副本（不覆盖）
+        if os.path.exists(path):
+            base, ext = os.path.splitext(path)
+            counter = 1
+            while os.path.exists(f"{base} ({counter}){ext}"):
+                counter += 1
+            path = f"{base} ({counter}){ext}"
         raw = base64.b64decode(content_b64)
         with open(path, "wb") as f:
             f.write(raw)

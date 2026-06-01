@@ -21,6 +21,7 @@ const App = {
         _editFilterQuery: '',
         _editFilterModule: '',
         _editFilterCollected: '',
+        _cardTranslations: {},
         _epItems: [],
         _newPromptModule: '',
         _diIsPt: false,
@@ -67,11 +68,20 @@ const App = {
         }
         this.applyColumns();
 
+        // 恢复编辑模式状态（必须在 switchView 之前恢复，确保初始渲染正确）
+        if ((typeof localStorage !== 'undefined' && localStorage.getItem('promptkit_editmode') === '1')) {
+            this.state.editMode = true;
+        }
+
+        // 提前读取保存的视图状态，避免 switchView('home') 覆写 localStorage
+        var savedView = (typeof localStorage !== 'undefined' && localStorage.getItem('promptkit_view')) || null;
+        var savedModule = (typeof localStorage !== 'undefined' && localStorage.getItem('promptkit_module')) || null;
+
         this.bindEvents();
         this._initDropZone();
         
         // 初始默认显示 home 视图（防止 JS 错误时白屏）
-        this.switchView('home');
+        this.switchView('home', true);  // true = 静默模式，不写 localStorage
         
         try {
             await Promise.all([
@@ -81,10 +91,7 @@ const App = {
                 this.loadWordpacks()
             ]);
 
-            // 恢复上次的视图状态
-            var savedView = localStorage.getItem('promptkit_view');
-            var savedModule = localStorage.getItem('promptkit_module');
-
+            // 恢复上次的视图状态（savedView/savedModule 已在 init 顶部读取）
             if (savedView === 'seedance') {
                 this.switchView('seedance');
                 var savedSeedanceTab = localStorage.getItem('promptkit_seedance_tab') || 'templates';
@@ -97,6 +104,16 @@ const App = {
                 this.switchModule(this.state.modules[0].id);
             } else {
                 this.loadPrompts();
+            }
+
+            // 编辑模式恢复后同步 UI（需在数据加载完成后）
+            if (this.state.editMode) {
+                var eb = document.getElementById('batchBar');
+                var fb = document.getElementById('editFilterBar');
+                var btn = document.getElementById('btnEditMode');
+                if (eb) eb.style.display = 'flex';
+                if (fb) fb.style.display = 'block';
+                if (btn) { btn.style.color = '#4f46e5'; btn.classList.add('active'); }
             }
         } catch (e) {
             console.warn('Init error, fallback to home:', e.message);
@@ -578,10 +595,13 @@ const App = {
             if (fb) { fb.style.display = 'block'; }
             this._populateEditFilterModules();
             this.updateBatchCount();
+            // 持久化编辑模式状态
+            try { localStorage.setItem('promptkit_editmode', '1'); } catch(e) {}
         } else {
             this.state.batchSelected.clear();
             if (eb) eb.style.display = 'none';
             if (fb) fb.style.display = 'none';
+            try { localStorage.removeItem('promptkit_editmode'); } catch(e) {}
         }
         var btn = document.getElementById('btnEditMode');
         if (this.state.editMode) {
@@ -1909,6 +1929,56 @@ const App = {
         await this.loadCollectionItems();
     },
 
+
+    _loadTranslation(promptId) {
+        return this.fetchJSON('/api/translate/' + promptId + '?target_lang=' + (this.state._cardTranslations[promptId] ? 'en' : 'zh'));
+    },
+
+    async toggleTranslation(promptId) {
+        var el = document.getElementById('cc_' + promptId);
+        if (!el) return;
+        var currentIsTranslated = !!this.state._cardTranslations[promptId];
+        if (currentIsTranslated) {
+            var promptData = this.state.prompts.find(function(p) { return p.id === promptId; });
+            if (promptData) el.textContent = promptData.content;
+            delete this.state._cardTranslations[promptId];
+            this._updateTranslateBtn(promptId);
+            return;
+        }
+        el.textContent = '翻译中...';
+        try {
+            var data = await this.fetchJSON('/api/translate/' + promptId + '?target_lang=zh');
+            if (data && data.ok && data.translated && data.translated !== data.original) {
+                el.textContent = data.translated;
+                this.state._cardTranslations[promptId] = data.translated;
+            } else if (data && data.note) {
+                el.textContent = data.original;
+                this.state._cardTranslations[promptId] = data.original;
+            } else {
+                var promptData = this.state.prompts.find(function(p) { return p.id === promptId; });
+                el.textContent = data && data.original ? data.original : (promptData ? promptData.content : '');
+                this.showToast('翻译失败: ' + (data ? data.error : '未知错误'), 'error');
+            }
+        } catch(e) {
+            var promptData = this.state.prompts.find(function(p) { return p.id === promptId; });
+            el.textContent = promptData ? promptData.content : '';
+            this.showToast('翻译失败: ' + e.message, 'error');
+        }
+        this._updateTranslateBtn(promptId);
+    },
+
+    _updateTranslateBtn(promptId) {
+        var cards = document.querySelectorAll('#promptList .prompt-card');
+        cards.forEach(function(card) {
+            if (parseInt(card.getAttribute('data-id')) === promptId) {
+                var btn = card.querySelector('.btn-copy[onclick*="toggleTranslation"]');
+                if (btn) {
+                    btn.textContent = App.state._cardTranslations[promptId] ? '🌐 中文' : '🌐 英文';
+                }
+            }
+        });
+    },
+
     bindCardDragDrop() {
         // 为当前渲染的卡片绑定拖拽上传
         var cards = document.querySelectorAll('#promptList .prompt-card');
@@ -3013,9 +3083,7 @@ const App = {
 
     applyColumns() {
         var cols = this.state.columns || 3;
-        document.getElementById('columnSlider').value = cols;
-        document.getElementById('columnLabel').textContent = cols + '列';
-
+        // 不再更新滑块UI，只更新CSS grid列数
         var grids = document.querySelectorAll('.prompt-grid');
         for (var i = 0; i < grids.length; i++) {
             grids[i].style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
@@ -3320,10 +3388,10 @@ const App = {
                             <div style="font-size:10px;color:#cbd5e1;margin-bottom:6px;">${tagHtml}</div>
                             <div class="card-actions">
                                 <span style="font-size:11px;color:#94a3b8;margin-right:auto;">使用 ${p.usage_count} 次</span>
-                                <button class="btn-translate" onclick="App.toggleTranslation(${p.id})" title="中英文切换" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;color:#6366f1;">${App._cardTranslations[p.id] ? '中' : 'EN'}</button>
-                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#eab308;color:#eab308;padding:3px 10px;" onclick="App.openEditModal(' + p.id + ')">\u270f \u7f16\u8f91</button>' : ''}
+                                <button class="btn-copy" onclick="App.toggleTranslation(${p.id})" title="中英文切换" style="border-color:#6366f1;color:#6366f1;">🌐 ${App.state._cardTranslations[p.id] ? '中文' : '英文'}</button>
+                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#eab308;color:#eab308;" onclick="App.openEditModal(' + p.id + ')">\u270f \u7f16\u8f91</button>' : ''}
                                 <button class="btn-copy" onclick="App.handleCopy(${p.id}, '${this._escape(p.content).replace(/'/g, "\\'")}')">📋 复制</button>
-                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;padding:3px 10px;" onclick="App.trashPrompt(' + p.id + ')">🗑 删除</button>' : ''}
+                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.trashPrompt(' + p.id + ')">🗑 删除</button>' : ''}
                             </div>
                         </div>
                         <div class="card-collections">
