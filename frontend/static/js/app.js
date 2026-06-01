@@ -274,7 +274,7 @@ const App = {
             html += '<div class="prompt-card" data-id="' + p.id + '">';
             html += '<div class="card-body">';
             html += '<div style="font-size:10px;color:#818cf8;margin-bottom:4px;">🧠 相似度 ' + score + '%</div>';
-            html += '<div class="card-content">' + this._escape(p.content || '') + '</div>';
+            html += '<div class="card-content" id="cc_' + p.id + '">' + this._escape(p.content || '') + '</div>';
             if (p.meaning) html += '<div class="card-meaning">' + this._escape(p.meaning) + '</div>';
             html += '<div style="display:flex;gap:4px;">';
             if (p.module) html += '<span class="card-badge">' + this._escape(p.module) + '</span>';
@@ -1879,7 +1879,7 @@ const App = {
                                 <span class="card-badge">${this._escape(p.category)}</span>
                                 ${p.subcategory ? `<span style="font-size:10px;color:#94a3b8;">${this._escape(p.subcategory)}</span>` : ''}
                             </div>
-                            <div class="card-content">${this._escape(p.content)}</div>
+                            <div class="card-content" id="cc_${p.id}">${this._escape(p.content)}</div>
                             ${p.meaning ? `<div class="card-meaning">${this._escape(p.meaning)}</div>` : ''}
                             ${p.scene ? `<div class="card-scene">🎯 ${this._escape(p.scene)}</div>` : ''}
                             <div style="font-size:10px;color:#cbd5e1;margin-bottom:6px;">${tagHtml}</div>
@@ -2188,7 +2188,7 @@ const App = {
             html += `
                 <div class="prompt-card" draggable="true" data-id="${p.id}">
                     <span class="card-badge">${this._escape(p.category)}</span>
-                    <div class="card-content">${this._escape(p.content)}</div>
+                    <div class="card-content" id="cc_${p.id}">${this._escape(p.content)}</div>
                     ${p.meaning ? `<div class="card-meaning">${this._escape(p.meaning)}</div>` : ''}
                     <div class="card-actions">
                         <button class="btn-copy" onclick="App.trackUsage(${p.id});App.copyText('${this._escape(p.content).replace(/'/g, "\\'")}')">📋 复制</button>
@@ -2286,7 +2286,7 @@ const App = {
             html += `
                 <div class="prompt-card">
                     <span class="card-badge">${this._escape(p.module)}</span>
-                    <div class="card-content">${this._escape(p.content)}</div>
+                    <div class="card-content" id="cc_${p.id}">${this._escape(p.content)}</div>
                     ${p.meaning ? `<div class="card-meaning">${this._escape(p.meaning)}</div>` : ''}
                     <div class="card-actions">
                         <span style="font-size:11px;color:#94a3b8;margin-right:auto;">${p.used_at ? p.used_at.substring(0, 16) : ''}</span>
@@ -3314,12 +3314,13 @@ const App = {
                                 <span class="card-badge">${this._escape(p.category)}</span>
                                 ${p.subcategory ? `<span style="font-size:10px;color:#94a3b8;">${this._escape(p.subcategory)}</span>` : ''}
                             </div>
-                            <div class="card-content">${this._escape(p.content)}</div>
+                            <div class="card-content" id="cc_${p.id}">${this._escape(p.content)}</div>
                             ${p.meaning ? `<div class="card-meaning">${this._escape(p.meaning)}</div>` : ''}
                             ${p.scene ? `<div class="card-scene">🎯 ${this._escape(p.scene)}</div>` : ''}
                             <div style="font-size:10px;color:#cbd5e1;margin-bottom:6px;">${tagHtml}</div>
                             <div class="card-actions">
                                 <span style="font-size:11px;color:#94a3b8;margin-right:auto;">使用 ${p.usage_count} 次</span>
+                                <button class="btn-translate" onclick="App.toggleTranslation(${p.id})" title="中英文切换" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;color:#6366f1;">${App._cardTranslations[p.id] ? '中' : 'EN'}</button>
                                 ${App.state.editMode ? '<button class="btn-copy" style="border-color:#eab308;color:#eab308;padding:3px 10px;" onclick="App.openEditModal(' + p.id + ')">\u270f \u7f16\u8f91</button>' : ''}
                                 <button class="btn-copy" onclick="App.handleCopy(${p.id}, '${this._escape(p.content).replace(/'/g, "\\'")}')">📋 复制</button>
                                 ${App.state.editMode ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;padding:3px 10px;" onclick="App.trashPrompt(' + p.id + ')">🗑 删除</button>' : ''}
