@@ -189,8 +189,8 @@ const App = {
 
         // 关闭推荐面板
         this.closeRecommend();
-        // 退出批量模式
-        if (this.state.editMode) this.toggleEditMode();
+        // 如果切换到非 home 视图才退出编辑模式（home 内的模块/分类切换保持编辑模式）
+        if (this.state.editMode && view !== 'home') this.toggleEditMode();
     },
 
     // ============ 搜索模式 ============
@@ -808,6 +808,8 @@ const App = {
         zone.addEventListener('dragenter', function(e) {
             e.preventDefault();
             e.stopPropagation();
+            // 编辑模式下从不显示全局遮罩，卡片拖拽完全接管
+            if (App.state.editMode) return;
             overlay.style.display = 'flex';
         }, false);
 
@@ -834,6 +836,8 @@ const App = {
             overlay.style.display = 'none';
             var files = e.dataTransfer.files;
             if (!files || files.length === 0) return;
+            // 编辑模式下如果拖到卡片上，跳过全局处理（卡片自己处理）
+            if (App.state.editMode && e.target.closest('.prompt-card')) return;
             // 处理 .json 或 .pt 文件
             var dropFile = null;
             var isPt = false;
@@ -1918,23 +1922,29 @@ const App = {
             card.addEventListener('dragenter', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                // 只响应文件拖拽
-                if (e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
+                // 只在编辑模式下响应文件拖拽
+                if (self.state.editMode && e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
                     card.classList.add('drag-over');
+                    // 隐藏全局导入遮罩（卡片优先处理）
+                    var overlay = document.getElementById('dropOverlay');
+                    if (overlay) overlay.style.display = 'none';
                 }
             }, false);
 
             card.addEventListener('dragover', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                if (e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
+                if (self.state.editMode && e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
                     card.classList.add('drag-over');
+                    var overlay = document.getElementById('dropOverlay');
+                    if (overlay) overlay.style.display = 'none';
                 }
             }, false);
 
             card.addEventListener('dragleave', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
+                if (!self.state.editMode) { card.classList.remove('drag-over'); return; }
                 var rect = card.getBoundingClientRect();
                 var x = e.clientX, y = e.clientY;
                 if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
@@ -1946,6 +1956,7 @@ const App = {
                 e.preventDefault();
                 e.stopPropagation();
                 card.classList.remove('drag-over');
+                if (!self.state.editMode) return;
                 var files = e.dataTransfer.files;
                 if (!files || files.length === 0) return;
 
