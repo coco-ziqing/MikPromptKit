@@ -1887,7 +1887,11 @@ const App = {
                         </div>
                     </div>
                 </div>
-            `;
+            
+                        <div class="card-drop-indicator">
+                            <span>📁 松开放置</span>
+                        </div>
+                    `;
         }
         html += '</div>';
         container.innerHTML = html;
@@ -1899,6 +1903,131 @@ const App = {
         this.showToast('已移除', 'info');
         await this.loadCollections();
         await this.loadCollectionItems();
+    },
+
+    bindCardDragDrop() {
+        // 为当前渲染的卡片绑定拖拽上传
+        var cards = document.querySelectorAll('#promptList .prompt-card');
+        var self = this;
+        cards.forEach(function(card) {
+            // 避免重复绑定
+            if (card.dataset.dragUpload) return;
+            card.dataset.dragUpload = '1';
+
+            // 拖拽进入高亮
+            card.addEventListener('dragenter', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                // 只响应文件拖拽
+                if (e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
+                    card.classList.add('drag-over');
+                }
+            }, false);
+
+            card.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
+                    card.classList.add('drag-over');
+                }
+            }, false);
+
+            card.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var rect = card.getBoundingClientRect();
+                var x = e.clientX, y = e.clientY;
+                if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
+                    card.classList.remove('drag-over');
+                }
+            }, false);
+
+            card.addEventListener('drop', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                card.classList.remove('drag-over');
+                var files = e.dataTransfer.files;
+                if (!files || files.length === 0) return;
+
+                var promptId = parseInt(card.getAttribute('data-id'));
+                if (!promptId) return;
+
+                // 判断文件类型
+                var file = files[0];
+                var name = file.name.toLowerCase();
+                var isVideo = name.endsWith('.mp4') || name.endsWith('.webm') || name.endsWith('.mov') || name.endsWith('.avi');
+
+                if (isVideo) {
+                    self._dropUploadVideo(file, promptId);
+                } else {
+                    self._dropUploadImage(file, promptId);
+                }
+            }, false);
+        });
+    },
+
+    async _dropUploadImage(file, promptId) {
+        // 拖拽上传图片并关联到提示词
+        var formData = new FormData();
+        formData.append('file', file);
+        try {
+            var res = await fetch('/api/thumbnails/upload', {
+                method: 'POST',
+                body: formData
+            });
+            var data = await res.json();
+            if (!data || !data.ok) {
+                this.showToast('上传失败: ' + (data ? data.error : '未知错误'), 'error');
+                return;
+            }
+            // 关联到提示词
+            var assignRes = await this.fetchJSON('/api/thumbnails/assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_id: promptId, filename: data.filename })
+            });
+            if (assignRes && assignRes.ok) {
+                this.showToast('✅ 图片已关联到提示词', 'success');
+                await this.loadPrompts();
+                await this.loadThumbLibrary();
+            } else {
+                this.showToast('关联失败', 'error');
+            }
+        } catch(e) {
+            this.showToast('上传失败: ' + e.message, 'error');
+        }
+    },
+
+    async _dropUploadVideo(file, promptId) {
+        // 拖拽上传视频并关联到提示词
+        var formData = new FormData();
+        formData.append('file', file);
+        try {
+            var res = await fetch('/api/thumbnails/upload-video', {
+                method: 'POST',
+                body: formData
+            });
+            var data = await res.json();
+            if (!data || !data.ok) {
+                this.showToast('上传失败: ' + (data ? data.error : '未知错误'), 'error');
+                return;
+            }
+            // 关联到提示词
+            var assignRes = await this.fetchJSON('/api/thumbnails/assign-video', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_id: promptId, video_filename: data.filename })
+            });
+            if (assignRes && assignRes.ok) {
+                this.showToast('✅ 视频已关联到提示词', 'success');
+                await this.loadPrompts();
+                await this.loadThumbLibrary();
+            } else {
+                this.showToast('关联失败', 'error');
+            }
+        } catch(e) {
+            this.showToast('上传失败: ' + e.message, 'error');
+        }
     },
 
     backToCollections() {
@@ -3204,6 +3333,7 @@ const App = {
         if (this.state.editMode) {
             this._updateFilteredDisplay();
         }
+        this.bindCardDragDrop();
     },
 
     // ============ 视频悬停播放 ============
