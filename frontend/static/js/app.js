@@ -15,7 +15,6 @@ const App = {
         totalItems: 0, totalPages: 1, page: 1, pageSize: 50,
         isLoading: false,
         stats: { total_prompts: 0, total_usage: 0 },
-        batchMode: false,
         batchSelected: new Set(),
         editMode: false,
         _searchMode: 'keyword',  // 'keyword' | 'semantic'
@@ -191,7 +190,7 @@ const App = {
         // 关闭推荐面板
         this.closeRecommend();
         // 退出批量模式
-        if (this.state.batchMode) this.toggleBatchMode();
+        if (this.state.editMode) this.toggleEditMode();
     },
 
     // ============ 搜索模式 ============
@@ -565,36 +564,10 @@ const App = {
         document.getElementById('mainContent').classList.remove('with-rec');
     },
 
-    // ============ 批量操作 ============
-    toggleBatchMode() {
-        this.state.batchMode = !this.state.batchMode;
-        this.state.batchSelected.clear();
-        if (this.state.editMode && this.state.batchMode) {
-            this.state.editMode = false;
-            var eb = document.getElementById('btnEditMode');
-            if (eb) { eb.style.color = '#94a3b8'; eb.classList.remove('active'); }
-        }
-        var bar = document.getElementById('batchBar');
-        var btn = document.getElementById('btnBatch');
-        if (this.state.batchMode) {
-            bar.style.display = 'flex';
-            btn.classList.add('active');
-        } else {
-            bar.style.display = 'none';
-            btn.classList.remove('active');
-        }
-        this.renderPrompts();
-        this.updateBatchCount();
-    },
-
     toggleEditMode() {
         this.state.editMode = !this.state.editMode;
-        if (this.state.editMode && this.state.batchMode) {
-            this.state.batchMode = false;
-            if (document.getElementById('batchBar')) document.getElementById('batchBar').style.display = 'none';
-            if (document.getElementById('btnBatch')) document.getElementById('btnBatch').classList.remove('active');
-        }
-        var eb = document.getElementById('editBatchBar');
+        
+        var eb = document.getElementById('batchBar');
         var fb = document.getElementById('editFilterBar');
         if (this.state.editMode) {
             this.state.batchSelected.clear();
@@ -706,10 +679,10 @@ const App = {
 
     updateBatchCount() {
         document.getElementById('batchCount').textContent = `已选 ${this.state.batchSelected.size} 项`;
-        var editBar = document.getElementById('editBatchBar');
+        var editBar = document.getElementById('batchBar');
         if (this.state.editMode) {
             editBar.style.display = 'flex';
-            document.getElementById('editBatchCount').textContent = `已选 ${this.state.batchSelected.size} 项`;
+            document.getElementById('batchCount').textContent = `已选 ${this.state.batchSelected.size} 项`;
         } else if (editBar) {
             editBar.style.display = 'none';
         }
@@ -732,31 +705,6 @@ const App = {
         // 自动选中「已选择的词条」范围
         document.getElementById('ieExportScope').value = 'selected';
         this._updateExportBtn();
-    },
-
-    // ============ 导出预览（编辑模式优化） ============
-
-    async showExportPreview() {
-        var ids = [...this.state.batchSelected];
-        if (ids.length === 0) { this.showToast('请先勾选要导出的词条', 'error'); return; }
-        document.getElementById('modalExportPreview').style.display = 'flex';
-        document.getElementById('epCount').textContent = '选中 ' + ids.length + ' 条';
-        document.getElementById('epItemList').innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px 0;">加载词条详情...</div>';
-        document.getElementById('epContent').value = '加载中...';
-
-        // 获取词条详情
-        var data = await this.fetchJSON('/api/v2/batch/preview', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt_ids: ids })
-        });
-        if (!data || !data.items) {
-            document.getElementById('epItemList').innerHTML = '<div style="color:#ef4444;text-align:center;padding:20px 0;">加载失败</div>';
-            return;
-        }
-        this._epItems = data.items;
-        this._renderExportPreviewList(data.items);
-        this._refreshExportPreview();
     },
 
     _renderExportPreviewList(items) {
@@ -1546,7 +1494,7 @@ const App = {
             this.closeEditModal();
             this.showToast('新建成功', 'success');
             this.state.batchSelected.clear();
-            var eb = document.getElementById('editBatchBar');
+            var eb = document.getElementById('batchBar');
             if (eb) eb.style.display = 'none';
             // 如果新建的模块和当前浏览模块一致，维持筛选；否则重置到全部
             if (this.state.currentModule && this.state.currentModule !== moduleVal) {
@@ -1588,11 +1536,11 @@ const App = {
             this.showToast('已移入回收站 ' + data.trashed + ' 条', 'success');
             if (this.state.editMode) {
                 this.state.batchSelected.clear();
-                var eb = document.getElementById('editBatchBar');
+                var eb = document.getElementById('batchBar');
                 if (eb) eb.style.display = 'none';
                 this.loadPrompts();
             } else {
-                this.toggleBatchMode();
+                this.toggleEditMode();
                 this.loadPrompts();
             }
         }
@@ -1764,7 +1712,7 @@ const App = {
         document.getElementById('modalAddToWordpack').style.display = 'none';
         if (data) {
             this.showToast(`已添加 ${data.added} 条到「${wpName}」`, 'success');
-            this.toggleBatchMode();
+            this.toggleEditMode();
             this.loadWordpacks();
         }
     },
@@ -3188,7 +3136,7 @@ const App = {
             const tags = JSON.parse(p.tags || '[]');
             const tagHtml = tags.map(t => `<span class="card-badge">${this._escape(t)}</span>`).join('');
             const isSelected = this.state.batchSelected.has(p.id);
-            const batchClass = this.state.batchMode ? 'batch-mode' : '';
+            const batchClass = this.state.editMode ? 'batch-mode' : '';
             const editClass = this.state.editMode ? 'edit-mode' : '';
             const selectedClass = isSelected ? 'selected' : '';
 

@@ -463,30 +463,6 @@ def delete_history_item(prompt_id: int):
 
 # ==================== 4. 批量操作 ====================
 
-@router.post("/batch/preview")
-def batch_preview(data: dict):
-    """批量预览：返回选中词条的完整详情（用于编辑模式导出预览）"""
-    prompt_ids = data.get("prompt_ids", [])
-    if not prompt_ids:
-        raise HTTPException(400, "缺少 prompt_ids")
-    placeholders = ",".join("?" * len(prompt_ids))
-    db = get_db()
-    rows = db.execute(
-        f"SELECT id, content, meaning, scene, module, category, tags, usage_count FROM prompts WHERE id IN ({placeholders})",
-        prompt_ids
-    ).fetchall()
-    items = []
-    for r in rows:
-        item = dict(r)
-        # 增加序号
-        items.append(item)
-    return {
-        "ok": True,
-        "count": len(items),
-        "items": items
-    }
-
-
 @router.post("/batch/copy")
 def batch_copy(data: dict):
     """批量复制：将多个词条内容合并为文本"""

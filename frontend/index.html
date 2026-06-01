@@ -27,12 +27,11 @@
                 <span id="columnLabel" class="column-label">3列</span>
             </div>
             <span class="header-divider"></span>
-            <button class="header-btn" onclick="App.toggleBatchMode()" id="btnBatch" title="批量选择"><i class="bi bi-check2-square"></i></button>
             <button class="header-btn" onclick="App.toggleTheme()" id="btnTheme" title="切换深色模式"><i class="bi bi-moon-stars"></i></button>
             <button class="header-btn" onclick="App.openPlayground()" id="btnPlayground" title="LLM Playground 测试提示词"><i class="bi bi-cpu"></i></button>
             <button class="header-btn" onclick="App.showBackupInfo()" id="btnBackup" title="数据库备份"><i class="bi bi-database"></i></button>
             <button class="header-btn" onclick="App.showDashboard()" id="btnDashboard" title="统计仪表盘"><i class="bi bi-bar-chart"></i></button>
-            <button class="header-btn" onclick="App.showWorkflowHelp()" id="btnWorkflow" title="AI 工作流集成"><i class="bi bi-link-45deg"></i></button>
+            <button class="header-btn" onclick="App.openComfyConfig()" id="btnWorkflow" title="ComfyUI 集成配置 + 模块预设"><i class="bi bi-link-45deg"></i></button>
             <span class="header-divider"></span>
             <span id="headerStats" class="badge bg-light text-dark" style="font-size:12px;">加载中...</span>
         </div>
@@ -47,32 +46,18 @@
                 <div class="page-header"><h3 id="pageTitle">提示词列表</h3><span class="count-info" id="countInfo">加载中...</span></div>
                 <div id="batchBar" class="batch-bar" style="display:none;">
                     <span id="batchCount">已选 0 项</span>
-                    <button class="btn-batch" onclick="App.batchCopy()"><i class="bi bi-files"></i> 批量复制</button>
-                    <button class="btn-batch" onclick="App.batchExport('png')" style="border-color:#059669;color:#059669;"><i class="bi bi-card-image"></i> 导出PNG</button>
-                    <button class="btn-batch" onclick="App.batchExport('txt')"><i class="bi bi-download"></i> 导出TXT</button>
-                <button class="btn-batch" onclick="App.batchExport('md')"><i class="bi bi-download"></i> 导出MD</button>
-                    <button class="btn-batch" onclick="App.batchExport('md')"><i class="bi bi-download"></i> 导出MD</button>
-                    <button class="btn-batch" onclick="App.batchExport('json')"><i class="bi bi-download"></i> 导出JSON</button>
-                    <button class="btn-batch" onclick="App.batchExport('pt')" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-box"></i> 导出 .pt 包</button>
-                    <button class="btn-batch" onclick="App.batchAddToWordpack()"><i class="bi bi-folder-plus"></i> 添加到词包</button>
-                    <button class="btn-batch" onclick="App.batchTrash()" style="border-color:#ef4444;color:#ef4444;"><i class="bi bi-trash"></i> 批量删除</button>
-                    <button class="btn-batch btn-batch-cancel" onclick="App.toggleBatchMode()">取消</button>
-                </div>
-                <div id="editBatchBar" class="batch-bar" style="display:none;">
-                    <span id="editBatchCount">已选 0 项</span>
                     <button class="btn-batch" onclick="App.selectAllPrompts()"><i class="bi bi-check-all"></i> 全选</button>
-                    <button class="btn-batch" onclick="App.batchTrash()" style="border-color:#ef4444;color:#ef4444;"><i class="bi bi-trash"></i> 批量删除到回收站</button>
+                    <button class="btn-batch" onclick="App.batchCopy()"><i class="bi bi-files"></i> 批量复制</button>
+                    <button class="btn-batch" onclick="App.batchExport('png')" style="border-color:#059669;color:#059669;"><i class="bi bi-card-image"></i> PNG</button>
+                    <button class="btn-batch" onclick="App.batchExport('txt')"><i class="bi bi-download"></i> TXT</button>
+                    <button class="btn-batch" onclick="App.batchExport('md')" style="border-color:#10b981;color:#10b981;"><i class="bi bi-markdown"></i> MD</button>
+                    <button class="btn-batch" onclick="App.batchExport('json')" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-file-code"></i> JSON</button>
+                    <button class="btn-batch" onclick="App.batchExport('pt')" style="border-color:#06b6d4;color:#06b6d4;"><i class="bi bi-box"></i> .pt</button>
+                    <button class="btn-batch" onclick="App.batchAddToWordpack()"><i class="bi bi-folder-plus"></i> 添加到词包</button>
+                    <button class="btn-batch" onclick="App.batchGenerateThumbnails()" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-magic"></i> AI 批量生成缩略图</button>
                     <button class="btn-batch" onclick="App.openAddPromptModal()" style="border-color:#22c55e;color:#22c55e;"><i class="bi bi-plus-lg"></i> 新建词条</button>
-                    <button class="btn-batch" onclick="App.batchCopy()" style="border-color:#22c55e;color:#22c55e;"><i class="bi bi-files"></i> 批量复制</button>
-                    <button class="btn-batch" onclick="App.showExportPreview()" style="border-color:#6366f1;color:#6366f1;"><i class="bi bi-eye"></i> 预览导出</button>
-                    <button class="btn-batch" onclick="App.batchExport('png')" style="border-color:#059669;color:#059669;"><i class="bi bi-card-image"></i> 导出PNG</button>
-                    <button class="btn-batch" onclick="App.batchExport('txt')" style="border-color:#f59e0b;color:#f59e0b;"><i class="bi bi-file-text"></i> 导出TXT</button>
-                <button class="btn-batch" onclick="App.batchExport('md')" style="border-color:#10b981;color:#10b981;"><i class="bi bi-markdown"></i> 导出MD</button>
-                    <button class="btn-batch" onclick="App.batchExport('json')" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-file-code"></i> 导出JSON</button>
-                    <button class="btn-batch" onclick="App.batchExport('pt')" style="border-color:#06b6d4;color:#06b6d4;"><i class="bi bi-box"></i> 导出 .pt 包</button>
-                    <button class="btn-batch btn-batch-cancel" onclick="App.clearEditSelection()">取消选择</button>
-                </div>
-                <!-- 编辑模式增强筛选栏（仅在编辑模式下显示） -->
+                    <button class="btn-batch" onclick="App.batchTrash()" style="border-color:#ef4444;color:#ef4444;"><i class="bi bi-trash"></i> 删除</button>
+                </div><!-- 编辑模式增强筛选栏（仅在编辑模式下显示） -->
                 <div id="editFilterBar" class="edit-filter-bar" style="display:none;margin-bottom:8px;" data-edit-only="1">
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                         <div style="position:relative;flex:1;min-width:160px;">
@@ -325,7 +310,7 @@
                 </div>
             </div>
         </div>
-    </div>
+    
     
 <div class="modal-overlay" id="modalImportExport" style="display:none;z-index:210;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:540px;"><div class="modal-header"><h5 id="modalIETitle">导入/导出提示词</h5><button class="header-btn-sm" onclick="document.getElementById('modalImportExport').style.display='none'">&times;</button></div><div class="modal-body">
         <div style="display:flex;gap:8px;margin-bottom:12px;">
@@ -534,57 +519,6 @@
         </div>
     </div>
 
-    <!-- AI 工作流集成面板 -->
-    <div class="modal-overlay" id="modalWorkflow" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
-        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:680px;max-height:80vh;display:flex;flex-direction:column;">
-            <div class="modal-header">
-                <h5><i class="bi bi-link-45deg"></i> AI 工作流集成</h5>
-                <button class="header-btn-sm" onclick="document.getElementById('modalWorkflow').style.display='none'">&times;</button>
-            </div>
-            <div class="modal-body" style="flex:1;overflow-y:auto;font-size:13px;">
-                <p style="color:var(--text-muted);margin-bottom:16px;">以下 API 端点供 ComfyUI / AutoGPT / 外部脚本调用，无需认证，返回 JSON 或纯文本格式。</p>
-
-                <div style="margin-bottom:16px;">
-                    <div style="font-weight:600;margin-bottom:4px;">🎲 随机取词</div>
-                    <code style="display:block;background:var(--hover-bg,#f1f5f9);padding:8px 12px;border-radius:6px;font-size:11px;">curl http://192.168.0.103:8080/api/v2/workflow/random<br>curl http://192.168.0.103:8080/api/v2/workflow/random?fmt=text</code>
-                </div>
-
-                <div style="margin-bottom:16px;">
-                    <div style="font-weight:600;margin-bottom:4px;">🆕 最新词条</div>
-                    <code style="display:block;background:var(--hover-bg,#f1f5f9);padding:8px 12px;border-radius:6px;font-size:11px;">curl http://192.168.0.103:8080/api/v2/workflow/latest?count=5</code>
-                </div>
-
-                <div style="margin-bottom:16px;">
-                    <div style="font-weight:600;margin-bottom:4px;">📁 按模块取词</div>
-                    <code style="display:block;background:var(--hover-bg,#f1f5f9);padding:8px 12px;border-radius:6px;font-size:11px;">curl http://192.168.0.103:8080/api/v2/workflow/by-module/emotion<br>curl http://192.168.0.103:8080/api/v2/workflow/by-module/camera_move<br>curl http://192.168.0.103:8080/api/v2/workflow/by-module/seedance<br>可用模块: emotion(表情) color(色彩) tone(色调) storyboard(构图) camera_move(运镜) seedance(视频)</code>
-                </div>
-
-                <div style="margin-bottom:16px;">
-                    <div style="font-weight:600;margin-bottom:4px;">🔍 搜索</div>
-                    <code style="display:block;background:var(--hover-bg,#f1f5f9);padding:8px 12px;border-radius:6px;font-size:11px;">curl http://192.168.0.103:8080/api/v2/workflow/search?q=微笑<br>curl http://192.168.0.103:8080/api/v2/workflow/search?q=人像&count=3&fmt=text</code>
-                </div>
-
-                <div style="margin-bottom:16px;">
-                    <div style="font-weight:600;margin-bottom:4px;">🔗 按 ID 取词</div>
-                    <code style="display:block;background:var(--hover-bg,#f1f5f9);padding:8px 12px;border-radius:6px;font-size:11px;">curl http://192.168.0.103:8080/api/v2/workflow/1<br>curl http://192.168.0.103:8080/api/v2/workflow/42?fmt=text</code>
-                </div>
-
-                <div style="margin-bottom:8px;">
-                    <div style="font-weight:600;margin-bottom:4px;">🐍 Python 示例</div>
-                    <pre style="background:#0f172a;color:#e2e8f0;padding:12px 16px;border-radius:6px;font-size:11px;line-height:1.5;overflow-x:auto;">import requests<br><br># 随机取一条纯文本格式的提示词<br>r = requests.get("http://192.168.0.103:8080/api/v2/workflow/random?fmt=text")<br>prompt = r.json()["prompt"]<br>print(prompt)</pre>
-                </div>
-
-                <div style="font-size:11px;color:var(--text-muted);border-top:1px solid var(--border-color);padding-top:12px;">
-                  💡 所有端点支持 <code>?fmt=text</code> 参数返回纯文本，方便管道操作。<br>
-                  🌐 仅局域网内可用（192.168.x.x），无公网暴露，数据安全。
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalWorkflow').style.display='none'">关闭</button>
-            </div>
-        </div>
-    </div>
-
     <!-- 统计仪表盘弹窗 -->
     <div class="modal-overlay" id="modalDashboard" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:640px;max-height:80vh;display:flex;flex-direction:column;">
@@ -696,50 +630,6 @@
             </div>
         </div>
     </div>
-
-    <!-- 导出预览弹窗 -->
-    <div class="modal-overlay" id="modalExportPreview" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
-        <div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:680px;max-height:80vh;display:flex;flex-direction:column;">
-            <div class="modal-header">
-                <h5><i class="bi bi-eye"></i> 导出预览</h5>
-                <button class="header-btn-sm" onclick="document.getElementById('modalExportPreview').style.display='none'">&times;</button>
-            </div>
-            <div class="modal-body" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
-                <!-- 顶部统计 + 格式选择 -->
-                <div id="epTopBar" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-shrink:0;">
-                    <span id="epCount" style="font-size:13px;color:#6366f1;font-weight:600;">选中 0 条</span>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:4px;cursor:pointer;">
-                            <input type="radio" name="epFmt" value="txt" checked onchange="App._refreshExportPreview()"> TXT
-                        </label>
-                        <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:4px;cursor:pointer;">
-                            <input type="radio" name="epFmt" value="json" onchange="App._refreshExportPreview()"> JSON
-                        </label>
-                        <button class="btn btn-sm btn-primary" onclick="App._doExportPreview()" style="padding:4px 14px;font-size:12px;">
-                            <i class="bi bi-download"></i> 下载
-                        </button>
-                    </div>
-                </div>
-                <!-- 词条列表预览 -->
-                <div id="epItemList" style="flex:1;overflow-y:auto;border:1px solid var(--border-color);border-radius:6px;padding:8px;margin-bottom:8px;font-size:12px;">
-                    <div style="color:var(--text-muted);text-align:center;padding:30px 0;">加载中...</div>
-                </div>
-                <!-- 导出内容预览 -->
-                <div id="epContentArea" style="flex-shrink:0;">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                        <span style="font-size:11px;color:var(--text-muted);">📄 导出内容预览</span>
-                        <button class="btn btn-sm" onclick="App._copyExportPreview()" style="font-size:11px;padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer;">📋 复制</button>
-                    </div>
-                    <textarea id="epContent" class="modal-input" rows="5" readonly style="font-family:monospace;font-size:11px;resize:none;"></textarea>
-                </div>
-            </div>
-            <div class="modal-footer" style="flex-shrink:0;">
-                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalExportPreview').style.display='none'">关闭</button>
-                <button class="btn btn-primary btn-sm" onclick="App._doExportPreview()"><i class="bi bi-download"></i> 下载</button>
-            </div>
-        </div>
-    </div>
-
     <div id="toastContainer" class="toast-container"></div>
     <script src="/static/js/app.js"></script>
 </body>
