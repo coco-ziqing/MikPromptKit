@@ -146,6 +146,7 @@ def list_collection_items(cid: int, page: int = Query(1, ge=1), page_size: int =
         SELECT p.id, p.module, p.category, p.subcategory, p.content,
                p.meaning, p.scene, p.tags, p.usage_count,
                pt.filename as thumbnail, pv.filename as video_filename, pv.poster as video_poster,
+               pv.fps as video_fps, pv.duration as video_duration,
                ci.note, ci.added_at as collected_at
         FROM collection_items ci
         JOIN prompts p ON p.id = ci.prompt_id AND p.deleted_at IS NULL
@@ -156,12 +157,37 @@ def list_collection_items(cid: int, page: int = Query(1, ge=1), page_size: int =
         LIMIT ? OFFSET ?
     """, [cid, page_size, offset]).fetchall()
 
+    items = [dict(r) for r in rows]
+    # 为每条词条补充收藏归属信息
+    prompt_ids = [r["id"] for r in rows]
+    if prompt_ids:
+        placeholders = ",".join(["?"] * len(prompt_ids))
+        coll_map = db.execute(f"""
+            SELECT ci.prompt_id, c.id, c.name, c.icon
+            FROM collection_items ci
+            JOIN collections c ON c.id = ci.collection_id
+            WHERE ci.prompt_id IN ({placeholders})
+            ORDER BY ci.prompt_id
+        """, prompt_ids).fetchall()
+        by_prompt = {}
+        for row in coll_map:
+            by_prompt.setdefault(row["prompt_id"], []).append({
+                "id": row["id"],
+                "name": row["name"],
+                "icon": row["icon"]
+            })
+        for item in items:
+            item["collections"] = by_prompt.get(item["id"], [])
+    else:
+        for item in items:
+            item["collections"] = []
+
     return {
         "total": total,
         "page": page,
         "page_size": page_size,
         "total_pages": max(1, (total + page_size - 1) // page_size),
-        "items": [dict(r) for r in rows]
+        "items": items
     }
 
 

@@ -1874,6 +1874,13 @@ const App = {
         for (const p of items) {
             const tags = JSON.parse(p.tags || '[]');
             const tagHtml = tags.map(t => `<span class="card-badge">${this._escape(t)}</span>`).join('');
+            var colls = p.collections || [];
+            var collHtml = '';
+            for (var ci = 0; ci < colls.length; ci++) {
+                var cc = colls[ci];
+                collHtml += '<span class="coll-badge" ondblclick="App.switchView(\'collections\');App.openCollection(' + cc.id + ')" title="双击进入「' + this._escape(cc.name) + '」收藏分组">' + (cc.icon || '⭐') + '</span>';
+            }
+            const isSelected = this.state.batchSelected.has(p.id);
             html += `
                 <div class="prompt-card" data-id="${p.id}" draggable="true">
                     <div class="card-body">
@@ -1894,6 +1901,15 @@ const App = {
                             </div>
                             ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (p.video_filename ? 'App.openVideoViewer(\'' + p.video_filename + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (p.video_filename ? '查看原视频' : '查看原图') + '">' + (p.video_filename ? '▶' : '🔍') + '</span>' : ''}
                         </div>
+                        <div class="card-add-row">
+                            <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>
+                            <div class="card-collections">
+                                <div class="card-checkbox">
+                                    <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="App.toggleSelect(${p.id})">
+                                </div>
+                                ${collHtml}
+                            </div>
+                        </div>
                         <div class="card-text">
                             <div style="display:flex;align-items:center;margin-bottom:6px;gap:4px;">
                                 <span class="card-badge">${this._escape(p.category)}</span>
@@ -1911,10 +1927,6 @@ const App = {
                         </div>
                     </div>
                 </div>
-            
-                        <div class="card-drop-indicator">
-                            <span>📁 松开放置</span>
-                        </div>
                     `;
         }
         html += '</div>';
@@ -3250,9 +3262,10 @@ const App = {
         }
 
         // 根据列数调整缩略图大小
+        // 1-2列时缩略图尺寸与文字区域比例协调，防止缩略图撑满卡片
         var thumbW, thumbH;
-        if (cols <= 1)      { thumbW = 485; thumbH = 323; }
-        else if (cols <= 2) { thumbW = 340; thumbH = 227; }
+        if (cols <= 1)      { thumbW = 480; thumbH = 320; }
+        else if (cols <= 2) { thumbW = 190; thumbH = 127; }
         else if (cols <= 3) { thumbW = 140; thumbH = 93; }
         else if (cols <= 4) { thumbW = 110; thumbH = 73; }
         else if (cols <= 5) { thumbW = 95;  thumbH = 63; }
@@ -3514,8 +3527,7 @@ const App = {
                 var cc = colls[ci];
                 collHtml += '<span class="coll-badge" ondblclick="App.switchView(\'collections\');App.openCollection(' + cc.id + ')" title="双击进入「' + this._escape(cc.name) + '」收藏分组">' + (cc.icon || '⭐') + '</span>';
             }
-            // 添加收藏按钮(竖排末尾)
-            collHtml += '<span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(' + p.id + ', this)" title="添加到收藏分组">+</span>';
+            // coll-add-btn 已移动到 card-thumb 底部右下角
 
             html += `
                 <div class="prompt-card ${batchClass} ${selectedClass} ${editClass}" data-id="${p.id}">
@@ -3537,6 +3549,15 @@ const App = {
                             </div>
                             ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (p.video_filename ? 'App.openVideoViewer(\'' + p.video_filename + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (p.video_filename ? '查看原视频' : '查看原图') + '">' + (p.video_filename ? '▶' : '🔍') + '</span>' : ''}
                         </div>
+                        <div class="card-add-row">
+                            <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>
+                            <div class="card-collections">
+                                <div class="card-checkbox">
+                                    <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="App.toggleSelect(${p.id})">
+                                </div>
+                                ${collHtml}
+                            </div>
+                        </div>
                         <div class="card-text">
                             <div style="display:flex;align-items:center;margin-bottom:6px;gap:4px;">
                                 <span class="card-badge">${this._escape(p.category)}</span>
@@ -3553,12 +3574,6 @@ const App = {
                                 <button class="btn-copy" onclick="App.handleCopy(${p.id}, '${this._escape(p.content).replace(/'/g, "\\'")}')">📋 复制</button>
                                 ${App.state.editMode ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.trashPrompt(' + p.id + ')">🗑 删除</button>' : ''}
                             </div>
-                        </div>
-                        <div class="card-collections">
-                            <div class="card-checkbox">
-                                <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="App.toggleSelect(${p.id})">
-                            </div>
-                            ${collHtml}
                         </div>
                     </div>
                 </div>
@@ -3741,6 +3756,10 @@ const App = {
             this.showToast('已收藏到「' + cname + '」', 'success');
             await this.loadCollections();
             await this.loadPrompts();  // 刷新卡片显示收藏图标
+            // 如果当前在收藏夹内，刷新收藏夹词条列表
+            if (this.state.currentView === 'collections' && this.state.currentCollection) {
+                await this.loadCollectionItems();
+            }
             // 刷新查看器右侧面板
             this._refreshViewerPanels();
         } else {
@@ -3828,6 +3847,7 @@ const App = {
                 });
                 this.showToast(`已收藏到「${name}」`, 'success');
                 if (this.state.currentView === 'home') this.loadPrompts();
+                if (this.state.currentView === 'collections' && this.state.currentCollection) this.loadCollectionItems();
             } else {
                 this.showToast('收藏分组已创建', 'success');
                 if (this.state.currentView === 'home') this.loadPrompts();
