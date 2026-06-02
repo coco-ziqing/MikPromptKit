@@ -1600,6 +1600,65 @@ const App = {
         }
     },
 
+    async batchGenerateThumbnails() {
+        var ids = [...this.state.batchSelected];
+        if (ids.length === 0) { this.showToast('请先选择词条', 'error'); return; }
+        if (!confirm('确认对 ' + ids.length + ' 条词条批量生成缩略图？\n注意：每张图需等待 ComfyUI 生成完成，耗时较长。')) return;
+
+        var cfg = await this.fetchJSON('/api/v2/comfyui/config');
+        if (!cfg || !cfg.config || !cfg.config.enabled) {
+            this.showToast('ComfyUI 未启用，请先配置', 'warning');
+            this.openComfyConfig();
+            return;
+        }
+
+        this.showToast('⏳ 正在批量生成 ' + ids.length + ' 张缩略图...', 'info');
+        var bar = document.getElementById('batchBar');
+        if (bar) bar.style.opacity = '0.5';
+
+        var success = 0, errors = 0;
+        try {
+            var resp = await fetch('/api/v2/comfyui/batch-generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt_ids: ids,
+                    workflow_id: cfg.config.active_workflow || ''
+                })
+            });
+            if (!resp.ok) { this.showToast('批处理请求失败', 'error'); return; }
+
+            var reader = resp.body.getReader();
+            var decoder = new TextDecoder();
+            var buffer = '';
+            while (true) {
+                var chunk = await reader.read();
+                if (chunk.done) break;
+                buffer += decoder.decode(chunk.value, { stream: true });
+                var lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                for (var li = 0; li < lines.length; li++) {
+                    var line = lines[li].trim();
+                    if (!line || !line.startsWith('data: ')) continue;
+                    try {
+                        var ev = JSON.parse(line.substring(6));
+                        if (ev.complete) {
+                            success = ev.success || 0;
+                            errors = ev.errors || 0;
+                        } else if (ev.done) {
+                            this.showToast('(' + ev.done + '/' + ev.total + ') ' + (ev.ok ? '✅ 完成' : '❌ ' + (ev.error || '失败')), ev.ok ? 'success' : 'error');
+                        }
+                    } catch(e) {}
+                }
+            }
+            this.showToast('✅ 批量生成完成: ' + success + ' 成功, ' + errors + ' 失败', errors > 0 ? 'warning' : 'success');
+            await this.loadPrompts();
+        } catch(e) {
+            this.showToast('批量生成异常: ' + e.message, 'error');
+        }
+        if (bar) bar.style.opacity = '1';
+    },
+
     // ============ 导入/导出 ============
 
     showImportModal() {
@@ -1611,6 +1670,146 @@ const App = {
         document.getElementById('modalImportExport').style.display = 'flex';
         this.switchIETab('export');
         this._updateExportBtn();
+    },
+
+    // ============ 截图导入 ============
+
+    async openScreenshotImport() {
+        // 重置状态
+        this._ssTempImage = '';
+        this._ssHasImage = false;
+        document.getElementById('ssUploadArea').style.display = 'block';
+        document.getElementById('ssLoading').style.display = 'none';
+        document.getElementById('ssPreviewArea').style.display = 'none';
+        document.getElementById('ssError').style.display = 'none';
+        document.getElementById('ssBtnImport').style.display = 'none';
+        document.getElementById('ssBtnRetry').style.display = 'none';
+        document.getElementById('ssFileInput').value = '';
+        document.getElementById('modalScreenshotImport').style.display = 'flex';
+    },
+
+    async _onSSFileSelect(event) {
+        var file = event.target.files[0];
+        if (!file) return;
+        this._processSSFile(file);
+    },
+
+    async _processSSFile(file) {
+        var self = this;
+        document.getElementById('ssUploadArea').style.display = 'none';
+        document.getElementById('ssLoading').style.display = 'block';
+        document.getElementById('ssPreviewArea').style.display = 'none';
+        document.getElementById('ssError').style.display = 'none';
+        document.getElementById('ssBtnImport').style.display = 'none';
+        document.getElementById('ssBtnRetry').style.display = 'none';
+
+        var formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            var resp = await fetch('/api/v2/ocr/preview', { method: 'POST', body: formData });
+            var data = await resp.json();
+
+            document.getElementById('ssLoading').style.display = 'none';
+
+            if (!data.ok) {
+                var errEl = document.getElementById('ssError');
+                errEl.innerHTML = '<strong>❌ ' + (data.error || '识别失败') + '</strong><br><span style="font-size:12px;margin-top:8px;display:block;">请确认 Ollama 正在运行且有视觉模型可用。</span>';
+                errEl.style.display = 'block';
+                document.getElementById('ssBtnRetry').style.display = 'inline-block';
+                return;
+            }
+
+            var preview = data.preview || {};
+            self._ssTempImage = (data.temp_files && data.temp_files.image) || '';
+            self._ssHasImage = data.layout && data.layout.has_image_region;
+
+            // 填充字段
+            document.getElementById('ssContent').value = preview.content || '';
+            document.getElementById('ssMeaning').value = preview.meaning || '';
+            document.getElementById('ssScene').value = preview.scene || '';
+            document.getElementById('ssCategory').value = preview.category || 'OCR导入';
+            document.getElementById('ssTags').value = JSON.stringify(preview.tags || []);
+            document.getElementById('ssTips').value = preview.tips || '';
+
+            // 模块下拉选择
+            var moduleSelect = document.getElementById('ssModule');
+            var moduleMap = { emotion: '人物表情', color: '场景色彩', tone: '画面色调', composition: '构图运镜', seedance: '视频模板', custom: '自定义' };
+            var matchedModule = 'custom';
+            for (var key in moduleMap) {
+                if (preview.module === key || (moduleMap[key]).indexOf(preview.module) >= 0) {
+                    matchedModule = key;
+                    break;
+                }
+            }
+            moduleSelect.value = matchedModule;
+
+            // 缩略图预览
+            if (self._ssHasImage && self._ssTempImage) {
+                document.getElementById('ssThumbPreview').innerHTML = '<img src="/api/v2/ocr/temp-file/' + self._ssTempImage + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">';
+            } else {
+                document.getElementById('ssThumbPreview').textContent = '无效果图';
+            }
+
+            // 原始文字（只显示一半用于参考）
+            var rawText = preview.content || '';
+            if (preview.meaning) rawText += '\n' + preview.meaning;
+            if (preview.tips) rawText += '\n💡 ' + preview.tips;
+            document.getElementById('ssRawText').textContent = rawText.substring(0, 300) + (rawText.length > 300 ? '...' : '');
+
+            document.getElementById('ssPreviewArea').style.display = 'block';
+            document.getElementById('ssBtnImport').style.display = 'inline-block';
+            if (data.error) {
+                document.getElementById('ssBtnRetry').style.display = 'inline-block';
+            }
+        } catch(e) {
+            document.getElementById('ssLoading').style.display = 'none';
+            var errEl = document.getElementById('ssError');
+            errEl.innerHTML = '<strong>❌ 请求失败: ' + this._escape(e.message) + '</strong><br><span style="font-size:12px;margin-top:8px;display:block;">请检查后端服务和 Ollama 是否运行</span>';
+            errEl.style.display = 'block';
+            document.getElementById('ssBtnRetry').style.display = 'inline-block';
+        }
+    },
+
+    async _confirmSSImport() {
+        var content = document.getElementById('ssContent').value.trim();
+        if (!content) { this.showToast('请输入提示词内容', 'error'); return; }
+
+        var tags = document.getElementById('ssTags').value.trim();
+        try { tags = JSON.parse(tags || '[]'); } catch(e) { tags = []; }
+        if (!Array.isArray(tags)) tags = [];
+
+        var data = {
+            content: content,
+            meaning: document.getElementById('ssMeaning').value.trim(),
+            scene: document.getElementById('ssScene').value.trim(),
+            module: document.getElementById('ssModule').value,
+            category: document.getElementById('ssCategory').value.trim() || 'OCR导入',
+            tags: tags,
+            tips: document.getElementById('ssTips').value.trim(),
+            temp_image: this._ssTempImage || '',
+            has_image: this._ssHasImage
+        };
+
+        this.showToast('⏳ 正在导入...', 'info');
+        var result = await this.fetchJSON('/api/v2/ocr/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (result && result.ok) {
+            this.showToast(result.message || '✅ 已导入', 'success');
+            document.getElementById('modalScreenshotImport').style.display = 'none';
+            await this.loadPrompts();
+            this.loadStats();
+        } else {
+            this.showToast('导入失败: ' + (result ? result.error : '未知错误'), 'error');
+        }
+    },
+
+    _retrySSUpload() {
+        document.getElementById('ssFileInput').click();
     },
 
     switchIETab(tab) {

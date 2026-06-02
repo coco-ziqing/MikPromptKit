@@ -1,2 +1,0 @@
-24:                 _cardTranslations: {},
-3324:                                 <button class="btn-translate" onclick="App.toggleTranslation(${p.id})" title="?????" style="border
