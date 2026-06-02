@@ -338,6 +338,7 @@ const App = {
 
     async loadPrompts() {
         const s = this.state;
+        var savedScrollY = window.scrollY;
         const params = new URLSearchParams();
         if (s.currentModule) params.set('module', s.currentModule);
         if (s.currentCategory) params.set('category', s.currentCategory);
@@ -346,11 +347,14 @@ const App = {
         params.set('page_size', s.pageSize);
 
         s.isLoading = true;
-        this.renderPrompts();
+        // 已有卡片时不渲染 loading spinner（避免闪到顶部）
+        if (this.state.prompts.length === 0) {
+            this.renderPrompts();
+        }
 
         const data = await this.fetchJSON(`/api/prompts?${params}`);
         s.isLoading = false;
-        if (!data) { this.renderPrompts(); return; }
+        if (!data) { this.renderPrompts(); this._restoreScroll(savedScrollY); return; }
 
         s.prompts = data.items;
         s.totalItems = data.total;
@@ -358,6 +362,21 @@ const App = {
         this.renderPrompts();
         this.renderPagination();
         document.getElementById('countInfo').textContent = `共 ${data.total} 条提示词`;
+        // 同步恢复滚动位置（0 delay 确保布局已更新但同一帧内）
+        if (savedScrollY > 0 && this.state.currentView === 'home') {
+            var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+            window.scrollTo(0, Math.min(savedScrollY, maxY));
+        }
+    },
+
+    _restoreScroll(savedY) {
+        if (savedY > 0 && this.state.currentView === 'home') {
+            var self = this;
+            setTimeout(function() {
+                var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+                window.scrollTo(0, Math.min(savedY, maxY));
+            }, 0);
+        }
     },
 
     async loadStats() {
@@ -697,23 +716,34 @@ const App = {
         this.updateBatchCount();
     },
 
-    updateBatchCount() {
-        document.getElementById('batchCount').textContent = `已选 ${this.state.batchSelected.size} 项`;
-        var editBar = document.getElementById('batchBar');
-        if (this.state.editMode) {
-            editBar.style.display = 'flex';
-            document.getElementById('batchCount').textContent = `已选 ${this.state.batchSelected.size} 项`;
-        } else if (editBar) {
-            editBar.style.display = 'none';
-        }
-    },
-
     selectAllPrompts() {
-        for (const p of this.state.prompts) {
-            this.state.batchSelected.add(p.id);
+        var allIds = this.state.prompts.map(function(p) { return p.id; });
+        // 如果当前已全选 → 取消全选；否则全选
+        var allSelected = allIds.every(function(id) { return App.state.batchSelected.has(id); });
+        if (allSelected) {
+            this.state.batchSelected.clear();
+        } else {
+            for (const p of this.state.prompts) {
+                this.state.batchSelected.add(p.id);
+            }
         }
         this.renderPrompts();
         this.updateBatchCount();
+    },
+
+    updateBatchCount() {
+        var count = this.state.batchSelected.size;
+        var el = document.getElementById('batchCount');
+        if (el) el.textContent = '已选 ' + count + ' 项';
+        // 更新按钮文字
+        var btn = document.getElementById('btnSelectAllPrompts');
+        if (btn) {
+            var allIds = this.state.prompts.map(function(p) { return p.id; });
+            var allSelected = allIds.every(function(id) { return App.state.batchSelected.has(id); });
+            btn.innerHTML = allSelected
+                ? '<i class="bi bi-x-square"></i> 取消全选'
+                : '<i class="bi bi-check-all"></i> 全选';
+        }
     },
 
     async exportSelected() {
@@ -1949,31 +1979,34 @@ const App = {
     async toggleTranslation(promptId) {
         var el = document.getElementById('cc_' + promptId);
         if (!el) return;
-        var currentIsTranslated = !!this.state._cardTranslations[promptId];
-        if (currentIsTranslated) {
-            var promptData = this.state.prompts.find(function(p) { return p.id === promptId; });
-            if (promptData) el.textContent = promptData.content;
+        // 查看卡片是否已有中英对照（检查是否有 .card-translation 子元素）
+        var existingTrans = el.querySelector('.card-translation');
+        if (existingTrans) {
+            // 已显示翻译 → 移除翻译，恢复原文
+            el.textContent = el.getAttribute('data-original') || el.textContent.replace(/\s*<div class="card-translation">.*$/s, '');
             delete this.state._cardTranslations[promptId];
             this._updateTranslateBtn(promptId);
             return;
         }
-        el.textContent = '翻译中...';
+        // 保存原始内容
+        var originalContent = el.textContent;
+        el.setAttribute('data-original', originalContent);
+        el.innerHTML = originalContent + '<div class="card-translation" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-color,#e2e8f0);color:#6366f1;font-size:13px;">翻译中...</div>';
         try {
             var data = await this.fetchJSON('/api/translate/' + promptId + '?target_lang=zh');
             if (data && data.ok && data.translated && data.translated !== data.original) {
-                el.textContent = data.translated;
-                this.state._cardTranslations[promptId] = data.translated;
+                var transHtml = this._escape(data.translated);
+                el.innerHTML = App._escape(originalContent) + '<div class="card-translation" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-color,#e2e8f0);color:#6366f1;font-size:13px;">' + transHtml + '</div>';
+                this.state._cardTranslations[promptId] = true;
             } else if (data && data.note) {
-                el.textContent = data.original;
-                this.state._cardTranslations[promptId] = data.original;
+                el.innerHTML = App._escape(originalContent);
+                this.state._cardTranslations[promptId] = true;
             } else {
-                var promptData = this.state.prompts.find(function(p) { return p.id === promptId; });
-                el.textContent = data && data.original ? data.original : (promptData ? promptData.content : '');
+                el.innerHTML = App._escape(originalContent);
                 this.showToast('翻译失败: ' + (data ? data.error : '未知错误'), 'error');
             }
         } catch(e) {
-            var promptData = this.state.prompts.find(function(p) { return p.id === promptId; });
-            el.textContent = promptData ? promptData.content : '';
+            el.innerHTML = App._escape(originalContent);
             this.showToast('翻译失败: ' + e.message, 'error');
         }
         this._updateTranslateBtn(promptId);
@@ -2892,7 +2925,39 @@ const App = {
 
         html += '<div id="comfyImportStatus" style="margin-top:8px;font-size:11px;color:var(--text-muted);"></div>';
 
+        // 模块主体预设
+        html += '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-color,#e2e8f0);">';
+        html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">📝 模块主体预设</div>';
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">各模块公共主体描述，将与提示词卡片内容自动组合后发送 ComfyUI。留空则仅使用卡片内容。</div>';
+        html += '<div id="comfyPresetsArea" style="max-height:300px;overflow-y:auto;">加载预设中...</div></div>';
+
         document.getElementById('comfyUIConfigBody').innerHTML = html;
+
+        // 异步加载模块预设
+        var self = this;
+        this.fetchJSON('/api/v2/comfyui/module-presets').then(function(ps) {
+            if (!ps || !ps.presets) return;
+            var modules = ps.modules || Object.keys(ps.presets);
+            self._comfyPresetsData = ps.presets;
+            var ph = '';
+            for (var mi = 0; mi < modules.length; mi++) {
+                var m = modules[mi];
+                if (m === 'custom' || m === 'seedance') continue;
+                var mp = ps.presets[m] || { preset: '', enabled: false };
+                ph += '<div style="padding:8px 0;border-bottom:1px solid var(--border-color,#e2e8f0);">';
+                ph += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
+                ph += '<input type="checkbox" class="preset-enable" data-module="' + m + '" ' + (mp.enabled ? 'checked' : '') + ' id="pe_' + m + '">';
+                ph += '<label for="pe_' + m + '" style="font-size:12px;font-weight:500;">' + self._escape(m) + '</label>';
+                ph += '</div>';
+                ph += '<textarea class="preset-text preset-text-' + m + '" data-module="' + m + '" rows="2" style="width:100%;font-size:11px;padding:4px 6px;border:1px solid var(--border-color,#e2e8f0);border-radius:4px;background:var(--bg-card,#fff);color:var(--text-main);resize:vertical;" placeholder="模块主体预设描述（如：a person with clear facial expression, portrait close-up）">' + self._escape(mp.preset || '') + '</textarea>';
+                ph += '</div>';
+            }
+            var area = document.getElementById('comfyPresetsArea');
+            if (area) area.innerHTML = ph;
+        }).catch(function(e) {
+            var area = document.getElementById('comfyPresetsArea');
+            if (area) area.innerHTML = '<div style="font-size:11px;color:#ef4444;">加载预设失败: ' + e.message + '</div>';
+        });
     },
 
     _importComfyWorkflow(input) {
@@ -2989,6 +3054,22 @@ const App = {
         });
         if (data && data.ok) {
             this._comfyConfig = cfg;
+            // 同时保存模块预设
+            var presets = {};
+            var enableEls = document.querySelectorAll('.preset-enable');
+            for (var pi = 0; pi < enableEls.length; pi++) {
+                var mname = enableEls[pi].getAttribute('data-module');
+                var textarea = document.querySelector('.preset-text-' + mname);
+                presets[mname] = {
+                    enabled: enableEls[pi].checked,
+                    preset: textarea ? textarea.value.trim() : ''
+                };
+            }
+            await this.fetchJSON('/api/v2/comfyui/module-presets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ presets: presets })
+            });
             this.showToast('ComfyUI 配置已保存', 'success');
         } else {
             this.showToast('保存失败', 'error');
@@ -2999,13 +3080,28 @@ const App = {
         var pid = this._editingPromptId;
         if (!pid) { this.showToast('请先打开编辑弹窗', 'error'); return; }
 
+        // 检查是否已有缩略图，询问是否替换
+        if (this._editThumbFilename || this._editVideoFilename) {
+            if (!confirm('当前提示词已有缩略图，是否重新生成并替换？')) return;
+        } else if (this._editThumbnailCleared) {
+            if (!confirm('当前缩略图已清除，重新生成？')) return;
+        }
+
+        // 提前拿到按钮引用，所有出口都要恢复
+        var btn = document.querySelector('[onclick*="generateComfyThumbnail"]');
+        function _resetBtn() {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-magic"></i> AI 生成'; }
+        }
+
         var cfg = await this.fetchJSON('/api/v2/comfyui/config');
         if (!cfg || !cfg.config || !cfg.config.enabled) {
+            _resetBtn();
             this.showToast('ComfyUI 未启用，请先配置', 'warning');
             this.openComfyConfig();
             return;
         }
         if (!cfg.config.active_workflow && (!cfg.config.workflows || cfg.config.workflows.length === 0)) {
+            _resetBtn();
             this.showToast('请先导入 ComfyUI 工作流模板', 'warning');
             this.openComfyConfig();
             return;
@@ -3013,39 +3109,60 @@ const App = {
 
         // 取当前编辑框里的提示词
         var promptText = document.getElementById('editContent').value.trim();
-        if (!promptText) { this.showToast('请先输入提示词内容', 'error'); return; }
+        if (!promptText) { _resetBtn(); this.showToast('请先输入提示词内容', 'error'); return; }
 
         this.showToast('⏳ 正在发送到 ComfyUI 生成...', 'info');
-        var btn = document.querySelector('[onclick*="generateComfyThumbnail"]');
-        if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-magic"></i> 生成中...'; }
 
         try {
             var body = {
                 prompt_id: pid,
                 prompt_text: promptText,
-                workflow_id: cfg.config.active_workflow || ''
+                workflow_id: cfg.config.active_workflow || '',
+                module_name: document.getElementById('editModule').value || ''
             };
-            var data = await this.fetchJSON('/api/v2/comfyui/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
+            // ComfyUI 生成耗时较长（1-5分钟），单独使用 600 秒超时
+            var controller = new AbortController();
+            var timer = setTimeout(function() { controller.abort(); }, 600000);
+            var data = null;
+            try {
+                var res = await fetch('/api/v2/comfyui/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                    signal: controller.signal
+                });
+                clearTimeout(timer);
+                if (res.ok) data = await res.json();
+            } catch(e) {
+                clearTimeout(timer);
+                if (e.name === 'AbortError') {
+                    this.showToast('生成超时（600秒），请检查 ComfyUI 状态', 'error');
+                    _resetBtn();
+                    return;
+                }
+                throw e;
+            }
             if (data && data.ok) {
                 this.showToast('✅ 生成完成，缩略图已更新', 'success');
-                // 刷新编辑弹窗的缩略图
+                // 刷新编辑弹窗的缩略图预览
                 if (data.thumbnail) {
                     var preview = document.getElementById('editThumbPreview');
                     if (preview) preview.innerHTML = '<img src="/api/thumbnails/file/' + data.thumbnail + '" style="width:120px;height:80px;object-fit:cover;border-radius:6px;">';
                     var nameEl = document.getElementById('editThumbName');
                     if (nameEl) nameEl.textContent = data.thumbnail;
                 }
+                // 刷新卡片网格，缩略图自动显示
+                await this.loadPrompts();
+                // 刷新查看器弹窗（如果打开）
+                this._refreshViewerPanels();
             } else {
                 this.showToast('生成失败: ' + (data ? data.error : '未知错误'), 'error');
             }
         } catch(e) {
             this.showToast('生成失败: ' + e.message, 'error');
         }
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-magic"></i> AI 生成'; }
+        _resetBtn();
     },
 
 
@@ -3547,6 +3664,7 @@ const App = {
                                       </div>`
                                 }
                             </div>
+                            ${p.thumbnail && App.state.editMode ? '<span class="thumb-clear-btn" onclick="event.stopPropagation();App.clearCardThumbnail(' + p.id + ')" title="清除缩略图">✕</span>' : ''}
                             ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (p.video_filename ? 'App.openVideoViewer(\'' + p.video_filename + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (p.video_filename ? '查看原视频' : '查看原图') + '">' + (p.video_filename ? '▶' : '🔍') + '</span>' : ''}
                         </div>
                         <div class="card-add-row">
@@ -4133,6 +4251,17 @@ const App = {
         this._editVideoFilename = null;
         this._editThumbnailCleared = this._editHadThumbOriginal;
         this.updateEditThumbDisplay();
+    },
+
+    async clearCardThumbnail(promptId) {
+        if (!confirm('确认清除此提示词的缩略图？')) return;
+        var data = await this.fetchJSON('/api/thumbnails/assign/' + promptId, { method: 'DELETE' });
+        if (data && data.ok) {
+            this.showToast('缩略图已清除', 'info');
+            await this.loadPrompts();
+        } else {
+            this.showToast('清除失败', 'error');
+        }
     },
 
     setEditThumbnail() {
@@ -5405,7 +5534,10 @@ openImageViewer(filename, promptId) {
 
     _onDropPng: async function(e) {
         e.preventDefault();
-        e.currentTarget.style.outline = '';
+        // 非编辑模式不处理拖拽导入
+        if (!App.state.editMode) { return; }
+        // 安全清除 outline（仅对 zone 元素有效）
+        try { e.currentTarget.style.outline = ''; } catch(ee) {}
         var files = e.dataTransfer.files;
         if (!files || files.length === 0) return;
         var pngFiles = [];
@@ -5422,22 +5554,26 @@ openImageViewer(filename, promptId) {
         var created = 0;
         for (var fi2 = 0; fi2 < pngFiles.length; fi2++) {
             var file = pngFiles[fi2];
-            var formData = new FormData();
-            formData.append('file', file);
             try {
-                var resp = await fetch('/api/export/preview-png', { method: 'POST', body: formData });
+                var fd1 = new FormData();
+                fd1.append('file', file);
+                var resp = await fetch('/api/export/preview-png', { method: 'POST', body: fd1 });
                 var preview = await resp.json();
                 if (preview.ok && preview.preview) {
                     var p = preview.preview;
                     if (!confirm('拖入提示词卡片: \n内容: ' + (p.content || '').substring(0, 60) + '\n模块: ' + (p.module || '') + '\n分类: ' + (p.category || '') + '\n\n确认导入？')) continue;
-                    var resp2 = await fetch('/api/export/import-png?conflict=rename', { method: 'POST', body: formData });
+                    var fd2 = new FormData();
+                    fd2.append('file', file);
+                    fd2.append('conflict', 'rename');
+                    fd2.append('overrides', '[]');
+                    var resp2 = await fetch('/api/export/import-png', { method: 'POST', body: fd2 });
                     var result = await resp2.json();
                     if (result.ok && result.result.created) created++;
                 } else {
                     App.showToast('无法识别文件: ' + file.name, 'error');
                 }
             } catch(err) {
-                App.showToast('导入失败: ' + file.name, 'error');
+                App.showToast('导入失败: ' + file.name + ' (' + (err.message || '') + ')', 'error');
             }
         }
         if (created > 0) {
@@ -5445,6 +5581,69 @@ openImageViewer(filename, promptId) {
             await App.loadPrompts();
         }
     },
+
+    // --- 全局拖拽导入（仅编辑模式下可用） ---
+    _initDropZone: function() {
+        // 全局阻止浏览器默认拖拽行为（让浏览器允许 drop）
+        document.addEventListener('dragover', function(e) { e.preventDefault(); });
+
+        var zone = document.getElementById('globalDropZone');
+        if (!zone) {
+            zone = document.createElement('div');
+            zone.id = 'globalDropZone';
+            zone.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:99998;pointer-events:none;';
+            document.body.appendChild(zone);
+        }
+
+        // 拖入：仅编辑模式下显示覆盖层
+        var hideZoneTimer = null;
+        document.addEventListener('dragenter', function(e) {
+            if (!App.state.editMode) return;
+            if (hideZoneTimer) { clearTimeout(hideZoneTimer); hideZoneTimer = null; }
+            zone.style.display = 'flex';
+            zone.style.background = 'rgba(99,102,241,0.06)';
+            zone.style.border = '3px dashed #6366f1';
+            zone.style.alignItems = 'center';
+            zone.style.justifyContent = 'center';
+            zone.style.pointerEvents = 'auto';
+            zone.innerHTML = '<div style="background:rgba(255,255,255,0.95);padding:24px 36px;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.15);text-align:center;">'
+                + '<div style="font-size:48px;margin-bottom:8px;">📥</div>'
+                + '<div style="font-size:18px;font-weight:600;color:#1e293b;">松开放入 PNG 提示词卡片</div>'
+                + '<div style="font-size:13px;color:#64748b;margin-top:4px;">支持 .png 文件（含提示词元数据）</div>'
+                + '</div>';
+        });
+
+        // 拖离：延迟隐藏覆盖层（避免闪动）
+        document.addEventListener('dragleave', function(e) {
+            if (!App.state.editMode) return;
+            if (hideZoneTimer) clearTimeout(hideZoneTimer);
+            hideZoneTimer = setTimeout(function() {
+                zone.style.display = 'none';
+                zone.style.background = '';
+                zone.style.border = '';
+                zone.innerHTML = '';
+            }, 200);
+        });
+
+        // 统一在 document 上监听 drop（不设 stopPropagation，覆盖层只是视觉）
+        document.addEventListener('drop', function(e) {
+            e.preventDefault();
+            // 隐藏覆盖层
+            zone.style.display = 'none';
+            zone.style.background = '';
+            zone.style.border = '';
+            zone.innerHTML = '';
+            if (hideZoneTimer) { clearTimeout(hideZoneTimer); hideZoneTimer = null; }
+            // 仅编辑模式处理
+            if (!App.state.editMode) return;
+            App._onDropPng(e);
+        });
+
+        this._dropAttached = true;
+    },
+
+    // --- 卡片拖拽防护 ---
+
 
     _escape(str) {
         if (!str) return '';

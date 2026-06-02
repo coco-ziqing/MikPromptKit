@@ -187,7 +187,7 @@ body {
     max-width: 100%;
     aspect-ratio: 3 / 2;
     border-radius: 8px;
-    overflow: hidden;
+    overflow: visible;
     margin-bottom: 0;
     position: relative;
     background: var(--hover-bg,#f1f5f9);
@@ -623,7 +623,7 @@ body.dark-theme .seedance-tab:hover { background: #334155; }
 }
 .prompt-card .card-thumb .thumb-zoom-btn {
     position: absolute;
-    top: -6px;
+    bottom: -6px;
     right: -6px;
     width: 22px;
     height: 22px;
@@ -641,6 +641,35 @@ body.dark-theme .seedance-tab:hover { background: #334155; }
 }
 .prompt-card .card-thumb .thumb-zoom-btn:hover {
     transform: scale(1.2);
+}
+
+.prompt-card .card-thumb .thumb-clear-btn {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #ef4444;
+    color: #fff;
+    font-size: 12px;
+    line-height: 22px;
+    text-align: center;
+    cursor: pointer;
+    z-index: 5;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    transition: transform 0.15s;
+}
+.prompt-card .card-thumb .thumb-clear-btn:hover {
+    background: #dc2626;
+    transform: scale(1.2);
+}
+body.dark-theme .prompt-card .card-thumb .thumb-clear-btn {
+    border-color: #1e293b;
+}
+body.dark-theme .prompt-card .card-thumb .thumb-zoom-btn {
+    border-color: #1e293b;
 }
 body.dark-theme .prompt-card .card-thumb-inner {
     background: #334155;

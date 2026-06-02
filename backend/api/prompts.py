@@ -177,10 +177,11 @@ def create_prompt(data: dict):
                     content, data.get("meaning", "") or "", data.get("scene", "") or "", data.get("tags", "[]") or "[]"])
         db.commit()
         new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        # 新建提示词时同步更新语义搜索向量
+        # 新建提示词时异步更新语义搜索向量
         try:
             from semantic import update_embedding
-            update_embedding(new_id, content)
+            import threading
+            threading.Thread(target=update_embedding, args=(new_id, content), daemon=True).start()
         except Exception:
             pass
         return {"ok": True, "id": new_id}
@@ -218,10 +219,17 @@ def update_prompt(prompt_id: int, data: dict):
         db.execute(f"UPDATE prompts SET {', '.join(fields)} WHERE id=?", params)
         db.commit()
 
-        # 更新语义搜索向量
+        # 清除翻译缓存（内容已变更，旧翻译作废）
+        try:
+            db.execute("DELETE FROM translations WHERE prompt_id=?", [prompt_id])
+        except Exception:
+            pass
+
+        # 异步更新语义搜索向量（不阻塞保存响应）
         try:
             from semantic import update_embedding
-            update_embedding(prompt_id)
+            import threading
+            threading.Thread(target=update_embedding, args=(prompt_id,), daemon=True).start()
         except Exception:
             pass
 

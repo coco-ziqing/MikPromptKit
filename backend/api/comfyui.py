@@ -466,7 +466,7 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
         else:
             print(f"[ComfyUI] 节点 {node_id} 没有字段 '{field}'，可用字段: {list(workflow[node_id]['inputs'].keys())}")
 
-    timeout_cfg = httpx.Timeout(30.0, connect=10.0)
+    timeout_cfg = httpx.Timeout(120.0, connect=15.0)
     async with httpx.AsyncClient(timeout=timeout_cfg) as client:
         resp = await client.post(f"{server_url}/prompt", json={"prompt": workflow})
         if resp.status_code != 200:
