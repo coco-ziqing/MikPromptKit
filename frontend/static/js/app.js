@@ -2590,7 +2590,167 @@ const App = {
         }
     },
 
-        // ============ 统计仪表盘 ============
+    // ============ 数据同步 .pkb 包 ============
+
+    async showSyncPanel() {
+        // 打开同步面板并刷新
+        var modal = document.getElementById('modalSync');
+        modal.style.display = 'flex';
+        await this.syncRefreshList();
+    },
+
+    async syncRefreshList() {
+        var body = document.getElementById('syncBody');
+        body.innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">正在加载...</p></div>';
+        try {
+            var res = await this.fetchJSON('/api/sync/packages');
+            if (!res || !res.ok) throw new Error((res && res.error) || '获取失败');
+            this._renderSyncPackages(res.packages, res.count);
+        } catch(e) {
+            body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-danger);">&#10060; 加载失败: ' + e.message + '</div>';
+        }
+    },
+
+    _renderSyncPackages(packages, count) {
+        var body = document.getElementById('syncBody');
+        var html = '';
+
+        // 包列表
+        if (!packages || packages.length === 0) {
+            html += '<div style="text-align:center;padding:40px 20px;color:var(--text-muted);"><i class="bi bi-box" style="font-size:48px;display:block;margin-bottom:12px;"></i><p>暂无 .pkb 包</p><p style="font-size:12px;">点击「导出完整包」创建第一个备份</p></div>';
+        } else {
+            html += '<div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:600;font-size:13px;">&#128193; 已有 ' + count + ' 个包</span><span style="font-size:11px;color:var(--text-muted);">点击行展开详情</span></div>';
+            packages.forEach(function(pkg, idx) {
+                var m = pkg.manifest || {};
+                var created = m.created_at ? m.created_at.replace('T', ' ').substring(0, 19) : (pkg.mtime ? pkg.mtime.replace('T', ' ').substring(0, 19) : '未知');
+                var prompts = m.prompts || 0;
+                var mediaBadge = m.media_included ? '<span class="badge bg-success" style="font-size:10px;">含媒体</span>' : '<span class="badge bg-secondary" style="font-size:10px;">仅数据库</span>';
+                var expanded = 'pkgDetail_' + idx;
+                html += '<div style="border:1px solid var(--border-color);border-radius:8px;margin-bottom:6px;overflow:hidden;">';
+                html += '  <div onclick="App.syncToggleDetail(\'' + expanded + '\')" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;cursor:pointer;background:var(--card-bg);font-size:13px;user-select:none;">';
+                html += '    <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">';
+                html += '      <i class="bi bi-file-archive"></i>';
+                html += '      <span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + pkg.name + '</span>';
+                html += '      ' + mediaBadge;
+                html += '    </div>';
+                html += '    <div style="display:flex;align-items:center;gap:12px;font-size:11px;color:var(--text-muted);">';
+                html += '      <span>' + pkg.size_str + '</span>';
+                html += '      <span>' + created + '</span>';
+                html += '      <i class="bi bi-chevron-down" id="' + expanded + '_icon" style="transition:transform 0.2s;"></i>';
+                html += '    </div>';
+                html += '  </div>';
+                html += '  <div id="' + expanded + '" style="display:none;padding:8px 12px 12px;border-top:1px solid var(--border-color);background:var(--bg-color);">';
+                html += '    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;margin-bottom:8px;">';
+                html += '      <div><span style="color:var(--text-muted);">提示词:</span> ' + prompts + ' 条</div>';
+                html += '      <div><span style="color:var(--text-muted);">文件大小:</span> ' + pkg.size_str + '</div>';
+                html += '      <div><span style="color:var(--text-muted);">创建时间:</span> ' + created + '</div>';
+                html += '      <div><span style="color:var(--text-muted);">含媒体:</span> ' + (m.media_included ? '&#10003;' : '&#10007;') + '</div>';
+                if (m.media_files) {
+                    html += '      <div><span style="color:var(--text-muted);">缩略图:</span> ' + (m.media_files.thumbnails || 0) + '</div>';
+                    html += '      <div><span style="color:var(--text-muted);">原图:</span> ' + (m.media_files.originals || 0) + '</div>';
+                    html += '      <div><span style="color:var(--text-muted);">视频:</span> ' + (m.media_files.videos || 0) + '</div>';
+                }
+                html += '    </div>';
+                html += '    <div style="display:flex;gap:6px;flex-wrap:wrap;">';
+                html += '      <button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation();App.syncRestorePkg(\'' + pkg.name + '\')"><i class="bi bi-arrow-counterclockwise"></i> 恢复</button>';
+                html += '      <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation();App.syncDeletePkg(\'' + pkg.name + '\')"><i class="bi bi-trash"></i> 删除</button>';
+                html += '    </div>';
+                html += '  </div>';
+                html += '</div>';
+            });
+        }
+
+        body.innerHTML = html;
+    },
+
+    syncToggleDetail(id) {
+        var el = document.getElementById(id);
+        var icon = document.getElementById(id + '_icon');
+        if (el) {
+            var show = el.style.display !== 'block';
+            el.style.display = show ? 'block' : 'none';
+            if (icon) icon.style.transform = show ? 'rotate(180deg)' : 'rotate(0deg)';
+        }
+    },
+
+    async syncExportPkg() {
+        try {
+            var res = await this.fetchJSON('/api/sync/export', { method: 'POST' });
+            if (res && res.ok) {
+                this.showToast('导出成功: ' + res.file + ' (' + (res.size/1024/1024).toFixed(2) + ' MB)', 'success');
+                await this.syncRefreshList();
+            } else {
+                this.showToast('导出失败: ' + (res ? res.error : '未知错误'), 'error');
+            }
+        } catch(e) {
+            this.showToast('导出失败: ' + e.message, 'error');
+        }
+    },
+
+    async syncRestorePkg(name) {
+        if (!confirm('确定从 ' + name + ' 恢复数据？\n\n当前数据将自动备份，不会丢失。')) return;
+        try {
+            var res = await this.fetchJSON('/api/sync/restore/' + encodeURIComponent(name), { method: 'POST' });
+            if (res && res.ok) {
+                this.showToast('恢复成功！已还原 ' + (res.count || res.restored.length) + ' 个文件', 'success');
+                // 刷新当前视图
+                if (this.currentView === 'home') this.loadPrompts();
+                await this.syncRefreshList();
+            } else {
+                this.showToast('恢复失败: ' + (res ? res.error : '未知错误'), 'error');
+            }
+        } catch(e) {
+            this.showToast('恢复失败: ' + e.message, 'error');
+        }
+    },
+
+    async syncDeletePkg(name) {
+        if (!confirm('确定删除包 ' + name + '？')) return;
+        try {
+            var res = await this.fetchJSON('/api/sync/packages/' + encodeURIComponent(name), { method: 'DELETE' });
+            if (res && res.ok) {
+                this.showToast('已删除: ' + name, 'success');
+                await this.syncRefreshList();
+            } else {
+                this.showToast('删除失败: ' + (res ? res.error : '未知错误'), 'error');
+            }
+        } catch(e) {
+            this.showToast('删除失败: ' + e.message, 'error');
+        }
+    },
+
+    async syncUploadPkg() {
+        // 创建隐藏 file input
+        var input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.pkb';
+        input.onchange = async function(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            if (!file.name.endsWith('.pkb')) {
+                App.showToast('请选择 .pkb 文件', 'error');
+                return;
+            }
+            try {
+                var formData = new FormData();
+                formData.append('file', file);
+                var res = await fetch('/api/sync/upload', { method: 'POST', body: formData });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                var data = await res.json();
+                if (data && data.ok) {
+                    App.showToast('导入成功: ' + data.saved_as, 'success');
+                    await App.syncRefreshList();
+                } else {
+                    App.showToast('导入失败: ' + (data ? data.error : '未知错误'), 'error');
+                }
+            } catch(err) {
+                App.showToast('导入失败: ' + err.message, 'error');
+            }
+        };
+        input.click();
+    },
+
+    // ============ 统计仪表盘 ============
 
     async showDashboard() {
         document.getElementById('modalDashboard').style.display = 'flex';

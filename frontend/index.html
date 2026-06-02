@@ -30,6 +30,7 @@
             <button class="header-btn" onclick="App.toggleTheme()" id="btnTheme" title="切换深色模式"><i class="bi bi-moon-stars"></i></button>
             <button class="header-btn" onclick="App.openPlayground()" id="btnPlayground" title="LLM Playground 测试提示词"><i class="bi bi-cpu"></i></button>
             <button class="header-btn" onclick="App.showBackupInfo()" id="btnBackup" title="数据库备份"><i class="bi bi-database"></i></button>
+            <button class="header-btn" onclick="App.showSyncPanel()" id="btnSync" title="数据同步 .pkb 包"><i class="bi bi-arrow-left-right"></i></button>
             <button class="header-btn" onclick="App.showDashboard()" id="btnDashboard" title="统计仪表盘"><i class="bi bi-bar-chart"></i></button>
             <button class="header-btn" onclick="App.openComfyConfig()" id="btnWorkflow" title="ComfyUI 集成配置 + 模块预设"><i class="bi bi-link-45deg"></i></button>
             <span class="header-divider"></span>
@@ -435,6 +436,30 @@
                 <div style="display:flex;gap:8px;">
                     <button class="btn btn-primary btn-sm" onclick="App.doBackupNow()"><i class="bi bi-cloud-arrow-up"></i> 立即备份</button>
                     <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalBackup').style.display='none'">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 数据同步弹窗 -->
+    <div class="modal-overlay" id="modalSync" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:640px;">
+            <div class="modal-header">
+                <h5><i class="bi bi-arrow-left-right"></i> 数据同步 <span style="font-size:12px;color:var(--text-muted);font-weight:normal;">.pkb 包</span></h5>
+                <button class="header-btn-sm" onclick="document.getElementById('modalSync').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body" id="syncBody">
+                <div style="text-align:center;padding:20px;">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p style="margin-top:12px;color:var(--text-muted);">正在加载...</p>
+                </div>
+            </div>
+            <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:11px;color:var(--text-muted);">.pkb = 数据库 + 缩略图 + 原图 + 视频</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-outline-primary btn-sm" onclick="App.syncUploadPkg()"><i class="bi bi-upload"></i> 导入</button>
+                    <button class="btn btn-primary btn-sm" onclick="App.syncExportPkg()"><i class="bi bi-download"></i> 导出完整包</button>
+                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalSync').style.display='none'">关闭</button>
                 </div>
             </div>
         </div>

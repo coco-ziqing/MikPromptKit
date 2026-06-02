@@ -4,7 +4,7 @@
 import sys, os, socket, traceback
 from contextlib import asynccontextmanager
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -29,6 +29,10 @@ from api.workflow import router as workflow_router
 from api.comfyui import router as comfyui_router
 from api.ocr import router as ocr_router
 from api.translate import router as translate_router
+from sync import (
+    export_package, restore_package, import_package,
+    list_packages, delete_package, get_package_info
+)
 
 
 @asynccontextmanager
@@ -114,6 +118,73 @@ app.include_router(workflow_router)
 app.include_router(comfyui_router)
 app.include_router(ocr_router)
 app.include_router(translate_router)
+
+
+# ============ 数据同步 API (.pkb 包系统) ============
+
+@app.get("/api/sync/packages")
+async def sync_list_packages():
+    """列出所有 .pkb 包"""
+    packages = list_packages()
+    return {"ok": True, "packages": packages, "count": len(packages)}
+
+
+@app.get("/api/sync/packages/{pkg_name}")
+async def sync_get_package(pkg_name: str):
+    """获取单个包详细信息"""
+    return get_package_info(pkg_name)
+
+
+@app.post("/api/sync/export")
+async def sync_export():
+    """导出完整 .pkb 包（含 DB + 媒体）"""
+    result = export_package(include_media=True)
+    if result.get("ok"):
+        return {
+            "ok": True,
+            "file": result["file"],
+            "size": result["size"],
+            "size_str": result.get("stats", {}).get("total_size", 0),
+            "stats": result["stats"]
+        }
+    return result
+
+
+@app.post("/api/sync/export-no-media")
+async def sync_export_no_media():
+    """导出纯 DB 包（不含媒体）"""
+    result = export_package(include_media=False)
+    if result.get("ok"):
+        return {
+            "ok": True,
+            "file": result["file"],
+            "size": result["size"],
+            "stats": result["stats"]
+        }
+    return result
+
+
+@app.post("/api/sync/restore/{pkg_name}")
+async def sync_restore(pkg_name: str, backup_first: bool = True):
+    """从 .pkb 包恢复数据"""
+    result = restore_package(pkg_name, backup_first=backup_first)
+    return result
+
+
+@app.post("/api/sync/upload")
+async def sync_upload(file: UploadFile = File(...)):
+    """上传 .pkb 包导入"""
+    body = await file.read()
+    filename = file.filename or "imported.pkb"
+    result = import_package(body, filename)
+    return result
+
+
+@app.delete("/api/sync/packages/{pkg_name}")
+async def sync_delete(pkg_name: str):
+    """删除一个 .pkb 包"""
+    result = delete_package(pkg_name)
+    return result
 
 
 # ============ 备份管理 API ============

@@ -2,7 +2,7 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit)
-- 版本：v3.1.3 (2026-05-31)
+- 版本：v3.6.0 (2026-06-02)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\start.bat`
 - 默认端口：8080
@@ -17,13 +17,18 @@
 - 版本管理：Git + Git tag
 
 ## 项目规模
-- 后端 API 端点：100+ 个
-- 源代码总量：~12000 行
+- 后端 API 端点：110+ 个
+- 源代码总量：~14000 行
 - 数据库表：22 张
 - 种子词条：165 条（5 模块）
+- 实际词条：177 条
 
 ## Git Tag 节点
-- `v3.1.3` — 提示词模板变量（当前）
+- `v3.5.0` — 翻译(Ollama) + PNG导出元数据 + 拖拽上传
+- `v3.4.0` — ComfyUI缩略图生成 + 模块预设 + 批量AI生成
+- `v3.3.0` — 拖拽排序 + Markdown导出 + 浏览器扩展 + OCR导入
+- `v3.2.0` — AI Workflow API
+- `v3.1.3` — 提示词模板变量
 - `v3.1.2` — LLM Playground + 快捷键 + 标签 + 统计 + 移动端
 - `v3.1.1` — 语义搜索 + 版本管理
 - `v3.0.0.2` — .pt 包系统 + 导出名称优化 + 拖拽增强
@@ -88,6 +93,25 @@
 ### 智能推荐
 - 复制任意词条后右侧滑出推荐面板（标签匹配算法）
 
+## v3.6.0 新增功能 — 数据同步 (.pkb 包系统)
+
+### .pkb 完整打包
+- 格式：标准 ZIP 包，含 prompts.db + 缩略图 + 原图 + 视频 + manifest.json
+- `POST /api/sync/export` — 导出完整包（含媒体）
+- `POST /api/sync/export-no-media` — 导出纯 DB 包
+- `GET /api/sync/packages` — 列表（含 manifest 摘要）
+- `GET /api/sync/packages/{name}` — 包详情（文件清单）
+- `POST /api/sync/restore/{name}` — 恢复（自动备份当前数据）
+- `POST /api/sync/upload` — 上传 .pkb 文件导入
+- `DELETE /api/sync/packages/{name}` — 删除
+
+### 前端同步面板
+- 工具栏新增 ↔ 按钮打开同步面板
+- 包列表：名称/大小/时间/含媒体标记
+- 点击行展开详情（提示词数、文件数、媒体统计）
+- 操作：恢复 / 删除 / 导出完整包 / 导入 .pkb 文件
+- 自动清理：保留最近 20 个包
+
 ## 目录结构
 ```
 prompt-tool-dev/
@@ -95,6 +119,8 @@ prompt-tool-dev/
 ├── firewall_open.bat/ps1/vbs   # 防火墙一键放行脚本
 ├── requirements.txt
 ├── MEMORY.md                    # 长期记忆（会话启动自动注入）
+├── backend/
+│   └── sync.py                  # .pkb 打包/恢复/管理
 ├── backend/
 │   ├── main.py                  # FastAPI 入口
 │   ├── database.py              # SQLite 8 表 + FTS5 + 触发器
@@ -111,6 +137,8 @@ prompt-tool-dev/
 │       └── js/app.js            # SPA 交互逻辑（~2200 行）
 ├── data/
 │   ├── prompts.db               # SQLite 数据库（WAL 模式）
+│   ├── packages/                # .pkb 备份包
+│   ├── backups/                 # 自动备份历史
 │   ├── thumbnails/              # 裁剪后缩略图 (240x160 JPEG)
 │   ├── originals/               # 上传原图
 │   └── videos/                  # 上传视频
