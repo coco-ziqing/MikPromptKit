@@ -457,158 +457,119 @@ async def generate_thumbnail(data: GenerateRequest):
 
 
 async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_id):
-    """执行 ComfyUI 生成流程"""
-    node_id = workflow_cfg.get("prompt_node_id", "6")
-    field = workflow_cfg.get("prompt_field", "text")
-    if node_id in workflow:
-        if field in workflow[node_id]["inputs"]:
+    """执行 ComfyUI 生成流程（同步 httpx + 线程池，避免异步死锁）"""
+    loop = asyncio.get_event_loop()
+    import time as _time, uuid, io as _io
+
+    def _sync_run():
+        node_id = workflow_cfg.get("prompt_node_id", "6")
+        field = workflow_cfg.get("prompt_field", "text")
+        if node_id in workflow and field in workflow[node_id]["inputs"]:
             workflow[node_id]["inputs"][field] = prompt_text
-        else:
-            print(f"[ComfyUI] 节点 {node_id} 没有字段 '{field}'，可用字段: {list(workflow[node_id]['inputs'].keys())}")
+        from database import get_db
+        from PIL import Image as PILImage
+        import os
 
-    timeout_cfg = httpx.Timeout(120.0, connect=15.0)
-    async with httpx.AsyncClient(timeout=timeout_cfg) as client:
-        resp = await client.post(f"{server_url}/prompt", json={"prompt": workflow})
-        if resp.status_code != 200:
-            body = resp.text[:500]
-            return {"ok": False, "error": f"ComfyUI 返回错误 (HTTP {resp.status_code}): {body}"}
-        result = resp.json()
-        prompt_id_comfy = result.get("prompt_id")
-        if not prompt_id_comfy:
-            return {"ok": False, "error": "ComfyUI 未返回 prompt_id"}
-        print(f"[ComfyUI] 已提交, prompt_id={prompt_id_comfy}")
+        # Step 1: submit to ComfyUI
+        with httpx.Client(timeout=httpx.Timeout(120.0, connect=15.0)) as cl:
+            r = cl.post(f"{server_url}/prompt", json={"prompt": workflow})
+            if r.status_code != 200:
+                return {"ok": False, "error": f"ComfyUI HTTP {r.status_code}: {r.text[:300]}"}
+            pid = r.json().get("prompt_id")
+            if not pid:
+                return {"ok": False, "error": "ComfyUI 未返回 prompt_id"}
+            print(f"[ComfyUI] 已提交 prompt_id={pid}")
 
-    max_wait = 600
-    interval = 2.0
-    output_images = []
+        # Step 2: poll for completion
+        out_imgs = []
+        for sec in range(0, 600, 2):
+            _time.sleep(2)
+            try:
+                with httpx.Client(timeout=5) as qc:
+                    qd = qc.get(f"{server_url}/queue").json()
+                    running = any(p[1] == pid for p in qd.get("queue_running", []))
+                    pending = any(p[1] == pid for p in qd.get("queue_pending", []))
+                    if not running and not pending:
+                        _time.sleep(0.5)
+            except:
+                pass
+            try:
+                with httpx.Client(timeout=8) as cl:
+                    hist = cl.get(f"{server_url}/history/{pid}").json()
+                    if pid not in hist:
+                        continue
+                    for no in hist[pid].get("outputs", {}).values():
+                        for im in no.get("images", []):
+                            if im.get("type") == "output":
+                                out_imgs.append(im)
+                    if out_imgs:
+                        print(f"[ComfyUI] 获取到 {len(out_imgs)} 张输出")
+                        break
+            except Exception as e:
+                print(f"[ComfyUI] 轮询 {sec}s: {e}")
 
-    for wait_elapsed in range(0, max_wait, int(interval)):
-        await asyncio.sleep(interval)
+        if not out_imgs:
+            return {"ok": False, "error": "生成超时(600s)"}
+
+        # Step 3: download
+        im = out_imgs[0]
+        print(f"[ComfyUI] 下载: {im['filename']}")
+        with httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0)) as cl:
+            vr = cl.get(f"{server_url}/view", params={"filename": im["filename"], "subfolder": im.get("subfolder",""), "type": im["type"]})
+            if vr.status_code != 200:
+                return {"ok": False, "error": f"下载失败 HTTP {vr.status_code}"}
+            img_bytes = vr.content
+        print(f"[ComfyUI] 下载完成 {len(img_bytes)} bytes")
+
+        # Step 4: save thumbnail + original
+        os.makedirs(THUMB_DIR, exist_ok=True)
+        os.makedirs(ORIGINALS_DIR, exist_ok=True)
+        tf = uuid.uuid4().hex + ".jpg"
+        tp = os.path.join(THUMB_DIR, tf)
+        iw, ih = 0, 0
         try:
-            async with httpx.AsyncClient(timeout=5) as qc:
-                qr = await qc.get(f"{server_url}/queue")
-                if qr.status_code == 200:
-                    qdata = qr.json()
-                    is_running = any(p[1] == prompt_id_comfy for p in qdata.get("queue_running", []))
-                    is_pending = any(p[1] == prompt_id_comfy for p in qdata.get("queue_pending", []))
-                    if not is_running and not is_pending:
-                        await asyncio.sleep(0.5)
+            _im = PILImage.open(_io.BytesIO(img_bytes))
+            iw, ih = _im.size
+            sw, sh = _im.size
+            tr = 240.0 / 160.0
+            sr = sw / sh
+            if sr > tr:
+                nw = int(sh * tr)
+                ox = (sw - nw) // 2
+                _im = _im.crop((ox, 0, ox + nw, sh))
+            else:
+                nh = int(sw / tr)
+                oy = (sh - nh) // 2
+                _im = _im.crop((0, oy, sw, oy + nh))
+            _im = _im.resize((240, 160), PILImage.LANCZOS)
+            if _im.mode in ("RGBA", "P"):
+                _im = _im.convert("RGB")
+            _im.save(tp, "JPEG", quality=85)
         except Exception:
-            pass
+            with open(tp, "wb") as f:
+                f.write(img_bytes)
 
-        try:
-            async with httpx.AsyncClient(timeout=8) as client:
-                resp = await client.get(f"{server_url}/history/{prompt_id_comfy}")
-                if resp.status_code != 200:
-                    if wait_elapsed > 600:
-                        break
-                    continue
-                history = resp.json()
-                if prompt_id_comfy not in history:
-                    if wait_elapsed > 600:
-                        break
-                    continue
-                outputs = history[prompt_id_comfy].get("outputs", {})
-                for node_output in outputs.values():
-                    for img_data in node_output.get("images", []):
-                        if img_data.get("type") == "output":
-                            output_images.append({
-                                "filename": img_data["filename"],
-                                "subfolder": img_data.get("subfolder", ""),
-                                "type": "output"
-                            })
-                if output_images:
-                    print(f"[ComfyUI] 获取到 {len(output_images)} 张输出图片")
-                    break
-        except Exception as e:
-            print(f"[ComfyUI] 轮询异常 (第{wait_elapsed+2}s): {e}")
-            continue
-
-    if not output_images:
-        return {"ok": False, "error": "生成超时（600秒），未获取到输出图片。请检查 ComfyUI 队列状态。"}
-
-    img_info = output_images[0]
-    print(f"[ComfyUI] 下载图片: {img_info['filename']}")
-    timeout_dl = httpx.Timeout(60.0, connect=10.0)
-    async with httpx.AsyncClient(timeout=timeout_dl) as client:
-        view_resp = await client.get(
-            f"{server_url}/view",
-            params={
-                "filename": img_info["filename"],
-                "subfolder": img_info["subfolder"] or "",
-                "type": img_info["type"]
-            }
-        )
-        if view_resp.status_code != 200:
-            return {"ok": False, "error": f"下载生成图片失败 (HTTP {view_resp.status_code})"}
-        img_bytes = view_resp.content
-
-    print(f"[ComfyUI] 下载完成: {len(img_bytes)} bytes")
-
-    os.makedirs(THUMB_DIR, exist_ok=True)
-    os.makedirs(ORIGINALS_DIR, exist_ok=True)
-
-    thumb_filename = uuid.uuid4().hex + ".jpg"
-    thumb_path = os.path.join(THUMB_DIR, thumb_filename)
-
-    try:
-        img = Image.open(io.BytesIO(img_bytes))
-        w, h = img.size
-        target_ratio = 3 / 2
-        current_ratio = w / h
-        if current_ratio > target_ratio:
-            new_w = int(h * target_ratio)
-            offset = (w - new_w) // 2
-            img = img.crop((offset, 0, offset + new_w, h))
-        else:
-            new_h = int(w / target_ratio)
-            offset = (h - new_h) // 2
-            img = img.crop((0, offset, w, offset + new_h))
-        img = img.resize((240, 160), Image.LANCZOS)
-        img.save(thumb_path, "JPEG", quality=85)
-    except Exception as e:
-        print(f"[ComfyUI] 缩略图裁剪失败 (降级): {e}")
-        with open(thumb_path, "wb") as f:
+        of = uuid.uuid4().hex + ".jpg"
+        op = os.path.join(ORIGINALS_DIR, of)
+        with open(op, "wb") as f:
             f.write(img_bytes)
 
-    orig_filename = uuid.uuid4().hex + ".jpg"
-    orig_path = os.path.join(ORIGINALS_DIR, orig_filename)
-    with open(orig_path, "wb") as f:
-        f.write(img_bytes)
-
-    db = get_db()
-    # 清除旧视频关联（确保从视频预览切换回静态图片）
-    db.execute("DELETE FROM prompt_videos WHERE prompt_id=?", [prompt_id])
-    db.execute(
-        "INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) "
-        "VALUES (?, ?, 'image', datetime('now','localtime'))",
-        [prompt_id, thumb_filename]
-    )
-
-    # 写入媒体资产管理库
-    try:
-        db.execute("""
-            INSERT OR IGNORE INTO media_assets
+        # Step 5: write DB
+        db = get_db()
+        db.execute("DELETE FROM prompt_videos WHERE prompt_id=?", [prompt_id])
+        db.execute("INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) VALUES (?,?,'image',datetime('now','localtime'))", [prompt_id, tf])
+        try:
+            ts = os.path.getsize(tp) if os.path.exists(tp) else 0
+            db.execute("""INSERT OR IGNORE INTO media_assets
                 (filename, original_filename, file_size, original_size,
                  media_type, width, height, mime_type, prompt_id, source)
-            VALUES (?, ?, ?, ?, 'image', ?, ?, 'image/jpeg', ?, 'ai_generated')
-        """, [thumb_filename, orig_filename,
-              os.path.getsize(thumb_path) if os.path.exists(thumb_path) else 0,
-              len(img_bytes), img.width if hasattr(img, 'width') else 0,
-              img.height if hasattr(img, 'height') else 0,
-              prompt_id])
-    except Exception:
-        pass
+                VALUES (?,?,?,?,'image',?,?,'image/jpeg',?,'ai_generated')""",
+                [tf, of, ts, len(img_bytes), iw, ih, prompt_id])
+        except:
+            pass
+        db.commit()
+        print(f"[ComfyUI] 已关联 prompt_id={prompt_id}: {tf}")
+        return {"ok": True, "thumbnail": tf, "thumbnail_url": f"/api/thumbnails/file/{tf}", "original": of, "image_size": len(img_bytes), "generated_from": prompt_text[:80]}
 
-    safe_commit()
+    return await loop.run_in_executor(None, _sync_run)
 
-    print(f"[ComfyUI] 缩略图已关联到提示词 ID={prompt_id}: {thumb_filename}")
-
-    return {
-        "ok": True,
-        "thumbnail": thumb_filename,
-        "thumbnail_url": f"/api/thumbnails/file/{thumb_filename}",
-        "original": orig_filename,
-        "image_size": len(img_bytes),
-        "generated_from": prompt_text[:80]
-    }
