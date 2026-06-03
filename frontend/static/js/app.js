@@ -5963,52 +5963,17 @@ openImageViewer(filename, promptId) {
 
     _onDropPng: async function(e) {
         e.preventDefault();
-        // 非编辑模式不处理拖拽导入
-        if (!App.state.editMode) { return; }
-        // 安全清除 outline
         try { if (e.currentTarget) e.currentTarget.style.outline = ''; } catch(ee) {}
         var files = e.dataTransfer.files;
         if (!files || files.length === 0) return;
-        var pngFiles = [];
+        // 取第一个 PNG 文件走 handleDropPngFile（统一使用 modalDropImport 确认弹窗）
         for (var fi = 0; fi < files.length; fi++) {
             if (files[fi].type === 'image/png' || files[fi].name.toLowerCase().endsWith('.png')) {
-                pngFiles.push(files[fi]);
+                App.handleDropPngFile(files[fi]);
+                return;
             }
         }
-        if (pngFiles.length === 0) {
-            App.showToast('请拖拽 PNG 文件', 'error');
-            return;
-        }
-        // 对每个 PNG 文件预览并确认
-        var created = 0;
-        for (var fi2 = 0; fi2 < pngFiles.length; fi2++) {
-            var file = pngFiles[fi2];
-            try {
-                var fd1 = new FormData();
-                fd1.append('file', file);
-                var resp = await fetch('/api/export/preview-png', { method: 'POST', body: fd1 });
-                var preview = await resp.json();
-                if (preview.ok && preview.preview) {
-                    var p = preview.preview;
-                    if (!confirm('拖入提示词卡片: \n内容: ' + (p.content || '').substring(0, 60) + '\n模块: ' + (p.module || '') + '\n分类: ' + (p.category || '') + '\n\n确认导入？')) continue;
-                    var fd2 = new FormData();
-                    fd2.append('file', file);
-                    fd2.append('conflict', 'rename');
-                    fd2.append('overrides', '[]');
-                    var resp2 = await fetch('/api/export/import-png', { method: 'POST', body: fd2 });
-                    var result = await resp2.json();
-                    if (result.ok && result.result.created) created++;
-                } else {
-                    App.showToast('无法识别文件: ' + file.name, 'error');
-                }
-            } catch(err) {
-                App.showToast('导入失败: ' + file.name + ' (' + (err.message || '') + ')', 'error');
-            }
-        }
-        if (created > 0) {
-            App.showToast('成功导入 ' + created + ' 条词条', 'success');
-            await App.loadPrompts();
-        }
+        App.showToast('请拖拽 PNG 文件', 'error');
     },
 
     // --- 全局拖拽导入（编辑模式显示PNG覆盖层，非编辑模式支持JSON/.pt/PNG） ---
