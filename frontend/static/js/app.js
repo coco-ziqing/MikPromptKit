@@ -2429,8 +2429,6 @@ const App = {
             }, false);
 
             card.addEventListener('dragover', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
                 if (self.state.editMode && e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
                     card.classList.add('drag-over');
                     var overlay = document.getElementById('dropOverlay');
@@ -2439,8 +2437,7 @@ const App = {
             }, false);
 
             card.addEventListener('dragleave', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
+                if (!self.state.editMode)
                 if (!self.state.editMode) { card.classList.remove('drag-over'); return; }
                 var rect = card.getBoundingClientRect();
                 var x = e.clientX, y = e.clientY;
@@ -2451,7 +2448,7 @@ const App = {
 
             card.addEventListener('drop', function(e) {
                 e.preventDefault();
-                e.stopPropagation();
+                e.stopPropagation();  // 阻止冒泡，避免容器级导入窗口再次触发
                 card.classList.remove('drag-over');
                 if (!self.state.editMode) return;
                 var files = e.dataTransfer.files;
@@ -2460,7 +2457,6 @@ const App = {
                 var promptId = parseInt(card.getAttribute('data-id'));
                 if (!promptId) return;
 
-                // 判断文件类型
                 var file = files[0];
                 var name = file.name.toLowerCase();
                 var isVideo = name.endsWith('.mp4') || name.endsWith('.webm') || name.endsWith('.mov') || name.endsWith('.avi');
@@ -2861,13 +2857,7 @@ const App = {
         grid.innerHTML = html;
         // 绑定视频悬停播放
         this.bindVideoHover();
-        // 注册拖拽导入（首页词库视图）
-        if (this.state.currentView === 'home' && !this._dropAttached) {
-            this._dropAttached = true;
-            container.addEventListener('dragover', App._onDragOver);
-            container.addEventListener('dragleave', App._onDragLeave);
-            container.addEventListener('drop', App._onDropPng);
-        }
+        // _onDropPng 已由 _initDropZone 统一管理（viewHomeScroll 容器），此处不再重复绑定
 
         var pbar = document.getElementById('trashPagination');
         if (data.total_pages <= 1) { pbar.innerHTML = ''; } else {
@@ -5995,8 +5985,9 @@ openImageViewer(filename, promptId) {
         if (!container) { this._dropAttached = true; return; }
 
         container.addEventListener('dragenter', function(e) {
-            // 仅在卡片上或列表区内才触发
-            if (!e.target.closest || (!e.target.closest('.prompt-card') && !e.target.closest('#promptList'))) return;
+            // 仅在提示词列表空白区域触发（不在卡片上时）
+            if (!e.target.closest || !e.target.closest('#promptList')) return;
+            if (e.target.closest('.prompt-card')) return;  // 卡片上由卡片级 handler 处理
             var ssModal = document.getElementById('modalScreenshotImport');
             if (ssModal && ssModal.style.display !== 'none') return;
             zone.style.display = 'flex';
@@ -6026,6 +6017,10 @@ openImageViewer(filename, promptId) {
             e.preventDefault();
             e.stopPropagation();
             zone.style.display = 'none'; zone.style.background = ''; zone.style.border = ''; zone.innerHTML = '';
+
+            // 如果拖到卡片上，让卡片级 handler 处理（图片/视频关联），容器不处理
+            if (e.target.closest && e.target.closest('.prompt-card')) return;
+
             var files = e.dataTransfer.files;
             if (!files || files.length === 0) return;
 
@@ -6040,13 +6035,8 @@ openImageViewer(filename, promptId) {
                 return;
             }
 
-            // 编辑模式 → PNG 导入
-            if (App.state.editMode) {
-                App._onDropPng(e);
-                return;
-            }
-
-            // 非编辑模式 → JSON/.pt/PNG 文件判断
+            // 拖到空白区域 → 弹出导入窗口
+            // 编辑/非编辑模式统一走 handleDropPngFile (modalDropImport 预览确认)
             for (var fi = 0; fi < files.length; fi++) {
                 var name = files[fi].name.toLowerCase();
                 if (name.endsWith('.json')) { App._handleDropFile(files[fi]); return; }
@@ -6059,7 +6049,7 @@ openImageViewer(filename, promptId) {
         this._dropAttached = true;
     },
 
-    // --- 卡片拖拽防护 ---// --- 卡片拖拽防护 ---// --- 卡片拖拽防护 ---// --- 卡片拖拽防护 ---
+    // --- 卡片拖拽防护 ---
 
 
     _escape(str) {
