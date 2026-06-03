@@ -175,6 +175,7 @@ const App = {
             document.getElementById('globalSearchBox').style.display = 'flex';
             this.renderSidebar();
             this.loadPrompts();
+            this._updatePageTitle();
         } else if (view === 'collections') {
             document.getElementById('viewCollections').classList.add('active-view');
             document.getElementById(navMap[view]).classList.add('active');
