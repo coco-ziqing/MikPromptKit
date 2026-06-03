@@ -1751,7 +1751,8 @@ const App = {
         var select = document.getElementById('ssModule');
         if (!select) return;
         var modules = this.state.modules || [];
-        var currentVal = select.value || 'custom';
+        // 默认选中当前所在模块（侧边栏选中的模块），无选中时回退到现有值或 custom
+        var currentVal = this.state.currentModule || select.value || 'custom';
         select.innerHTML = '';
         var hasOptions = false;
         for (var i = 0; i < modules.length; i++) {
