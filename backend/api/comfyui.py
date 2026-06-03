@@ -524,7 +524,8 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
         # Step 4: save thumbnail + original
         os.makedirs(THUMB_DIR, exist_ok=True)
         os.makedirs(ORIGINALS_DIR, exist_ok=True)
-        tf = uuid.uuid4().hex + ".jpg"
+        _base = uuid.uuid4().hex
+        tf = _base + ".jpg"
         tp = os.path.join(THUMB_DIR, tf)
         iw, ih = 0, 0
         try:
@@ -549,7 +550,7 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
             with open(tp, "wb") as f:
                 f.write(img_bytes)
 
-        of = uuid.uuid4().hex + ".jpg"
+        of = _base + ".jpg"
         op = os.path.join(ORIGINALS_DIR, of)
         with open(op, "wb") as f:
             f.write(img_bytes)

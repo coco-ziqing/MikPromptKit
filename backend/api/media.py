@@ -268,7 +268,35 @@ def media_reindex():
 
     db.commit()
 
-    # 4. 关联 prompt_thumbnails 和 prompt_videos 中已有的 prompt_id
+    # 4. 修复 AI 生成图片：缩略图和原图文件名不同导致原图找不到
+    # 扫描 prompt_thumbnails 中 filename 在 originals/ 不存在的记录
+    # 尝试用文件尺寸近似匹配来补全 original_filename
+    fixed = 0
+    for r in db.execute("SELECT pt.prompt_id, pt.filename, ptf.filename as orig_name "
+                         "FROM prompt_thumbnails pt "
+                         "LEFT JOIN prompt_thumbnails ptf ON ptf.prompt_id = pt.prompt_id AND ptf.filename != pt.filename "
+                         "WHERE pt.media_type='image' AND ptf.filename IS NULL").fetchall():
+        thumb_name = r["filename"]
+        thumb_path = os.path.join(THUMB_DIR, thumb_name)
+        if not os.path.exists(thumb_path):
+            continue
+        thumb_size = os.path.getsize(thumb_path)
+        # 缩略图 240x160 ≈ 5-15KB。在 originals/ 中找尺寸显著更大的文件
+        for of_name in os.listdir(ORIGINAL_DIR):
+            if not of_name.endswith(".jpg"):
+                continue
+            of_path = os.path.join(ORIGINAL_DIR, of_name)
+            of_size = os.path.getsize(of_path)
+            # 原图应比缩略图大 5 倍以上
+            if of_size > thumb_size * 5 and of_size < thumb_size * 200:
+                # 检查这个原图是否已被其他缩略图关联
+                already = db.execute("SELECT id FROM media_assets WHERE original_filename=?", [of_name]).fetchone()
+                if not already:
+                    db.execute("UPDATE media_assets SET original_filename=? WHERE filename=?", [of_name, thumb_name])
+                    fixed += 1
+                    break
+
+    # 5. 关联 prompt_thumbnails 和 prompt_videos 中已有的 prompt_id
     linked = 0
     for r in db.execute("SELECT prompt_id, filename FROM prompt_thumbnails").fetchall():
         db.execute("UPDATE media_assets SET prompt_id=? WHERE filename=? AND prompt_id=0",
@@ -280,7 +308,7 @@ def media_reindex():
         linked += db.execute("SELECT changes()").fetchone()[0]
     db.commit()
 
-    return {"ok": True, "added": added, "linked": linked}
+    return {"ok": True, "added": added, "linked": linked, "fixed_originals": fixed}
 
 
 # ============ API: 清理孤儿记录 ============

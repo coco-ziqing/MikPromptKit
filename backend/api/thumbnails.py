@@ -229,9 +229,28 @@ def serve_thumbnail(filename: str):
 
 @router.get("/original/{filename}")
 def serve_original(filename: str):
-    """提供原图文件（用于大图查看）"""
+    """提供原图文件（用于大图查看）
+    优先从 originals/ 目录取 original_filename（media_assets 关联），
+    同一文件名找不到时回退到缩略图。
+    对于 AI 生成的图片，缩略图和原图文件名不同，
+    通过 media_assets.original_filename 映射找到正确原图。
+    """
     safe_name = os.path.basename(filename)
-    fpath = os.path.join(ORIGINAL_DIR, safe_name)
+    orig_name = safe_name
+
+    # 查 media_assets 表获取正确的原图文件名
+    try:
+        db = get_db()
+        asset = db.execute(
+            "SELECT original_filename FROM media_assets WHERE filename=? OR original_filename=?",
+            [safe_name, safe_name]
+        ).fetchone()
+        if asset and asset["original_filename"]:
+            orig_name = asset["original_filename"]
+    except Exception:
+        pass
+
+    fpath = os.path.join(ORIGINAL_DIR, orig_name)
     if not os.path.exists(fpath):
         # 回退到缩略图
         fpath = os.path.join(THUMB_DIR, safe_name)
