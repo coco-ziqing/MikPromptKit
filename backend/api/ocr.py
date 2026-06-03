@@ -48,10 +48,15 @@ def _layout_analysis(image_bytes: bytes):
         "has_image_region": bool
     }
     """
-    from PIL import Image, ImageFilter
+    from PIL import Image, ImageFilter, ImageOps
     import io
 
     img = Image.open(io.BytesIO(image_bytes))
+    # EXIF 自动修正方向（手机竖屏截图）
+    try:
+        img = ImageOps.exif_transpose(img)
+    except Exception:
+        pass
     w, h = img.size
 
     # 对于常见截图布局（上-下分割），水平投影找分界
@@ -121,15 +126,10 @@ def _layout_analysis(image_bytes: bytes):
         text_region_bytes = buf.getvalue()
     else:
         # 找不到明显分界，整张图作为文字区
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=90)
-        text_region_bytes = buf.getvalue()
-        # 尝试用尺寸判断：如果图很大且包含大面积平滑区域，可能有图
-        # 粗糙启发：jpg 压缩率低 → 含复杂图像
+        text_region = img
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=85)
-        compressed_ratio = len(image_bytes) / len(buf.getvalue()) if buf.tell() > 0 else 1
-        # 不做严格判断，让视觉模型处理
+        text_region_bytes = buf.getvalue()
 
     return {
         "image_region": image_region_bytes,
@@ -319,11 +319,15 @@ def _save_original(image_bytes: bytes) -> str:
 
 
 @router.post("/preview")
+@router.post("/preview")
 async def ocr_preview(file: UploadFile = File(...)):
     """上传截图 → 版面分析 + Ollama Vision 解析 → 返回预览数据"""
     file_bytes = await file.read()
     if not file_bytes or len(file_bytes) < 100:
         raise HTTPException(400, "文件无效或为空")
+    # 文件大小限制 10MB
+    if len(file_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(400, "文件过大，请上传小于 10MB 的截图")
 
     # STEP 1: 版面分析
     layout = _layout_analysis(file_bytes)
@@ -454,6 +458,39 @@ def _clean_temp_files(*filenames):
                 os.remove(fpath)
         except Exception:
             pass
+
+
+@router.post("/check-duplicate")
+async def ocr_check_duplicate(data: dict):
+    """检查提示词内容是否已存在（用于导入前去重）"""
+    content = (data.get("content") or "").strip()
+    if not content:
+        return {"ok": False, "duplicate": False, "exists": []}
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, content, module, category FROM prompts WHERE content = ? AND deleted_at IS NULL",
+        [content]
+    ).fetchall()
+    if rows:
+        return {
+            "ok": True,
+            "duplicate": True,
+            "exists": [{"id": r["id"], "content": r["content"], "module": r["module"], "category": r["category"]} for r in rows]
+        }
+    # 模糊匹配：截断空格/标点差异后对比
+    clean = re.sub(r'[\s\p{P}]+', '', content)
+    candidates = db.execute(
+        "SELECT id, content, module, category FROM prompts WHERE deleted_at IS NULL"
+    ).fetchall()
+    for r in candidates:
+        r_clean = re.sub(r'[\\s\\p{P}]+', '', r["content"])
+        if r_clean == clean:
+            return {
+                "ok": True,
+                "duplicate": True,
+                "exists": [{"id": r["id"], "content": r["content"], "module": r["module"], "category": r["category"]}]
+            }
+    return {"ok": True, "duplicate": False, "exists": []}
 
 
 @router.post("/re-parse")

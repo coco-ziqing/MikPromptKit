@@ -1704,18 +1704,51 @@ const App = {
 
     // ============ 截图导入 ============
 
-    async openScreenshotImport() {
+        async openScreenshotImport() {
         // 重置状态
         this._ssTempImage = '';
         this._ssHasImage = false;
+        this._ssContinueMode = false;
         document.getElementById('ssUploadArea').style.display = 'block';
         document.getElementById('ssLoading').style.display = 'none';
         document.getElementById('ssPreviewArea').style.display = 'none';
         document.getElementById('ssError').style.display = 'none';
         document.getElementById('ssBtnImport').style.display = 'none';
+        document.getElementById('ssBtnContinue').style.display = 'none';
         document.getElementById('ssBtnRetry').style.display = 'none';
         document.getElementById('ssFileInput').value = '';
+        // 动态加载模块下拉
+        this._populateSSModule();
         document.getElementById('modalScreenshotImport').style.display = 'flex';
+        setTimeout(function() { var fi = document.getElementById('ssFileInput'); if (fi) fi.focus(); }, 100);
+    },
+
+    _populateSSModule() {
+        var select = document.getElementById('ssModule');
+        if (!select) return;
+        var modules = this.state.modules || [];
+        var currentVal = select.value || 'custom';
+        select.innerHTML = '';
+        var hasOptions = false;
+        for (var i = 0; i < modules.length; i++) {
+            var m = modules[i];
+            var opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = m.name;
+            if (m.id === currentVal) opt.selected = true;
+            select.appendChild(opt);
+            hasOptions = true;
+        }
+        if (!hasOptions) {
+            var fb = { emotion: '人物表情', color: '场景色彩', tone: '画面色调', composition: '构图运镜', seedance: '视频模板', custom: '自定义' };
+            for (var k in fb) {
+                var opt2 = document.createElement('option');
+                opt2.value = k;
+                opt2.textContent = fb[k];
+                if (k === currentVal) opt2.selected = true;
+                select.appendChild(opt2);
+            }
+        }
     },
 
     async _onSSFileSelect(event) {
@@ -1731,6 +1764,7 @@ const App = {
         document.getElementById('ssPreviewArea').style.display = 'none';
         document.getElementById('ssError').style.display = 'none';
         document.getElementById('ssBtnImport').style.display = 'none';
+        document.getElementById('ssBtnContinue').style.display = 'none';
         document.getElementById('ssBtnRetry').style.display = 'none';
 
         var formData = new FormData();
@@ -1744,7 +1778,7 @@ const App = {
 
             if (!data.ok) {
                 var errEl = document.getElementById('ssError');
-                errEl.innerHTML = '<strong>❌ ' + (data.error || '识别失败') + '</strong><br><span style="font-size:12px;margin-top:8px;display:block;">请确认 Ollama 正在运行且有视觉模型可用。</span>';
+                errEl.innerHTML = '<strong>\u274c ' + (data.error || '识别失败') + '</strong><br><span style="font-size:12px;margin-top:8px;display:block;">\u8bf7\u786e\u8ba4 Ollama \u6b63\u5728\u8fd0\u884c\u4e14\u6709\u89c6\u89c9\u6a21\u578b\u53ef\u7528\u3002</span>';
                 errEl.style.display = 'block';
                 document.getElementById('ssBtnRetry').style.display = 'inline-block';
                 return;
@@ -1754,54 +1788,72 @@ const App = {
             self._ssTempImage = (data.temp_files && data.temp_files.image) || '';
             self._ssHasImage = data.layout && data.layout.has_image_region;
 
-            // 填充字段
-            document.getElementById('ssContent').value = preview.content || '';
+            var content = preview.content || '';
+            document.getElementById('ssContent').value = content;
             document.getElementById('ssMeaning').value = preview.meaning || '';
             document.getElementById('ssScene').value = preview.scene || '';
             document.getElementById('ssCategory').value = preview.category || 'OCR导入';
             document.getElementById('ssTags').value = JSON.stringify(preview.tags || []);
             document.getElementById('ssTips').value = preview.tips || '';
 
-            // 模块下拉选择
+            this._populateSSModule();
             var moduleSelect = document.getElementById('ssModule');
-            var moduleMap = { emotion: '人物表情', color: '场景色彩', tone: '画面色调', composition: '构图运镜', seedance: '视频模板', custom: '自定义' };
-            var matchedModule = 'custom';
-            for (var key in moduleMap) {
-                if (preview.module === key || (moduleMap[key]).indexOf(preview.module) >= 0) {
-                    matchedModule = key;
-                    break;
+            if (preview.module && preview.module !== 'custom') {
+                for (var i = 0; i < moduleSelect.options.length; i++) {
+                    if (moduleSelect.options[i].value === preview.module) {
+                        moduleSelect.value = preview.module;
+                        break;
+                    }
                 }
             }
-            moduleSelect.value = matchedModule;
 
-            // 缩略图预览
             if (self._ssHasImage && self._ssTempImage) {
                 document.getElementById('ssThumbPreview').innerHTML = '<img src="/api/v2/ocr/temp-file/' + self._ssTempImage + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">';
             } else {
                 document.getElementById('ssThumbPreview').textContent = '无效果图';
             }
 
-            // 原始文字（只显示一半用于参考）
-            var rawText = preview.content || '';
+            var rawText = content;
             if (preview.meaning) rawText += '\n' + preview.meaning;
-            if (preview.tips) rawText += '\n💡 ' + preview.tips;
+            if (preview.tips) rawText += '\n\u2728 ' + preview.tips;
             document.getElementById('ssRawText').textContent = rawText.substring(0, 300) + (rawText.length > 300 ? '...' : '');
 
             document.getElementById('ssPreviewArea').style.display = 'block';
             document.getElementById('ssBtnImport').style.display = 'inline-block';
+            document.getElementById('ssBtnContinue').style.display = 'inline-block';
             if (data.error) {
                 document.getElementById('ssBtnRetry').style.display = 'inline-block';
             }
+
+            // 去重检查
+            if (content) {
+                try {
+                    var dupResp = await fetch('/api/v2/ocr/check-duplicate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ content: content })
+                    });
+                    var dupData = await dupResp.json();
+                    if (dupData && dupData.ok && dupData.duplicate) {
+                        self.showToast('\u26a0\ufe0f 已存在相同内容的词条 (模块: ' + (dupData.exists[0]?.module || '?') + ')，请确认', 'warning', 6000);
+                        document.getElementById('ssContent').style.borderColor = '#f59e0b';
+                    } else {
+                        document.getElementById('ssContent').style.borderColor = '';
+                    }
+                } catch(e) {}
+            }
+
+            setTimeout(function() { var c = document.getElementById('ssContent'); if (c) { c.focus(); c.select(); } }, 50);
         } catch(e) {
             document.getElementById('ssLoading').style.display = 'none';
             var errEl = document.getElementById('ssError');
-            errEl.innerHTML = '<strong>❌ 请求失败: ' + this._escape(e.message) + '</strong><br><span style="font-size:12px;margin-top:8px;display:block;">请检查后端服务和 Ollama 是否运行</span>';
+            errEl.innerHTML = '<strong>\u274c 请求失败: ' + this._escape(e.message) + '</strong><br><span style="font-size:12px;margin-top:8px;display:block;">\u8bf7\u68c0\u67e5\u540e\u7aef\u670d\u52a1\u548c Ollama \u662f\u5426\u8fd0\u884c</span>';
             errEl.style.display = 'block';
             document.getElementById('ssBtnRetry').style.display = 'inline-block';
         }
     },
 
-    async _confirmSSImport() {
+    async _confirmSSImport(continueMode) {
         var content = document.getElementById('ssContent').value.trim();
         if (!content) { this.showToast('请输入提示词内容', 'error'); return; }
 
@@ -1821,7 +1873,7 @@ const App = {
             has_image: this._ssHasImage
         };
 
-        this.showToast('⏳ 正在导入...', 'info');
+        this.showToast('\u23f3 正在导入...', 'info');
         var result = await this.fetchJSON('/api/v2/ocr/confirm', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1829,16 +1881,24 @@ const App = {
         });
 
         if (result && result.ok) {
-            this.showToast(result.message || '✅ 已导入', 'success');
-            document.getElementById('modalScreenshotImport').style.display = 'none';
+            this.showToast(result.message || '\u2714 已导入', 'success');
             await this.loadPrompts();
             this.loadStats();
+            if (continueMode) {
+                this._ssTempImage = '';
+                this._ssHasImage = false;
+                document.getElementById('ssUploadArea').style.display = 'block';
+                document.getElementById('ssPreviewArea').style.display = 'none';
+                document.getElementById('ssBtnImport').style.display = 'none';
+                document.getElementById('ssBtnContinue').style.display = 'none';
+                document.getElementById('ssFileInput').value = '';
+            } else {
+                document.getElementById('modalScreenshotImport').style.display = 'none';
+            }
         } else {
             this.showToast('导入失败: ' + (result ? result.error : '未知错误'), 'error');
         }
-    },
-
-    _retrySSUpload() {
+    },{
         document.getElementById('ssFileInput').click();
     },
 
