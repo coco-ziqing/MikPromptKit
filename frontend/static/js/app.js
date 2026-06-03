@@ -145,6 +145,16 @@ const App = {
                 searchInput.focus();
                 searchInput.select();
             }
+            // Ctrl+Z 撤销缩略图替换
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                var keys = Object.keys(this._undoThumbnailState);
+                if (keys.length > 0) {
+                    e.preventDefault();
+                    // 撤销最后被替换的卡片
+                    var lastId = parseInt(keys[keys.length - 1]);
+                    this._undoThumbnailReplace(lastId);
+                }
+            }
         });
 
         setInterval(() => this.loadStats(), 30000);
@@ -5947,6 +5957,72 @@ openImageViewer(filename, promptId) {
     },
 
     // --- 全局拖拽导入（编辑模式显示PNG覆盖层，非编辑模式支持JSON/.pt/PNG） ---
+    // 缩略图替换撤销状态 {promptId: oldFilename}
+    _undoThumbnailState: {},
+
+    async _replaceAndSaveUndo(file, promptId) {
+        // 1. 保存当前缩略图以便 Ctrl+Z 恢复
+        var p = this.state.prompts.find(function(x) { return x.id === promptId; });
+        if (p && p.thumbnail) {
+            this._undoThumbnailState[promptId] = p.thumbnail;
+        } else {
+            // 无旧缩略图则存空标记
+            this._undoThumbnailState[promptId] = null;
+        }
+
+        // 2. 上传新图片
+        var formData = new FormData();
+        formData.append('file', file);
+        try {
+            var res = await fetch('/api/thumbnails/upload', { method: 'POST', body: formData });
+            var data = await res.json();
+            if (!data || !data.ok) {
+                this.showToast('上传失败: ' + (data ? data.error : '未知错误'), 'error');
+                return;
+            }
+            // 3. 关联到提示词
+            var assignRes = await this.fetchJSON('/api/thumbnails/assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_id: promptId, filename: data.filename })
+            });
+            if (assignRes && assignRes.ok) {
+                this.showToast('✅ 缩略图已替换 (Ctrl+Z 可撤销)', 'success');
+                await this.loadPrompts();
+                await this.loadThumbLibrary();
+            } else {
+                this.showToast('关联失败', 'error');
+            }
+        } catch(e) {
+            this.showToast('上传失败: ' + e.message, 'error');
+        }
+    },
+
+    async _undoThumbnailReplace(promptId) {
+        var oldFilename = this._undoThumbnailState[promptId];
+        if (oldFilename === undefined) return;
+
+        if (oldFilename === null) {
+            // 原本无缩略图 → 清除
+            await this.fetchJSON('/api/thumbnails/assign/' + promptId, { method: 'DELETE' });
+        } else {
+            // 恢复旧缩略图
+            var assignRes = await this.fetchJSON('/api/thumbnails/assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_id: promptId, filename: oldFilename })
+            });
+            if (!assignRes || !assignRes.ok) {
+                this.showToast('撤销失败', 'error');
+                return;
+            }
+        }
+        delete this._undoThumbnailState[promptId];
+        this.showToast('↩ 缩略图已恢复', 'success');
+        await this.loadPrompts();
+        await this.loadThumbLibrary();
+    },
+
     _initDropZone: function() {
         // document 级 dragover + drop 是唯一入口，避免多级监听冲突
         document.addEventListener('dragover', function(e) { e.preventDefault(); });
@@ -5968,16 +6044,16 @@ openImageViewer(filename, promptId) {
                 return;
             }
 
-            // 编辑模式下拖到卡片上 → 关联图片/视频到卡片
-            if (App.state.editMode && e.target.closest && e.target.closest('.prompt-card')) {
+            // 编辑模式下拖到缩略图区域 → 替换缩略图（可 Ctrl+Z 撤销）
+            if (App.state.editMode && e.target.closest && e.target.closest('.card-thumb-inner')) {
                 var card = e.target.closest('.prompt-card');
-                var promptId = parseInt(card.getAttribute('data-id'));
+                var promptId = card ? parseInt(card.getAttribute('data-id')) : 0;
                 if (promptId && files[0]) {
                     var name = files[0].name.toLowerCase();
                     if (name.endsWith('.mp4') || name.endsWith('.webm') || name.endsWith('.mov') || name.endsWith('.avi')) {
                         App._dropUploadVideo(files[0], promptId);
                     } else {
-                        App._dropUploadImage(files[0], promptId);
+                        App._replaceAndSaveUndo(files[0], promptId);
                     }
                 }
                 return;
