@@ -20,7 +20,7 @@ os.makedirs(THUMB_DIR, exist_ok=True)
 os.makedirs(ORIGINALS_DIR, exist_ok=True)
 
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
-DEFAULT_VISION_MODEL = "llava:7b"
+DEFAULT_VISION_MODEL = "qwen3-vl:8b"
 DEFAULT_LLM_MODEL = "qwen3.5:9b"  # 结构化备用（若视觉模型输出不够规范）
 
 # ============ Ollama 配置 ============
@@ -141,23 +141,22 @@ def _layout_analysis(image_bytes: bytes):
 
 # ============ STEP 2: Ollama Vision 解析 ============
 
-SYSTEM_PROMPT = """你是一个AI提示词分析助手。用户发来的截图包含AI生成图片/视频的技巧分享。
+SYSTEM_PROMPT = """你是一个专业的AI提示词截图分析助手。
 
-请分析图中的文字信息，并以JSON格式返回以下字段（严格JSON，不附加说明）：
+识别截图中的所有文字信息，并严格按照JSON格式返回（不附加任何说明，不使用```json代码块，仅返回纯净JSON）：
 
 {
-  "content": "提取截图中的提示词原文（prompt），如果有多段取最重要的",
-  "meaning": "这个提示词的中文释义或简短说明",
+  "content": "提取截图中的提示词原文（prompt），保留原始语言，不翻译。如有多段取最重要的一段。如果没有明确提示词，设为空字符串",
+  "meaning": "这个提示词的中文释义或简短说明（3-20字）",
   "scene": "适用场景（如：人像摄影/风景/产品展示/概念艺术/视频生成）",
-  "module": "所属模块，从以下选一个最接近的：emotion(人物表情)/color(场景色彩)/tone(画面色调)/composition(构图运镜)/seedance(视频模板)",
-  "category": "分类名称（如：肖像/风景/产品/抽象/写真/广告）",
-  "tags": ["标签1", "标签2", "标签3"],
+  "module": "所属模块：emotion(人物表情)/color(场景色彩)/tone(画面色调)/composition(构图运镜)/seedance(视频模板)",
+  "category": "分类名称",
+  "tags": ["标签1", "标签2"],
   "tips": "截图中提取到的参数设置、技巧说明等额外信息",
-  "has_image_preview": true
+  "has_image_preview": false
 }
 
-注：has_image_preview 表示截图中是否包含效果预览图。
-如果截图中没有明确提示词内容，content字段设为空字符串""
+没有内容时返回 {"content": "", "meaning": "", "scene": "", "module": "custom", "category": "", "tags": [], "tips": "", "has_image_preview": false}
 """
 
 
@@ -515,7 +514,7 @@ def ocr_status():
         "ollama_url": _get_ollama_cfg().get("server_url", DEFAULT_OLLAMA_URL),
         "vision_model": _get_ollama_cfg().get("model", DEFAULT_VISION_MODEL),
         "available": True,
-        "note": "使用 Ollama 视觉模型（llava/qwen-vl/llama3.2-vision）"
+        "note": "使用 Ollama 视觉模型（当前: qwen3-vl:8b）"
     }
 
 
