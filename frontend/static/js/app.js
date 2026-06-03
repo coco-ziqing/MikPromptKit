@@ -207,8 +207,11 @@ const App = {
 
         // 关闭推荐面板
         this.closeRecommend();
-        // 如果切换到非 home 视图才退出编辑模式（home 内的模块/分类切换保持编辑模式）
-        if (this.state.editMode && view !== 'home') this.toggleEditMode();
+        // 切换到非 home 视图时强制退出编辑模式
+        if (this.state.editMode && view !== 'home') {
+            this.state.editMode = false;
+            try { localStorage.removeItem('promptkit_editmode'); } catch(e) {}
+        }
     },
 
     // ============ 搜索模式 ============
@@ -391,7 +394,6 @@ const App = {
     // ============ 模块切换 ============
     async switchModule(moduleId) {
         this.state.currentModule = moduleId;
-        // 保存模块状态
         try { localStorage.setItem('promptkit_view', 'home'); localStorage.setItem('promptkit_module', moduleId); } catch(e) {}
         this.state.currentCategory = null;
         this.state.searchQuery = '';
@@ -401,13 +403,13 @@ const App = {
         this._editFilterModule = '';
         this._editFilterCollected = '';
         this.renderSidebar();
-        this._closeMobileMenu();  // 移动端切换模块后关闭菜单
+        this._closeMobileMenu();
         this.switchView('home');
         await this.loadCategories(moduleId);
         await this.loadPrompts();
+        this._updatePageTitle();
     },
 
-    /* 全部词库：重置所有筛选 */
     switchAllModules() {
         this.state.currentModule = null;
         this.state.currentCategory = null;
@@ -419,10 +421,25 @@ const App = {
         this._editFilterCollected = '';
         try { localStorage.setItem('promptkit_view', 'home'); localStorage.removeItem('promptkit_module'); } catch(e) {}
         this.renderSidebar();
-        this._closeMobileMenu();  // 移动端切换模块后关闭菜单
+        this._closeMobileMenu();
         this.switchView('home');
         this.renderCategories();
         this.loadPrompts();
+        this._updatePageTitle();
+    },
+
+    // 更新页面标题为「模块名 + 提示词列表」
+    _updatePageTitle() {
+        var el = document.getElementById('pageTitle');
+        if (!el) return;
+        var m = this.state.currentModule;
+        if (!m) {
+            el.textContent = '全部词库';
+        } else {
+            var modules = this.state.modules || [];
+            var found = modules.find(function(x) { return x.id === m; });
+            el.textContent = (found ? found.name : m) + ' 提示词列表';
+        }
     },
 
     async switchCategory(category) {
@@ -631,6 +648,10 @@ const App = {
     },
 
     toggleEditMode() {
+        // 编辑模式仅适用于 home 视图，非 home 视图时先切换
+        if (this.state.currentView !== 'home') {
+            this.switchView('home');
+        }
         this.state.editMode = !this.state.editMode;
         
         var eb = document.getElementById('batchBar');
