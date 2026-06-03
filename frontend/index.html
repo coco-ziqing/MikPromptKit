@@ -666,7 +666,7 @@
             </div>
             <div class="modal-body" style="flex:1;overflow-y:auto;">
                 <!-- 上传区 -->
-                <div id="ssUploadArea" style="border:2px dashed var(--border-color);border-radius:10px;padding:30px;text-align:center;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('ssFileInput').click()" ondragover="event.preventDefault();this.style.borderColor='#4f46e5';this.style.background='#eef2ff'" ondragleave="event.preventDefault();this.style.borderColor='';this.style.background=''" ondrop="event.preventDefault();var f=event.dataTransfer.files[0];if(f&&f.type.startsWith('image/')){App._processSSFile(f);}else{App.showToast('请拖入图片文件','error')}">
+                <div id="ssUploadArea" style="border:2px dashed var(--border-color);border-radius:10px;padding:30px;text-align:center;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('ssFileInput').click()" ondragover="event.preventDefault();this.style.borderColor='#4f46e5';this.style.background='#eef2ff'" ondragleave="event.preventDefault();this.style.borderColor='';this.style.background=''" ondrop="event.preventDefault();event.stopPropagation();var f=event.dataTransfer.files[0];if(f&&f.type.startsWith('image/')){App._processSSFile(f);}else{App.showToast('请拖入图片文件','error')}">
                     <div style="font-size:48px;margin-bottom:8px;">📸</div>
                     <div style="font-size:16px;font-weight:600;color:var(--text-main);">点击上传或拖入截图</div>
                     <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">支持 JPG / PNG，AI 提示词技巧截图</div>

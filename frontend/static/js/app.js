@@ -890,12 +890,17 @@ const App = {
             e.stopPropagation();
             // 编辑模式下从不显示全局遮罩，卡片拖拽完全接管
             if (App.state.editMode) return;
+            // 截图导入弹窗打开时，不显示全局遮罩
+            var ssModal = document.getElementById('modalScreenshotImport');
+            if (ssModal && ssModal.style.display !== 'none') return;
             overlay.style.display = 'flex';
         }, false);
 
         zone.addEventListener('dragover', function(e) {
             e.preventDefault();
             e.stopPropagation();
+            var ssModal = document.getElementById('modalScreenshotImport');
+            if (ssModal && ssModal.style.display !== 'none') return;
             overlay.style.display = 'flex';
         }, false);
 
@@ -916,6 +921,23 @@ const App = {
             overlay.style.display = 'none';
             var files = e.dataTransfer.files;
             if (!files || files.length === 0) return;
+
+            // 截图导入弹窗打开时，将图片文件转发给截图导入流程
+            var ssModal = document.getElementById('modalScreenshotImport');
+            if (ssModal && ssModal.style.display !== 'none') {
+                var imgFile = null;
+                for (var i = 0; i < files.length; i++) {
+                    if (files[i].type.startsWith('image/')) {
+                        imgFile = files[i];
+                        break;
+                    }
+                }
+                if (imgFile) {
+                    App._processSSFile(imgFile);
+                }
+                return;
+            }
+
             // 编辑模式下如果拖到卡片上，跳过全局处理（卡片自己处理）
             if (App.state.editMode && e.target.closest('.prompt-card')) return;
             // 处理 .json 或 .pt 文件
@@ -5925,6 +5947,17 @@ openImageViewer(filename, promptId) {
             zone.style.border = '';
             zone.innerHTML = '';
             if (hideZoneTimer) { clearTimeout(hideZoneTimer); hideZoneTimer = null; }
+
+            // 截图导入弹窗打开时，将图片文件转发给截图导入流程
+            var ssModal = document.getElementById('modalScreenshotImport');
+            if (ssModal && ssModal.style.display !== 'none') {
+                var files = e.dataTransfer.files;
+                if (files && files.length > 0 && files[0].type.startsWith('image/')) {
+                    App._processSSFile(files[0]);
+                    return;
+                }
+            }
+
             // 仅编辑模式处理
             if (!App.state.editMode) return;
             App._onDropPng(e);
