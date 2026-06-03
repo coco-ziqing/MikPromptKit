@@ -484,19 +484,31 @@ async def ocr_preview(file: UploadFile = File(...)):
     try:
         layout = _layout_analysis(contents)
         text_region = layout.get("text_region")
-        text_img_name = None
-        if text_region:
-            text_img_name = _save_temp_file(text_region, "ocr_txt")
+        image_region = layout.get("image_region")
+
+        # 保存预览图（优先用效果图区域，否则用文字区预览）
+        preview_img_name = None
+        if image_region:
+            preview_img_name = _save_temp_file(image_region, "ocr_img")
+        elif text_region:
+            preview_img_name = _save_temp_file(text_region, "ocr_txt")
+
         preview = await _ollama_vision_parse(contents, text_region)
+
+        # layout 包含二进制 bytes，不能直接 JSON 序列化，只返回元数据
+        layout_meta = {
+            "has_image_region": layout.get("has_image_region", False),
+            "image_size": layout.get("image_size", "")
+        }
         if preview.get("error"):
             return {
                 "ok": False, "error": preview["error"],
-                "layout": layout,
-                "temp_files": {"image": text_img_name} if text_img_name else {}
+                "layout": layout_meta,
+                "temp_files": {"image": preview_img_name} if preview_img_name else {}
             }
         return {
-            "ok": True, "preview": preview, "layout": layout,
-            "temp_files": {"image": text_img_name} if text_img_name else {}
+            "ok": True, "preview": preview, "layout": layout_meta,
+            "temp_files": {"image": preview_img_name} if preview_img_name else {}
         }
     except Exception as e:
         return {"ok": False, "error": f"OCR 处理异常: {str(e)[:200]}"}
@@ -549,7 +561,34 @@ async def ocr_confirm(data: OcrConfirmInput):
         return {"ok": False, "error": "内容为空"}
     try:
         db = get_db()
-        thumb_filename = None
+        now = datetime.datetime.now().isoformat()
+
+        # 保存提示词（合并 tips 到 meaning 末尾）
+        meaning = data.meaning or ""
+        if data.tips:
+            if meaning:
+                meaning += "\n\u2728 " + data.tips[:200]
+            else:
+                meaning = "\u2728 " + data.tips[:200]
+
+        db.execute("""
+            INSERT INTO prompts (module, category, content, meaning, scene, tags, usage_count, is_builtin, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?)
+        """, [
+            data.module or "custom",
+            data.category or "OCR\u5bfc\u5165",
+            data.content.strip(),
+            meaning,
+            data.scene or "",
+            json.dumps(data.tags, ensure_ascii=False) if data.tags else "[]",
+            now
+        ])
+        safe_commit(db)
+
+        # 获取新 ID
+        prompt_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        # 保存缩略图
         if data.has_image and data.temp_image:
             src = os.path.join(TEMP_DIR, data.temp_image)
             if os.path.exists(src):
@@ -557,23 +596,19 @@ async def ocr_confirm(data: OcrConfirmInput):
                     thumb_data = f.read()
                 if thumb_data:
                     thumb_filename = _save_thumbnail(thumb_data)
-        now = datetime.datetime.now().isoformat()
-        db.execute("""
-            INSERT INTO prompts (content, meaning, scene, module, category, tags, tips,
-                                 thumbnail, usage_count, is_custom, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?)
-        """, [
-            data.content, data.meaning or "", data.scene or "",
-            data.module or "custom", data.category or "OCR\u5bfc\u5165",
-            json.dumps(data.tags, ensure_ascii=False) if data.tags else "[]",
-            data.tips or "", thumb_filename or "", now, now
-        ])
-        safe_commit(db)
+                    db.execute(
+                        "INSERT INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) VALUES (?, ?, 'image', ?)",
+                        [prompt_id, thumb_filename, now]
+                    )
+                    safe_commit(db)
+
+        # 清理临时文件
         if data.temp_image:
             tmp_path = os.path.join(TEMP_DIR, data.temp_image)
             if os.path.exists(tmp_path):
                 try: os.remove(tmp_path)
                 except: pass
+
         return {"ok": True, "message": "\u2705 \u5df2\u5bfc\u5165"}
     except Exception as e:
         return {"ok": False, "error": f"\u4fdd\u5b58\u5931\u8d25: {str(e)[:200]}"}
