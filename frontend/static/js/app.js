@@ -4127,6 +4127,12 @@ const App = {
                         </div>
                         <div class="card-add-row">
                             <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>
+                            ${App.state.editMode ? `
+                            <select class="card-module-move" onchange="App.movePromptToModule(${p.id}, this.value)" title="移动到其他模块" style="font-size:10px;padding:1px 4px;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-muted);cursor:pointer;max-width:76px;">
+                                <option value="">📦 移动</option>
+                                ${App.state.modules.filter(function(m) { return m.id !== p.module; }).map(function(m) { return '<option value="' + m.id + '">' + m.name + '</option>'; }).join('')}
+                            </select>
+                            ` : ''}
                             <div class="card-collections">
                                 <div class="card-checkbox">
                                     <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="App.toggleSelect(${p.id})">
@@ -4244,6 +4250,47 @@ const App = {
     },
 
     // ============ 一键收藏(下拉菜单) ============
+
+    // 将提示词移动到其他功能模块
+    async movePromptToModule(promptId, newModule) {
+        if (!newModule) return;
+        var self = this;
+        var p = this.state.prompts.find(function(x) { return x.id === promptId; });
+        if (!p) { self.showToast('提示词不存在', 'error'); return; }
+        if (p.module === newModule) { return; }
+
+        // 发送 PUT 请求更新模块
+        var result = await this.fetchJSON('/api/prompts/' + promptId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                content: p.content,
+                meaning: p.meaning || '',
+                scene: p.scene || '',
+                module: newModule,
+                category: p.category || '',
+                tags: JSON.stringify(p.tags || [])
+            })
+        });
+
+        if (result && result.ok) {
+            p.module = newModule;
+            self.showToast('已移动到 ' + (this.state.modules.find(function(m) { return m.id === newModule; })?.name || newModule), 'success');
+            // 如果当前模块视图过滤中，移出显示
+            if (this.state.currentModule && this.state.currentModule !== newModule) {
+                var idx = self.state.prompts.indexOf(p);
+                if (idx >= 0) self.state.prompts.splice(idx, 1);
+                self.renderPrompts();
+            } else {
+                self.renderPrompts();
+            }
+            // 刷新侧边栏统计
+            this.loadModules();
+            this.loadStats();
+        } else {
+            self.showToast('移动失败: ' + (result ? result.error : '未知错误'), 'error');
+        }
+    },
 
     async quickCollect(promptId, btnEl) {
         // 移除所有旧弹窗和监听器
