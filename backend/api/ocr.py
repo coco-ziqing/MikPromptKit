@@ -521,7 +521,7 @@ async def ocr_confirm(data: OcrConfirmInput):
             json.dumps(data.tags, ensure_ascii=False) if data.tags else "[]",
             now
         ])
-        safe_commit(db)
+        db.commit()
 
         # 获取新 ID
         prompt_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -538,7 +538,7 @@ async def ocr_confirm(data: OcrConfirmInput):
                         "INSERT INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) VALUES (?, ?, 'image', ?)",
                         [prompt_id, thumb_filename, now]
                     )
-                    safe_commit(db)
+                    db.commit()
 
         # 清理临时文件
         if data.temp_image:
