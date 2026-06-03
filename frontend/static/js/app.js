@@ -198,6 +198,7 @@ const App = {
         } else if (view === 'seedance') {
             this.state.currentModule = 'seedance';
             this.renderSidebar();
+            this._closeMobileMenu();  // 移动端关闭侧边栏
             document.getElementById('viewSeedance').classList.add('active-view');
             document.getElementById('globalSearchBox').style.display = 'none';
             this.loadSeedanceCategories();
@@ -400,6 +401,7 @@ const App = {
         this._editFilterModule = '';
         this._editFilterCollected = '';
         this.renderSidebar();
+        this._closeMobileMenu();  // 移动端切换模块后关闭菜单
         this.switchView('home');
         await this.loadCategories(moduleId);
         await this.loadPrompts();
@@ -417,6 +419,7 @@ const App = {
         this._editFilterCollected = '';
         try { localStorage.setItem('promptkit_view', 'home'); localStorage.removeItem('promptkit_module'); } catch(e) {}
         this.renderSidebar();
+        this._closeMobileMenu();  // 移动端切换模块后关闭菜单
         this.switchView('home');
         this.renderCategories();
         this.loadPrompts();
@@ -598,6 +601,33 @@ const App = {
         const panel = document.getElementById('recommendPanel');
         panel.classList.remove('open');
         document.getElementById('mainContent').classList.remove('with-rec');
+    },
+
+    // 移动端：切换侧边栏菜单（汉堡菜单）
+    toggleMobileMenu() {
+        var sidebar = document.getElementById('sidebar');
+        var overlay = document.getElementById('sidebarOverlay');
+        if (!sidebar || !overlay) return;
+        var isOpen = sidebar.classList.contains('mobile-show');
+        if (isOpen) {
+            sidebar.classList.remove('mobile-show');
+            overlay.classList.remove('show');
+            document.body.style.overflow = '';
+        } else {
+            sidebar.classList.add('mobile-show');
+            overlay.classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+    },
+
+    // 移动端：关闭侧边栏菜单（供模块切换时自动调用）
+    _closeMobileMenu() {
+        var sidebar = document.getElementById('sidebar');
+        var overlay = document.getElementById('sidebarOverlay');
+        if (!sidebar || !overlay) return;
+        sidebar.classList.remove('mobile-show');
+        overlay.classList.remove('show');
+        document.body.style.overflow = '';
     },
 
     toggleEditMode() {
