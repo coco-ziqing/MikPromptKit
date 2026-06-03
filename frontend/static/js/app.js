@@ -6066,14 +6066,16 @@ openImageViewer(filename, promptId) {
                 return;
             }
 
-            // 页面任意空白区域 → 导入预览弹窗
-            for (var fi = 0; fi < files.length; fi++) {
-                var name = files[fi].name.toLowerCase();
-                if (name.endsWith('.json')) { App._handleDropFile(files[fi]); return; }
-                if (name.endsWith('.pt')) { App._handleDropPtFile(files[fi]); return; }
-                if (name.endsWith('.png') || files[fi].type === 'image/png') { App.handleDropPngFile(files[fi]); return; }
+            // 仅编辑模式下支持页面空白区域拖入导入
+            if (App.state.editMode) {
+                for (var fi = 0; fi < files.length; fi++) {
+                    var name = files[fi].name.toLowerCase();
+                    if (name.endsWith('.json')) { App._handleDropFile(files[fi]); return; }
+                    if (name.endsWith('.pt')) { App._handleDropPtFile(files[fi]); return; }
+                    if (name.endsWith('.png') || files[fi].type === 'image/png') { App.handleDropPngFile(files[fi]); return; }
+                }
+                App.showToast('请拖入 JSON / .pt / PNG 格式的提示词文件', 'error');
             }
-            App.showToast('请拖入 JSON / .pt / PNG 格式的提示词文件', 'error');
         });
         this._dropAttached = true;
     },
