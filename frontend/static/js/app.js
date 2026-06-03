@@ -1739,6 +1739,8 @@ const App = {
         document.getElementById('ssBtnContinue').style.display = 'none';
         document.getElementById('ssBtnRetry').style.display = 'none';
         document.getElementById('ssFileInput').value = '';
+        document.getElementById('ssPastePreview').style.display = 'none';
+        this._ssPasteFile = null;
         this._populateSSModule();
         document.getElementById('modalScreenshotImport').style.display = 'flex';
         // 弹窗打开时自动激活粘贴监听，Ctrl+V 直接进入分析
@@ -1988,7 +1990,7 @@ const App = {
         observer.observe(modal, { attributes: true, attributeFilter: ['style'] });
     },
 
-    // 处理剪贴板粘贴：提取图片 -> 走分析流程
+    // 处理剪贴板粘贴：提取图片 -> 显示预览 -> 确认后再分析
     _handleClipboardPaste(e) {
         var self = this;
         var items = e.clipboardData && e.clipboardData.items;
@@ -1997,15 +1999,25 @@ const App = {
             return;
         }
 
+        // 提取图片 blob 的函数
+        function showPastePreview(blob) {
+            var file = new File([blob], 'clipboard_' + Date.now() + '.png', { type: blob.type });
+            // 存为临时文件，等确认后再分析
+            self._ssPasteFile = file;
+            // 显示预览
+            document.getElementById('ssUploadArea').style.display = 'none';
+            var thumb = document.getElementById('ssPasteThumb');
+            var url = URL.createObjectURL(blob);
+            thumb.innerHTML = '<img src="' + url + '" style="max-width:100%;max-height:200px;object-fit:contain;border-radius:8px;">';
+            document.getElementById('ssPastePreview').style.display = 'block';
+            self.showToast('已粘贴截图，点击确认后开始分析', 'info', 2000);
+        }
+
         // 尝试提取图片
         for (var i = 0; i < items.length; i++) {
             if (items[i].type && items[i].type.startsWith('image/')) {
                 var blob = items[i].getAsFile ? items[i].getAsFile() : null;
-                if (blob) {
-                    var file = new File([blob], 'clipboard_' + Date.now() + '.png', { type: blob.type });
-                    self._processSSFile(file);
-                    return;
-                }
+                if (blob) { showPastePreview(blob); return; }
             }
         }
 
@@ -2016,8 +2028,7 @@ const App = {
                     var m = html.match(/<img[^>]+src=["']?(data:image\/[^"'>]+)["']?/i);
                     if (m) {
                         fetch(m[1]).then(function(r) { return r.blob(); }).then(function(blob) {
-                            var file = new File([blob], 'clipboard_' + Date.now() + '.png', { type: blob.type });
-                            self._processSSFile(file);
+                            showPastePreview(blob);
                         }).catch(function() {
                             self.showToast('解析剪贴板图片失败', 'error');
                         });
@@ -2030,6 +2041,21 @@ const App = {
         }
 
         self.showToast('剪贴板中未找到图片，请先截图再按 Ctrl+V', 'warning', 3000);
+    },
+
+    // 确认粘贴图片：开始分析
+    _confirmSSPaste() {
+        if (this._ssPasteFile) {
+            document.getElementById('ssPastePreview').style.display = 'none';
+            this._processSSFile(this._ssPasteFile);
+        }
+    },
+
+    // 取消粘贴图片：返回上传区
+    _cancelSSPaste() {
+        this._ssPasteFile = null;
+        document.getElementById('ssPastePreview').style.display = 'none';
+        document.getElementById('ssUploadArea').style.display = 'block';
     },
 
     // 粘贴按钮点击：重新聚焦 + 提示用户按 Ctrl+V

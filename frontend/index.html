@@ -671,7 +671,15 @@
                     <div style="font-size:16px;font-weight:600;color:var(--text-main);">点击上传或拖入截图</div>
                     <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">支持 JPG / PNG，AI 提示词技巧截图</div>
                     <input type="file" id="ssFileInput" accept="image/*" style="display:none;" onchange="App._onSSFileSelect(event)">
-                    <button class="btn btn-outline-primary btn-sm mt-3" onclick="App._onSSPaste()"><i class="bi bi-clipboard"></i> 粘贴剪贴板图片</button>
+                    <button class="btn btn-outline-primary btn-sm mt-3" onclick="event.stopPropagation();App._onSSPaste()"><i class="bi bi-clipboard"></i> 粘贴剪贴板图片</button>
+                </div>
+
+                <!-- 粘贴预览区（Ctrl+V后先显示图片，确认后再分析） -->
+                <div id="ssPastePreview" style="display:none;text-align:center;padding:10px;">
+                    <div style="font-size:14px;font-weight:600;margin-bottom:8px;">📋 剪贴板图片预览</div>
+                    <div id="ssPasteThumb" style="max-width:100%;max-height:200px;border-radius:8px;overflow:hidden;margin:0 auto 12px;background:#f1f5f9;"></div>
+                    <button class="btn btn-primary btn-sm" onclick="App._confirmSSPaste()"><i class="bi bi-check-lg"></i> 确认分析</button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="App._cancelSSPaste()">重新选择</button>
                 </div>
 
                 <!-- 识别中加载提示 -->
