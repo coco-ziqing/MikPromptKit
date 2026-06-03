@@ -390,9 +390,20 @@ def _save_temp_file(data: bytes, prefix: str, ext: str = ".jpg") -> str:
     return filename
 
 
-def _save_thumbnail(image_bytes: bytes) -> str:
+def _save_thumbnail(image_bytes: bytes) -> tuple:
+    """保存缩略图 + 原图到媒体库，返回 (thumb_filename, orig_filename)"""
     from PIL import Image
-    img = Image.open(io.BytesIO(image_bytes))
+    import io as _io
+    base_name = uuid.uuid4().hex
+
+    # 1. 保存原图（原始完整尺寸）
+    orig_filename = f"ocr_{base_name}_orig.jpg"
+    orig_path = os.path.join(ORIGINALS_DIR, orig_filename)
+    with open(orig_path, "wb") as f:
+        f.write(image_bytes)
+
+    # 2. 生成缩略图（3:2 裁剪 + 240x160）
+    img = Image.open(_io.BytesIO(image_bytes))
     w, h = img.size
     target_ratio = 3 / 2
     current_ratio = w / h
@@ -405,10 +416,28 @@ def _save_thumbnail(image_bytes: bytes) -> str:
         offset = (h - new_h) // 2
         img = img.crop((0, offset, w, offset + new_h))
     thumb = img.resize((240, 160), Image.LANCZOS)
-    filename = f"ocr_import_{uuid.uuid4().hex}.jpg"
-    path = os.path.join(THUMB_DIR, filename)
-    thumb.save(path, format="JPEG", quality=85)
-    return filename
+    thumb_filename = f"ocr_{base_name}_thumb.jpg"
+    thumb_path = os.path.join(THUMB_DIR, thumb_filename)
+    thumb.save(thumb_path, format="JPEG", quality=85)
+    thumb_size = os.path.getsize(thumb_path) if os.path.exists(thumb_path) else 0
+
+    # 3. 写入媒体资产管理库
+    try:
+        from PIL import Image as PILImg
+        _tmp = PILImg.open(_io.BytesIO(image_bytes))
+        iw, ih = _tmp.size
+        db = get_db()
+        db.execute("""
+            INSERT OR IGNORE INTO media_assets
+                (filename, original_filename, file_size, original_size,
+                 media_type, width, height, mime_type, source)
+            VALUES (?, ?, ?, ?, 'image', ?, ?, 'image/jpeg', 'ocr_import')
+        """, [thumb_filename, orig_filename, thumb_size, len(image_bytes), iw, ih])
+        db.commit()
+    except Exception:
+        pass
+
+    return thumb_filename, orig_filename
 
 
 # ============ API: 预览截图 ============
@@ -526,18 +555,27 @@ async def ocr_confirm(data: OcrConfirmInput):
         # 获取新 ID
         prompt_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
-        # 保存缩略图
+        # 保存缩略图 + 原图 + 媒体资产入库
         if data.has_image and data.temp_image:
             src = os.path.join(TEMP_DIR, data.temp_image)
             if os.path.exists(src):
                 with open(src, "rb") as f:
-                    thumb_data = f.read()
-                if thumb_data:
-                    thumb_filename = _save_thumbnail(thumb_data)
+                    img_data = f.read()
+                if img_data:
+                    thumb_filename, orig_filename = _save_thumbnail(img_data)
+                    # 关联到提示词
                     db.execute(
                         "INSERT INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) VALUES (?, ?, 'image', ?)",
                         [prompt_id, thumb_filename, now]
                     )
+                    # 更新 media_assets 的 prompt_id 关联
+                    try:
+                        db.execute(
+                            "UPDATE media_assets SET prompt_id=? WHERE filename=?",
+                            [prompt_id, thumb_filename]
+                        )
+                    except Exception:
+                        pass
                     db.commit()
 
         # 清理临时文件
