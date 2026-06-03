@@ -31,64 +31,32 @@ DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_VISION_MODEL = "qwen3-vl:8b"
 DEFAULT_LLM_MODEL = "qwen3.5:9b"
 
-# 模型池定义：语言 → 最佳模型
-MODEL_POOL = {
-    "chinese": {
-        "model": "qwen3-vl:8b",
-        "description": "阿里 Qwen 视觉模型 — 中文OCR最强",
-    },
-    "english": {
-        "model": "llama3.2-vision:11b",
-        "description": "Meta LLaMA 3.2 Vision — 英文OCR最强",
-    },
-    "mixed": {
-        "model": "auto",
-        "description": "自动并行双模型取最优",
-    }
-}
+# 视觉模型池（用于 fallback：主模型 qwen3-vl:8b 提取为空时尝试）
+FALLBACK_VISION_MODEL = "llama3.2-vision:11b"
 
 # ============ System Prompts（按模型定制） ============
 
-SYSTEM_PROMPT_ZH = """你是一个专业的AI提示词截图分析助手。
-注意：图片中的文字可能是中文或英文。
+SYSTEM_PROMPT = """Return ONLY JSON {"content":"prompt text","meaning":"chinese explanation short","scene":"scene","module":"emotion|color|tone|composition|seedance|custom","category":"cat","tags":["t"],"tips":"","has_image_preview":false,"_language":"chinese|english|mixed"}. NO MARKDOWN, ONLY JSON."""
 
-识别截图中的所有文字信息，并严格按照JSON格式返回（不附加任何说明，不使用```json代码块，仅返回纯净JSON）：
-
-{
-  "content": "提取截图中的提示词原文（prompt）。如有多段取最重要的一段。如果没有明确提示词，设为空字符串",
-  "meaning": "这个提示词的中文释义或简短说明（3-20字）",
-  "scene": "适用场景（如：人像摄影/风景/产品展示/概念艺术/视频生成）",
-  "module": "所属模块：emotion(人物表情)/color(场景色彩)/tone(画面色调)/composition(构图运镜)/seedance(视频模板)",
-  "category": "分类名称",
-  "tags": ["标签1", "标签2"],
-  "tips": "截图中提取到的参数设置、技巧说明等额外信息",
-  "has_image_preview": false
-}
-
-没有内容时返回 {"content": "", "meaning": "", "scene": "", "module": "custom", "category": "", "tags": [], "tips": "", "has_image_preview": false}
-"""
-
+# 英文截图的增强 prompt（当检测到 mixed 时用于第二模型）
 SYSTEM_PROMPT_EN = """You are a professional AI prompt screenshot analysis assistant.
-The image may contain Chinese or English text. Focus on extracting text accurately.
+This image may contain Chinese or English text.
 
-Return ONLY the raw JSON object (no markdown, no code fences, no extra text):
+Return ONLY the raw JSON object (no extra text):
 
 {
-  "content": "the extracted prompt text IN ITS ORIGINAL LANGUAGE. If none, empty string",
-  "meaning": "short Chinese explanation of what this prompt does (3-20 chars)",
-  "scene": "applicable scene in Chinese, e.g. portrait/landscape/product/advertisement",
-  "module": "one of: emotion/color/tone/composition/seedance/custom",
+  "content": "the extracted prompt text IN ITS ORIGINAL LANGUAGE",
+  "meaning": "short Chinese explanation",
+  "scene": "applicable scene in Chinese",
+  "module": "emotion/color/tone/composition/seedance/custom",
   "category": "category name in Chinese",
   "tags": ["tag1", "tag2"],
-  "tips": "any additional parameter settings or tips visible in the image",
+  "tips": "any parameter settings visible",
   "has_image_preview": false
 }
 
-If no text content found: {"content": "", "meaning": "", "scene": "", "module": "custom", "category": "", "tags": [], "tips": "", "has_image_preview": false}
+No text: {"content": "", "meaning": "", "scene": "", "module": "custom", "category": "", "tags": [], "tips": "", "has_image_preview": false}
 """
-
-LANG_SCAN_PROMPT = """Examine this image. Reply with EXACTLY ONE WORD: chinese, english, or mixed.
-Reply with NOTHING else."""
 
 
 # ============ Ollama 配置读取 ============
@@ -204,83 +172,34 @@ def _layout_analysis(image_bytes: bytes):
 
 # ============ STEP 2a: 语言预扫描 (Pre-scan) ============
 
-async def _pre_scan_language(server_url: str, img_b64: str) -> str:
-    """
-    快速检测图片文字语言：chinese / english / mixed
-    使用 qwen3-vl:8b，极简prompt，只返回一个单词，~5-8秒
-    """
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0)) as client:
-            resp = await client.post(f"{server_url}/api/chat", json={
-                "model": "qwen3-vl:8b",
-                "messages": [
-                    {"role": "user",
-                     "content": LANG_SCAN_PROMPT,
-                     "images": [img_b64]}
-                ],
-                "stream": False,
-                "options": {"temperature": 0.0}
-            })
-            if resp.status_code != 200:
-                return "chinese"
-            raw = resp.json().get("message", {}).get("content", "").strip().lower()
-            word = raw.split()[0] if raw else ""
-            word = word.strip(".,!?\"'")
-            if word in ("english", "en", "eng"):
-                return "english"
-            elif word in ("mixed", "both", "zh-en", "en-zh"):
-                return "mixed"
-            else:
-                return "chinese"
-    except Exception:
-        return "chinese"
+# 预扫描已废弃：语言检测已内嵌到主提取 SYSTEM_PROMPT 的 _language 字段中
+# 不再单独调用模型，避免重复推理耗时
 
 
 # ============ STEP 2b: 智能模型路由 ============
 
-def _select_model_for_language(lang: str) -> dict:
+def _select_model_for_language(lang: str, default_model: str) -> dict:
     """
-    根据检测到的语言选择最佳模型
+    根据检测到的语言选择备用模型（仅在主模型返回空内容时触发）
     返回: {"model": str, "system_prompt": str}
     """
     pool = _get_usable_models()
-    fallback_model = "qwen3-vl:8b"
-
     if lang == "english":
-        model_name = pool.get("english", pool.get(lang, fallback_model))
-        return {
-            "model": model_name,
-            "system_prompt": SYSTEM_PROMPT_EN,
-            "lang": "english"
-        }
-    elif lang == "mixed":
-        return {
-            "model": "dual_parallel",
-            "models": [
-                pool.get("chinese", "qwen3-vl:8b"),
-                pool.get("english", "llama3.2-vision:11b"),
-            ],
-            "system_prompt": SYSTEM_PROMPT_ZH,
-            "system_prompt_en": SYSTEM_PROMPT_EN,
-            "lang": "mixed"
-        }
-    else:
-        model_name = pool.get("chinese", pool.get(lang, fallback_model))
-        return {
-            "model": model_name,
-            "system_prompt": SYSTEM_PROMPT_ZH,
-            "lang": "chinese"
-        }
+        model_name = pool.get("english", "llama3.2-vision:11b")
+        if model_name != default_model:
+            return {"model": model_name, "system_prompt": SYSTEM_PROMPT_EN}
+    # chinese/mixed/默认都回退到已有主模型，无需二次调用
+    return None
 
 
 # ============ STEP 2c: 单模型调用 ============
 
-async def _call_single_model(server_url: str, model: str, img_b64: str,
-                              system_prompt: str, timeout_s: int = 60) -> dict:
-    """调用单个 Ollama 视觉模型，返回结构化 dict"""
+def _call_single_model_sync(server_url: str, model: str, img_b64: str,
+                              system_prompt: str, timeout_s: int = 120) -> dict:
+    """同步调用 Ollama 视觉模型（避免 async httpx 与 Uvicorn 事件循环死锁）"""
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s, connect=10.0)) as client:
-            resp = await client.post(f"{server_url}/api/chat", json={
+        with httpx.Client(timeout=httpx.Timeout(timeout_s, connect=10.0)) as client:
+            resp = client.post(f"{server_url}/api/chat", json={
                 "model": model,
                 "messages": [
                     {"role": "system", "content": system_prompt},
@@ -298,6 +217,17 @@ async def _call_single_model(server_url: str, model: str, img_b64: str,
         return {"error": f"timeout({timeout_s}s)", "_model": model}
     except Exception as e:
         return {"error": str(e)[:100], "_model": model}
+
+
+async def _call_single_model(server_url: str, model: str, img_b64: str,
+                              system_prompt: str, timeout_s: int = 120) -> dict:
+    """异步包装：同步调用跑在线程池中，避免事件循环阻塞"""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None, _call_single_model_sync,
+        server_url, model, img_b64, system_prompt, timeout_s
+    )
 
 
 def _parse_json_from_raw(raw: str, model: str = "") -> dict:
@@ -362,43 +292,51 @@ def _merge_dual_results(results: list) -> dict:
 
 async def _ollama_vision_parse(image_bytes: bytes, text_region_bytes: bytes = None) -> dict:
     """
-    智能调度入口：
-    1. 预扫描语言
-    2. 路由到最佳模型
-    3. 返回结构化 JSON
+    统一入口：调用一次 qwen3-vl:8b，内嵌语言检测
+    仅在 content 为空且检测到英文时，fallback 调用 llama3.2-vision:11b
     """
     cfg = _get_ollama_cfg()
     server_url = cfg.get("server_url", DEFAULT_OLLAMA_URL).rstrip("/")
     target_image = text_region_bytes or image_bytes
     img_b64 = base64.b64encode(target_image).decode("utf-8")
 
-    # Stage 1: 预扫描
-    lang = await _pre_scan_language(server_url, img_b64)
+    # 默认模型：qwen3-vl:8b（同时提取文字+检测语言）
+    default_model = cfg.get("model", DEFAULT_VISION_MODEL)
+    result = await _call_single_model(
+        server_url, default_model, img_b64, SYSTEM_PROMPT, 120
+    )
 
-    # Stage 2: 路由
-    route = _select_model_for_language(lang)
-    route["_detected_lang"] = lang
-
-    if route.get("model") == "dual_parallel":
-        models = route.get("models", ["qwen3-vl:8b", "llama3.2-vision:11b"])
-        results = await asyncio.gather(
-            _call_single_model(server_url, models[0], img_b64, route["system_prompt"], 60),
-            _call_single_model(server_url, models[1], img_b64, route.get("system_prompt_en", route["system_prompt"]), 60),
-            return_exceptions=True
-        )
-        parsed = []
-        for r in results:
-            if isinstance(r, dict):
-                parsed.append(r)
-            elif isinstance(r, Exception):
-                parsed.append({"error": str(r)[:80]})
-        result = _merge_dual_results(parsed)
+    # 从结果中读取语言标记
+    detected_lang = result.get("_language", "chinese")
+    if isinstance(detected_lang, str):
+        detected_lang = detected_lang.strip().lower()
     else:
-        result = await _call_single_model(
-            server_url, route["model"], img_b64, route["system_prompt"], 60
-        )
+        detected_lang = "chinese"
 
-    result["_detected_lang"] = lang
+    # 对英文判断标准化
+    if detected_lang in ("eng", "en"):
+        detected_lang = "english"
+
+    # 如果主模型提取到内容，直接返回（无论什么语言，qwen3-vl:8b 都够用）
+    content = result.get("content", "").strip()
+    if content:
+        result["_detected_lang"] = detected_lang
+        return result
+
+    # 主模型未提取到内容，尝试英文专用模型
+    fallback = _select_model_for_language(detected_lang, default_model)
+    if fallback:
+        result2 = await _call_single_model(
+            server_url, fallback["model"], img_b64, fallback["system_prompt"], 120
+        )
+        content2 = result2.get("content", "").strip()
+        if content2:
+            result2["_detected_lang"] = detected_lang
+            result2["_fallback"] = True
+            return result2
+
+    # 都失败了，返回主模型的结果
+    result["_detected_lang"] = detected_lang
     return result
 
 
@@ -651,5 +589,5 @@ async def ocr_model_status():
         "config_model": cfg.get("model", DEFAULT_VISION_MODEL),
         "model_pool": pool,
         "model_status": status,
-        "detect_prompt": LANG_SCAN_PROMPT
+        "fallback_model": FALLBACK_VISION_MODEL
     }
