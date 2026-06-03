@@ -1926,45 +1926,82 @@ const App = {
         document.getElementById('ssFileInput').click();
     },
 
-    // 从剪贴板粘贴截图图片
-    _onSSPaste() {
+        // 从剪贴板粘贴截图图片
+    // navigator.clipboard.read() 只在 HTTPS/localhost 工作，
+    // 局域网 HTTP (192.168.x.x) 下必须用原生 paste 事件
+    async _onSSPaste() {
         var self = this;
-        if (!navigator.clipboard || !navigator.clipboard.read) {
-            self.showToast('\u6d4f\u89c8\u5668\u4e0d\u652f\u6301\u526a\u8d34\u677f\u8bfb\u53d6\uff0c\u8bf7\u7528\u201c\u9009\u62e9\u6587\u4ef6\u201d\u4e0a\u4f20', 'warning');
-            return;
+
+        // 清理可能残留的旧粘贴辅助区
+        var old = document.getElementById('ssPasteHelper');
+        if (old) old.remove();
+
+        // 创建一个不可见的 textarea，聚焦等待 Ctrl+V
+        var ta = document.createElement('textarea');
+        ta.id = 'ssPasteHelper';
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;';
+        document.body.appendChild(ta);
+
+        function cleanup() {
+            var el = document.getElementById('ssPasteHelper');
+            if (el) el.remove();
         }
 
-        self.showToast('\u6b63\u5728\u8bfb\u53d6\u526a\u8d34\u677f...', 'info');
-        navigator.clipboard.read()
-            .then(function(clipboardItems) {
-                for (var i = 0; i < clipboardItems.length; i++) {
-                    var item = clipboardItems[i];
-                    for (var j = 0; j < item.types.length; j++) {
-                        var type = item.types[j];
-                        if (type.startsWith('image/')) {
-                            item.getType(type).then(function(blob) {
-                                // blob\u8f6c\u4e3a File \u5bf9\u8c61\uff0c\u4f20\u9012\u7ed9 _processSSFile
-                                var file = new File([blob], 'clipboard_' + Date.now() + '.png', { type: blob.type });
-                                self._processSSFile(file);
-                            }).catch(function(e) {
-                                self.showToast('\u8bfb\u53d6\u526a\u8d34\u677f\u56fe\u7247\u5931\u8d25: ' + e.message, 'error');
-                            });
-                            return;
-                        }
+        // 监听 paste 事件（一次性）
+        ta.addEventListener('paste', function(e) {
+            e.preventDefault();
+            cleanup();
+
+            var items = e.clipboardData && e.clipboardData.items;
+            if (!items || items.length === 0) {
+                self.showToast('剪贴板中未找到图片', 'warning');
+                return;
+            }
+
+            // 遍历剪贴板项找图片
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].type.startsWith('image/')) {
+                    var blob = items[i].getAsFile();
+                    if (blob) {
+                        var file = new File([blob], 'clipboard_' + Date.now() + '.png', { type: blob.type });
+                        self._processSSFile(file);
+                        return;
                     }
                 }
-                self.showToast('\u526a\u8d34\u677f\u4e2d\u672a\u627e\u5230\u56fe\u7247', 'warning');
-            })
-            .catch(function(err) {
-                if (err.name === 'NotAllowedError' || err.message.indexOf('permission') >= 0) {
-                    self.showToast('\u8bf7\u5141\u8bb8\u526a\u8d34\u677f\u8bbf\u95ee\u6743\u9650\uff0c\u6216\u76f4\u63a5\u7528\u201c\u9009\u62e9\u6587\u4ef6\u201d\u4e0a\u4f20', 'warning');
-                } else {
-                    self.showToast('\u8bfb\u53d6\u526a\u8d34\u677f\u5931\u8d25: ' + err.message, 'error');
+            }
+
+            // 没有直接图片，检查 text/html 中是否有 base64 图片（微信截图）
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].type === 'text/html') {
+                    items[i].getAsString(function(html) {
+                        var m = html.match(/<img[^>]+src=["']?(data:image\/[^"'>]+)["']?/i);
+                        if (m) {
+                            fetch(m[1]).then(function(r) { return r.blob(); }).then(function(blob) {
+                                var file = new File([blob], 'clipboard_' + Date.now() + '.png', { type: blob.type });
+                                self._processSSFile(file);
+                            }).catch(function() {
+                                self.showToast('解析剪贴板图片失败', 'error');
+                            });
+                        } else {
+                            self.showToast('剪贴板中未找到图片', 'warning');
+                        }
+                    });
+                    return;
                 }
-            });
+            }
+
+            self.showToast('剪贴板中未找到图片', 'warning');
+        }, {once: true});
+
+        // 聚焦 textarea，弹出提示
+        ta.focus();
+        self.showToast('已准备就绪，请按 Ctrl+V 粘贴截图', 'info', 4000);
+
+        // 10 秒超时自动清理
+        setTimeout(cleanup, 10000);
     },
 
-    switchIETab(tab) {
+switchIETab(tab) {
         document.getElementById('ieTabImport').className = tab === 'import' ? 'seedance-tab active' : 'seedance-tab';
         document.getElementById('ieTabExport').className = tab === 'export' ? 'seedance-tab active' : 'seedance-tab';
         document.getElementById('ieImportPanel').style.display = tab === 'import' ? 'block' : 'none';
