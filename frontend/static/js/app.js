@@ -1,4 +1,4 @@
-/**
+﻿/**
  * WebUI 提示词检索工具 v2.0 - 完整应用逻辑
  * 单页应用,零框架依赖
  */
@@ -1898,7 +1898,9 @@ const App = {
         } else {
             this.showToast('导入失败: ' + (result ? result.error : '未知错误'), 'error');
         }
-    },{
+    },
+
+    _retrySSUpload() {
         document.getElementById('ssFileInput').click();
     },
 
