@@ -2446,27 +2446,7 @@ const App = {
                 }
             }, false);
 
-            card.addEventListener('drop', function(e) {
-                e.preventDefault();
-                e.stopPropagation();  // 阻止冒泡，避免容器级导入窗口再次触发
-                card.classList.remove('drag-over');
-                if (!self.state.editMode) return;
-                var files = e.dataTransfer.files;
-                if (!files || files.length === 0) return;
-
-                var promptId = parseInt(card.getAttribute('data-id'));
-                if (!promptId) return;
-
-                var file = files[0];
-                var name = file.name.toLowerCase();
-                var isVideo = name.endsWith('.mp4') || name.endsWith('.webm') || name.endsWith('.mov') || name.endsWith('.avi');
-
-                if (isVideo) {
-                    self._dropUploadVideo(file, promptId);
-                } else {
-                    self._dropUploadImage(file, promptId);
-                }
-            }, false);
+            // drop 由 document 级监听器统一处理（_initDropZone），卡片不单独拦截
         });
     },
 
@@ -5968,28 +5948,17 @@ openImageViewer(filename, promptId) {
 
     // --- 全局拖拽导入（编辑模式显示PNG覆盖层，非编辑模式支持JSON/.pt/PNG） ---
     _initDropZone: function() {
-        // 全局阻止浏览器默认打开拖入的文件
+        // document 级 dragover + drop 是唯一入口，避免多级监听冲突
         document.addEventListener('dragover', function(e) { e.preventDefault(); });
-        document.addEventListener('drop', function(e) { e.preventDefault(); });
 
-        // 仅保留 drop 处理，移除视觉覆盖层避免闪烁
-        var container = document.getElementById('viewHomeScroll') || document.getElementById('viewHome');
-        if (!container) { this._dropAttached = true; return; }
-
-        container.addEventListener('dragover', function(e) { e.preventDefault(); });
-
-        container.addEventListener('drop', function(e) {
+        document.addEventListener('drop', function(e) {
             e.preventDefault();
-            e.stopPropagation();
-
-            // 如果拖到卡片上，让卡片级 handler 处理（图片/视频关联），容器不处理
-            if (e.target.closest && e.target.closest('.prompt-card')) return;
-
             var files = e.dataTransfer.files;
             if (!files || files.length === 0) return;
 
-            // 截图导入弹窗打开时转发图片
             var ssModal = document.getElementById('modalScreenshotImport');
+
+            // 截图导入弹窗打开时 → 转发图片
             if (ssModal && ssModal.style.display !== 'none') {
                 for (var fi = 0; fi < files.length; fi++) {
                     if (files[fi].type.startsWith('image/')) {
@@ -5999,8 +5968,22 @@ openImageViewer(filename, promptId) {
                 return;
             }
 
-            // 拖到空白区域 → 弹出导入窗口
-            // 编辑/非编辑模式统一走 handleDropPngFile (modalDropImport 预览确认)
+            // 编辑模式下拖到卡片上 → 关联图片/视频到卡片
+            if (App.state.editMode && e.target.closest && e.target.closest('.prompt-card')) {
+                var card = e.target.closest('.prompt-card');
+                var promptId = parseInt(card.getAttribute('data-id'));
+                if (promptId && files[0]) {
+                    var name = files[0].name.toLowerCase();
+                    if (name.endsWith('.mp4') || name.endsWith('.webm') || name.endsWith('.mov') || name.endsWith('.avi')) {
+                        App._dropUploadVideo(files[0], promptId);
+                    } else {
+                        App._dropUploadImage(files[0], promptId);
+                    }
+                }
+                return;
+            }
+
+            // 页面任意空白区域 → 导入预览弹窗
             for (var fi = 0; fi < files.length; fi++) {
                 var name = files[fi].name.toLowerCase();
                 if (name.endsWith('.json')) { App._handleDropFile(files[fi]); return; }
@@ -6009,11 +5992,10 @@ openImageViewer(filename, promptId) {
             }
             App.showToast('请拖入 JSON / .pt / PNG 格式的提示词文件', 'error');
         });
-
         this._dropAttached = true;
     },
 
-    // --- 卡片拖拽防护 ---
+    // --- 卡片拖拽防护 ---// --- 卡片拖拽防护 ---// --- 卡片拖拽防护 ---
 
 
     _escape(str) {
