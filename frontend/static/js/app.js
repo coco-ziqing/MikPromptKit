@@ -6113,7 +6113,7 @@ openImageViewer(filename, promptId) {
 
     // --- 全局拖拽导入（仅编辑模式下可用） ---
     _initDropZone: function() {
-        // 全局阻止浏览器默认拖拽行为（让浏览器允许 drop）
+        // 全局阻止浏览器默认拖拽行为
         document.addEventListener('dragover', function(e) { e.preventDefault(); });
 
         var zone = document.getElementById('globalDropZone');
@@ -6124,11 +6124,14 @@ openImageViewer(filename, promptId) {
             document.body.appendChild(zone);
         }
 
-        // 拖入：仅编辑模式+截图弹窗未打开时显示覆盖层
+        // 仅在编辑模式下、且拖入点在词库列表区域时才显示 PNG 导入覆盖层
         var hideZoneTimer = null;
-        document.addEventListener('dragenter', function(e) {
+        var dropContainer = document.getElementById('viewHomeScroll') || document.getElementById('viewHome');
+        if (!dropContainer) dropContainer = document;
+        var isDocLevel = dropContainer === document;
+
+        function _onDragEnter(e) {
             if (!App.state.editMode) return;
-            // 截图导入弹窗打开时不显示 PNG 覆盖层
             var ssModal = document.getElementById('modalScreenshotImport');
             if (ssModal && ssModal.style.display !== 'none') return;
             if (hideZoneTimer) { clearTimeout(hideZoneTimer); hideZoneTimer = null; }
@@ -6139,53 +6142,47 @@ openImageViewer(filename, promptId) {
             zone.style.justifyContent = 'center';
             zone.style.pointerEvents = 'auto';
             zone.innerHTML = '<div style="background:rgba(255,255,255,0.95);padding:24px 36px;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.15);text-align:center;">'
-                + '<div style="font-size:48px;margin-bottom:8px;">📥</div>'
+                + '<div style="font-size:48px;margin-bottom:8px;">??</div>'
                 + '<div style="font-size:18px;font-weight:600;color:#1e293b;">松开放入 PNG 提示词卡片</div>'
                 + '<div style="font-size:13px;color:#64748b;margin-top:4px;">支持 .png 文件（含提示词元数据）</div>'
                 + '</div>';
-        });
-
-        // 拖离：延迟隐藏覆盖层（避免闪动）
-        document.addEventListener('dragleave', function(e) {
+        }
+        function _onDragLeave(e) {
             if (!App.state.editMode) return;
             if (hideZoneTimer) clearTimeout(hideZoneTimer);
             hideZoneTimer = setTimeout(function() {
-                zone.style.display = 'none';
-                zone.style.background = '';
-                zone.style.border = '';
-                zone.innerHTML = '';
+                zone.style.display = 'none'; zone.style.background = ''; zone.style.border = ''; zone.innerHTML = '';
             }, 200);
-        });
-
-        // 统一在 document 上监听 drop（不设 stopPropagation，覆盖层只是视觉）
-        document.addEventListener('drop', function(e) {
+        }
+        function _onDrop(e) {
             e.preventDefault();
-            // 隐藏覆盖层
-            zone.style.display = 'none';
-            zone.style.background = '';
-            zone.style.border = '';
-            zone.innerHTML = '';
+            zone.style.display = 'none'; zone.style.background = ''; zone.style.border = ''; zone.innerHTML = '';
             if (hideZoneTimer) { clearTimeout(hideZoneTimer); hideZoneTimer = null; }
-
-            // 截图导入弹窗打开时，将图片文件转发给截图导入流程
             var ssModal = document.getElementById('modalScreenshotImport');
             if (ssModal && ssModal.style.display !== 'none') {
                 var files = e.dataTransfer.files;
                 if (files && files.length > 0 && files[0].type.startsWith('image/')) {
-                    App._processSSFile(files[0]);
-                    return;
+                    App._processSSFile(files[0]); return;
                 }
             }
-
-            // 仅编辑模式处理
             if (!App.state.editMode) return;
             App._onDropPng(e);
-        });
+        }
 
+        if (isDocLevel) {
+            document.addEventListener('dragenter', _onDragEnter);
+            document.addEventListener('dragleave', _onDragLeave);
+            document.addEventListener('drop', _onDrop);
+        } else {
+            dropContainer.addEventListener('dragenter', function(e) { e.preventDefault(); e.stopPropagation(); _onDragEnter(e); });
+            dropContainer.addEventListener('dragover', function(e) { e.preventDefault(); e.stopPropagation(); });
+            dropContainer.addEventListener('dragleave', function(e) { e.preventDefault(); e.stopPropagation(); _onDragLeave(e); });
+            dropContainer.addEventListener('drop', function(e) { e.stopPropagation(); _onDrop(e); });
+        }
         this._dropAttached = true;
     },
 
-    // --- 卡片拖拽防护 ---
+    // --- 卡片拖拽防护 ---// --- 卡片拖拽防护 ---
 
 
     _escape(str) {
