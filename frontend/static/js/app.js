@@ -1726,7 +1726,7 @@ const App = {
 
     // ============ 截图导入 ============
 
-        async openScreenshotImport() {
+    async openScreenshotImport() {
         // 重置状态
         this._ssTempImage = '';
         this._ssHasImage = false;
@@ -1739,10 +1739,10 @@ const App = {
         document.getElementById('ssBtnContinue').style.display = 'none';
         document.getElementById('ssBtnRetry').style.display = 'none';
         document.getElementById('ssFileInput').value = '';
-        // 动态加载模块下拉
         this._populateSSModule();
         document.getElementById('modalScreenshotImport').style.display = 'flex';
-        setTimeout(function() { var fi = document.getElementById('ssFileInput'); if (fi) fi.focus(); }, 100);
+        // 弹窗打开时自动激活粘贴监听，Ctrl+V 直接进入分析
+        this._activatePasteListener();
     },
 
     _populateSSModule() {
@@ -1928,80 +1928,124 @@ const App = {
 
         // 从剪贴板粘贴截图图片
     // navigator.clipboard.read() 只在 HTTPS/localhost 工作，
-    // 局域网 HTTP (192.168.x.x) 下必须用原生 paste 事件
-    async _onSSPaste() {
+    // 激活粘贴监听器（弹窗打开时自动激活，Ctrl+V 直接走分析流程）
+    // 局域网 HTTP 下 navigator.clipboard.read() 不可用，必须用 paste 事件
+    _activatePasteListener() {
         var self = this;
 
-        // 清理可能残留的旧粘贴辅助区
+        // 清理旧监听器
         var old = document.getElementById('ssPasteHelper');
         if (old) old.remove();
+        if (this._ssPasteHandler) {
+            document.removeEventListener('keydown', this._ssPasteHandler);
+            this._ssPasteHandler = null;
+        }
 
-        // 创建一个不可见的 textarea，聚焦等待 Ctrl+V
+        // 创建隐藏 textarea 用于捕获 paste 事件
         var ta = document.createElement('textarea');
         ta.id = 'ssPasteHelper';
         ta.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;';
         document.body.appendChild(ta);
+        ta.focus();
 
         function cleanup() {
             var el = document.getElementById('ssPasteHelper');
             if (el) el.remove();
         }
 
-        // 监听 paste 事件（一次性）
+        // 监听 paste 事件
         ta.addEventListener('paste', function(e) {
             e.preventDefault();
-            cleanup();
+            self._handleClipboardPaste(e);
+        });
 
-            var items = e.clipboardData && e.clipboardData.items;
-            if (!items || items.length === 0) {
-                self.showToast('剪贴板中未找到图片', 'warning');
-                return;
+        // 全局键盘监听：Ctrl+V 时截取剪贴板数据
+        this._ssPasteHandler = function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+                var modal = document.getElementById('modalScreenshotImport');
+                if (!modal || modal.style.display === 'none') return;
+                // 截取 clipboardData 传入处理函数
+                var cd = e.clipboardData || window.clipboardData;
+                setTimeout(function() {
+                    self._handleClipboardPaste({clipboardData: cd});
+                }, 10);
             }
+        };
+        document.addEventListener('keydown', this._ssPasteHandler);
 
-            // 遍历剪贴板项找图片
-            for (var i = 0; i < items.length; i++) {
-                if (items[i].type.startsWith('image/')) {
-                    var blob = items[i].getAsFile();
-                    if (blob) {
-                        var file = new File([blob], 'clipboard_' + Date.now() + '.png', { type: blob.type });
-                        self._processSSFile(file);
-                        return;
-                    }
+        // 弹窗关闭时自动清理监听器
+        var modal = document.getElementById('modalScreenshotImport');
+        var observer = new MutationObserver(function() {
+            if (modal.style.display === 'none') {
+                cleanup();
+                if (self._ssPasteHandler) {
+                    document.removeEventListener('keydown', self._ssPasteHandler);
+                    self._ssPasteHandler = null;
                 }
+                observer.disconnect();
             }
+        });
+        observer.observe(modal, { attributes: true, attributeFilter: ['style'] });
+    },
 
-            // 没有直接图片，检查 text/html 中是否有 base64 图片（微信截图）
-            for (var i = 0; i < items.length; i++) {
-                if (items[i].type === 'text/html') {
-                    items[i].getAsString(function(html) {
-                        var m = html.match(/<img[^>]+src=["']?(data:image\/[^"'>]+)["']?/i);
-                        if (m) {
-                            fetch(m[1]).then(function(r) { return r.blob(); }).then(function(blob) {
-                                var file = new File([blob], 'clipboard_' + Date.now() + '.png', { type: blob.type });
-                                self._processSSFile(file);
-                            }).catch(function() {
-                                self.showToast('解析剪贴板图片失败', 'error');
-                            });
-                        } else {
-                            self.showToast('剪贴板中未找到图片', 'warning');
-                        }
-                    });
+    // 处理剪贴板粘贴：提取图片 -> 走分析流程
+    _handleClipboardPaste(e) {
+        var self = this;
+        var items = e.clipboardData && e.clipboardData.items;
+        if (!items || items.length === 0) {
+            self.showToast('剪贴板中未找到图片', 'warning');
+            return;
+        }
+
+        // 尝试提取图片
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].type && items[i].type.startsWith('image/')) {
+                var blob = items[i].getAsFile ? items[i].getAsFile() : null;
+                if (blob) {
+                    var file = new File([blob], 'clipboard_' + Date.now() + '.png', { type: blob.type });
+                    self._processSSFile(file);
                     return;
                 }
             }
+        }
 
-            self.showToast('剪贴板中未找到图片', 'warning');
-        }, {once: true});
+        // 没有直接图片，检查 text/html 中是否有 base64 图片（微信截图）
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].type === 'text/html') {
+                items[i].getAsString(function(html) {
+                    var m = html.match(/<img[^>]+src=["']?(data:image\/[^"'>]+)["']?/i);
+                    if (m) {
+                        fetch(m[1]).then(function(r) { return r.blob(); }).then(function(blob) {
+                            var file = new File([blob], 'clipboard_' + Date.now() + '.png', { type: blob.type });
+                            self._processSSFile(file);
+                        }).catch(function() {
+                            self.showToast('解析剪贴板图片失败', 'error');
+                        });
+                    } else {
+                        self.showToast('剪贴板中未找到图片，请先截图再按 Ctrl+V', 'warning', 3000);
+                    }
+                });
+                return;
+            }
+        }
 
-        // 聚焦 textarea，弹出提示
-        ta.focus();
-        self.showToast('已准备就绪，请按 Ctrl+V 粘贴截图', 'info', 4000);
-
-        // 10 秒超时自动清理
-        setTimeout(cleanup, 10000);
+        self.showToast('剪贴板中未找到图片，请先截图再按 Ctrl+V', 'warning', 3000);
     },
 
-switchIETab(tab) {
+    // 粘贴按钮点击：重新聚焦 + 提示用户按 Ctrl+V
+    async _onSSPaste() {
+        var self = this;
+        var ta = document.getElementById('ssPasteHelper');
+        if (!ta) {
+            this._activatePasteListener();
+            ta = document.getElementById('ssPasteHelper');
+        }
+        if (ta) {
+            ta.focus();
+            ta.select();
+        }
+        self.showToast('请按 Ctrl+V 粘贴截图', 'info', 3000);
+    },switchIETab(tab) {
         document.getElementById('ieTabImport').className = tab === 'import' ? 'seedance-tab active' : 'seedance-tab';
         document.getElementById('ieTabExport').className = tab === 'export' ? 'seedance-tab active' : 'seedance-tab';
         document.getElementById('ieImportPanel').style.display = tab === 'import' ? 'block' : 'none';
