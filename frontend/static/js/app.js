@@ -1906,8 +1906,7 @@ const App = {
 
         if (result && result.ok) {
             this.showToast(result.message || '\u2714 已导入', 'success');
-            await this.loadPrompts();
-            this.loadStats();
+            // 先关弹窗，再刷新数据（防止 loadPrompts 异常阻塞关闭）
             if (continueMode) {
                 this._ssTempImage = '';
                 this._ssHasImage = false;
@@ -1919,6 +1918,8 @@ const App = {
             } else {
                 document.getElementById('modalScreenshotImport').style.display = 'none';
             }
+            await this.loadPrompts();
+            this.loadStats();
         } else {
             this.showToast('导入失败: ' + (result ? result.error : '未知错误'), 'error');
         }
