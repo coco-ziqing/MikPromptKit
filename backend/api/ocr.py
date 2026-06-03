@@ -1,9 +1,16 @@
 """
-截图导入 — 版面分析 + Ollama Vision OCR + LLM 结构化 → 导入提示词卡
-流程: 上传截图 → Pillow版面分割(效果图区/文字区) → Ollama Vision OCR+结构化
-     → 预览确认 → 保存缩略图+创建词条
+截图导入 — 预扫描语言检测 + 智能模型路由 + Ollama Vision OCR + 结构化
+========================================================================
+流程: 上传截图 → 版面分析(效果图/文字区分离)
+     → [新] 语言预扫描 (qwen3-vl:8b, ~5-8s, 返回 chinese/english/mixed)
+     → 根据语言路由最佳模型:
+         chinese → qwen3-vl:8b (阿里原生中文, 中文OCR最强)
+         english → llama3.2-vision:11b (Meta原生英文, 英文OCR最强)
+         mixed   → 双模型并行, 取 content 更长/结构更完整的
+     → LLM结构化解析 → 预览确认 → 保存缩略图+创建词条
+========================================================================
 """
-import os, io, uuid, json, base64, datetime, re
+import os, io, uuid, json, base64, datetime, re, asyncio
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel
 from database import get_db, safe_commit
@@ -11,7 +18,7 @@ import httpx
 
 router = APIRouter(prefix="/api/v2/ocr", tags=["ocr"])
 
-# ============ 配置 ============
+# ============ 目录配置 ============
 TEMP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "data", "temp_ocr")
 THUMB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "data", "thumbnails")
 ORIGINALS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "data", "originals")
@@ -19,134 +26,36 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 os.makedirs(THUMB_DIR, exist_ok=True)
 os.makedirs(ORIGINALS_DIR, exist_ok=True)
 
+# ============ 默认配置 ============
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_VISION_MODEL = "qwen3-vl:8b"
-DEFAULT_LLM_MODEL = "qwen3.5:9b"  # 结构化备用（若视觉模型输出不够规范）
+DEFAULT_LLM_MODEL = "qwen3.5:9b"
 
-# ============ Ollama 配置 ============
-def _get_ollama_cfg():
-    db = get_db()
-    row = db.execute("SELECT value FROM config WHERE key='ollama_config'").fetchone()
-    if row:
-        try:
-            cfg = json.loads(row["value"])
-            return cfg
-        except Exception:
-            pass
-    return {"server_url": DEFAULT_OLLAMA_URL, "model": DEFAULT_VISION_MODEL}
-
-# ============ STEP 1: 版面分析 ============
-def _layout_analysis(image_bytes: bytes):
-    """
-    用 Pillow 做简单的版面分析，将截图分为：
-    - 效果图区域（最大矩形轮廓）
-    - 文字区域（其余部分）
-
-    返回: {
-        "image_region": cropped_bytes | None,   # 效果图裁剪
-        "text_region": cropped_bytes,             # 文字区裁剪
-        "has_image_region": bool
+# 模型池定义：语言 → 最佳模型
+MODEL_POOL = {
+    "chinese": {
+        "model": "qwen3-vl:8b",
+        "description": "阿里 Qwen 视觉模型 — 中文OCR最强",
+    },
+    "english": {
+        "model": "llama3.2-vision:11b",
+        "description": "Meta LLaMA 3.2 Vision — 英文OCR最强",
+    },
+    "mixed": {
+        "model": "auto",
+        "description": "自动并行双模型取最优",
     }
-    """
-    from PIL import Image, ImageFilter, ImageOps
-    import io
+}
 
-    img = Image.open(io.BytesIO(image_bytes))
-    # EXIF 自动修正方向（手机竖屏截图）
-    try:
-        img = ImageOps.exif_transpose(img)
-    except Exception:
-        pass
-    w, h = img.size
+# ============ System Prompts（按模型定制） ============
 
-    # 对于常见截图布局（上-下分割），水平投影找分界
-    # 转灰度
-    gray = img.convert("L")
-    pixels = list(gray.getdata())
-
-    # 计算每行的平均亮度
-    row_brightness = []
-    for y in range(h):
-        row = pixels[y * w : (y + 1) * w]
-        avg = sum(row) / len(row)
-        row_brightness.append(avg)
-
-    # 找最暗的行（分割线或文字密集区）
-    # 通常分割线是一条较暗的细线，或空白间隙
-    # 策略：找到长度 > 图像宽度 60% 的连续较亮行（空白间隙）作为分割候选
-    blank_threshold = 240  # 接近白色
-    blank_runs = []
-    current_run = []
-    for y, brightness in enumerate(row_brightness):
-        if brightness >= blank_threshold:
-            current_run.append(y)
-        else:
-            if len(current_run) > 3:
-                blank_runs.append(current_run)
-            current_run = []
-
-    if current_run and len(current_run) > 3:
-        blank_runs.append(current_run)
-
-    # 找最长的空白行区间作为分割候选
-    margin_top = int(h * 0.05)
-    margin_bottom = int(h * 0.05)
-
-    image_region_bytes = None
-    text_region_bytes = None
-    has_image_region = False
-
-    # 过滤掉边缘空白（顶部/底部的边距）
-    interior_blank_runs = [
-        run for run in blank_runs
-        if run[-1] > margin_top and run[0] < h - margin_bottom
-    ]
-
-    if interior_blank_runs:
-        # 找到最长的连续空白行
-        best_run = max(interior_blank_runs, key=len)
-        split_y = best_run[0] + len(best_run) // 2
-
-        # 上半部分作为效果图
-        image_region = img.crop((0, 0, w, split_y))
-        text_region = img.crop((0, split_y, w, h))
-
-        # 效果图太小则不视为有效
-        if image_region.size[1] > h * 0.15:
-            buf = io.BytesIO()
-            image_region.save(buf, format="JPEG", quality=90)
-            image_region_bytes = buf.getvalue()
-            has_image_region = True
-        else:
-            # 效果图太小，整个作为文字区
-            text_region = img
-
-        buf = io.BytesIO()
-        text_region.save(buf, format="JPEG", quality=90)
-        text_region_bytes = buf.getvalue()
-    else:
-        # 找不到明显分界，整张图作为文字区
-        text_region = img
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=85)
-        text_region_bytes = buf.getvalue()
-
-    return {
-        "image_region": image_region_bytes,
-        "text_region": text_region_bytes,
-        "has_image_region": has_image_region,
-        "image_size": f"{w}x{h}"
-    }
-
-
-# ============ STEP 2: Ollama Vision 解析 ============
-
-SYSTEM_PROMPT = """你是一个专业的AI提示词截图分析助手。
+SYSTEM_PROMPT_ZH = """你是一个专业的AI提示词截图分析助手。
+注意：图片中的文字可能是中文或英文。
 
 识别截图中的所有文字信息，并严格按照JSON格式返回（不附加任何说明，不使用```json代码块，仅返回纯净JSON）：
 
 {
-  "content": "提取截图中的提示词原文（prompt），保留原始语言，不翻译。如有多段取最重要的一段。如果没有明确提示词，设为空字符串",
+  "content": "提取截图中的提示词原文（prompt）。如有多段取最重要的一段。如果没有明确提示词，设为空字符串",
   "meaning": "这个提示词的中文释义或简短说明（3-20字）",
   "scene": "适用场景（如：人像摄影/风景/产品展示/概念艺术/视频生成）",
   "module": "所属模块：emotion(人物表情)/color(场景色彩)/tone(画面色调)/composition(构图运镜)/seedance(视频模板)",
@@ -159,85 +68,346 @@ SYSTEM_PROMPT = """你是一个专业的AI提示词截图分析助手。
 没有内容时返回 {"content": "", "meaning": "", "scene": "", "module": "custom", "category": "", "tags": [], "tips": "", "has_image_preview": false}
 """
 
+SYSTEM_PROMPT_EN = """You are a professional AI prompt screenshot analysis assistant.
+The image may contain Chinese or English text. Focus on extracting text accurately.
 
-async def _ollama_vision_parse(image_bytes: bytes, text_region_bytes: bytes = None) -> dict:
-    """调用 Ollama 视觉模型分析截图，返回结构化 JSON"""
+Return ONLY the raw JSON object (no markdown, no code fences, no extra text):
+
+{
+  "content": "the extracted prompt text IN ITS ORIGINAL LANGUAGE. If none, empty string",
+  "meaning": "short Chinese explanation of what this prompt does (3-20 chars)",
+  "scene": "applicable scene in Chinese, e.g. portrait/landscape/product/advertisement",
+  "module": "one of: emotion/color/tone/composition/seedance/custom",
+  "category": "category name in Chinese",
+  "tags": ["tag1", "tag2"],
+  "tips": "any additional parameter settings or tips visible in the image",
+  "has_image_preview": false
+}
+
+If no text content found: {"content": "", "meaning": "", "scene": "", "module": "custom", "category": "", "tags": [], "tips": "", "has_image_preview": false}
+"""
+
+LANG_SCAN_PROMPT = """Examine this image. Reply with EXACTLY ONE WORD: chinese, english, or mixed.
+Reply with NOTHING else."""
+
+
+# ============ Ollama 配置读取 ============
+
+def _get_ollama_cfg():
+    """读取 ollama 配置，支持 vision_models 模型池"""
+    db = get_db()
+    row = db.execute("SELECT value FROM config WHERE key='ollama_config'").fetchone()
+    if row:
+        try:
+            return json.loads(row["value"])
+        except Exception:
+            pass
+    return {"server_url": DEFAULT_OLLAMA_URL, "model": DEFAULT_VISION_MODEL}
+
+
+def _get_usable_models():
+    """返回当前可用的视觉模型列表（优先从配置读取，回退默认池）"""
     cfg = _get_ollama_cfg()
-    server_url = cfg.get("server_url", DEFAULT_OLLAMA_URL).rstrip("/")
-    model = cfg.get("model", DEFAULT_VISION_MODEL)
+    pool = cfg.get("vision_models", None)
+    if pool and isinstance(pool, dict):
+        return pool
+    return {
+        "chinese": "qwen3-vl:8b",
+        "english": "llama3.2-vision:11b",
+    }
 
-    # 优先用文字区，没有则用原图
-    target_image = text_region_bytes or image_bytes
-    img_b64 = base64.b64encode(target_image).decode("utf-8")
 
+# ============ STEP 1: 版面分析 ============
+
+def _layout_analysis(image_bytes: bytes):
+    """
+    用 Pillow 做简单的版面分析，将截图分为：
+    - 效果图区域（最大矩形轮廓）
+    - 文字区域（其余部分）
+
+    返回: {
+        "image_region": cropped_bytes | None,
+        "text_region": cropped_bytes,
+        "has_image_region": bool,
+        "image_size": str
+    }
+    """
+    from PIL import Image, ImageOps
+    import io
+
+    img = Image.open(io.BytesIO(image_bytes))
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
+        img = ImageOps.exif_transpose(img)
+    except Exception:
+        pass
+    w, h = img.size
+
+    gray = img.convert("L")
+    pixels = list(gray.getdata())
+
+    row_brightness = []
+    for y in range(h):
+        row = pixels[y * w : (y + 1) * w]
+        row_brightness.append(sum(row) / len(row))
+
+    blank_threshold = 240
+    blank_runs = []
+    current_run = []
+    for y, brightness in enumerate(row_brightness):
+        if brightness >= blank_threshold:
+            current_run.append(y)
+        else:
+            if len(current_run) > 3:
+                blank_runs.append(current_run)
+            current_run = []
+    if current_run and len(current_run) > 3:
+        blank_runs.append(current_run)
+
+    margin_top = int(h * 0.05)
+    margin_bottom = int(h * 0.05)
+    image_region_bytes = None
+    text_region_bytes = None
+    has_image_region = False
+
+    interior_blank_runs = [
+        run for run in blank_runs
+        if run[-1] > margin_top and run[0] < h - margin_bottom
+    ]
+
+    if interior_blank_runs:
+        best_run = max(interior_blank_runs, key=len)
+        split_y = best_run[0] + len(best_run) // 2
+        img_region = img.crop((0, 0, w, split_y))
+        txt_region = img.crop((0, split_y, w, h))
+        if img_region.size[1] > h * 0.15:
+            buf = io.BytesIO()
+            img_region.save(buf, format="JPEG", quality=90)
+            image_region_bytes = buf.getvalue()
+            has_image_region = True
+        else:
+            txt_region = img
+        buf = io.BytesIO()
+        txt_region.save(buf, format="JPEG", quality=90)
+        text_region_bytes = buf.getvalue()
+    else:
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        text_region_bytes = buf.getvalue()
+
+    return {
+        "image_region": image_region_bytes,
+        "text_region": text_region_bytes,
+        "has_image_region": has_image_region,
+        "image_size": f"{w}x{h}"
+    }
+
+
+# ============ STEP 2a: 语言预扫描 (Pre-scan) ============
+
+async def _pre_scan_language(server_url: str, img_b64: str) -> str:
+    """
+    快速检测图片文字语言：chinese / english / mixed
+    使用 qwen3-vl:8b，极简prompt，只返回一个单词，~5-8秒
+    """
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0)) as client:
+            resp = await client.post(f"{server_url}/api/chat", json={
+                "model": "qwen3-vl:8b",
+                "messages": [
+                    {"role": "user",
+                     "content": LANG_SCAN_PROMPT,
+                     "images": [img_b64]}
+                ],
+                "stream": False,
+                "options": {"temperature": 0.0}
+            })
+            if resp.status_code != 200:
+                return "chinese"
+            raw = resp.json().get("message", {}).get("content", "").strip().lower()
+            word = raw.split()[0] if raw else ""
+            word = word.strip(".,!?\"'")
+            if word in ("english", "en", "eng"):
+                return "english"
+            elif word in ("mixed", "both", "zh-en", "en-zh"):
+                return "mixed"
+            else:
+                return "chinese"
+    except Exception:
+        return "chinese"
+
+
+# ============ STEP 2b: 智能模型路由 ============
+
+def _select_model_for_language(lang: str) -> dict:
+    """
+    根据检测到的语言选择最佳模型
+    返回: {"model": str, "system_prompt": str}
+    """
+    pool = _get_usable_models()
+    fallback_model = "qwen3-vl:8b"
+
+    if lang == "english":
+        model_name = pool.get("english", pool.get(lang, fallback_model))
+        return {
+            "model": model_name,
+            "system_prompt": SYSTEM_PROMPT_EN,
+            "lang": "english"
+        }
+    elif lang == "mixed":
+        return {
+            "model": "dual_parallel",
+            "models": [
+                pool.get("chinese", "qwen3-vl:8b"),
+                pool.get("english", "llama3.2-vision:11b"),
+            ],
+            "system_prompt": SYSTEM_PROMPT_ZH,
+            "system_prompt_en": SYSTEM_PROMPT_EN,
+            "lang": "mixed"
+        }
+    else:
+        model_name = pool.get("chinese", pool.get(lang, fallback_model))
+        return {
+            "model": model_name,
+            "system_prompt": SYSTEM_PROMPT_ZH,
+            "lang": "chinese"
+        }
+
+
+# ============ STEP 2c: 单模型调用 ============
+
+async def _call_single_model(server_url: str, model: str, img_b64: str,
+                              system_prompt: str, timeout_s: int = 60) -> dict:
+    """调用单个 Ollama 视觉模型，返回结构化 dict"""
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s, connect=10.0)) as client:
             resp = await client.post(f"{server_url}/api/chat", json={
                 "model": model,
                 "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": "分析这张截图中的AI提示词信息，返回JSON", "images": [img_b64]}
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": "分析这张截图中的AI提示词信息，返回JSON",
+                     "images": [img_b64]}
                 ],
                 "stream": False,
                 "options": {"temperature": 0.1}
             })
             if resp.status_code != 200:
-                return {"error": f"Ollama 返回错误 (HTTP {resp.status_code})"}
-
-            result = resp.json()
-            raw = result.get("message", {}).get("content", "")
-
-            # 提取 JSON（模型可能附带了 ```json 标记）
-            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(1)
-            else:
-                # 尝试直接在内容中找 JSON 对象
-                brace_start = raw.find('{')
-                brace_end = raw.rfind('}')
-                if brace_start >= 0 and brace_end > brace_start:
-                    json_str = raw[brace_start:brace_end + 1]
-                else:
-                    json_str = raw
-
-            try:
-                parsed = json.loads(json_str)
-                # 确保必填字段存在
-                defaults = {
-                    "content": "", "meaning": "", "scene": "",
-                    "module": "custom", "category": "OCR导入",
-                    "tags": [], "tips": "", "has_image_preview": False
-                }
-                for k, v in defaults.items():
-                    if k not in parsed or parsed[k] is None:
-                        parsed[k] = v
-                # tags 如果是字符串转数组
-                if isinstance(parsed.get("tags"), str):
-                    parsed["tags"] = [t.strip() for t in parsed["tags"].split(",") if t.strip()]
-                return parsed
-            except json.JSONDecodeError:
-                # JSON 解析失败，返回纯文本
-                return {
-                    "content": raw[:500],
-                    "meaning": "OCR 识别结果（需手动整理）",
-                    "scene": "",
-                    "module": "custom",
-                    "category": "OCR导入",
-                    "tags": ["OCR"],
-                    "tips": "",
-                    "has_image_preview": False,
-                    "_raw": raw[:200]
-                }
-
+                return {"error": f"Ollama HTTP {resp.status_code}", "_model": model}
+            raw = resp.json().get("message", {}).get("content", "")
+            return _parse_json_from_raw(raw, model)
+    except httpx.TimeoutException:
+        return {"error": f"timeout({timeout_s}s)", "_model": model}
     except Exception as e:
-        return {"error": f"Ollama 调用失败: {str(e)}"}
+        return {"error": str(e)[:100], "_model": model}
 
 
-async def _ollama_llm_parse_text(text: str) -> dict:
-    """备用：用纯文本 LLM 解析 OCR 文字（当视觉模型结果不符合预期时）"""
+def _parse_json_from_raw(raw: str, model: str = "") -> dict:
+    """从模型原始回复中提取 JSON 并解析"""
+    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw, re.DOTALL)
+    json_str = None
+    if json_match:
+        json_str = json_match.group(1)
+    else:
+        brace_start = raw.find('{')
+        brace_end = raw.rfind('}')
+        if brace_start >= 0 and brace_end > brace_start:
+            json_str = raw[brace_start:brace_end + 1]
+    if json_str:
+        try:
+            parsed = json.loads(json_str)
+            defaults = {
+                "content": "", "meaning": "", "scene": "",
+                "module": "custom", "category": "OCR导入",
+                "tags": [], "tips": "", "has_image_preview": False
+            }
+            for k, v in defaults.items():
+                if k not in parsed or parsed[k] is None:
+                    parsed[k] = v
+            if isinstance(parsed.get("tags"), str):
+                parsed["tags"] = [t.strip() for t in parsed["tags"].split(",") if t.strip()]
+            parsed["_model"] = model
+            return parsed
+        except json.JSONDecodeError:
+            pass
+    return {
+        "content": raw[:500],
+        "meaning": "OCR 识别结果（需手动整理）",
+        "scene": "", "module": "custom",
+        "category": "OCR导入", "tags": ["OCR"],
+        "tips": "", "has_image_preview": False,
+        "_raw": raw[:200], "_model": model
+    }
+
+
+# ============ STEP 2d: 双模型并行（中英混合） ============
+
+def _merge_dual_results(results: list) -> dict:
+    """合并双模型结果，取 content 最长 + 结构最完整的"""
+    valid = [r for r in results if r and not r.get("error") and r.get("content")]
+    if not valid:
+        return results[0] if results else {"error": "all models failed"}
+    valid.sort(key=lambda r: len(r.get("content", "")), reverse=True)
+    best = valid[0]
+    if len(valid) > 1:
+        c1, c2 = len(best.get("content", "")), len(valid[1].get("content", ""))
+        if c2 > 0 and abs(c1 - c2) / max(c1, c2) < 0.2:
+            def richness(r):
+                return len(r.get("tags", [])) + len(r.get("tips", ""))
+            valid.sort(key=richness, reverse=True)
+            best = valid[0]
+    best["_merged"] = True
+    return best
+
+
+# ============ STEP 2e: 统一入口 ============
+
+async def _ollama_vision_parse(image_bytes: bytes, text_region_bytes: bytes = None) -> dict:
+    """
+    智能调度入口：
+    1. 预扫描语言
+    2. 路由到最佳模型
+    3. 返回结构化 JSON
+    """
     cfg = _get_ollama_cfg()
     server_url = cfg.get("server_url", DEFAULT_OLLAMA_URL).rstrip("/")
+    target_image = text_region_bytes or image_bytes
+    img_b64 = base64.b64encode(target_image).decode("utf-8")
 
+    # Stage 1: 预扫描
+    lang = await _pre_scan_language(server_url, img_b64)
+
+    # Stage 2: 路由
+    route = _select_model_for_language(lang)
+    route["_detected_lang"] = lang
+
+    if route.get("model") == "dual_parallel":
+        models = route.get("models", ["qwen3-vl:8b", "llama3.2-vision:11b"])
+        results = await asyncio.gather(
+            _call_single_model(server_url, models[0], img_b64, route["system_prompt"], 60),
+            _call_single_model(server_url, models[1], img_b64, route.get("system_prompt_en", route["system_prompt"]), 60),
+            return_exceptions=True
+        )
+        parsed = []
+        for r in results:
+            if isinstance(r, dict):
+                parsed.append(r)
+            elif isinstance(r, Exception):
+                parsed.append({"error": str(r)[:80]})
+        result = _merge_dual_results(parsed)
+    else:
+        result = await _call_single_model(
+            server_url, route["model"], img_b64, route["system_prompt"], 60
+        )
+
+    result["_detected_lang"] = lang
+    return result
+
+
+# ============ STEP 3: LLM 结构化备用 ============
+
+async def _ollama_llm_parse_text(text: str) -> dict:
+    """备用：用纯文本 LLM 解析 OCR 文字"""
+    cfg = _get_ollama_cfg()
+    server_url = cfg.get("server_url", DEFAULT_OLLAMA_URL).rstrip("/")
     prompt = f"""从以下AI提示词截图中提取的文字，请分析并返回JSON格式：
 
 {text[:2000]}
@@ -253,7 +423,6 @@ async def _ollama_llm_parse_text(text: str) -> dict:
   "tips": "技巧说明"
 }}
 只返回JSON，不要附加说明。"""
-
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
             resp = await client.post(f"{server_url}/api/chat", json={
@@ -273,10 +442,9 @@ async def _ollama_llm_parse_text(text: str) -> dict:
     return {}
 
 
-# ============ 工具：保存临时文件 ============
+# ============ 工具函数 ============
 
 def _save_temp_file(data: bytes, prefix: str, ext: str = ".jpg") -> str:
-    """保存临时文件，返回相对路径"""
     filename = f"{prefix}_{uuid.uuid4().hex}{ext}"
     path = os.path.join(TEMP_DIR, filename)
     with open(path, "wb") as f:
@@ -285,7 +453,6 @@ def _save_temp_file(data: bytes, prefix: str, ext: str = ".jpg") -> str:
 
 
 def _save_thumbnail(image_bytes: bytes) -> str:
-    """保存缩略图（3:2 裁剪 + 240x160）"""
     from PIL import Image
     img = Image.open(io.BytesIO(image_bytes))
     w, h = img.size
@@ -299,78 +466,71 @@ def _save_thumbnail(image_bytes: bytes) -> str:
         new_h = int(w / target_ratio)
         offset = (h - new_h) // 2
         img = img.crop((0, offset, w, offset + new_h))
-    img = img.resize((240, 160), Image.LANCZOS)
-
-    filename = uuid.uuid4().hex + ".jpg"
-    img.save(os.path.join(THUMB_DIR, filename), "JPEG", quality=85)
+    thumb = img.resize((240, 160), Image.LANCZOS)
+    filename = f"ocr_import_{uuid.uuid4().hex}.jpg"
+    path = os.path.join(THUMB_DIR, filename)
+    thumb.save(path, format="JPEG", quality=85)
     return filename
 
 
-def _save_original(image_bytes: bytes) -> str:
-    """保存原图"""
-    filename = uuid.uuid4().hex + ".jpg"
-    with open(os.path.join(ORIGINALS_DIR, filename), "wb") as f:
-        f.write(image_bytes)
-    return filename
+# ============ API: 预览截图 ============
 
-
-# ============ API 端点 ============
-
-
-@router.post("/preview")
 @router.post("/preview")
 async def ocr_preview(file: UploadFile = File(...)):
-    """上传截图 → 版面分析 + Ollama Vision 解析 → 返回预览数据"""
-    file_bytes = await file.read()
-    if not file_bytes or len(file_bytes) < 100:
-        raise HTTPException(400, "文件无效或为空")
-    # 文件大小限制 10MB
-    if len(file_bytes) > 10 * 1024 * 1024:
-        raise HTTPException(400, "文件过大，请上传小于 10MB 的截图")
-
-    # STEP 1: 版面分析
-    layout = _layout_analysis(file_bytes)
-
-    # 保存效果图区域（如果有）
-    image_filename = None
-    if layout["image_region"]:
-        image_filename = _save_temp_file(layout["image_region"], "ocr_img")
-        # 同时也保存原图，后续确认时转正
-    else:
-        image_filename = _save_temp_file(file_bytes, "ocr_full")
-
-    # 也保存文字区域用于调试
-    text_filename = _save_temp_file(layout["text_region"], "ocr_txt")
-
-    # STEP 2: Ollama Vision 解析
-    parsed = await _ollama_vision_parse(file_bytes, layout["text_region"])
-
-    if parsed.get("error"):
-        # Ollama 调用失败，返回错误但保留布局数据
-        return {
-            "ok": False,
-            "error": parsed["error"],
-            "layout": {
-                "has_image_region": layout["has_image_region"],
-                "image_size": layout["image_size"]
+    """上传截图 -> 版面分析 -> 语言预扫描 -> 模型路由 -> 结构化提取"""
+    contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        return {"ok": False, "error": "文件超过10MB限制"}
+    try:
+        layout = _layout_analysis(contents)
+        text_region = layout.get("text_region")
+        text_img_name = None
+        if text_region:
+            text_img_name = _save_temp_file(text_region, "ocr_txt")
+        preview = await _ollama_vision_parse(contents, text_region)
+        if preview.get("error"):
+            return {
+                "ok": False, "error": preview["error"],
+                "layout": layout,
+                "temp_files": {"image": text_img_name} if text_img_name else {}
             }
+        return {
+            "ok": True, "preview": preview, "layout": layout,
+            "temp_files": {"image": text_img_name} if text_img_name else {}
         }
-
-    return {
-        "ok": True,
-        "preview": parsed,
-        "layout": {
-            "has_image_region": layout["has_image_region"],
-            "image_size": layout["image_size"]
-        },
-        "temp_files": {
-            "image": image_filename,
-            "text_region": text_filename
-        }
-    }
+    except Exception as e:
+        return {"ok": False, "error": f"OCR 处理异常: {str(e)[:200]}"}
 
 
-class ConfirmImport(BaseModel):
+# ============ API: 去重检查 ============
+
+@router.post("/check-duplicate")
+async def ocr_check_duplicate(data: dict):
+    content = (data.get("content") or "").strip()
+    if not content:
+        return {"ok": True, "duplicate": False, "exists": []}
+    db = get_db()
+    exact = db.execute(
+        "SELECT id, module, content FROM prompts WHERE content = ?",
+        [content]
+    ).fetchall()
+    if exact:
+        return {"ok": True, "duplicate": True, "exists": [dict(r) for r in exact], "method": "exact"}
+    clean_input = re.sub(r'[\s,.;:!?\u3000\uff0c\u3002\uff1b\uff1a\uff01\uff1f\u3001\u201c\u201d\u2018\u2019\u3010\u3011\u300a\u300b\u3008\u3009\uff08\uff09\[\]\(\)\-_]', '', content)
+    if len(clean_input) > 20:
+        prefix = clean_input[:30]
+        fuzzy = db.execute(
+            "SELECT id, module, content FROM prompts WHERE REPLACE(REPLACE(REPLACE(content,' ',''),'\uff0c',''),'\u3002','') LIKE ?",
+            [f"%{prefix}%"]
+        ).fetchall()
+        if fuzzy:
+            return {"ok": True, "duplicate": True, "exists": [dict(r) for r in fuzzy], "method": "fuzzy"}
+    return {"ok": True, "duplicate": False, "exists": []}
+
+
+# ============ API: 确认导入 ============
+
+class OcrConfirmInput(BaseModel):
     content: str
     meaning: str = ""
     scene: str = ""
@@ -378,152 +538,83 @@ class ConfirmImport(BaseModel):
     category: str = "OCR导入"
     tags: list = []
     tips: str = ""
-    temp_image: str = ""       # 临时效果图文件名
-    has_image: bool = False    # 是否有效果图
+    temp_image: str = ""
+    has_image: bool = False
 
 
 @router.post("/confirm")
-async def ocr_confirm(data: ConfirmImport):
-    """确认导入 — 保存缩略图 + 创建提示词卡"""
-    if not data.content or not data.content.strip():
-        raise HTTPException(400, "内容不能为空")
-
-    db = get_db()
-
-    # 保存缩略图（如果有效果图）
-    thumbnail_filename = None
-    original_filename = None
-    if data.has_image and data.temp_image:
-        temp_path = os.path.join(TEMP_DIR, data.temp_image)
-        if os.path.exists(temp_path):
-            with open(temp_path, "rb") as f:
-                img_bytes = f.read()
-            # 保存缩略图
-            thumbnail_filename = _save_thumbnail(img_bytes)
-            # 保存原图
-            original_filename = _save_original(img_bytes)
-
-    # 创建提示词
-    tags_json = json.dumps(data.tags if isinstance(data.tags, list) else ["OCR"], ensure_ascii=False)
-    category = data.category or "OCR导入"
-    module = data.module or "custom"
-    meaning = data.meaning or ""
-    scene = data.scene or ""
-
-    # 如果 tips 不为空，追加到释义中
-    if data.tips:
-        if meaning:
-            meaning += f"\n💡 {data.tips[:200]}"
-        else:
-            meaning = f"💡 {data.tips[:200]}"
-
-    db.execute(
-        "INSERT INTO prompts (module, category, content, meaning, scene, tags, is_builtin) "
-        "VALUES (?, ?, ?, ?, ?, ?, 0)",
-        [module, category, data.content.strip(), meaning, scene, tags_json, 0]
-    )
-    db.commit()
-    prompt_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-
-    # 关联缩略图
-    if thumbnail_filename:
-        db.execute(
-            "INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) "
-            "VALUES (?, ?, 'image', datetime('now','localtime'))",
-            [prompt_id, thumbnail_filename]
-        )
-        db.commit()
-
-    # 清理临时文件
-    _clean_temp_files(data.temp_image)
-
-    return {
-        "ok": True,
-        "id": prompt_id,
-        "thumbnail": thumbnail_filename,
-        "original": original_filename,
-        "message": f"已导入提示词「{data.content[:40]}...」" if len(data.content) > 40 else f"已导入提示词「{data.content}」"
-    }
-
-
-def _clean_temp_files(*filenames):
-    """清理临时文件"""
-    for fname in filenames:
-        if not fname:
-            continue
-        fpath = os.path.join(TEMP_DIR, fname)
-        try:
-            if os.path.exists(fpath):
-                os.remove(fpath)
-        except Exception:
-            pass
-
-
-@router.post("/check-duplicate")
-async def ocr_check_duplicate(data: dict):
-    """检查提示词内容是否已存在（用于导入前去重）"""
-    content = (data.get("content") or "").strip()
+async def ocr_confirm(data: OcrConfirmInput):
+    content = data.content.strip()
     if not content:
-        return {"ok": False, "duplicate": False, "exists": []}
-    db = get_db()
-    rows = db.execute(
-        "SELECT id, content, module, category FROM prompts WHERE content = ? AND deleted_at IS NULL",
-        [content]
-    ).fetchall()
-    if rows:
-        return {
-            "ok": True,
-            "duplicate": True,
-            "exists": [{"id": r["id"], "content": r["content"], "module": r["module"], "category": r["category"]} for r in rows]
-        }
-    # 模糊匹配：截断空格/标点差异后对比
-    clean = re.sub(r'[\s\p{P}]+', '', content)
-    candidates = db.execute(
-        "SELECT id, content, module, category FROM prompts WHERE deleted_at IS NULL"
-    ).fetchall()
-    for r in candidates:
-        r_clean = re.sub(r'[\\s\\p{P}]+', '', r["content"])
-        if r_clean == clean:
-            return {
-                "ok": True,
-                "duplicate": True,
-                "exists": [{"id": r["id"], "content": r["content"], "module": r["module"], "category": r["category"]}]
-            }
-    return {"ok": True, "duplicate": False, "exists": []}
+        return {"ok": False, "error": "内容为空"}
+    try:
+        db = get_db()
+        thumb_filename = None
+        if data.has_image and data.temp_image:
+            src = os.path.join(TEMP_DIR, data.temp_image)
+            if os.path.exists(src):
+                with open(src, "rb") as f:
+                    thumb_data = f.read()
+                if thumb_data:
+                    thumb_filename = _save_thumbnail(thumb_data)
+        now = datetime.datetime.now().isoformat()
+        db.execute("""
+            INSERT INTO prompts (content, meaning, scene, module, category, tags, tips,
+                                 thumbnail, usage_count, is_custom, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?)
+        """, [
+            data.content, data.meaning or "", data.scene or "",
+            data.module or "custom", data.category or "OCR\u5bfc\u5165",
+            json.dumps(data.tags, ensure_ascii=False) if data.tags else "[]",
+            data.tips or "", thumb_filename or "", now, now
+        ])
+        safe_commit(db)
+        if data.temp_image:
+            tmp_path = os.path.join(TEMP_DIR, data.temp_image)
+            if os.path.exists(tmp_path):
+                try: os.remove(tmp_path)
+                except: pass
+        return {"ok": True, "message": "\u2705 \u5df2\u5bfc\u5165"}
+    except Exception as e:
+        return {"ok": False, "error": f"\u4fdd\u5b58\u5931\u8d25: {str(e)[:200]}"}
 
 
-@router.post("/re-parse")
-async def ocr_reparse(file: UploadFile = File(...)):
-    """备用：直接用上传的图片做分析（跳过版面分割）"""
-    file_bytes = await file.read()
-    if not file_bytes:
-        raise HTTPException(400, "文件无效")
-
-    parsed = await _ollama_vision_parse(file_bytes, file_bytes)
-    if parsed.get("error"):
-        return {"ok": False, "error": parsed["error"]}
-
-    return {"ok": True, "preview": parsed}
-
-
-@router.get("/status")
-def ocr_status():
-    """检查 OCR 引擎状态"""
-    return {
-        "ok": True,
-        "ollama_url": _get_ollama_cfg().get("server_url", DEFAULT_OLLAMA_URL),
-        "vision_model": _get_ollama_cfg().get("model", DEFAULT_VISION_MODEL),
-        "available": True,
-        "note": "使用 Ollama 视觉模型（当前: qwen3-vl:8b）"
-    }
-
+# ============ API: 访问临时文件 ============
 
 @router.get("/temp-file/{filename}")
-def serve_temp_file(filename: str):
-    """提供临时文件预览（仅用于导入预览阶段）"""
-    from fastapi.responses import FileResponse
-    import os
-    fpath = os.path.join(TEMP_DIR, os.path.basename(filename))
-    if not os.path.exists(fpath):
-        raise HTTPException(404, "文件不存在")
-    return FileResponse(fpath, media_type="image/jpeg")
+async def get_temp_file(filename: str):
+    import fastapi.responses
+    safe_name = os.path.basename(filename)
+    path = os.path.join(TEMP_DIR, safe_name)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="\u6587\u4ef6\u4e0d\u5b58\u5728")
+    return fastapi.responses.FileResponse(path, media_type="image/jpeg")
+
+
+# ============ API: 模型状态检查 ============
+
+@router.get("/model-status")
+async def ocr_model_status():
+    cfg = _get_ollama_cfg()
+    pool = _get_usable_models()
+    server_url = cfg.get("server_url", DEFAULT_OLLAMA_URL).rstrip("/")
+    status = {}
+    all_models = set(pool.values()) if isinstance(pool, dict) else {pool.get("chinese", "qwen3-vl:8b")}
+    try:
+        resp = httpx.get(f"{server_url}/api/tags", timeout=5)
+        if resp.status_code == 200:
+            installed = {m["name"] for m in resp.json().get("models", [])}
+            for name in all_models:
+                status[name] = "available" if name in installed else "not_found"
+        else:
+            for name in all_models:
+                status[name] = f"ollama_error_{resp.status_code}"
+    except Exception as e:
+        for name in all_models:
+            status[name] = f"connection_failed: {str(e)[:50]}"
+    return {
+        "config_model": cfg.get("model", DEFAULT_VISION_MODEL),
+        "model_pool": pool,
+        "model_status": status,
+        "detect_prompt": LANG_SCAN_PROMPT
+    }
