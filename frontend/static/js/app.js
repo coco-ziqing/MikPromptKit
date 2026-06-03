@@ -900,107 +900,7 @@ const App = {
 
     // ============ 拖拽导入 ============
 
-    _initDropZone() {
-        var zone = document.getElementById('viewHomeScroll');
-        if (!zone) zone = document.getElementById('viewHome');
-        if (!zone) return;
-        var overlay = document.getElementById('dropOverlay');
-        if (!overlay) return;
-
-        zone.addEventListener('dragenter', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            // 编辑模式下从不显示全局遮罩，卡片拖拽完全接管
-            if (App.state.editMode) return;
-            // 截图导入弹窗打开时，不显示全局遮罩
-            var ssModal = document.getElementById('modalScreenshotImport');
-            if (ssModal && ssModal.style.display !== 'none') return;
-            overlay.style.display = 'flex';
-        }, false);
-
-        zone.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            var ssModal = document.getElementById('modalScreenshotImport');
-            if (ssModal && ssModal.style.display !== 'none') return;
-            overlay.style.display = 'flex';
-        }, false);
-
-        zone.addEventListener('dragleave', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            // 只有离开 zone 时才隐藏
-            var rect = zone.getBoundingClientRect();
-            var x = e.clientX, y = e.clientY;
-            if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
-                overlay.style.display = 'none';
-            }
-        }, false);
-
-        zone.addEventListener('drop', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            overlay.style.display = 'none';
-            var files = e.dataTransfer.files;
-            if (!files || files.length === 0) return;
-
-            // 截图导入弹窗打开时，将图片文件转发给截图导入流程
-            var ssModal = document.getElementById('modalScreenshotImport');
-            if (ssModal && ssModal.style.display !== 'none') {
-                var imgFile = null;
-                for (var i = 0; i < files.length; i++) {
-                    if (files[i].type.startsWith('image/')) {
-                        imgFile = files[i];
-                        break;
-                    }
-                }
-                if (imgFile) {
-                    App._processSSFile(imgFile);
-                }
-                return;
-            }
-
-            // 编辑模式下如果拖到卡片上，跳过全局处理（卡片自己处理）
-            if (App.state.editMode && e.target.closest('.prompt-card')) return;
-            // 处理 .json 或 .pt 文件
-            var dropFile = null;
-            var isPt = false;
-            for (var i = 0; i < files.length; i++) {
-                var name = files[i].name.toLowerCase();
-                if (name.endsWith('.json')) {
-                    dropFile = files[i];
-                    isPt = false;
-                    break;
-                } else if (name.endsWith('.pt')) {
-                    dropFile = files[i];
-                    isPt = true;
-                    break;
-                }
-            }
-            if (!dropFile) {
-                // 没有 JSON/.pt 文件，检查是否有 PNG
-                var pngFile = null;
-                for (var i = 0; i < files.length; i++) {
-                    var name = files[i].name.toLowerCase();
-                    if (name.endsWith('.png') || files[i].type === 'image/png') {
-                        pngFile = files[i];
-                        break;
-                    }
-                }
-                if (pngFile) {
-                    App.handleDropPngFile(pngFile);
-                } else {
-                    App.showToast('请拖入 JSON / .pt / PNG 格式的提示词文件', 'error');
-                }
-                return;
-            }
-            if (isPt) {
-                App._handleDropPtFile(dropFile);
-            } else {
-                App._handleDropFile(dropFile);
-            }
-        }, false);
-    },
+    _initDropZone() { this._dropAttached = true; },
 
     async handleDropPngFile(file) {
         try {
@@ -6065,8 +5965,8 @@ openImageViewer(filename, promptId) {
         e.preventDefault();
         // 非编辑模式不处理拖拽导入
         if (!App.state.editMode) { return; }
-        // 安全清除 outline（仅对 zone 元素有效）
-        try { e.currentTarget.style.outline = ''; } catch(ee) {}
+        // 安全清除 outline
+        try { if (e.currentTarget) e.currentTarget.style.outline = ''; } catch(ee) {}
         var files = e.dataTransfer.files;
         if (!files || files.length === 0) return;
         var pngFiles = [];
@@ -6111,10 +6011,11 @@ openImageViewer(filename, promptId) {
         }
     },
 
-    // --- 全局拖拽导入（仅编辑模式下可用） ---
+    // --- 全局拖拽导入（编辑模式显示PNG覆盖层，非编辑模式支持JSON/.pt/PNG） ---
     _initDropZone: function() {
-        // 全局阻止浏览器默认拖拽行为
+        // 全局阻止浏览器默认打开拖入的文件
         document.addEventListener('dragover', function(e) { e.preventDefault(); });
+        document.addEventListener('drop', function(e) { e.preventDefault(); });
 
         var zone = document.getElementById('globalDropZone');
         if (!zone) {
@@ -6124,65 +6025,76 @@ openImageViewer(filename, promptId) {
             document.body.appendChild(zone);
         }
 
-        // 仅在编辑模式下、且拖入点在词库列表区域时才显示 PNG 导入覆盖层
-        var hideZoneTimer = null;
-        var dropContainer = document.getElementById('viewHomeScroll') || document.getElementById('viewHome');
-        if (!dropContainer) dropContainer = document;
-        var isDocLevel = dropContainer === document;
+        // 绑定到 viewHomeScroll（不会被 renderPrompts 重建）
+        var container = document.getElementById('viewHomeScroll') || document.getElementById('viewHome');
+        if (!container) { this._dropAttached = true; return; }
 
-        function _onDragEnter(e) {
-            if (!App.state.editMode) return;
+        container.addEventListener('dragenter', function(e) {
+            // 仅在卡片上或列表区内才触发
+            if (!e.target.closest || (!e.target.closest('.prompt-card') && !e.target.closest('#promptList'))) return;
             var ssModal = document.getElementById('modalScreenshotImport');
             if (ssModal && ssModal.style.display !== 'none') return;
-            if (hideZoneTimer) { clearTimeout(hideZoneTimer); hideZoneTimer = null; }
             zone.style.display = 'flex';
-            zone.style.background = 'rgba(99,102,241,0.06)';
-            zone.style.border = '3px dashed #6366f1';
             zone.style.alignItems = 'center';
             zone.style.justifyContent = 'center';
             zone.style.pointerEvents = 'auto';
+            zone.style.background = 'rgba(99,102,241,0.06)';
+            zone.style.border = '3px dashed #6366f1';
             zone.innerHTML = '<div style="background:rgba(255,255,255,0.95);padding:24px 36px;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.15);text-align:center;">'
                 + '<div style="font-size:48px;margin-bottom:8px;">??</div>'
-                + '<div style="font-size:18px;font-weight:600;color:#1e293b;">松开放入 PNG 提示词卡片</div>'
-                + '<div style="font-size:13px;color:#64748b;margin-top:4px;">支持 .png 文件（含提示词元数据）</div>'
+                + '<div style="font-size:18px;font-weight:600;color:#1e293b;">'
+                + (App.state.editMode ? '松开放入 PNG 提示词卡片' : '松开放入提示词文件（JSON / .pt / PNG）')
+                + '</div>'
+                + '<div style="font-size:13px;color:#64748b;margin-top:4px;">支持 PNG 提示词卡片 / 导出文件</div>'
                 + '</div>';
-        }
-        function _onDragLeave(e) {
-            if (!App.state.editMode) return;
-            if (hideZoneTimer) clearTimeout(hideZoneTimer);
-            hideZoneTimer = setTimeout(function() {
+        });
+
+        container.addEventListener('dragleave', function(e) {
+            if (!container.contains(e.relatedTarget)) {
                 zone.style.display = 'none'; zone.style.background = ''; zone.style.border = ''; zone.innerHTML = '';
-            }, 200);
-        }
-        function _onDrop(e) {
+            }
+        });
+
+        container.addEventListener('dragover', function(e) { e.preventDefault(); });
+
+        container.addEventListener('drop', function(e) {
             e.preventDefault();
+            e.stopPropagation();
             zone.style.display = 'none'; zone.style.background = ''; zone.style.border = ''; zone.innerHTML = '';
-            if (hideZoneTimer) { clearTimeout(hideZoneTimer); hideZoneTimer = null; }
+            var files = e.dataTransfer.files;
+            if (!files || files.length === 0) return;
+
+            // 截图导入弹窗打开时转发图片
             var ssModal = document.getElementById('modalScreenshotImport');
             if (ssModal && ssModal.style.display !== 'none') {
-                var files = e.dataTransfer.files;
-                if (files && files.length > 0 && files[0].type.startsWith('image/')) {
-                    App._processSSFile(files[0]); return;
+                for (var fi = 0; fi < files.length; fi++) {
+                    if (files[fi].type.startsWith('image/')) {
+                        App._processSSFile(files[fi]); return;
+                    }
                 }
+                return;
             }
-            if (!App.state.editMode) return;
-            App._onDropPng(e);
-        }
 
-        if (isDocLevel) {
-            document.addEventListener('dragenter', _onDragEnter);
-            document.addEventListener('dragleave', _onDragLeave);
-            document.addEventListener('drop', _onDrop);
-        } else {
-            dropContainer.addEventListener('dragenter', function(e) { e.preventDefault(); e.stopPropagation(); _onDragEnter(e); });
-            dropContainer.addEventListener('dragover', function(e) { e.preventDefault(); e.stopPropagation(); });
-            dropContainer.addEventListener('dragleave', function(e) { e.preventDefault(); e.stopPropagation(); _onDragLeave(e); });
-            dropContainer.addEventListener('drop', function(e) { e.stopPropagation(); _onDrop(e); });
-        }
+            // 编辑模式 → PNG 导入
+            if (App.state.editMode) {
+                App._onDropPng(e);
+                return;
+            }
+
+            // 非编辑模式 → JSON/.pt/PNG 文件判断
+            for (var fi = 0; fi < files.length; fi++) {
+                var name = files[fi].name.toLowerCase();
+                if (name.endsWith('.json')) { App._handleDropFile(files[fi]); return; }
+                if (name.endsWith('.pt')) { App._handleDropPtFile(files[fi]); return; }
+                if (name.endsWith('.png') || files[fi].type === 'image/png') { App.handleDropPngFile(files[fi]); return; }
+            }
+            App.showToast('请拖入 JSON / .pt / PNG 格式的提示词文件', 'error');
+        });
+
         this._dropAttached = true;
     },
 
-    // --- 卡片拖拽防护 ---// --- 卡片拖拽防护 ---
+    // --- 卡片拖拽防护 ---// --- 卡片拖拽防护 ---// --- 卡片拖拽防护 ---// --- 卡片拖拽防护 ---
 
 
     _escape(str) {
