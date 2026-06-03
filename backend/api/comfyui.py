@@ -584,6 +584,22 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
         "VALUES (?, ?, 'image', datetime('now','localtime'))",
         [prompt_id, thumb_filename]
     )
+
+    # 写入媒体资产管理库
+    try:
+        db.execute("""
+            INSERT OR IGNORE INTO media_assets
+                (filename, original_filename, file_size, original_size,
+                 media_type, width, height, mime_type, prompt_id, source)
+            VALUES (?, ?, ?, ?, 'image', ?, ?, 'image/jpeg', ?, 'ai_generated')
+        """, [thumb_filename, orig_filename,
+              os.path.getsize(thumb_path) if os.path.exists(thumb_path) else 0,
+              len(img_bytes), img.width if hasattr(img, 'width') else 0,
+              img.height if hasattr(img, 'height') else 0,
+              prompt_id])
+    except Exception:
+        pass
+
     safe_commit()
 
     print(f"[ComfyUI] 缩略图已关联到提示词 ID={prompt_id}: {thumb_filename}")

@@ -114,6 +114,35 @@ def init_db():
                 value TEXT NOT NULL
             );
 
+            -- 媒体资产管理库（统一管理缩略图+原图+视频）
+            CREATE TABLE IF NOT EXISTS media_assets (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename          TEXT NOT NULL UNIQUE,
+                original_filename TEXT DEFAULT '',
+                file_size         INTEGER DEFAULT 0,
+                original_size     INTEGER DEFAULT 0,
+                media_type        TEXT DEFAULT 'image',
+                width             INTEGER DEFAULT 0,
+                height            INTEGER DEFAULT 0,
+                mime_type         TEXT DEFAULT '',
+                prompt_id         INTEGER DEFAULT 0,
+                source            TEXT DEFAULT 'upload',
+                created_at        TEXT DEFAULT (datetime('now','localtime')),
+                updated_at        TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- thumb_hash + thumb_meta（已有则跳过）
+            CREATE TABLE IF NOT EXISTS thumb_hash (
+                filename TEXT PRIMARY KEY,
+                hash     TEXT NOT NULL,
+                size     INTEGER DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS thumb_meta (
+                filename      TEXT PRIMARY KEY,
+                original_name TEXT DEFAULT '',
+                media_type    TEXT DEFAULT 'image'
+            );
+
             CREATE TRIGGER IF NOT EXISTS prompts_ai AFTER INSERT ON prompts BEGIN
                 INSERT INTO prompts_fts(rowid, content, meaning, tags)
                 VALUES (new.id, new.content, new.meaning, new.tags);

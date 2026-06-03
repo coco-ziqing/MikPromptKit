@@ -29,6 +29,7 @@ from api.workflow import router as workflow_router
 from api.comfyui import router as comfyui_router
 from api.ocr import router as ocr_router
 from api.translate import router as translate_router
+from api.media import router as media_router
 from sync import (
     export_package, restore_package, import_package,
     list_packages, delete_package, get_package_info
@@ -118,6 +119,7 @@ app.include_router(workflow_router)
 app.include_router(comfyui_router)
 app.include_router(ocr_router)
 app.include_router(translate_router)
+app.include_router(media_router)
 
 
 # ============ 数据同步 API (.pkb 包系统) ============

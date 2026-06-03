@@ -138,6 +138,23 @@ async def upload_thumbnail(file: UploadFile = File(...)):
         db.commit()
     except Exception:
         pass
+
+    # 同步写入媒体资产管理库
+    try:
+        from PIL import Image as PILImage
+        import io
+        _img = PILImage.open(io.BytesIO(file_bytes))
+        _w, _h = _img.size
+        db.execute("""
+            INSERT OR IGNORE INTO media_assets
+                (filename, original_filename, file_size, original_size,
+                 media_type, width, height, mime_type, source)
+            VALUES (?, ?, ?, ?, 'image', ?, ?, 'image/jpeg', 'upload')
+        """, [unique_name, unique_name, os.path.getsize(dest_path) if os.path.exists(dest_path) else 0,
+              file_size, _w, _h])
+        db.commit()
+    except Exception:
+        pass
     return {
         "ok": True,
         "filename": unique_name,
@@ -245,6 +262,15 @@ def assign_thumbnail(data: dict):
         [prompt_id, os.path.basename(filename)]
     )
     db.commit()
+
+    # 同步更新媒体资产管理库的 prompt_id 关联
+    try:
+        db.execute("UPDATE media_assets SET prompt_id=?, updated_at=datetime('now','localtime') WHERE filename=?",
+                   [prompt_id, os.path.basename(filename)])
+        db.commit()
+    except Exception:
+        pass
+
     return {"ok": True, "prompt_id": prompt_id, "filename": os.path.basename(filename)}
 
 
