@@ -94,16 +94,31 @@ def _auto_populate_missing_presets(presets: dict) -> dict:
 
 
 def _compose_prompt(preset_text: str, card_text: str, style_suffix: str) -> str:
-    """自然语言组合规则：预设主体 + 卡片差异 + 品质后缀"""
+    """自然语言组合规则
+    针对分镜构图模块：卡片内容(构图指令)优先，确保模型接收到明确的构图要求
+    其他模块：预设主体 + 卡片细节
+    """
+    # 初步判断是否为构图类指令（短英文标签，占预设比重小）
+    # 当卡片较短(<=30字)且预设较长(>=200字)时，把卡片放前面以确保不被稀释
+    preset_len = len(preset_text.strip()) if preset_text else 0
+    card_len = len(card_text.strip()) if card_text else 0
+
     parts = []
     if preset_text and preset_text.strip():
-        parts.append(preset_text.strip().rstrip(","))
-    if card_text and card_text.strip():
-        parts.append(card_text.strip().rstrip(","))
+        # 卡片很短而预设很长时，卡片优先（典型：分镜构图词 + 长预设）
+        if card_text and card_text.strip() and preset_len > 200 and card_len <= 60:
+            parts.append(card_text.strip().rstrip(","))
+            parts.append(preset_text.strip().rstrip(","))
+        else:
+            parts.append(preset_text.strip().rstrip(","))
+            if card_text and card_text.strip():
+                parts.append(card_text.strip().rstrip(","))
+    else:
+        if card_text and card_text.strip():
+            parts.append(card_text.strip().rstrip(","))
     if style_suffix and style_suffix.strip():
         parts.append(style_suffix.strip().rstrip(","))
 
-    # 自然语言编排：用 ", " 连接
     return ", ".join(parts)
 
 
