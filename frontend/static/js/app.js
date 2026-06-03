@@ -5972,51 +5972,15 @@ openImageViewer(filename, promptId) {
         document.addEventListener('dragover', function(e) { e.preventDefault(); });
         document.addEventListener('drop', function(e) { e.preventDefault(); });
 
-        var zone = document.getElementById('globalDropZone');
-        if (!zone) {
-            zone = document.createElement('div');
-            zone.id = 'globalDropZone';
-            zone.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:99998;pointer-events:none;';
-            document.body.appendChild(zone);
-        }
-
-        // 绑定到 viewHomeScroll（不会被 renderPrompts 重建）
+        // 仅保留 drop 处理，移除视觉覆盖层避免闪烁
         var container = document.getElementById('viewHomeScroll') || document.getElementById('viewHome');
         if (!container) { this._dropAttached = true; return; }
-
-        container.addEventListener('dragenter', function(e) {
-            // 仅在提示词列表空白区域触发（不在卡片上时）
-            if (!e.target.closest || !e.target.closest('#promptList')) return;
-            if (e.target.closest('.prompt-card')) return;  // 卡片上由卡片级 handler 处理
-            var ssModal = document.getElementById('modalScreenshotImport');
-            if (ssModal && ssModal.style.display !== 'none') return;
-            zone.style.display = 'flex';
-            zone.style.alignItems = 'center';
-            zone.style.justifyContent = 'center';
-            zone.style.pointerEvents = 'auto';
-            zone.style.background = 'rgba(99,102,241,0.06)';
-            zone.style.border = '3px dashed #6366f1';
-            zone.innerHTML = '<div style="background:rgba(255,255,255,0.95);padding:24px 36px;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.15);text-align:center;">'
-                + '<div style="font-size:48px;margin-bottom:8px;">??</div>'
-                + '<div style="font-size:18px;font-weight:600;color:#1e293b;">'
-                + (App.state.editMode ? '松开放入 PNG 提示词卡片' : '松开放入提示词文件（JSON / .pt / PNG）')
-                + '</div>'
-                + '<div style="font-size:13px;color:#64748b;margin-top:4px;">支持 PNG 提示词卡片 / 导出文件</div>'
-                + '</div>';
-        });
-
-        container.addEventListener('dragleave', function(e) {
-            if (!container.contains(e.relatedTarget)) {
-                zone.style.display = 'none'; zone.style.background = ''; zone.style.border = ''; zone.innerHTML = '';
-            }
-        });
 
         container.addEventListener('dragover', function(e) { e.preventDefault(); });
 
         container.addEventListener('drop', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            zone.style.display = 'none'; zone.style.background = ''; zone.style.border = ''; zone.innerHTML = '';
 
             // 如果拖到卡片上，让卡片级 handler 处理（图片/视频关联），容器不处理
             if (e.target.closest && e.target.closest('.prompt-card')) return;
