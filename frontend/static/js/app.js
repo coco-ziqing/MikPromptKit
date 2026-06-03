@@ -29,6 +29,8 @@ const App = {
         _exportQueue: null,
         _diIsPng: false,
         _diPngFile: null,
+        _diPngBuffer: null,
+        _diPngName: '',
         // 收藏夹
         collections: [],
         currentCollection: null,
@@ -914,8 +916,12 @@ const App = {
 
     async handleDropPngFile(file) {
         try {
+            // 立即读取文件为 ArrayBuffer，避免拖拽 File 流被消耗后无法复用
+            this._diPngBuffer = await file.arrayBuffer();
+            this._diPngName = file.name;
+
             var formData = new FormData();
-            formData.append('file', file);
+            formData.append('file', new File([this._diPngBuffer], this._diPngName, {type: 'image/png'}));
             var resp = await fetch('/api/export/preview-png', { method: 'POST', body: formData });
             var preview = await resp.json();
             if (!preview.ok || !preview.preview) {
@@ -1058,7 +1064,7 @@ const App = {
         btn.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div> 正在导入...';
 
         var data;
-        if (this._diIsPng && this._diPngFile) {
+        if (this._diIsPng && this._diPngBuffer) {
             // PNG 导入：收集用户编辑覆盖
             var conflict = document.getElementById('diConflictSelect').value;
             var overrides = [];
@@ -1074,7 +1080,8 @@ const App = {
                 });
             }
             var formData = new FormData();
-            formData.append('file', this._diPngFile);
+            // 使用缓存的 ArrayBuffer 重建 File，避免拖拽 File 流被消费后失效
+            formData.append('file', new File([this._diPngBuffer], this._diPngName, {type: 'image/png'}));
             formData.append('conflict', conflict);
             formData.append('overrides', JSON.stringify(overrides));
             try {
