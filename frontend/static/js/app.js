@@ -5908,10 +5908,13 @@ openImageViewer(filename, promptId) {
             document.body.appendChild(zone);
         }
 
-        // 拖入：仅编辑模式下显示覆盖层
+        // 拖入：仅编辑模式+截图弹窗未打开时显示覆盖层
         var hideZoneTimer = null;
         document.addEventListener('dragenter', function(e) {
             if (!App.state.editMode) return;
+            // 截图导入弹窗打开时不显示 PNG 覆盖层
+            var ssModal = document.getElementById('modalScreenshotImport');
+            if (ssModal && ssModal.style.display !== 'none') return;
             if (hideZoneTimer) { clearTimeout(hideZoneTimer); hideZoneTimer = null; }
             zone.style.display = 'flex';
             zone.style.background = 'rgba(99,102,241,0.06)';
