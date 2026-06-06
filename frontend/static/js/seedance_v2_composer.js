@@ -14,6 +14,8 @@
 
     App.seedanceV2.init = async function() {
         await this.loadLibraries(); await this.loadProjects(); this.renderProjectList();
+        // 恢复上次编辑的项目
+        try{var savedPid=localStorage.getItem('promptkit_seedance_project');if(savedPid){var found=false;for(var i=0;i<this.projects.length;i++){if(this.projects[i].id==parseInt(savedPid)){found=true;break;}}if(found)this.openProject(parseInt(savedPid));}}catch(e){}
         if (!document.getElementById('s2GlobalDelPop')) {
             var d = document.createElement('div'); d.id = 's2GlobalDelPop'; d.className = 's2-global-del-popover';
             d.style.cssText = 'display:none;position:fixed;z-index:999;';
@@ -67,7 +69,7 @@
     App.seedanceV2.loadProjects = async function() { var d=await App.fetchJSON('/api/seedance/v2/projects?page_size=100'); if(d) this.projects = d.items; };
     App.seedanceV2.createProject = async function() { var n=prompt('项目名称:','新项目 '+(this.projects.length+1)); if(!n)return; var d=await App.fetchJSON('/api/seedance/v2/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})}); if(d&&d.ok){await this.loadProjects();this.renderProjectList();this.openProject(d.id);App.showToast('项目已创建','success');} };
     App.seedanceV2.deleteProject = async function(id){var d=await App.fetchJSON('/api/seedance/v2/projects/'+id,{method:'DELETE'});if(d&&d.ok){if(this.currentProjectId===id){this.currentProjectId=null;this.currentProject=null;this.scenes=[];this.renderComposerEmpty();}await this.loadProjects();this.renderProjectList();App.showToast('项目已删除','info');}};
-    App.seedanceV2.openProject = async function(id) { this.currentProjectId=id; var d=await App.fetchJSON('/api/seedance/v2/projects/'+id); if(!d) return; this.currentProject=d.project; this.scenes=d.scenes; this.renderProjectList(); this.renderProjectEditor(); this.renderScenes(); this.compose(); var t=document.getElementById('seedanceTabComposer'); if(t) t.click(); };
+    App.seedanceV2.openProject = async function(id) { this.currentProjectId=id; try{localStorage.setItem('promptkit_seedance_project',id);localStorage.setItem('promptkit_view','seedance');localStorage.setItem('promptkit_seedance_tab','composer');}catch(e){} var d=await App.fetchJSON('/api/seedance/v2/projects/'+id); if(!d) return; this.currentProject=d.project; this.scenes=d.scenes; var editor=document.getElementById('s2Editor'); var savedScroll=editor?editor.scrollTop:0; this.renderProjectList(); this.renderProjectEditor(); this.renderScenes(); this.compose(); var self=this; requestAnimationFrame(function(){var e=document.getElementById('s2Editor');if(e&&savedScroll>0)e.scrollTop=savedScroll;}); };
     App.seedanceV2.saveProject = async function(){if(!this.currentProjectId)return;var d={};['name','total_duration','aspect_ratio','resolution','global_style','global_transition','negative_prompt'].forEach(function(f){var e=document.getElementById('s2_'+f);if(e)d[f]=e.value;});await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});App.showToast('项目已保存','success');};
 
     App.seedanceV2.showProjectDelPopover = function(btnEl,pid){var pv=document.getElementById('s2ProjectDelPop');if(!pv)return;var r=btnEl.getBoundingClientRect();pv.dataset.projectId=pid;pv.style.position='fixed';pv.style.left=Math.max(4,r.left-140)+'px';pv.style.top=(r.bottom+4)+'px';pv.style.display='flex';};
@@ -85,7 +87,7 @@
     // 编辑器
     App.seedanceV2.renderComposerEmpty = function(){var c=document.getElementById('s2Editor');if(c)c.innerHTML='<div class="s2-empty-state"><div class="s2-empty-icon">🎬</div><h4>选择或创建项目开始编辑</h4></div>';};
     App.seedanceV2.setDirty = function(){this.dirty=true;};
-    App.seedanceV2.onTotalDurationChange = function(){var el=document.getElementById('s2_total_duration');if(!el)return;var val=parseInt(el.value);if(isNaN(val)||val<4||val>15)return;var self=this;App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({total_duration:val})}).then(function(){self.openProject(self.currentProjectId);App.showToast('总时长已改为 '+val+' 秒，镜头时长已自动重算','success');});};
+    App.seedanceV2.onTotalDurationChange = function(){var el=document.getElementById('s2_total_duration');if(!el)return;var val=parseInt(el.value);if(isNaN(val)||val<4||val>15)return;var self=this;App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({total_duration:val})}).then(function(){self.openProject(self.currentProjectId);});};
     App.seedanceV2.renderProjectEditor = function() {
         var c=document.getElementById('s2Editor');if(!c)return;var p=this.currentProject;if(!p){this.renderComposerEmpty();return;}
         function ms(id,l,opts,v){var h='<div class="s2-field"><label>'+l+'</label><select id="'+id+'" class="s2-input">';for(var i=0;i<opts.length;i++){var s=opts[i][0]===v?' selected':'';h+='<option value="'+opts[i][0]+'"'+s+'>'+opts[i][1]+'</option>';}h+='</select></div>';return h;}
