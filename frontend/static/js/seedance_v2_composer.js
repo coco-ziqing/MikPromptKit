@@ -108,32 +108,19 @@
                     for(var ci=0;ci<self.scenes.length;ci++){var sc=self.scenes[ci];if(sc.id===sid)continue;if(sc.is_locked)ls+=sc.duration;else uc++;}
                     if(uc===0){
                         var rem=td-ls;
-                        var curScene=null;for(var ci2=0;ci2<self.scenes.length;ci2++){if(self.scenes[ci2].id===sid){curScene=self.scenes[ci2];break;}}
-                        var clamped=Math.max(0.5,Math.min(val,td-ls));
-                        this.value=clamped;
-                        if(Math.abs(clamped-rem)<0.15&&curScene&&!curScene.is_locked){
-                            App.showToast('最后一个未锁定镜头不可手动锁定时长，时长已自动设为剩余 '+rem.toFixed(1)+' 秒','warning');
-                            return;
-                        }
-                        if(val<rem-0.1){
-                            self._choiceAddScene(sid,val);
-                            this.value=val;
-                            return;
-                        }else if(val>rem+0.1){
-                            var lockedElse=td-rem;
-                            var minRemaining=0.5*uc;
-                            var maxAllowed=td-lockedElse-minRemaining;
-                            var capped=Math.min(val,Math.max(0.5,td-ls));
-                            this.value=capped;
-                            self._doSetDuration(sid,capped);
-                            App.showToast('时长已自动截断为 '+capped+' 秒','info');
-                            return;
-                        }
+                        // 最后一个未锁定镜头：任何修改都弹出选择弹窗
+                        this.value=rem;
+                        self.showRemainingChoice(sid,val,rem,true);
+                        return;
                     }
                     self._doSetDuration(sid,val);
                 });
             });
-            document.querySelectorAll('.s2-lock-btn').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=parseInt(this.dataset.sceneId),cl=this.classList.contains('s2-locked');if(!cl&&self._isLastUnlocked(sid)){App.showToast('最后一个未锁定镜头不可锁定，请先减少其他镜头的时长','warning');return;}App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+sid+'/lock',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({locked:!cl})}).then(function(){self.openProject(self.currentProjectId);}).catch(function(e){console.warn("_doSetDuration error",e);});});});
+            document.querySelectorAll('.s2-lock-btn').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=parseInt(this.dataset.sceneId),cl=this.classList.contains('s2-locked');if(!cl&&self._isLastUnlocked(sid)){var td=self.currentProject?self.currentProject.total_duration:15,ls=0;for(var ci3=0;ci3<self.scenes.length;ci3++){var sc3=self.scenes[ci3];if(sc3.id!==sid&&sc3.is_locked)ls+=sc3.duration;}
+                        var rem=td-ls;
+                        var inp=document.querySelector('.s2-scene-dur[data-scene-id="'+sid+'"]');var curV=inp?parseFloat(inp.value):rem;
+                        self.showRemainingChoice(sid,curV,rem,true);
+                        return;}App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+sid+'/lock',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({locked:!cl})}).then(function(){self.openProject(self.currentProjectId);}).catch(function(e){console.warn("_doSetDuration error",e);});});});
             document.querySelectorAll('.s2-drag-handle').forEach(function(el){el.addEventListener('dragstart',function(e){var card=this.closest('.s2-scene-card');if(!card)return;e.dataTransfer.setData('text/plain',card.dataset.sceneId);card.classList.add('s2-dragging');});el.addEventListener('dragend',function(e){var card=this.closest('.s2-scene-card');if(card)card.classList.remove('s2-dragging');});});
             document.querySelectorAll('.s2-del-btn').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var pv=document.getElementById('s2GlobalDelPop');if(!pv)return;var sid=this.dataset.sceneId,r=this.getBoundingClientRect();pv.dataset.sceneId=sid;pv.style.position='fixed';pv.style.left=Math.max(4,r.left-140)+'px';pv.style.top=(r.bottom+4)+'px';pv.style.display='flex';});});
             document.addEventListener('click',function(e){if(!e.target.closest('.s2-del-btn')&&!e.target.closest('.s2-global-del-popover')){var p=document.getElementById('s2GlobalDelPop');if(p)p.style.display='none';}});
@@ -196,7 +183,7 @@
     // 时长设定
     App.seedanceV2.applyDurPreset=function(el){var v=parseFloat(el.value);if(isNaN(v))return;var inp=document.querySelector('.s2-scene-dur[data-scene-id="'+el.dataset.targetScene+'"]');if(inp){inp.value=v;inp.dispatchEvent(new Event('change',{bubbles:true}));}el.value='';};
     App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnlocked(sid)){App.showToast('最后一个未锁定镜头不可手动锁定时长','warning');return;}App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sid+'/lock',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({locked:true})}).then(function(){return App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+sid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:v})});}).then(function(){self.openProject(self.currentProjectId);}).catch(function(e){console.warn("_doSetDuration error",e);});};
-    App.seedanceV2.showRemainingChoice=function(sid,v,rem){
+    App.seedanceV2.showRemainingChoice=function(sid,v,rem,hideDirectLock){
         var o=document.getElementById('s2RemainingModal');if(o)o.remove();
         var overlay=document.createElement('div');overlay.id='s2RemainingModal';overlay.className='modal-overlay';
         overlay.style.cssText='display:flex;z-index:700;background:rgba(0,0,0,0.4);align-items:center;justify-content:center;';
@@ -206,7 +193,7 @@
         h+='<button class="s2-choice-btn" data-action="addScene" data-scene="'+sid+'" data-val="'+v+'"><span class="s2-choice-icon">+</span><span class="s2-choice-text"><strong>新建镜头</strong><small>自动填补剩余 '+gap+' 秒</small></span></button>';
         h+='<button class="s2-choice-btn" data-action="changeTotal" data-scene="'+sid+'" data-val="'+v+'" data-rem="'+rem+'"><span class="s2-choice-icon">\u23f1</span><span class="s2-choice-text"><strong>修改总时长</strong><small>缩减总时长匹配</small></span></button>';
         h+='<button class="s2-choice-btn" data-action="unlockOther" data-scene="'+sid+'" data-val="'+v+'" data-rem="'+rem+'"><span class="s2-choice-icon">🔓</span><span class="s2-choice-text"><strong>解锁其他镜头</strong><small>选择已锁定镜头释放时长</small></span></button>';
-        h+='<button class="s2-choice-btn s2-choice-cancel" data-action="directLock" data-scene="'+sid+'" data-val="'+v+'"><span class="s2-choice-icon">\u2716</span><span class="s2-choice-text"><strong>直接锁定</strong><small>忽略剩余时长</small></span></button>';
+        if(!hideDirectLock){h+='<button class="s2-choice-btn s2-choice-cancel" data-action="directLock" data-scene="'+sid+'" data-val="'+v+'"><span class="s2-choice-icon">\u2716</span><span class="s2-choice-text"><strong>直接锁定</strong><small>忽略剩余时长</small></span></button>';}
         h+='</div></div></div>';overlay.innerHTML=h;document.body.appendChild(overlay);
     };
     App.seedanceV2._choiceAddScene=function(sid,v){
