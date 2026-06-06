@@ -2,15 +2,15 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit)
-- 版本：v3.10.23 (2026-06-03 已打标)
+- 版本：v3.10.24 (2026-06-04 备份快照，待Git打标)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
-- 启动方式：`python backend/main.py` 或 `.\start.bat`
+- 启动方式：`python backend/main.py` 或 `.\start.bat` **推荐: `.\QUICK_START.bat`**
 - 默认端口：8080
 - 局域网地址：http://192.168.0.103:8080
 
 ## 技术栈
 - Python 3.10+ / FastAPI / Uvicorn / SQLite (WAL + FTS5)
-- 前端：Bootstrap 5 CDN + Vanilla JS SPA (~4700 行)
+- 前端：Bootstrap 5 CDN + Vanilla JS SPA (~5600 行)
 - 图片处理：Pillow（自动 3:2 裁剪）
 - 视频处理：ffmpeg（封面提取 + 裁剪压缩）
 - 语义搜索：sentence-transformers + all-MiniLM-L6-v2
@@ -18,12 +18,15 @@
 
 ## 项目规模
 - 后端 API 端点：110+ 个
-- 前端 JS 源码：~6300 行 (app.js)
-- 数据库表：22 张
+- 前端 JS 源码：~5,617 行 (app.js) / CSS: ~1,371 行
+- 数据库表：23 张
 - 种子词条：165 条（5 模块）
-- 实际词条：195+ 条
+- 实际词条：206 条（内置 165 + 自定义 41）
+- 媒体资产：缩略图 287 / 原图 236 / 视频 23
+- 收藏分组：2 / 词包：1
 
 ## Git Tag 节点
+- `v3.10.24` — 会话关闭前完整备份快照 (2026-06-04) [待打标]
 - `v3.10.23` — 非编辑模式禁用拖入导入功能 (2026-06-03)
 - `v3.10.22` — PNG拖拽导入失败修复 — File流被预览消耗后无法复用
 - `v3.10.21` — 拖入缩略图区域替换+Ctrl+Z撤销
@@ -60,14 +63,6 @@
 - `v3.1.3` — 提示词模板变量
 - `v3.1.2` — LLM Playground + 快捷键 + 标签 + 统计 + 移动端
 - `v3.1.1` — 语义搜索 + 版本管理
-- `v3.0.0.2` — .pt 包系统 + 导出名称优化 + 拖拽增强
-- `v3.0.0.1` — 基础版本
-- 源代码总量：~11000 行
-- 数据库表：21 张
-- 种子词条：165 条（5 模块）
-
-## Git Tag 节点
-- `v3.1.1` — 语义搜索 + 版本管理（当前）
 - `v3.0.0.2` — .pt 包系统 + 导出名称优化 + 拖拽增强
 - `v3.0.0.1` — 基础版本
 
@@ -150,37 +145,57 @@
 ## 目录结构
 ```
 prompt-tool-dev/
+├── QUICK_START.bat              # 快捷启动（端口自适应+防火墙提示）【推荐】
+├── PROJECT_SUMMARY.md           # 项目完整备份快照（2026-06-04）
 ├── start.bat                    # 一键启动（含端口检测+防火墙提示）
 ├── firewall_open.bat/ps1/vbs   # 防火墙一键放行脚本
 ├── requirements.txt
 ├── MEMORY.md                    # 长期记忆（会话启动自动注入）
 ├── backend/
-│   └── sync.py                  # .pkb 打包/恢复/管理
-├── backend/
-│   ├── main.py                  # FastAPI 入口
-│   ├── database.py              # SQLite 8 表 + FTS5 + 触发器
-│   ├── seed_data.py             # 151 条种子数据
+│   ├── main.py                  # FastAPI 入口（20个路由挂载）
+│   ├── database.py              # SQLite 23 表 + FTS5 + 触发器
+│   ├── seed_data.py             # 165 条种子数据
+│   ├── backup.py                # 自动备份核心
+│   ├── sync.py                  # .pkb 打包/恢复/管理
+│   ├── semantic.py              # 语义搜索
+│   ├── exporter.py              # 导出功能
 │   └── api/
 │       ├── prompts.py           # 提示词 CRUD（含搜索/分页/收藏归属）
-│       ├── v2.py                # 收藏/词包/历史/推荐/主题
+│       ├── v2.py                # 收藏/词包/历史/推荐/主题（940行核心）
 │       ├── seedance.py          # Seedance 模板/组装/画廊/速查
-│       └── thumbnails.py        # 缩略图/视频上传/裁剪/压缩
+│       ├── thumbnails.py        # 缩略图/视频上传/裁剪/压缩（915行）
+│       ├── exporter.py          # 批量导出
+│       ├── versions.py          # 版本管理
+│       ├── playground.py        # LLM Playground
+│       ├── tags.py              # 标签管理
+│       ├── stats.py             # 统计
+│       ├── templates.py         # 模板变量
+│       ├── workflow.py          # AI Workflow API
+│       ├── comfyui.py           # ComfyUI 缩略图生成（507行）
+│       └── ocr.py               # OCR 截图导入（528行）
 ├── frontend/
-│   ├── index.html               # WebUI 主页面（5视图+10模态框）
+│   ├── index.html               # WebUI 主页面（721行/73KB）
 │   └── static/
-│       ├── css/style.css        # 完整样式（~780 行）
-│       └── js/app.js            # SPA 交互逻辑（~2200 行）
+│       ├── css/style.css        # 完整样式（1,371行/45KB）
+│       └── js/app.js            # SPA 交互逻辑（5,617行/301KB）
+├── browser-extension/
+│   ├── manifest.json            # Chrome 扩展清单
+│   ├── background.js            # 后台脚本
+│   ├── content.js               # 内容注入
+│   ├── popup.html               # 弹窗界面
+│   └── popup.js                 # 弹窗逻辑
 ├── data/
-│   ├── prompts.db               # SQLite 数据库（WAL 模式）
+│   ├── prompts.db               # SQLite 数据库（WAL 模式，704KB）
 │   ├── packages/                # .pkb 备份包
 │   ├── backups/                 # 自动备份历史
-│   ├── thumbnails/              # 裁剪后缩略图 (240x160 JPEG)
-│   ├── originals/               # 上传原图
-│   └── videos/                  # 上传视频
-└── memory/                      # 会话记忆目录
+│   ├── thumbnails/              # 裁剪后缩略图 (240x160 JPEG, 287个)
+│   ├── originals/               # 上传原图（236个, 418MB）
+│   └── videos/                  # 上传视频（23个, 355MB）
+├── memory/                      # 会话记忆目录
+└── 开发需求/                     # 需求文档
 ```
 
-## 后端 API 总数：30+
+## 后端 API 总数：110+
 | 端点 | 功能 |
 |------|------|
 | `GET /api/status` | 服务状态 |
@@ -203,11 +218,30 @@ prompt-tool-dev/
 | `POST /api/thumbnails/trim-video` | 视频裁剪压缩 |
 | `GET/POST/DELETE /api/thumbnails/*` | 图库/关联/原图 |
 | `GET /api/seedance/*` | Seedance 模板/组装/画廊/速查 |
+| `POST /api/sync/export` | .pkb 完整导出 |
+| `POST /api/sync/restore/{name}` | .pkb 恢复 |
+| `POST /api/ocr/analyze` | OCR 截图分析 |
+| `POST /api/comfyui/generate` | ComfyUI 缩略图生成 |
 
 ## 网络配置
 - 防火墙 TCP 8080 入站已放行（规则名：PromptKit / PromptKit 8080）
 - WiFi 网络设为"专用网络"
 - Tailscale 作为备用通道
+- 当前内网IP：192.168.0.103
+
+## 会话关闭备忘（2026-06-04 09:38）
+本次关闭前已完成以下操作：
+1. ✅ 数据库 WAL checkpoint 合并（WAL 已清除）
+2. ✅ `.pkb` 完整备份创建（784MB，含所有媒体 + manifest）
+3. ✅ `PROJECT_SUMMARY.md` 写入（完整项目快照）
+4. ✅ `QUICK_START.bat` 创建（快捷启动脚本）
+5. ✅ `MEMORY.md` 更新（最新数据统计 + 目录结构修正）
+6. ✅ 媒体文件统计确认（缩略图287/原图236/视频23）
+
+下次打开后请执行：
+1. 读取 `PROJECT_SUMMARY.md` + `MEMORY.md` + `HEARTBEAT.md` 恢复上下文
+2. 启动服务：`.\QUICK_START.bat`
+3. Git 打标：`git tag -a v3.10.24 -m "会话关闭前完整备份快照"`
 
 ## 已知故障排除
 - 汉字乱码：前端文件必须 UTF-8 无 BOM

@@ -17,3 +17,4 @@
 ## 日常提醒
 - 每次会话后自动保存最新代码到工作区
 - 每周检查一次依赖更新（requirements.txt）
+- 关闭前务必执行：WAL checkpoint → .pkb 完整备份

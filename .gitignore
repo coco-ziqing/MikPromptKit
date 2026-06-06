@@ -34,3 +34,7 @@ _release.ps1
 _temp.txt
 _replacement.py
 _hb.ps1
+
+data/temp_ocr/
+*.db
+

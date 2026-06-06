@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-31T15:00:05.766Z",
+  "updatedAt": "2026-06-06T12:47:51.843Z",
   "entries": {
     "memory:memory/2026-05-29.md:88:118": {
       "key": "memory:memory/2026-05-29.md:88:118",
@@ -73,21 +73,29 @@
       "endLine": 31,
       "source": "memory",
       "snippet": "# 2026-05-29 Session — Phase 3 Completion + Polish (23:02) ## 本日开发成果 从 Phase 1 基准版到 Phase 3 完整功能，再经大量细节打磨，完成 v3.0 正式版本。 ### Phase 1 — 基准版 (13:53) - FastAPI + SQLite (FTS5) 骨架 - 4 模块 132 条种子数据 - WebUI 侧边栏、分类筛选、搜索、分页、复制 ### Phase 2 — 增强版 (16:00) - 收藏夹（多分组 CRUD + 卡片竖排徽标 + popover 菜单） - 自定义词包（创建/批量添加/TXT+JSON 导出） - 批量操作（复选/复制/导出/加词包） - 最近使用 / 智能推荐 / 深色主题 / 列数滑块 / F5 保持视图 ### Phase 3 — Seedance (16:30) - 第五模块 `seedance` 19 条场景模板 - 提示词组装器 / 镜头速查 / 引用语法 / 画廊 ### 缩略图系统 (17:00-17:30) - 上传 + Pillow 3:2 裁剪 + 图库 + 原图查看器（滚轮缩放+拖拽） - 视频上传 + ffmpeg 封面提取 + 悬停循环播放 - 视频裁剪压缩弹窗（滑块选起止时间 + 质量选择） - 视频播放器（时间轴滑块 + 逐帧控制 ±0.1s） ### 查看器分栏改造 (20:00-21:00) - 原图/原视频查看器改为左右分栏 - 右栏显示：模块名 + 提示词内容 + 释义 + 标签 + 复制按钮 + 收藏按钮",
-      "recallCount": 4,
+      "recallCount": 10,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 4,
+      "totalScore": 10,
       "maxScore": 1,
       "firstRecalledAt": "2026-05-31T06:54:47.333Z",
-      "lastRecalledAt": "2026-05-31T15:00:05.766Z",
+      "lastRecalledAt": "2026-06-06T12:47:51.843Z",
       "queryHashes": [
         "b5e9294593d8",
         "40caf6bd9065",
         "451b2b60fd5f",
-        "599d8b4b7412"
+        "599d8b4b7412",
+        "be75bec98a7e",
+        "7156695d5008",
+        "dfa4c56d4576",
+        "e458c540438a",
+        "64dc781e5ec2",
+        "55b50b379148"
       ],
       "recallDays": [
-        "2026-05-31"
+        "2026-05-31",
+        "2026-06-03",
+        "2026-06-06"
       ],
       "conceptTags": [
         "v3.0",
@@ -107,18 +115,20 @@
       "endLine": 29,
       "source": "memory",
       "snippet": "## 2026-05-30 12:20 — 惰性 seek 优化确认 用户确认： > **确认效果已实现** 优化内容： - 惰性 seek + 单次在途机制消除快速拖拽的 seek 堆积 - 中间值丢弃，只 seek 最新目标位置 - 任意时刻最多 1 个 seek 在处理 当前版本：v3.0.0 运行端口：8080 ## 2026-05-30 23:07 — 侧栏自定义模块 + 弹窗模块下拉修复 + 导出优化需求 ### 完成功能 - [x] **自定义提示词分组**：`custom_modules` 表 + `POST/DELETE /api/modules` 端点 + 侧栏编辑模式下 `➕/✕` 按钮 - [x] **新建词条自动填充当前模块**：`openAddPromptModal` 中 `editModule.value` 设为 `this.state.currentModule` - [x] **模块下拉动态填充**：新增 `_populateModuleOptions()` 用 `/api/modules` 数据动态生成 `<option>`，`openAddPromptModal` 和 `openEditModal` 均调用 - [x] **移除\"自定义\"兜底 option**：用户确认无用，已删除 ### 待实现（新需求） - [ ] **拖拽 PNG 导入**：文件系统拖拽 PNG 图片到提示词列表区域，自动识别 tEXt 元数据并创建新词条 - [ ] **导出优化建议**：用户需整体评估导出/导入功能的优化方向，包括不同分类批量导出为可",
-      "recallCount": 1,
+      "recallCount": 2,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 1,
+      "totalScore": 2,
       "maxScore": 1,
       "firstRecalledAt": "2026-05-31T10:31:36.449Z",
-      "lastRecalledAt": "2026-05-31T10:31:36.449Z",
+      "lastRecalledAt": "2026-06-03T02:04:14.297Z",
       "queryHashes": [
-        "451b2b60fd5f"
+        "451b2b60fd5f",
+        "d79035dcea12"
       ],
       "recallDays": [
-        "2026-05-31"
+        "2026-05-31",
+        "2026-06-03"
       ],
       "conceptTags": [
         "v3.0.0",
@@ -169,18 +179,20 @@
       "endLine": 43,
       "source": "memory",
       "snippet": "- [ ] **导出优化建议**：用户需整体评估导出/导入功能的优化方向，包括不同分类批量导出为可重新导入的压缩文件（已有 ZIP 支持）、以及单条 PNG 导出后可拖拽识别 ### 技术状态 - 版本：v3.0.0.1 - 端口：8080 - 后端：`backend/api/prompts.py` — `list_modules` 合并内置+自定义 - 前端 JS 新增方法：`showCreateModuleModal`、`createCustomModule`、`deleteCustomModule`、`_populateModuleOptions` - 前端 HTML 新增 modal：`modalCreateModule` ## 2026-05-30 23:07 — 侧栏自定义模块 + 弹窗模块下拉修复 + 导出优化需求 ### 完成功能 - [x] **自定义提示词分组**：`custom_modules` 表 + `POST/DELETE /api/modules` 端点 + 侧栏编辑模式下 `➕/✕` 按钮 - [x] **新建词条自动填充当前模块**：`openAddPromptModal` 中 `editModule.value` 设为 `this.state.currentModule` - [x] **模块下拉动态填充**：新增 `_populateModuleOptions()` 用 `/api/modules` 数据动态生成 `<option>`，`openAddPromptModal` 和 `openEditModal` 均调用 - [x] *",
-      "recallCount": 1,
+      "recallCount": 2,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 0.9916035940370125,
-      "maxScore": 0.9916035940370125,
+      "totalScore": 1.9916035940370125,
+      "maxScore": 1,
       "firstRecalledAt": "2026-05-31T10:31:36.449Z",
-      "lastRecalledAt": "2026-05-31T10:31:36.449Z",
+      "lastRecalledAt": "2026-06-03T02:04:14.297Z",
       "queryHashes": [
-        "451b2b60fd5f"
+        "451b2b60fd5f",
+        "d79035dcea12"
       ],
       "recallDays": [
-        "2026-05-31"
+        "2026-05-31",
+        "2026-06-03"
       ],
       "conceptTags": [
         "用户需整体评估导出/导入功能的优化方向",
@@ -253,6 +265,331 @@
         "utf-8",
         "sys.stdout.reconfigure",
         "frontend/static/js/app.js"
+      ]
+    },
+    "memory:memory/2026-05-31.md:1:29": {
+      "key": "memory:memory/2026-05-31.md:1:29",
+      "path": "memory/2026-05-31.md",
+      "startLine": 1,
+      "endLine": 29,
+      "source": "memory",
+      "snippet": "## Session: 2026-05-31 14:00-14:40 — .pt 提示词包系统 ### 新增功能：.pt 包导出/导入（提示词卡 + 缩略图 + 视频） - 后端 API： - `GET /api/v2/pt/export?prompt_ids=1,2,3` — 打包导出 .pt - `POST /api/v2/pt/preview` — 预览 .pt 内容（metadata.json 解析） - `POST /api/v2/pt/import` — 导入 .pt（写数据库 + 还原缩略图/视频文件） - 文件结构：ZIP 打包，扩展名 `.pt`（PromptKit 缩写） - `metadata.json` — prompts 数组 - `thumbnails/` — 缩略图文件 - `videos/` — 视频文件 - 前端入口： - 批量模式栏新增「导出 .pt」按钮 - 编辑模式栏新增「导出 .pt」按钮 - 导入面板 `ieFileInput` 增加 `.pt` 扩展名支持 - 拖拽导入同时支持 `.json` + `.pt` - 文件名规则：`内容前12字_等N条_时间.pt` ### 本次会话其他改动 1. 导出文件名优化：JSON/TXT 导出文件名使用第一条内容前12字 2. 拖拽导入颜色修复：深色/浅色主题适配 3. 导入模块改为下拉列表：自动读取已有功能模块，默认选 JSON 记录的值 4. 新建词条自动归属当前模块修复 5. 导入后不切换到全部词库",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 2,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-03T00:48:56.146Z",
+      "lastRecalledAt": "2026-06-03T02:04:14.297Z",
+      "queryHashes": [
+        "7156695d5008",
+        "d79035dcea12"
+      ],
+      "recallDays": [
+        "2026-06-03"
+      ],
+      "conceptTags": [
+        "00-14",
+        "包导出/导入",
+        "api/v2/pt/export",
+        "prompt-ids",
+        "api/v2/pt/preview",
+        "metadata.json",
+        "api/v2/pt/import",
+        "还原缩略图/视频文件"
+      ]
+    },
+    "memory:memory/2026-06-02.md:1:29": {
+      "key": "memory:memory/2026-06-02.md:1:29",
+      "path": "memory/2026-06-02.md",
+      "startLine": 1,
+      "endLine": 29,
+      "source": "memory",
+      "snippet": "# PromptKit 会话记忆 — 2026-06-02 ## 卡片布局重构（2026-06-02） - 从「水平布局」（左缩略图|右文字|收藏列）改为 **垂直布局**（缩略图置顶 → card-add-row → 文字内容 → 按钮） - **`.card-body`** `flex-direction: column`，缩略图 100% 宽度 - **`.card-add-row`** 新增容器：在缩略图与文字之间，左放 `+` 按钮，右放 `card-collections`（收藏徽标+复选框） - **`.card-collections`** 从 `position: absolute` overlay 改为 `margin-left: auto` 靠右对齐 - **`.coll-add-btn`** 从缩略图右下角 overlay 移入 card-add-row 内 ## 按钮底部对齐修复 - `.card-content` 新增 `flex-grow: 1` 主动撑满空间 - `.card-actions` 用 `margin-top: auto` 吸底 - `.card-meaning`、`.card-scene` 加 `flex-shrink: 0` 防止压缩 - 所有列（1~6 列）通用 ## 缩略图尺寸调整 - `applyColumns()` 缩略图值修正： - 1列: 960→480→260→**480×320**（最终） - 2列: 340→**190×127** - 3列: 140×93（不变） - CSS 安全栓: `max",
+      "recallCount": 3,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 3,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-03T00:48:56.146Z",
+      "lastRecalledAt": "2026-06-05T20:09:25.775Z",
+      "queryHashes": [
+        "7156695d5008",
+        "55284134f09b",
+        "0a85ab67d95d"
+      ],
+      "recallDays": [
+        "2026-06-03",
+        "2026-06-06"
+      ],
+      "conceptTags": [
+        "card-add-row",
+        "card-body",
+        "flex-direction",
+        "card-collections",
+        "margin-left",
+        "coll-add-btn",
+        "card-content",
+        "flex-grow"
+      ]
+    },
+    "memory:memory/2026-06-01.md:1:16": {
+      "key": "memory:memory/2026-06-01.md:1:16",
+      "path": "memory/2026-06-01.md",
+      "startLine": 1,
+      "endLine": 16,
+      "source": "memory",
+      "snippet": "# 2026-06-01 会话记忆 ## 本次会话完成的工作 ### ComfyUI ↔ PromptKit 联动集成（v3.1.3 → v3.2.0） 1. **ComfyUI 缩略图自动生成** — 编辑弹窗 \"AI 生成\" 按钮发送提示词到 ComfyUI，等待完成后自动下载裁剪为 3:2 缩略图并关联到提示词 2. **工作流一键同步** — `POST /api/v2/comfyui/sync` 从 ComfyUI queue/history 自动提取最新工作流，检测提示词节点和输出节点，导入到配置 3. **模块主体预设** — 每个模块可设置共性主体描述，AI 生成时自动组合 `预设主体 + 卡片内容 + 品质后缀` 作为完整提示词发送给 ComfyUI 4. **批量 AI 生成** — 批量选择模式新增 \"✨ AI 批量生成缩略图\" 按钮，逐条排队生成 5. **缩略图/视频切换修复** — AI 生成图片后自动清除视频关联（`DELETE FROM prompt_videos`），确保前端显示静态缩略图而非视频预览 6. **自动刷新链路** — 生成完成后编辑预览、卡片网格、图库窗口三处同步刷新 7. **路径修正** — `comfyui.py` 缩略图目录路径从 `backend/data/` 修正到 `data/` 8. **超时修正** — `fetchJSON` 增加 `timeoutMs` 参数，生成调用使用 10 分钟超时 ### 修复的 Bug - 图库不显示新生成图片 → loadThumbLibrary 改为无条件执行",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 2,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-03T00:48:56.146Z",
+      "lastRecalledAt": "2026-06-05T13:10:48.785Z",
+      "queryHashes": [
+        "7156695d5008",
+        "b9fada0516e8"
+      ],
+      "recallDays": [
+        "2026-06-03",
+        "2026-06-05"
+      ],
+      "conceptTags": [
+        "v3.1.3",
+        "v3.2.0",
+        "api/v2/comfyui/sync",
+        "queue/history",
+        "缩略图/视频切换修复",
+        "prompt-videos",
+        "comfyui.py",
+        "backend/data"
+      ]
+    },
+    "memory:memory/2026-05-29.md:25:57": {
+      "key": "memory:memory/2026-05-29.md:25:57",
+      "path": "memory/2026-05-29.md",
+      "startLine": 25,
+      "endLine": 57,
+      "source": "memory",
+      "snippet": "- 视频播放器（时间轴滑块 + 逐帧控制 ±0.1s） ### 查看器分栏改造 (20:00-21:00) - 原图/原视频查看器改为左右分栏 - 右栏显示：模块名 + 提示词内容 + 释义 + 标签 + 复制按钮 + 收藏按钮 ### 收藏勾选 + 编辑模式 (21:00-22:30) - 查看器右栏收藏勾选列表，勾选即添加/取消即移除 - 收藏分组列表实时同步到卡片徽标 - 编辑模式（顶部 ✏ 按钮），卡片编辑+删除弹窗 ### 缩略图自适应 (22:30) - 1-6 列缩略图尺寸自适应（1列485×323 → 6列85×57） ## 关键修复记录 - 汉字乱码 → UTF-8 无 BOM 重写 index.html - 查看器右栏不显示 → 补回 `_renderViewerRight` / `_fillViewerPanel` - 收藏勾选不工作 → 修复 `_refreshViewerPanels` 模态框 ID 拼写公式 - 重复函数定义 → `dedup` 清理后补回缺失函数 - 查看器弹窗被遮挡 → z-index 调整 - 收藏 popover 监听器残留 → 命名函数 + `removeEventListener` ## 最终统计数据 | 指标 | 数据 | |------|------| | 词条总数 | 151 条 | | JS 代码行数 | ~2200 行 | | CSS 代码行数 | ~780 行 | | 后端 API 数 | 30+ | | 数据库表 | 8 张 | | 功能总数 | 20+ | | 中间修复脚本 | 30+ (已全部清",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 2,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-03T00:48:56.146Z",
+      "lastRecalledAt": "2026-06-06T04:16:58.935Z",
+      "queryHashes": [
+        "7156695d5008",
+        "99688f0cb941"
+      ],
+      "recallDays": [
+        "2026-06-03",
+        "2026-06-06"
+      ],
+      "conceptTags": [
+        "0.1s",
+        "00-21",
+        "原图/原视频查看器改为左右分栏",
+        "00-22",
+        "勾选即添加/取消即移除",
+        "1-6",
+        "utf-8",
+        "index.html"
+      ]
+    },
+    "memory:memory/2026-06-02.md:235:276": {
+      "key": "memory:memory/2026-06-02.md:235:276",
+      "path": "memory/2026-06-02.md",
+      "startLine": 235,
+      "endLine": 276,
+      "source": "memory",
+      "snippet": "zone.innerHTML = '<div style=\"background:rgba(255,255,255,0.95);padding:24px 36px;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.15);text-align:center;\">' + '<div style=\"font-size:48px;margin-bottom:8px;\">📥</div>' + '<div style=\"font-size:18px;font-weight:600;color:#1e293b;\">松开放入 PNG 提示词卡片</div>' + '<div style=\"font-size:13px;color:#64748b;margin-top:4px;\">支持 .png 文件（含提示词元数据）</div>' + '</div>'; } }); document.addEventListener('dragleave', function(e) { count--; if (count <= 0) { count = 0; zone.style.displ",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 2,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-03T01:53:17.972Z",
+      "lastRecalledAt": "2026-06-05T20:09:25.775Z",
+      "queryHashes": [
+        "55284134f09b",
+        "0a85ab67d95d"
+      ],
+      "recallDays": [
+        "2026-06-03",
+        "2026-06-06"
+      ],
+      "conceptTags": [
+        "zone.innerhtml",
+        "0.95",
+        "border-radius",
+        "box-shadow",
+        "0.15",
+        "text-align",
+        "font-size",
+        "margin-bottom"
+      ]
+    },
+    "memory:memory/2026-06-02.md:210:237": {
+      "key": "memory:memory/2026-06-02.md:210:237",
+      "path": "memory/2026-06-02.md",
+      "startLine": 210,
+      "endLine": 237,
+      "source": "memory",
+      "snippet": "// --- 全局拖拽导入 init --- _initDropZone: function() { // 全局阻止浏览器默认拖拽行为 document.addEventListener('dragover', function(e) { e.preventDefault(); }); document.addEventListener('drop', function(e) { e.preventDefault(); }); // 创建覆盖层 drop zone var zone = document.getElementById('globalDropZone'); if (!zone) { zone = document.createElement('div'); zone.id = 'globalDropZone'; zone.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:99998;pointer-events:none;'; document.body.appendChild(zone); } var count = 0; document.addEventListener('dr",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 2,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-03T01:53:17.972Z",
+      "lastRecalledAt": "2026-06-05T20:09:25.775Z",
+      "queryHashes": [
+        "55284134f09b",
+        "0a85ab67d95d"
+      ],
+      "recallDays": [
+        "2026-06-03",
+        "2026-06-06"
+      ],
+      "conceptTags": [
+        "document.addeventlistener",
+        "e.preventdefault",
+        "document.getelementbyid",
+        "document.createelement",
+        "zone.id",
+        "zone.style.csstext",
+        "z-index",
+        "pointer-events"
+      ]
+    },
+    "memory:memory/2026-05-30.md:107:134": {
+      "key": "memory:memory/2026-05-30.md:107:134",
+      "path": "memory/2026-05-30.md",
+      "startLine": 107,
+      "endLine": 134,
+      "source": "memory",
+      "snippet": "## 2026-05-30 23:07 — 导出优化需求初步分析 ### 已检查的代码 - `backend/exporter.py` — PNG 导出引擎（Pillow 绘制卡片 + tEXt 元数据），`import_prompt_from_png` 完备 - `backend/api/exporter.py` — 5 endpoints（单条导出、批量导出 ZIP、预览、单条导入、批量导入）+ JSON 导入 - 前端 `frontend/index.html` — `modalImportExport` 含导入/导出/格式切换 - 前端 `frontend/static/js/app.js` — `renderSidebar` 底部有「导入」「导出」按钮 ### 用户需求分析 1. **不同分类批量导出为可重新识别导入的压缩文件** —— 已有 ZIP 批量导出+导入，但缺少按模块筛选导出 2. **单条 PNG 拖拽导入** —— 已有 PNG 导出+导入（通过弹窗选择文件），但缺少拖拽 PNG 到列表区域自动识别 3. **优化建议** —— 需整体评估 ### 待完成 - 下轮：定位 `showImportModal`/`showExportModal`/`doImport`/`doExport` 方法，实施拖拽导入 + 按模块批量导出 import sys; sys.stdout.reconfigure(encoding='utf-8') fn = r'C:\\Users\\ASUS\\.openclaw\\workspace\\prompt-tool-dev\\fr",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-03T02:04:14.297Z",
+      "lastRecalledAt": "2026-06-03T02:04:14.297Z",
+      "queryHashes": [
+        "d79035dcea12"
+      ],
+      "recallDays": [
+        "2026-06-03"
+      ],
+      "conceptTags": [
+        "backend/exporter.py",
+        "import-prompt-from-png",
+        "backend/api/exporter.py",
+        "frontend/index.html",
+        "含导入/导出/格式切换",
+        "frontend/static/js/app.js",
+        "sys.stdout.reconfigure",
+        "utf-8"
+      ]
+    },
+    "memory:memory/2026-06-02.md:265:282": {
+      "key": "memory:memory/2026-06-02.md:265:282",
+      "path": "memory/2026-06-02.md",
+      "startLine": 265,
+      "endLine": 282,
+      "source": "memory",
+      "snippet": "this._dropAttached = true; }, // --- 卡片拖拽排序绑定 --- bindCardDragDrop: function() { var cards = document.querySelectorAll('#promptList .prompt-card'); for (var i = 0; i < cards.length; i++) { cards[i].setAttribute('draggable', 'false'); } }, ``` 插入位置：`_onDropPng` 函数（结束于 ~line 5493）之后，`_escape` 函数之前。 ### 作用 - `_initDropZone()`: 全局 `preventDefault()` 阻止浏览器默认打开/下载文件；显示覆盖层\"松开放入\"UI；调用 `_onDropPng()` 导入 - `bindCardDragDrop()`: 编辑模式下防止浏览器原生拖拽（`draggable=false`）",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-03T02:04:14.297Z",
+      "lastRecalledAt": "2026-06-03T02:04:14.297Z",
+      "queryHashes": [
+        "d79035dcea12"
+      ],
+      "recallDays": [
+        "2026-06-03"
+      ],
+      "conceptTags": [
+        "document.queryselectorall",
+        "prompt-card",
+        "cards.length",
+        "阻止浏览器默认打开/下载文件",
+        "dropattached",
+        "true",
+        "卡片",
+        "排序"
+      ]
+    },
+    "memory:memory/2026-05-31.md:50:73": {
+      "key": "memory:memory/2026-05-31.md:50:73",
+      "path": "memory/2026-05-31.md",
+      "startLine": 50,
+      "endLine": 73,
+      "source": "memory",
+      "snippet": "2. **导出命名弹窗** (`modalExportName`) - 新增 HTML 弹窗，`.pt` 和批量 PNG（ZIP包）导出前弹出 - 包含：文件名输入框 + 导出位置虚线框（单击选目录） + 确认/取消按钮 - `_showExportNameDialog(ids, fmt)` — 显示弹窗，默认文件名取自 `_makeExportFilename` - `_confirmBatchExport()` — 写入所选目录或降级浏览器下载 3. **真实目录选择** — `window.showDirectoryPicker()`（File System Access API） - `_pickExportPath()` — 弹出 Windows 系统目录选择器，选中的目录作为导出目标 - `_writeBlobToExportDir(blob, filename)` — 通过 FileSystemFileHandle 将 blob 直接写入选定目录 - 若浏览器不支持则降级为 `<a>` 下载 4. **导出色界面调整** - 去掉\"导出路径输入框 + 独立浏览按钮\"的重复控件 - 改为单个虚线框，单击触发目录选择器 - 选中后显示 `📁 文件夹名` - 默认未选择时提示 `🖱 点击此处选择保存目录` 5. **批次模式 PNG 导出命名** — `batchExport('png')` 也走命名弹窗，与 .pt 一致 6. **`_doExportP",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-06T04:16:58.935Z",
+      "lastRecalledAt": "2026-06-06T04:16:58.935Z",
+      "queryHashes": [
+        "99688f0cb941"
+      ],
+      "recallDays": [
+        "2026-06-06"
+      ],
+      "conceptTags": [
+        "确认/取消按钮",
+        "window.showdirectorypicker",
+        "导出",
+        "命名",
+        "modalexportname",
+        "新增",
+        "html",
+        "批量"
+      ]
+    },
+    "memory:memory/2026-06-01.md:12:31": {
+      "key": "memory:memory/2026-06-01.md:12:31",
+      "path": "memory/2026-06-01.md",
+      "startLine": 12,
+      "endLine": 31,
+      "source": "memory",
+      "snippet": "7. **路径修正** — `comfyui.py` 缩略图目录路径从 `backend/data/` 修正到 `data/` 8. **超时修正** — `fetchJSON` 增加 `timeoutMs` 参数，生成调用使用 10 分钟超时 ### 修复的 Bug - 图库不显示新生成图片 → loadThumbLibrary 改为无条件执行 - 生成后手动刷新才显缩略图 → fetchJSON 默认 30s 超时导致 abort - 模块预设看不到 → 🔗 按钮错误地打开了 modalWorkflow（API文档面板）而非 modalComfyUI（配置弹窗） ### 配置 - ComfyUI 服务器: http://127.0.0.1:8002 - PromptKit 服务器: http://127.0.0.1:8080 - 活动工作流: Flux文生图 (Flux.2 Dev FP8), 4 steps - 种子词条: 165 条（5 模块: camera_move, color, tone, storyboard, seedance） ### 需要注意 - 模块预设存储在数据库 config 表 key='module_presets' - ComfyUI 配置存储在数据库 config 表 key='comfyui_config' - 前端 🔗 按钮现在打开 modalComfyUI（标题含 \"模块预设\"） - 批量 AI 生成是逐张串行（避免 ComfyUI OOM），大数量时需耐心等待",
+      "recallCount": 4,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 4,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-06T04:17:31.752Z",
+      "lastRecalledAt": "2026-06-06T12:47:51.843Z",
+      "queryHashes": [
+        "dfa4c56d4576",
+        "e458c540438a",
+        "64dc781e5ec2",
+        "55b50b379148"
+      ],
+      "recallDays": [
+        "2026-06-06"
+      ],
+      "conceptTags": [
+        "comfyui.py",
+        "backend/data",
+        "127.0.0.1",
+        "flux.2",
+        "camera-move",
+        "module-presets",
+        "comfyui-config",
+        "路径"
       ]
     }
   }

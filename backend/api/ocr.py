@@ -1,14 +1,18 @@
 """
 截图导入 — 预扫描语言检测 + 智能模型路由 + Ollama Vision OCR + 结构化
-========================================================================
+================================================================================
+修复 v3.10.25:
+  1. 主模型返回空内容时: 简化 prompt 重试一次 ✓
+  2. 简化 prompt 仍空: 自动 fallback 到 llama3.2-vision:11b ✓
+  3. 全部失败时: 返回 ok=false + 明确中文错误信息 ✓
+  4. 布局分析: 改进空白区域检测，支持深色背景 ✓
+  5. 前端 30s 超时 → 延长到 120s ✓
+================================================================================
 流程: 上传截图 → 版面分析(效果图/文字区分离)
-     → [新] 语言预扫描 (qwen3-vl:8b, ~5-8s, 返回 chinese/english/mixed)
-     → 根据语言路由最佳模型:
-         chinese → qwen3-vl:8b (阿里原生中文, 中文OCR最强)
-         english → llama3.2-vision:11b (Meta原生英文, 英文OCR最强)
-         mixed   → 双模型并行, 取 content 更长/结构更完整的
+     → 调用 qwen3-vl:8b (内置语言检测)
+     → 空内容重试: 简化 prompt → fallback 模型
      → LLM结构化解析 → 预览确认 → 保存缩略图+创建词条
-========================================================================
+================================================================================
 """
 import os, io, uuid, json, base64, datetime, re, asyncio
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
@@ -30,33 +34,37 @@ os.makedirs(ORIGINALS_DIR, exist_ok=True)
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_VISION_MODEL = "qwen3-vl:8b"
 DEFAULT_LLM_MODEL = "qwen3.5:9b"
-
-# 视觉模型池（用于 fallback：主模型 qwen3-vl:8b 提取为空时尝试）
 FALLBACK_VISION_MODEL = "llama3.2-vision:11b"
 
-# ============ System Prompts（按模型定制） ============
+# ============ 三阶段提示词（从严格到宽松） ============
 
-SYSTEM_PROMPT = """Return ONLY JSON {"content":"prompt text","meaning":"chinese explanation short","scene":"scene","module":"emotion|color|tone|composition|seedance|custom","category":"cat","tags":["t"],"tips":"","has_image_preview":false,"_language":"chinese|english|mixed"}. NO MARKDOWN, ONLY JSON."""
-
-# 英文截图的增强 prompt（当检测到 mixed 时用于第二模型）
-SYSTEM_PROMPT_EN = """You are a professional AI prompt screenshot analysis assistant.
-This image may contain Chinese or English text.
-
-Return ONLY the raw JSON object (no extra text):
+# 阶段1：严格JSON (主调用)
+SYSTEM_PROMPT_STRICT = """Return ONLY valid JSON with these exact keys: content, meaning, scene, module, category, tags, tips, has_image_preview, _language.
+Extract ALL text from the image - the prompt text, parameters, everything visible.
+If you see any text at all, put it in "content".
+NO markdown formatting, NO extra text. ONLY the JSON object.
 
 {
-  "content": "the extracted prompt text IN ITS ORIGINAL LANGUAGE",
+  "content": "extracted prompt text in original language",
   "meaning": "short Chinese explanation",
   "scene": "applicable scene in Chinese",
   "module": "emotion/color/tone/composition/seedance/custom",
-  "category": "category name in Chinese",
+  "category": "category name",
   "tags": ["tag1", "tag2"],
-  "tips": "any parameter settings visible",
-  "has_image_preview": false
-}
+  "tips": "any settings visible",
+  "has_image_preview": false,
+  "_language": "chinese/english/mixed"
+}"""
 
-No text: {"content": "", "meaning": "", "scene": "", "module": "custom", "category": "", "tags": [], "tips": "", "has_image_preview": false}
-"""
+# 阶段2：简化提示词（空内容重试用）
+SYSTEM_PROMPT_SIMPLE = """Look at this image and tell me what text you see.
+Reply with a JSON object: {"content":"all text from the image","meaning":"Chinese meaning","scene":"","module":"custom","category":"","tags":[],"tips":""}
+Be generous - if you see any text at all, include it in content. ONLY JSON, no other text."""
+
+# 阶段3：英文专用（fallback）
+SYSTEM_PROMPT_EN = """This is a screenshot of an AI prompt tool. Extract ALL visible text.
+Return ONLY JSON: {"content":"all text from image","meaning":"Chinese meaning","scene":"scene","module":"emotion/color/tone/composition/seedance/custom","category":"category","tags":["tags"],"tips":"settings"}
+Include every line of text you can see. ONLY JSON."""
 
 
 # ============ Ollama 配置读取 ============
@@ -74,7 +82,7 @@ def _get_ollama_cfg():
 
 
 def _get_usable_models():
-    """返回当前可用的视觉模型列表（优先从配置读取，回退默认池）"""
+    """返回当前可用的视觉模型列表"""
     cfg = _get_ollama_cfg()
     pool = cfg.get("vision_models", None)
     if pool and isinstance(pool, dict):
@@ -90,75 +98,111 @@ def _get_usable_models():
 def _layout_analysis(image_bytes: bytes):
     """
     用 Pillow 做简单的版面分析，将截图分为：
-    - 效果图区域（最大矩形轮廓）
-    - 文字区域（其余部分）
+    - 效果图区域（上半部分，含最亮/最暗连续区域做分割线）
+    - 文字区域（下半部分）
 
-    返回: {
-        "image_region": cropped_bytes | None,
-        "text_region": cropped_bytes,
-        "has_image_region": bool,
-        "image_size": str
-    }
+    v3.10.25: 改用亮度梯度检测，支持深色背景截图
     """
     from PIL import Image, ImageOps
-    import io
+    import io as _io
 
-    img = Image.open(io.BytesIO(image_bytes))
+    img = Image.open(_io.BytesIO(image_bytes))
     try:
         img = ImageOps.exif_transpose(img)
     except Exception:
         pass
+    # RGBA（如PNG截图）转RGB，JPEG不支持透明度通道
+    if img.mode == 'RGBA':
+        background = Image.new('RGB', img.size, (30, 41, 59))  # 深色背景垫底，保持截图深色主题
+        background.paste(img, mask=img.split()[3])
+        img = background
+    elif img.mode != 'RGB':
+        img = img.convert('RGB')
     w, h = img.size
 
     gray = img.convert("L")
     pixels = list(gray.getdata())
 
+    # 计算每行平均亮度
     row_brightness = []
     for y in range(h):
         row = pixels[y * w : (y + 1) * w]
         row_brightness.append(sum(row) / len(row))
 
-    blank_threshold = 240
-    blank_runs = []
-    current_run = []
-    for y, brightness in enumerate(row_brightness):
-        if brightness >= blank_threshold:
-            current_run.append(y)
-        else:
-            if len(current_run) > 3:
-                blank_runs.append(current_run)
-            current_run = []
-    if current_run and len(current_run) > 3:
-        blank_runs.append(current_run)
+    # 边缘保护：不检测顶部8%和底部8%
+    margin_top = int(h * 0.08)
+    margin_bottom = int(h * 0.08)
 
-    margin_top = int(h * 0.05)
-    margin_bottom = int(h * 0.05)
+    # 方法1：找亮度突变点（浅色截图的分割线）
+    row_diffs = []
+    for y in range(margin_top, h - margin_bottom - 2):
+        diff = abs(row_brightness[y+1] - row_brightness[y])
+        row_diffs.append((y, diff))
+
+    # 按亮度差排序，取最大突变位置
+    row_diffs.sort(key=lambda x: -x[1])
+
+    split_y = None
+    # 找亮度差最大的位置，且该位置两侧有显著差异
+    if row_diffs and row_diffs[0][1] > 30:
+        split_y = row_diffs[0][0]
+        # 验证分割线两侧确实一边亮一边暗
+        before = sum(row_brightness[max(0, split_y-10):split_y]) / 10
+        after = sum(row_brightness[split_y:min(h, split_y+10)]) / 10
+        if abs(before - after) < 20:
+            split_y = None  # 差异不够大，不是真实分割线
+
+    # 方法2：找连续空白行（浅色背景备选）
+    if split_y is None:
+        blank_threshold = 230  # 亮色阈值
+        blank_runs = []
+        current_run = []
+        for y in range(margin_top, h - margin_bottom):
+            if row_brightness[y] >= blank_threshold:
+                current_run.append(y)
+            else:
+                if len(current_run) > 5:
+                    blank_runs.append(current_run)
+                current_run = []
+        if current_run and len(current_run) > 5:
+            blank_runs.append(current_run)
+
+        if blank_runs:
+            best_run = max(blank_runs, key=len)
+            mid = best_run[0] + len(best_run) // 2
+            # 确保分割线上方不是空的
+            top_nonblank = any(b < blank_threshold for b in row_brightness[max(0, mid-30):mid])
+            if top_nonblank:
+                split_y = mid
+
+    # 方法3：对深色截图，检查是否有明显颜色/内容变化
+    if split_y is None:
+        # 计算上半部分 vs 下半部分的平均亮度差异
+        upper = sum(row_brightness[:h//2]) / (h//2)
+        lower = sum(row_brightness[h//2:]) / (h//2)
+        if abs(upper - lower) > 25:
+            split_y = h // 2
+
     image_region_bytes = None
     text_region_bytes = None
     has_image_region = False
 
-    interior_blank_runs = [
-        run for run in blank_runs
-        if run[-1] > margin_top and run[0] < h - margin_bottom
-    ]
-
-    if interior_blank_runs:
-        best_run = max(interior_blank_runs, key=len)
-        split_y = best_run[0] + len(best_run) // 2
+    if split_y and split_y > margin_top and split_y < h - margin_bottom:
         img_region = img.crop((0, 0, w, split_y))
         txt_region = img.crop((0, split_y, w, h))
         if img_region.size[1] > h * 0.15:
-            buf = io.BytesIO()
+            buf = _io.BytesIO()
             img_region.save(buf, format="JPEG", quality=90)
             image_region_bytes = buf.getvalue()
             has_image_region = True
         else:
             txt_region = img
-        buf = io.BytesIO()
+        buf = _io.BytesIO()
         txt_region.save(buf, format="JPEG", quality=90)
         text_region_bytes = buf.getvalue()
     else:
-        buf = io.BytesIO()
+        # 没有找到分割线，整张图当文字区
+        buf = _io.BytesIO()
         img.save(buf, format="JPEG", quality=85)
         text_region_bytes = buf.getvalue()
 
@@ -170,40 +214,18 @@ def _layout_analysis(image_bytes: bytes):
     }
 
 
-# ============ STEP 2a: 语言预扫描 (Pre-scan) ============
+# ============ STEP 2: OCR 核心调用 ============
 
-# 预扫描已废弃：语言检测已内嵌到主提取 SYSTEM_PROMPT 的 _language 字段中
-# 不再单独调用模型，避免重复推理耗时
-
-
-# ============ STEP 2b: 智能模型路由 ============
-
-def _select_model_for_language(lang: str, default_model: str) -> dict:
-    """
-    根据检测到的语言选择备用模型（仅在主模型返回空内容时触发）
-    返回: {"model": str, "system_prompt": str}
-    """
-    pool = _get_usable_models()
-    if lang == "english":
-        model_name = pool.get("english", "llama3.2-vision:11b")
-        if model_name != default_model:
-            return {"model": model_name, "system_prompt": SYSTEM_PROMPT_EN}
-    # chinese/mixed/默认都回退到已有主模型，无需二次调用
-    return None
-
-
-# ============ STEP 2c: 单模型调用 ============
-
-def _call_single_model_sync(server_url: str, model: str, img_b64: str,
-                              system_prompt: str, timeout_s: int = 120) -> dict:
-    """同步调用 Ollama 视觉模型（避免 async httpx 与 Uvicorn 事件循环死锁）"""
+def _call_model_sync(server_url: str, model: str, img_b64: str,
+                     system_prompt: str, timeout_s: int = 120) -> dict:
+    """同步调用 Ollama 视觉模型（线程池运行，避免事件循环死锁）"""
     try:
         with httpx.Client(timeout=httpx.Timeout(timeout_s, connect=10.0)) as client:
             resp = client.post(f"{server_url}/api/chat", json={
                 "model": model,
                 "messages": [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": "分析这张截图中的AI提示词信息，返回JSON",
+                    {"role": "user", "content": "分析这张截图中的AI提示词信息，提取所有可见文字",
                      "images": [img_b64]}
                 ],
                 "stream": False,
@@ -219,13 +241,12 @@ def _call_single_model_sync(server_url: str, model: str, img_b64: str,
         return {"error": str(e)[:100], "_model": model}
 
 
-async def _call_single_model(server_url: str, model: str, img_b64: str,
-                              system_prompt: str, timeout_s: int = 120) -> dict:
-    """异步包装：同步调用跑在线程池中，避免事件循环阻塞"""
-    import asyncio
+async def _call_model(server_url: str, model: str, img_b64: str,
+                      system_prompt: str, timeout_s: int = 120) -> dict:
+    """异步包装：同步调用跑在线程池中"""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
-        None, _call_single_model_sync,
+        None, _call_model_sync,
         server_url, model, img_b64, system_prompt, timeout_s
     )
 
@@ -258,89 +279,79 @@ def _parse_json_from_raw(raw: str, model: str = "") -> dict:
             return parsed
         except json.JSONDecodeError:
             pass
+    # JSON 解析失败，返回原始文本作为 content
     return {
         "content": raw[:500],
         "meaning": "OCR 识别结果（需手动整理）",
-        "scene": "", "module": "custom",
-        "category": "OCR导入", "tags": ["OCR"],
-        "tips": "", "has_image_preview": False,
-        "_raw": raw[:200], "_model": model
+        "scene": "",
+        "module": "custom",
+        "category": "OCR导入",
+        "tags": ["OCR"],
+        "tips": "",
+        "has_image_preview": False,
+        "_raw": raw[:200],
+        "_model": model
     }
 
 
-# ============ STEP 2d: 双模型并行（中英混合） ============
+# ============ STEP 3: 多模型级联 + 重试 ============
 
-def _merge_dual_results(results: list) -> dict:
-    """合并双模型结果，取 content 最长 + 结构最完整的"""
-    valid = [r for r in results if r and not r.get("error") and r.get("content")]
-    if not valid:
-        return results[0] if results else {"error": "all models failed"}
-    valid.sort(key=lambda r: len(r.get("content", "")), reverse=True)
-    best = valid[0]
-    if len(valid) > 1:
-        c1, c2 = len(best.get("content", "")), len(valid[1].get("content", ""))
-        if c2 > 0 and abs(c1 - c2) / max(c1, c2) < 0.2:
-            def richness(r):
-                return len(r.get("tags", [])) + len(r.get("tips", ""))
-            valid.sort(key=richness, reverse=True)
-            best = valid[0]
-    best["_merged"] = True
-    return best
-
-
-# ============ STEP 2e: 统一入口 ============
-
-async def _ollama_vision_parse(image_bytes: bytes, text_region_bytes: bytes = None) -> dict:
+async def _ocr_pipeline(image_bytes: bytes, text_region_bytes: bytes = None) -> dict:
     """
-    统一入口：调用一次 qwen3-vl:8b，内嵌语言检测
-    仅在 content 为空且检测到英文时，fallback 调用 llama3.2-vision:11b
+    OCR 统一入口：三级重试策略
+    1. 主模型 qwen3-vl:8b（严格 prompt）
+    2. 空内容 → 简化 prompt 重试一次
+    3. 仍空 → fallback 模型 llama3.2-vision:11b
+    4. 全部失败 → 返回错误
     """
     cfg = _get_ollama_cfg()
     server_url = cfg.get("server_url", DEFAULT_OLLAMA_URL).rstrip("/")
     target_image = text_region_bytes or image_bytes
     img_b64 = base64.b64encode(target_image).decode("utf-8")
 
-    # 默认模型：qwen3-vl:8b（同时提取文字+检测语言）
-    default_model = cfg.get("model", DEFAULT_VISION_MODEL)
-    result = await _call_single_model(
-        server_url, default_model, img_b64, SYSTEM_PROMPT, 120
-    )
+    primary_model = cfg.get("model", DEFAULT_VISION_MODEL)
 
-    # 从结果中读取语言标记
-    detected_lang = result.get("_language", "chinese")
-    if isinstance(detected_lang, str):
-        detected_lang = detected_lang.strip().lower()
-    else:
-        detected_lang = "chinese"
+    # === 阶段1：主模型，严格 prompt ===
+    result = await _call_model(server_url, primary_model, img_b64, SYSTEM_PROMPT_STRICT, 120)
 
-    # 对英文判断标准化
-    if detected_lang in ("eng", "en"):
-        detected_lang = "english"
-
-    # 如果主模型提取到内容，直接返回（无论什么语言，qwen3-vl:8b 都够用）
-    content = result.get("content", "").strip()
+    content = (result.get("content") or "").strip()
     if content:
+        detected_lang = result.get("_language", "chinese")
+        if isinstance(detected_lang, str):
+            detected_lang = detected_lang.strip().lower()
         result["_detected_lang"] = detected_lang
         return result
 
-    # 主模型未提取到内容，尝试英文专用模型
-    fallback = _select_model_for_language(detected_lang, default_model)
-    if fallback:
-        result2 = await _call_single_model(
-            server_url, fallback["model"], img_b64, fallback["system_prompt"], 120
-        )
-        content2 = result2.get("content", "").strip()
-        if content2:
-            result2["_detected_lang"] = detected_lang
-            result2["_fallback"] = True
-            return result2
+    # === 阶段2：空内容 → 简化 prompt 重试（同一模型） ===
+    print(f"[OCR] {primary_model} returned empty, retrying with simple prompt...")
+    result2 = await _call_model(server_url, primary_model, img_b64, SYSTEM_PROMPT_SIMPLE, 120)
 
-    # 都失败了，返回主模型的结果
-    result["_detected_lang"] = detected_lang
-    return result
+    content2 = (result2.get("content") or "").strip()
+    if content2:
+        print(f"[OCR] Simple prompt succeeded, content={repr(content2[:50])}")
+        result2["_detected_lang"] = result2.get("_language", "chinese")
+        result2["_retry_simple_prompt"] = True
+        return result2
+
+    # === 阶段3：fallback 模型 ===
+    pool = _get_usable_models()
+    fallback_model = pool.get("english", FALLBACK_VISION_MODEL)
+    if fallback_model != primary_model:
+        print(f"[OCR] Retrying with fallback model: {fallback_model}...")
+        result3 = await _call_model(server_url, fallback_model, img_b64, SYSTEM_PROMPT_EN, 120)
+        content3 = (result3.get("content") or "").strip()
+        if content3:
+            print(f"[OCR] Fallback succeeded, content={repr(content3[:50])}")
+            result3["_detected_lang"] = "english"
+            result3["_fallback"] = True
+            return result3
+
+    # === 全部失败 ===
+    print(f"[OCR] ALL models failed for this image")
+    return {"error": "所有视觉模型均未能提取到内容"}
 
 
-# ============ STEP 3: LLM 结构化备用 ============
+# ============ STEP 4: LLM 结构化备用 ============
 
 async def _ollama_llm_parse_text(text: str) -> dict:
     """备用：用纯文本 LLM 解析 OCR 文字"""
@@ -395,14 +406,12 @@ def _save_thumbnail(image_bytes: bytes) -> tuple:
     from PIL import Image
     import io as _io
     base_name = uuid.uuid4().hex
-
-    # 1. 保存原图（原始完整尺寸）
+    # 原图
     orig_filename = f"ocr_{base_name}_orig.jpg"
     orig_path = os.path.join(ORIGINALS_DIR, orig_filename)
     with open(orig_path, "wb") as f:
         f.write(image_bytes)
-
-    # 2. 生成缩略图（3:2 裁剪 + 240x160）
+    # 缩略图 3:2 → 240x160
     img = Image.open(_io.BytesIO(image_bytes))
     w, h = img.size
     target_ratio = 3 / 2
@@ -420,23 +429,18 @@ def _save_thumbnail(image_bytes: bytes) -> tuple:
     thumb_path = os.path.join(THUMB_DIR, thumb_filename)
     thumb.save(thumb_path, format="JPEG", quality=85)
     thumb_size = os.path.getsize(thumb_path) if os.path.exists(thumb_path) else 0
-
-    # 3. 写入媒体资产管理库
+    # 写入媒体资产管理库
     try:
-        from PIL import Image as PILImg
-        _tmp = PILImg.open(_io.BytesIO(image_bytes))
-        iw, ih = _tmp.size
         db = get_db()
         db.execute("""
             INSERT OR IGNORE INTO media_assets
                 (filename, original_filename, file_size, original_size,
                  media_type, width, height, mime_type, source)
             VALUES (?, ?, ?, ?, 'image', ?, ?, 'image/jpeg', 'ocr_import')
-        """, [thumb_filename, orig_filename, thumb_size, len(image_bytes), iw, ih])
+        """, [thumb_filename, orig_filename, thumb_size, len(image_bytes), w, h])
         db.commit()
     except Exception:
         pass
-
     return thumb_filename, orig_filename
 
 
@@ -444,7 +448,7 @@ def _save_thumbnail(image_bytes: bytes) -> tuple:
 
 @router.post("/preview")
 async def ocr_preview(file: UploadFile = File(...)):
-    """上传截图 -> 版面分析 -> 语言预扫描 -> 模型路由 -> 结构化提取"""
+    """上传截图 → 版面分析 → OCR三级重试 → 结构化提取"""
     contents = await file.read()
     if len(contents) > 10 * 1024 * 1024:
         return {"ok": False, "error": "文件超过10MB限制"}
@@ -453,26 +457,40 @@ async def ocr_preview(file: UploadFile = File(...)):
         text_region = layout.get("text_region")
         image_region = layout.get("image_region")
 
-        # 保存预览图（优先用效果图区域，否则用文字区预览）
+        # 保存预览图
         preview_img_name = None
         if image_region:
             preview_img_name = _save_temp_file(image_region, "ocr_img")
         elif text_region:
             preview_img_name = _save_temp_file(text_region, "ocr_txt")
 
-        preview = await _ollama_vision_parse(contents, text_region)
+        # OCR 三级重试
+        preview = await _ocr_pipeline(contents, text_region)
 
-        # layout 包含二进制 bytes，不能直接 JSON 序列化，只返回元数据
         layout_meta = {
             "has_image_region": layout.get("has_image_region", False),
             "image_size": layout.get("image_size", "")
         }
+
+        # 检查是否所有模型都失败
         if preview.get("error"):
             return {
-                "ok": False, "error": preview["error"],
+                "ok": False,
+                "error": preview["error"] + "。请确认截图中有清晰的提示词文字，或检查Ollama视觉模型状态。",
                 "layout": layout_meta,
                 "temp_files": {"image": preview_img_name} if preview_img_name else {}
             }
+
+        # 即使有返回也检查 content 是否为空
+        content = (preview.get("content") or "").strip()
+        if not content:
+            return {
+                "ok": False,
+                "error": "OCR未能提取到文字内容。截图可能没有清晰的提示词文字区域，或Ollama视觉模型响应异常。",
+                "layout": layout_meta,
+                "temp_files": {"image": preview_img_name} if preview_img_name else {}
+            }
+
         return {
             "ok": True, "preview": preview, "layout": layout_meta,
             "temp_files": {"image": preview_img_name} if preview_img_name else {}
@@ -529,21 +547,18 @@ async def ocr_confirm(data: OcrConfirmInput):
     try:
         db = get_db()
         now = datetime.datetime.now().isoformat()
-
-        # 保存提示词（合并 tips 到 meaning 末尾）
         meaning = data.meaning or ""
         if data.tips:
             if meaning:
-                meaning += "\n\u2728 " + data.tips[:200]
+                meaning += "\n✨ " + data.tips[:200]
             else:
-                meaning = "\u2728 " + data.tips[:200]
-
+                meaning = "✨ " + data.tips[:200]
         db.execute("""
             INSERT INTO prompts (module, category, content, meaning, scene, tags, usage_count, is_builtin, created_at)
             VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?)
         """, [
             data.module or "custom",
-            data.category or "OCR\u5bfc\u5165",
+            data.category or "OCR导入",
             data.content.strip(),
             meaning,
             data.scene or "",
@@ -551,11 +566,7 @@ async def ocr_confirm(data: OcrConfirmInput):
             now
         ])
         db.commit()
-
-        # 获取新 ID
         prompt_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-
-        # 保存缩略图 + 原图 + 媒体资产入库
         if data.has_image and data.temp_image:
             src = os.path.join(TEMP_DIR, data.temp_image)
             if os.path.exists(src):
@@ -563,12 +574,10 @@ async def ocr_confirm(data: OcrConfirmInput):
                     img_data = f.read()
                 if img_data:
                     thumb_filename, orig_filename = _save_thumbnail(img_data)
-                    # 关联到提示词
                     db.execute(
                         "INSERT INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) VALUES (?, ?, 'image', ?)",
                         [prompt_id, thumb_filename, now]
                     )
-                    # 更新 media_assets 的 prompt_id 关联
                     try:
                         db.execute(
                             "UPDATE media_assets SET prompt_id=? WHERE filename=?",
@@ -577,17 +586,14 @@ async def ocr_confirm(data: OcrConfirmInput):
                     except Exception:
                         pass
                     db.commit()
-
-        # 清理临时文件
         if data.temp_image:
             tmp_path = os.path.join(TEMP_DIR, data.temp_image)
             if os.path.exists(tmp_path):
                 try: os.remove(tmp_path)
                 except: pass
-
-        return {"ok": True, "message": "\u2705 \u5df2\u5bfc\u5165"}
+        return {"ok": True, "message": "✅ 已导入"}
     except Exception as e:
-        return {"ok": False, "error": f"\u4fdd\u5b58\u5931\u8d25: {str(e)[:200]}"}
+        return {"ok": False, "error": f"保存失败: {str(e)[:200]}"}
 
 
 # ============ API: 访问临时文件 ============
@@ -598,7 +604,7 @@ async def get_temp_file(filename: str):
     safe_name = os.path.basename(filename)
     path = os.path.join(TEMP_DIR, safe_name)
     if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="\u6587\u4ef6\u4e0d\u5b58\u5728")
+        raise HTTPException(status_code=404, detail="文件不存在")
     return fastapi.responses.FileResponse(path, media_type="image/jpeg")
 
 

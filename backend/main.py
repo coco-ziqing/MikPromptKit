@@ -30,6 +30,7 @@ from api.comfyui import router as comfyui_router
 from api.ocr import router as ocr_router
 from api.translate import router as translate_router
 from api.media import router as media_router
+from api.seedance_v2 import router as seedance_v2_router
 from sync import (
     export_package, restore_package, import_package,
     list_packages, delete_package, get_package_info
@@ -71,6 +72,14 @@ async def lifespan(app: FastAPI):
         print("[语义搜索] 索引重建已异步启动")
     except Exception as e:
         print("[语义搜索] 启动失败:", e)
+
+    # 初始化 Seedance V2 种子数据
+    try:
+        from seedance_v2_seed import init_seedance_v2_seed
+        init_seedance_v2_seed(db)
+        safe_commit()
+    except Exception as e:
+        print("[Seedance V2] 种子初始化失败:", e)
 
     try:
         total = db.execute("SELECT COUNT(*) as cnt FROM prompts").fetchone()["cnt"]
@@ -120,6 +129,7 @@ app.include_router(comfyui_router)
 app.include_router(ocr_router)
 app.include_router(translate_router)
 app.include_router(media_router)
+app.include_router(seedance_v2_router)
 
 
 # ============ 数据同步 API (.pkb 包系统) ============

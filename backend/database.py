@@ -323,6 +323,107 @@ def init_db():
             conn.execute("ALTER TABLE collection_items ADD COLUMN sort_order INTEGER DEFAULT 0")
         except Exception:
             pass
+
+        # ========== Seedance V2 多镜头组装器 7 表 ==========
+        conn.executescript("""
+            -- 1. 系统全局配置
+            CREATE TABLE IF NOT EXISTS sys_global_config (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                config_key TEXT UNIQUE NOT NULL,
+                config_value TEXT NOT NULL,
+                description TEXT,
+                updated_at TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- 2. 词库总表 (27套维度)
+            CREATE TABLE IF NOT EXISTS prompt_library (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dimension_key TEXT UNIQUE NOT NULL,
+                dimension_name TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'basic',
+                sort_order INTEGER DEFAULT 0,
+                description TEXT,
+                updated_at TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- 3. 词卡库存
+            CREATE TABLE IF NOT EXISTS prompt_word_card (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                library_id INTEGER NOT NULL REFERENCES prompt_library(id),
+                word_text TEXT NOT NULL,
+                definition TEXT,
+                preview_image TEXT,
+                heat_weight REAL DEFAULT 0,
+                is_system INTEGER DEFAULT 1,
+                usage_count INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- 4. 用户分镜项目总表
+            CREATE TABLE IF NOT EXISTS user_project (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                total_duration INTEGER DEFAULT 15,
+                aspect_ratio TEXT DEFAULT '16:9',
+                resolution TEXT DEFAULT '4K',
+                global_style TEXT,
+                global_transition TEXT,
+                negative_prompt TEXT,
+                created_at TEXT DEFAULT (datetime('now','localtime')),
+                updated_at TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- 5. 镜头时间轴表
+            CREATE TABLE IF NOT EXISTS user_project_scene (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL REFERENCES user_project(id) ON DELETE CASCADE,
+                scene_order INTEGER NOT NULL,
+                start_time REAL NOT NULL,
+                end_time REAL NOT NULL,
+                camera_move TEXT DEFAULT '',
+                subject TEXT DEFAULT '',
+                scene_desc TEXT DEFAULT '',
+                composition TEXT DEFAULT '',
+                lighting TEXT DEFAULT '',
+                focal_length TEXT DEFAULT '',
+                texture TEXT DEFAULT '',
+                speed TEXT DEFAULT '',
+                perspective TEXT DEFAULT '',
+                particles TEXT DEFAULT '',
+                weather TEXT DEFAULT '',
+                color_grade TEXT DEFAULT '',
+                emotion TEXT DEFAULT '',
+                natural_force TEXT DEFAULT '',
+                depth_of_field TEXT DEFAULT '',
+                filter TEXT DEFAULT '',
+                film_flaw TEXT DEFAULT '',
+                fantasy_physics TEXT DEFAULT '',
+                environment_detail TEXT DEFAULT '',
+                action TEXT DEFAULT '',
+                details TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- 6. 镜头-词卡关联表
+            CREATE TABLE IF NOT EXISTS user_scene_prompt (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scene_id INTEGER NOT NULL REFERENCES user_project_scene(id) ON DELETE CASCADE,
+                word_card_id INTEGER NOT NULL REFERENCES prompt_word_card(id),
+                dimension_key TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- 7. 用户自定义词条表
+            CREATE TABLE IF NOT EXISTS user_custom_word (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                library_id INTEGER NOT NULL REFERENCES prompt_library(id),
+                word_text TEXT NOT NULL,
+                definition TEXT,
+                preview_image TEXT,
+                created_at TEXT DEFAULT (datetime('now','localtime'))
+            );
+        """)
+
         conn.commit()
     except sqlite3.Error as e:
         print("[数据库] 建表失败:", e)

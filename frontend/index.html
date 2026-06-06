@@ -125,21 +125,25 @@
             </div>
             <div id="seedanceTemplates" class="seedance-panel"><div id="seedanceCategoryTabs" class="category-tabs mb-3"></div><div id="seedanceTemplateList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载 Seedance 模板库...</p></div></div><div id="seedancePagination" class="pagination-bar"></div></div>
             <div id="seedanceComposer" class="seedance-panel" style="display:none;">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-                    <div>
-                        <div class="form-group"><label class="form-label">风格描述</label><input id="composerStyle" class="modal-input" placeholder="如：电影级写实" value="电影级写实"></div>
-                        <div style="display:flex;gap:10px;"><div class="form-group" style="flex:1;"><label class="form-label">时长（秒）</label><select id="composerDuration" class="modal-input"><option value="5">5秒</option><option value="10">10秒</option><option value="15" selected>15秒</option></select></div><div class="form-group" style="flex:1;"><label class="form-label">画面比例</label><select id="composerRatio" class="modal-input"><option value="16:9">横屏 16:9</option><option value="9:16">竖屏 9:16</option><option value="1:1">方形 1:1</option><option value="2.35:1">电影宽屏 2.35:1</option></select></div></div>
-                        <div class="form-group"><label class="form-label">氛围/色调</label><input id="composerMood" class="modal-input" placeholder="如：温馨暖色调" value="温馨暖色调"></div>
-                        <div class="form-group"><label class="form-label">声音设计</label><input id="composerSound" class="modal-input" placeholder="如：轻缓钢琴+环境音" value="轻缓钢琴+环境音"></div>
-                        <div class="form-group"><label class="form-label">参考素材（每行一个，如 @图片1 角色形象）</label><textarea id="composerRefs" class="modal-input" rows="2" placeholder="@图片1 角色形象"></textarea></div>
+                <!-- Seedance V2 多镜头结构化组装器 三栏布局 -->
+                <div class="s2-layout">
+                    <!-- 左栏: 项目列表 + 全局搜索 -->
+                    <div class="s2-sidebar">
+                        <div class="s2-search-box">
+                            <input id="s2GlobalSearch" class="s2-input" placeholder="🔍 全局搜索词库..." onkeydown="if(event.key==='Enter')App.seedanceV2.globalSearch()">
+                            <div id="s2GlobalResults"></div>
+                        </div>
+                        <div id="s2ProjectList"></div>
                     </div>
-                    <div>
-                        <div class="form-group"><label class="form-label">分镜时间轴（每行一条）</label><textarea id="composerScenes" class="modal-input" rows="8" placeholder="0-3秒：开场建立场景，引入主体&#10;3-7秒：情节发展，核心动作">0-3秒：开场建立场景，引入主体
-3-7秒：情节发展，核心动作</textarea></div>
-                        <button class="btn btn-primary w-100" onclick="App.composePrompt()"><i class="bi bi-magic"></i> 组装提示词</button>
+                    <!-- 中栏: 项目编辑器 -->
+                    <div class="s2-editor" id="s2Editor">
+                        <div class="s2-empty-state">
+                            <div class="s2-empty-icon">🎬</div>
+                            <h4>选择或创建项目开始编辑</h4>
+                            <p>从左栏选择一个已有项目，或点击「新建」创建新分镜方案</p>
+                        </div>
                     </div>
                 </div>
-                <div id="composerResult" style="margin-top:16px;display:none;"><label class="form-label">生成的提示词</label><textarea id="composerOutput" class="modal-input" rows="10" readonly style="font-family:monospace;font-size:13px;"></textarea><button class="btn btn-primary btn-sm mt-2" onclick="App.copyComposerResult()"><i class="bi bi-clipboard"></i> 复制到剪贴板</button></div>
             </div>
             <div id="seedanceGallery" class="seedance-panel" style="display:none;"><div id="galleryList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载精选模板...</p></div></div></div>
             <div id="seedanceGlossary" class="seedance-panel" style="display:none;"><div class="page-header"><h3><i class="bi bi-book"></i> 镜头语言速查表</h3><span class="count-info">共 20 种镜头技法</span></div><div id="glossaryTable"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载中...</p></div></div><div class="page-header mt-4"><h3><i class="bi bi-link-45deg"></i> 多模态引用语法</h3></div><div id="refSyntaxTable"></div></div>
@@ -732,7 +736,45 @@
         </div>
     </div>
 
+    <!-- Seedance V2 词卡选择弹窗 -->
+    <div class="modal-overlay" id="s2CardPicker" style="display:none;z-index:600;" onclick="App.seedanceV2.closePicker()">
+        <div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:700px;">
+            <div class="modal-header">
+                <h5 id="s2PickerTitle">选择词卡</h5>
+                <button class="header-btn-sm" onclick="App.seedanceV2.closePicker()" title="关闭 (Esc)">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="s2PickerLibTabs" class="s2-picker-lib-tabs"></div>
+                <input id="s2PickerSearch" class="modal-input" placeholder="搜索词条..." oninput="App.seedanceV2.renderCards(App.seedanceV2.activePickerLibId)" style="margin-bottom:12px;">
+                <div id="s2PickerCards" class="s2-picker-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Seedance V2 分组管理弹窗 -->
+    <div class="modal-overlay" id="s2GroupManager" style="display:none;z-index:650;" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:480px;">
+            <div class="modal-header">
+                <h5>⚙ 管理自定义分组</h5>
+                <button class="header-btn-sm" onclick="document.getElementById('s2GroupManager').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="s2-group-create">
+                    <input id="s2NewGroupName" class="modal-input" placeholder="新分组名称..." style="flex:1;margin:0;" onkeydown="if(event.key==='Enter')App.seedanceV2.createCustomLib()">
+                    <button class="btn btn-sm btn-primary" onclick="App.seedanceV2.createCustomLib()">＋ 创建</button>
+                </div>
+                <div class="s2-group-manager-body" id="s2GroupList">
+                    <div class="s2-empty" style="padding:12px;font-size:12px;">加载中...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('s2GroupManager').style.display='none'">关闭</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toastContainer" class="toast-container"></div>
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=3.10.24"></script>
+    <script src="/static/js/seedance_v2_composer.js?v=11"></script>
 </body>
 </html>

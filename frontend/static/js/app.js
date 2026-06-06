@@ -1735,7 +1735,7 @@ const App = {
         formData.append('file', file);
 
         try {
-            var resp = await fetch('/api/v2/ocr/preview', { method: 'POST', body: formData });
+            var resp = await fetch('/api/v2/ocr/preview', { method: 'POST', body: formData, signal: controller.signal });
             var data = await resp.json();
 
             document.getElementById('ssLoading').style.display = 'none';
@@ -4501,15 +4501,37 @@ const App = {
         if (tab === 'gallery') this.loadGallery();
         if (tab === 'glossary') this.loadGlossary();
         if (tab === 'templates') this.loadSeedanceTemplates();
+        if (tab === 'composer' && App.seedanceV2) {
+            App.seedanceV2.init();
+        }
     },
 
     async openInComposer(tplId) {
         const data = await this.fetchJSON('/api/seedance/templates/' + tplId);
         if (!data || !data.template) return;
         this.switchSeedanceTab('composer');
-        const tpl = data.template;
-        document.getElementById('composerScenes').value = tpl.content;
-        this.showToast('模板已加载到组装器', 'info');
+        if (App.seedanceV2) {
+            App.seedanceV2.init().then(function() {
+                App.fetchJSON('/api/seedance/v2/projects', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: '模板: ' + ((data.template.meaning||'').substring(0,20) || '导入模板') })
+                }).then(function(resp) {
+                    if (resp && resp.ok) {
+                        App.fetchJSON('/api/seedance/v2/projects/' + resp.id + '/scenes/1', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ scene_desc: data.template.content.substring(0, 200) })
+                        }).then(function() {
+                            App.seedanceV2.openProject(resp.id);
+                            App.showToast('模板已加载到组装器', 'info');
+                        });
+                    }
+                });
+            });
+        } else {
+            this.showToast('组装器未加载', 'warning');
+        }
     },
 
     async composePrompt() {
