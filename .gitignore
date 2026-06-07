@@ -1,40 +1,30 @@
-# .gitignore — PromptKit v3.0.0.2
+# PromptKit .gitignore
+
 # Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 *.egg-info/
-dist/
-build/
-*.spec
+.venv/
+venv/
 
-# Data (tracked separately)
-data/thumbnails/*
-!data/thumbnails/.gitkeep
-data/videos/*
-!data/videos/.gitkeep
-data/originals/*
-!data/originals/.gitkeep
-*.db-shm
-*.db-wal
+# Database
+data/prompts.db
+data/packages/*.pkb
 
-# IDE
-.idea/
-*.swp
-*.swo
-*~
+# Media assets
+data/originals/
+data/thumbnails/
+data/videos/
+
+# Backups
+data/backups/
+
+# Test scripts
+backend/test_*.py
+backend/check_*.py
+backend/peek.py
+backend/*.bak
 
 # OS
-Thumbs.db
 .DS_Store
-
-# Temp
-_version_check.py
-_release.ps1
-_temp.txt
-_replacement.py
-_hb.ps1
-
-data/temp_ocr/
-*.db
-
+Thumbs.db
