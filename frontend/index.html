@@ -20,6 +20,8 @@
             <button class="header-btn" onclick="App.switchView('wordpacks')" id="navWordpacks" title="自定义词包"><i class="bi bi-folder"></i><span class="nav-badge" id="wordpackBadge" style="display:none;">0</span></button>
             <button class="header-btn" onclick="App.switchView('history')" id="navHistory" title="最近使用"><i class="bi bi-clock-history"></i></button>
             <button onclick="App.switchView('trash')" id="navTrash" title="回收站"><i class="bi bi-trash"></i></button>
+            <button class="header-btn" onclick="App.switchView('v4library')" id="navV4Library" title="词库资产"><i class="bi bi-database-gear"></i></button>
+            <button class="header-btn" onclick="App.switchView('v4media')" id="navV4Media" title="媒体资产"><i class="bi bi-images"></i></button>
             <div class="column-slider-wrap" title="调整卡片列数">
                 <button class="header-btn" onclick="App.decColumn()" style="font-size:16px;width:26px;height:26px;">-</button>
                 <input type="range" id="columnSlider" min="1" max="6" value="3" class="column-slider" oninput="App.onColumnSlider(this.value)">
@@ -115,6 +117,71 @@
             </div>
             <div id="trashList"><div class="empty-state"><div class="icon">🗑️</div><p>回收站为空</p></div></div>
             <div id="trashPagination" class="pagination-bar" style="margin-top:12px;"></div>
+        </div>
+        <div id="viewV4library" class="view-panel">
+            <div class="page-header"><h3><i class="bi bi-database-gear"></i> 词库资产</h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <input type="text" id="v4libSearch" placeholder="搜索词库..." class="modal-input" style="width:200px;font-size:13px;" onkeydown="if(event.key==='Enter')App.loadV4Library()">
+                    <select id="v4libTypeFilter" class="modal-input" style="width:auto;font-size:12px;" onchange="App.loadV4Library()">
+                        <option value="">全部类型</option>
+                    </select>
+                    <button class="btn btn-sm btn-primary" onclick="App.showV4LibCreateModal()"><i class="bi bi-plus-lg"></i> 新建词条</button>
+                </div>
+            </div>
+            <!-- 分类统计 -->
+            <div id="v4libStats" style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;"></div>
+            <!-- 词条列表 -->
+            <div id="v4libList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;">
+                <div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div></div>
+            </div>
+            <!-- 新建/编辑弹窗 -->
+            <div class="modal-overlay" id="modalV4Lib" style="display:none;z-index:400;" onclick="if(event.target===this)this.style.display='none'">
+                <div class="modal-content" onclick="event.stopPropagation()" style="max-width:520px;">
+                    <div class="modal-header"><h5 id="v4libModalTitle">新建词条</h5><button class="header-btn-sm" onclick="document.getElementById('modalV4Lib').style.display='none'">&times;</button></div>
+                    <div class="modal-body">
+                        <input type="hidden" id="v4libEditId" value="">
+                        <label>类型</label>
+                        <select id="v4libFormType" class="modal-input">
+                            <option value="style">🎨 画风</option>
+                            <option value="negative">🚫 负面提示词</option>
+                            <option value="camera">🎬 镜头语言</option>
+                            <option value="subject">🧑 主体</option>
+                            <option value="scene">🌄 场景</option>
+                            <option value="custom">🔧 自定义</option>
+                        </select>
+                        <label>分类</label>
+                        <input type="text" id="v4libFormCategory" class="modal-input" placeholder="如：写实类、画质缺陷">
+                        <label>名称</label>
+                        <input type="text" id="v4libFormName" class="modal-input" placeholder="词条名称">
+                        <label>提示词</label>
+                        <textarea id="v4libFormPrompt" class="modal-input" rows="3" placeholder="完整提示词文本"></textarea>
+                        <label>图标（选填）</label>
+                        <input type="text" id="v4libFormIcon" class="modal-input" placeholder="如：🎨📷" maxlength="2">
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalV4Lib').style.display='none'">取消</button>
+                        <button class="btn btn-primary btn-sm" onclick="App.saveV4LibItem()">保存</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- 媒体资产管理面板 -->
+        <div id="viewV4media" class="view-panel">
+            <div class="page-header"><h3><i class="bi bi-images"></i> 媒体资产</h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <select id="v4mediaTypeFilter" class="modal-input" style="width:auto;font-size:12px;" onchange="App.loadV4Media()">
+                        <option value="">全部类型</option>
+                        <option value="image">📷 图片</option>
+                        <option value="video">🎬 视频</option>
+                        <option value="audio">🎵 音频</option>
+                    </select>
+                    <span id="v4mediaCount" style="font-size:12px;color:var(--text-muted);align-self:center;"></span>
+                </div>
+            </div>
+            <div id="v4mediaList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">
+                <div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div></div>
+            </div>
+            <div id="v4mediaPagination" class="pagination-bar"></div>
         </div>
         <div id="viewSeedance" class="view-panel">
             <div class="seedance-tabs mb-3">
@@ -775,6 +842,10 @@
 
     <div id="toastContainer" class="toast-container"></div>
     <script src="/static/js/app.js?v=3.10.24"></script>
-    <script src="/static/js/seedance_v2_composer.js?v=11"></script>
+    <script src="/static/js/seedance_v2_composer.js?v=12"></script>
+    <script src="/static/js/v4_library.js?v=1"></script>
+    <script src="/static/js/v4_cards.js?v=1"></script>
+    <script src="/static/js/v4_editor.js?v=1"></script>
+    <script src="/static/js/v3_composer.js?v=1"></script>
 </body>
 </html>

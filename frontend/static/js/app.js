@@ -178,7 +178,8 @@ const App = {
             collections: 'navCollections',
             wordpacks: 'navWordpacks',
             history: 'navHistory',
-            trash: 'navTrash'
+            trash: 'navTrash',
+            v4library: 'navV4Library'
         };
 
         if (view === 'home') {
@@ -208,7 +209,23 @@ const App = {
             document.getElementById(navMap[view]).classList.add('active');
             document.getElementById('globalSearchBox').style.display = 'none';
             this.loadTrash();
-        } else if (view === 'seedance') {
+        } else if (view === 'v4library') {
+            var el = document.getElementById('viewV4library');
+            if (el) el.classList.add('active-view');
+            var navEl = document.getElementById('navV4Library');
+            if (navEl) navEl.classList.add('active');
+            var sb = document.getElementById('globalSearchBox');
+            if (sb) sb.style.display = 'none';
+            this.loadV4Library();
+                } else if (view === 'v4media') {
+            var el = document.getElementById('viewV4media');
+            if (el) el.classList.add('active-view');
+            var navEl = document.getElementById('navV4Media');
+            if (navEl) navEl.classList.add('active');
+            var sb = document.getElementById('globalSearchBox');
+            if (sb) sb.style.display = 'none';
+            this.loadV4Media();
+                } else if (view === 'seedance') {
             this.state.currentModule = 'seedance';
             this.renderSidebar();
             this._closeMobileMenu();  // 移动端关闭侧边栏
@@ -305,18 +322,21 @@ const App = {
         for (var i = 0; i < items.length; i++) {
             var p = items[i];
             var score = (p.semantic_score * 100).toFixed(0);
-            html += '<div class="prompt-card" data-id="' + p.id + '">';
+            html += '<div class="prompt-card" data-id="' + card.id + '" onclick="App.showCardDetail(' + card.id + ')">';
             html += '<div class="card-body">';
-            html += '<div style="font-size:10px;color:#818cf8;margin-bottom:4px;">🧠 相似度 ' + score + '%</div>';
-            html += '<div class="card-content" id="cc_' + p.id + '">' + this._escape(p.content || '') + '</div>';
-            if (p.meaning) html += '<div class="card-meaning">' + this._escape(p.meaning) + '</div>';
+            html += '<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;">';
+            html += '<span class="card-type-badge card-type-' + (card.card_type||'image') + '">' + ((card.card_type||'image')==='video'?'🎬':'📷') + ' ' + (card.card_type||'图片') + '</span>';
+            html += '<span style="font-size:10px;color:#818cf8;">🧠 相似度 ' + score + '%</span>';
+            html += '</div>';
+            html += '<div class="card-content" id="cc_' + card.id + '">' + this._escape(card.content || '') + '</div>';
+            if (card.meaning) html += '<div class="card-meaning">' + this._escape(card.meaning) + '</div>';
             html += '<div style="display:flex;gap:4px;">';
-            if (p.module) html += '<span class="card-badge">' + this._escape(p.module) + '</span>';
-            if (p.category) html += '<span class="card-badge" style="background:#f0fdf4;color:#059669;">' + this._escape(p.category) + '</span>';
+            if (card.module) html += '<span class="card-badge">' + this._escape(card.module) + '</span>';
+            if (card.category) html += '<span class="card-badge" style="background:#f0fdf4;color:#059669;">' + this._escape(card.category) + '</span>';
             html += '</div>';
             html += '</div>';
             html += '<div class="card-actions">';
-            html += '<button class="btn-copy" onclick="App.handleCopy(' + p.id + ', \'' + this._escape(p.content).replace(/'/g, "\\'") + '\')">复制</button>';
+            html += '<button class="btn-copy" onclick="App.handleCopy(' + card.id + ', \'' + this._escape(card.content).replace(/'/g, "\\'") + '\')">复制</button>';
             html += '</div>';
             html += '</div>';
         }
@@ -369,13 +389,13 @@ const App = {
             this.renderPrompts();
         }
 
-        const data = await this.fetchJSON(`/api/prompts?${params}`);
+        const data = await this.fetchJSON(`/api/v4/cards?${params}`);
         s.isLoading = false;
         if (!data) { this.renderPrompts(); this._restoreScroll(savedScrollY); return; }
 
         s.prompts = data.items;
         s.totalItems = data.total;
-        s.totalPages = data.total_pages;
+        s.totalPages = Math.ceil(data.total / s.pageSize) || 1;
         this.renderPrompts();
         this.renderPagination();
         document.getElementById('countInfo').textContent = `共 ${data.total} 条提示词`;
@@ -2772,7 +2792,7 @@ const App = {
             return;
         }
         let html = '<div class="prompt-grid">';
-        for (const p of data.items) {
+        for (const card of data.items) {
             html += `
                 <div class="prompt-card">
                     <span class="card-badge">${this._escape(p.module)}</span>

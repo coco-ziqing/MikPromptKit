@@ -300,3 +300,97 @@ REFERENCE_SYNTAX = [
 def get_reference_syntax():
     """获取多模态引用语法速查"""
     return {"items": REFERENCE_SYNTAX}
+
+
+# ==================== 7. 画风词库 ====================
+
+@router.get("/styles")
+def get_styles():
+    """获取画风词库（从 library_assets 读取）"""
+    db = get_db()
+    rows = db.execute(
+        "SELECT * FROM library_assets WHERE lib_type='style' ORDER BY sort_order, id"
+    ).fetchall()
+    # 按 category 分组
+    cats = {}
+    order = []
+    for r in rows:
+        cat_name = r['category']
+        if cat_name not in cats:
+            cats[cat_name] = {'id': cat_name, 'name': cat_name, 'icon': r['icon'] or '', 'styles': []}
+            order.append(cat_name)
+        cats[cat_name]['styles'].append({
+            'id': r['definition'] or r['id'],
+            'name': r['name'],
+            'prompt': r['prompt']
+        })
+    return {'categories': [cats[k] for k in order]}
+
+
+@router.get("/styles/{category_id}")
+def get_style_category(category_id: str):
+    """获取某分类下的所有画风"""
+    db = get_db()
+    rows = db.execute(
+        "SELECT * FROM library_assets WHERE lib_type='style' AND category=? ORDER BY sort_order",
+        (category_id,)
+    ).fetchall()
+    if not rows:
+        raise HTTPException(status_code=404, detail="分类未找到")
+    return {
+        'id': category_id, 'name': category_id,
+        'styles': [{'id': r['definition'] or r['id'], 'name': r['name'], 'prompt': r['prompt']} for r in rows]
+    }
+
+
+@router.get("/styles/prompt/{style_id}")
+def get_style_prompt(style_id: str):
+    """获取某画风的完整提示词"""
+    db = get_db()
+    r = db.execute(
+        "SELECT * FROM library_assets WHERE lib_type='style' AND (definition=? OR id=?)",
+        (style_id, int(style_id) if style_id.isdigit() else -1)
+    ).fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="画风未找到")
+    return {'id': r['definition'] or r['id'], 'name': r['name'], 'prompt': r['prompt']}
+
+
+# ==================== 8. 负面提示词词库 ====================
+
+@router.get("/negative-prompts")
+def get_negative_prompts():
+    """获取负面提示词词库（从 library_assets 读取）"""
+    db = get_db()
+    rows = db.execute(
+        "SELECT * FROM library_assets WHERE lib_type='negative' ORDER BY sort_order, id"
+    ).fetchall()
+    cats = {}
+    order = []
+    for r in rows:
+        cat_name = r['category']
+        if cat_name not in cats:
+            cats[cat_name] = {'id': cat_name, 'name': cat_name, 'icon': r['icon'] or '', 'items': []}
+            order.append(cat_name)
+        cats[cat_name]['items'].append({
+            'id': r['definition'] or r['id'],
+            'name': r['name'],
+            'prompt': r['prompt']
+        })
+    return {'categories': [cats[k] for k in order]}
+
+
+@router.get("/negative-prompts/{category_id}")
+def get_negative_category(category_id: str):
+    """获取某分类下的所有负面提示词"""
+    db = get_db()
+    rows = db.execute(
+        "SELECT * FROM library_assets WHERE lib_type='negative' AND category=? ORDER BY sort_order",
+        (category_id,)
+    ).fetchall()
+    if not rows:
+        raise HTTPException(status_code=404, detail="分类未找到")
+    return {
+        'id': category_id, 'name': category_id,
+        'items': [{'id': r['definition'] or r['id'], 'name': r['name'], 'prompt': r['prompt']} for r in rows]
+    }

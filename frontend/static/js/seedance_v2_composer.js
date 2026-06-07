@@ -89,21 +89,21 @@
     // 编辑器
     App.seedanceV2.renderComposerEmpty = function(){var c=document.getElementById('s2Editor');if(c)c.innerHTML='<div class="s2-empty-state"><div class="s2-empty-icon">🎬</div><h4>选择或创建项目开始编辑</h4></div>';};
     App.seedanceV2.setDirty = function(){this.dirty=true;};
-    App.seedanceV2.onTotalDurationChange = function(){var el=document.getElementById('s2_total_duration');if(!el)return;var val=parseInt(el.value);if(isNaN(val)||val<4||val>15)return;var self=this;App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({total_duration:val})}).then(function(){self.openProject(self.currentProjectId);});};
+    App.seedanceV2.onTotalDurationChange = function(){var el=document.getElementById('s2_total_duration');if(!el)return;var val=parseInt(el.value);if(isNaN(val)||val<4||val>15)return;var self=this;App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({total_duration:val})}).then(function(){self.openProject(self.currentProjectId);self.compose();});};
     App.seedanceV2.renderProjectEditor = function() {
         var c=document.getElementById('s2Editor');if(!c)return;var p=this.currentProject;if(!p){this.renderComposerEmpty();return;}
-        function ms(id,l,opts,v){var h='<div class="s2-field"><label>'+l+'</label><select id="'+id+'" class="s2-input">';for(var i=0;i<opts.length;i++){var s=opts[i][0]===v?' selected':'';h+='<option value="'+opts[i][0]+'"'+s+'>'+opts[i][1]+'</option>';}h+='</select></div>';return h;}
-        var h='<div class="s2-editor-header"><div class="s2-editor-title"><input id="s2_name" class="s2-input s2-title-input" value="'+App._escape(p.name)+'" onchange="App.seedanceV2.setDirty()"></div><div class="s2-editor-actions"><button class="btn btn-sm btn-success" onclick="App.seedanceV2.saveProject()">💾 保存</button><button class="btn btn-sm btn-danger" onclick="App.seedanceV2.deleteProject('+p.id+')">🗑 删除</button></div></div>';
+        function ms(id,l,opts,v){var h='<div class="s2-field"><label>'+l+'</label><select id="'+id+'" class="s2-input" onchange="App.seedanceV2.compose()">';for(var i=0;i<opts.length;i++){var s=opts[i][0]===v?' selected':'';h+='<option value="'+opts[i][0]+'"'+s+'>'+opts[i][1]+'</option>';}h+='</select></div>';return h;}
+        var h='<div class="s2-editor-header"><div class="s2-editor-title"><input id="s2_name" class="s2-input s2-title-input" value="'+App._escape(p.name)+'" onchange="App.seedanceV2.setDirty();App.seedanceV2.compose()"></div><div class="s2-editor-actions"><button class="btn btn-sm btn-success" onclick="App.seedanceV2.saveProject()">💾 保存</button><button class="btn btn-sm btn-danger" onclick="App.seedanceV2.deleteProject('+p.id+')">🗑 删除</button></div></div>';
         h+='<div class="s2-section"><div class="s2-section-title">📐 全局参数</div><div class="s2-global-row">';
-        h+=ms('s2_aspect_ratio','画幅',[['16:9','横屏16:9'],['9:16','竖屏9:16'],['1:1','方形1:1'],['2.35:1','电影宽屏2.35:1']],p.aspect_ratio||'16:9');
-        h+=ms('s2_resolution','分辨率',[['4K','4K'],['8K','8K'],['1080p','1080p']],p.resolution||'4K');
+        h+=ms('s2_aspect_ratio','画幅',[['16:9','横屏16:9'],['9:16','竖屏9:16'],['1:1','方形1:1'],['21:9','超宽21:9'],['4:3','方屏4:3'],['3:4','竖屏3:4']],p.aspect_ratio||'16:9');
+        h+=ms('s2_resolution','分辨率',[['480p','480p'],['720p','720p'],['1080p','1080p'],['2K','2K']],p.resolution||'1080p');
         h+='<div class="s2-field"><label>总时长(秒)</label><select id="s2_total_duration" class="s2-input" onchange="App.seedanceV2.onTotalDurationChange()">';for(var td=4;td<=15;td++){h+='<option value="'+td+'"'+(td===(p.total_duration||15)?' selected':'')+'>'+td+'秒</option>';}h+='</select></div></div>';
-        h+='<div class="s2-global-row"><div class="s2-field" style="flex:2;"><label>全局画风</label><input id="s2_global_style" class="s2-input" placeholder="..." value="'+App._escape(p.global_style||'')+'" onchange="App.seedanceV2.setDirty()"></div><div class="s2-field" style="flex:1;"><label>全局转场</label><input id="s2_global_transition" class="s2-input" placeholder="..." value="'+App._escape(p.global_transition||'')+'" onchange="App.seedanceV2.setDirty()"></div></div>';
-        h+='<div class="s2-field"><label>负面提示词</label><input id="s2_negative_prompt" class="s2-input" placeholder="..." value="'+App._escape(p.negative_prompt||'')+'" onchange="App.seedanceV2.setDirty()"></div>';
+        h+='<div class="s2-global-row"><div class="s2-field" style="flex:2;"><label>全局画风 <span class="s2-style-picker-btn" onclick="App.seedanceV2.openStylePicker()" title="从画风词库选择">📚 选风格</span></label><input id="s2_global_style" class="s2-input" placeholder="..." value="'+App._escape(p.global_style||'')+'" onchange="App.seedanceV2.setDirty();App.seedanceV2.compose()"></div><div class="s2-field" style="flex:1;"><label>全局转场</label><input id="s2_global_transition" class="s2-input" placeholder="..." value="'+App._escape(p.global_transition||'')+'" onchange="App.seedanceV2.setDirty();App.seedanceV2.compose()"></div></div>';
+        h+='<div class="s2-field"><label>负面提示词 <span class="s2-np-picker-btn" onclick="App.seedanceV2.openNegativePicker()" title="从负面词库选择">📖 选负面</span></label><input id="s2_negative_prompt" class="s2-input" placeholder="..." value="'+App._escape(p.negative_prompt||'')+'" onchange="App.seedanceV2.setDirty();App.seedanceV2.compose()"></div>';
         var rm=(p.remaining_duration!==undefined)?p.remaining_duration:p.remaining;
         h+='<div style="font-size:12px;color:var(--text-muted);margin-top:4px;"><span>已分配: <strong>'+(p.total_dur_input||0)+'</strong>s / <strong>'+p.total_duration+'</strong>s</span><span style="margin-left:12px;'+(rm<=0?'color:#ef4444;':'')+'">剩余: <strong>'+Math.max(0,rm)+'</strong>s</span></div></div>';
         h+='<div class="s2-section"><div class="s2-section-title">🎬 分镜列表 <span class="s2-badge">'+this.scenes.length+' 镜头</span></div><div class="s2-timeline-bar" id="s2TimelineBar">';for(var i=0;i<this.scenes.length;i++){var s=this.scenes[i];var w=((s.end_time-s.start_time)/(p.total_duration||15))*100;var lb=(s.subject||'镜头'+(i+1)).substring(0,6);h+='<div class="s2-timeline-seg" style="width:'+w+'%;" title="'+s.start_time+'-'+s.end_time+'s: '+App._escape(lb)+'"><span>'+lb+'</span></div>';}h+='</div><div class="s2-scenes-container" id="s2ScenesContainer"></div></div>';
-        h+='<div class="s2-section"><div class="s2-section-title">📤 输出预览</div><div class="s2-output-actions"><button class="btn btn-sm btn-primary" onclick="App.seedanceV2.compose()">🔄 刷新</button><button class="btn btn-sm btn-success" onclick="App.seedanceV2.copyText()">📋 复制提示词</button><button class="btn btn-sm btn-info" onclick="App.seedanceV2.copyJSON()">📋 复制JSON</button><button class="btn btn-sm btn-warning" onclick="App.seedanceV2.copyLibTV()">🚀 填入LibTV</button><button class="btn btn-sm btn-secondary" onclick="App.seedanceV2.resetProject()">\u21ba 重置</button></div><textarea id="s2Output" class="s2-output-text" readonly></textarea></div>';
+        h+='<div class="s2-section"><div class="s2-section-title">📤 输出预览</div><div class="s2-output-actions"><button class="btn btn-sm btn-success" onclick="App.seedanceV2.copyText()">📋 复制提示词</button><button class="btn btn-sm btn-info" onclick="App.seedanceV2.copyJSON()">📋 复制JSON</button><button class="btn btn-sm btn-warning" onclick="App.seedanceV2.copyLibTV()">🚀 填入LibTV</button><button class="btn btn-sm btn-secondary" onclick="App.seedanceV2.resetProject()">↺ 重置</button></div><textarea id="s2Output" class="s2-output-text" readonly></textarea></div>';
         c.innerHTML=h;this.renderScenes();
     };
 
@@ -113,9 +113,10 @@
         var h='';for(var i=0;i<this.scenes.length;i++)h+=this.renderSceneCard(this.scenes[i],i);
         h+='<div class="s2-add-scene" onclick="App.seedanceV2.addScene()">+ 添加镜头</div>';
         c.innerHTML=h;var self=this;
+        this.compose();
         setTimeout(function(){
             document.querySelectorAll('.s2-field-chip').forEach(function(el){el.addEventListener('click',function(e){var sid=parseInt(this.dataset.sceneId),f=this.dataset.field;if(!f)return;self.openCardPicker(sid,f);});});
-            document.querySelectorAll('.s2-scene-input').forEach(function(el){el.addEventListener('change',function(){var sid=parseInt(this.dataset.sceneId),f=this.dataset.field,v=this.value;self.updateSceneField(sid,f,v);});});
+            document.querySelectorAll('.s2-scene-input').forEach(function(el){el.addEventListener('change',function(){var sid=parseInt(this.dataset.sceneId),f=this.dataset.field,v=this.value;self.updateSceneField(sid,f,v);self.compose();});});
             document.querySelectorAll('.s2-scene-dur').forEach(function(el){
                 el.addEventListener('change',function(){
                     var sid=parseInt(this.dataset.sceneId),val=parseFloat(this.value);
@@ -143,7 +144,6 @@
             document.addEventListener('click',function(e){if(!e.target.closest('.s2-del-btn')&&!e.target.closest('.s2-global-del-popover')){var p=document.getElementById('s2GlobalDelPop');if(p)p.style.display='none';}});
             var ct=document.getElementById('s2ScenesContainer');if(ct&&!ct.dataset.dragBound){ct.dataset.dragBound='1';var dt=null;ct.addEventListener('dragover',function(e){e.preventDefault();var card=e.target.closest('.s2-scene-card');if(card){document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over');});card.classList.add('s2-drag-over');dt=card;}});ct.addEventListener('drop',function(e){e.preventDefault();document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over','s2-dragging');});var src=parseInt(e.dataTransfer.getData('text/plain'));if(!dt)return;var tgt=parseInt(dt.dataset.sceneId);if(src===tgt)return;self.reorderScenes(src,tgt);dt=null;});ct.addEventListener('dragleave',function(e){setTimeout(function(){document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over');});},100);});}            // 拓展unit事件绑定
             document.querySelectorAll('.s2-ext-unit-addword').forEach(function(el){el.addEventListener('click',function(e){var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var f=p.querySelector('.s2-ext-unit-dropdown').value;if(!f)return;self.openCardPicker(sid,f);});});
-            document.querySelectorAll('.s2-ext-unit-tag').forEach(function(el){el.addEventListener('click',function(e){var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var f=p.querySelector('.s2-ext-unit-dropdown').value;if(!f)return;self.openCardPicker(sid,f);});});
             document.querySelectorAll('.s2-ext-unit-dropdown').forEach(function(el){el.addEventListener('change',function(){var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var idx=parseInt(p.dataset.extIdx);self._extUnitChange(sid,idx,this.value);});});
             document.querySelectorAll('.s2-ext-unit-remove').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var idx=parseInt(p.dataset.extIdx);self.removeExtUnit(sid,idx);});});
             document.querySelectorAll('.s2-ext-unit-add-btn').forEach(function(el){el.addEventListener('click',function(){var p=this.closest('.s2-ext-unit-list');var sid=parseInt(p.dataset.sceneId);if(!sid)return;self.addExtUnit(sid);});});
@@ -203,11 +203,11 @@
     // ============================================================
     // 拓展功能单元(Ext-Unit)系统
     // ============================================================
-    App.seedanceV2._initExtUnits=function(scene){var units=[];for(var i=0;i<this._EF.length;i++){if(scene[this._EF[i]])units.push({field:this._EF[i]});}if(units.length===0)units.push({field:this._EF[0]});return units;};
-    App.seedanceV2._renderExtUnitHTML=function(scene,idx){var unit=scene._extUnits[idx];var f=unit.field;var n=this._F[f]||f;var v=scene[f]||'';var h='<div class="s2-ext-unit" data-scene-id="'+scene.id+'" data-ext-idx="'+idx+'">';h+='<div class="s2-ext-unit-header"><span class="s2-ext-unit-name">'+n+'</span><select class="s2-ext-unit-dropdown" >';for(var ei=0;ei<this._EF.length;ei++){var sel=this._EF[ei]===f?' selected':'';h+='<option value="'+this._EF[ei]+'"'+sel+'>'+(this._F[this._EF[ei]]||this._EF[ei])+'</option>';}h+='</select><button class="s2-ext-unit-remove" title="移除此单元">✖</button></div>';h+='<div class="s2-ext-unit-body"><button class="s2-ext-unit-addword">+ 选词</button>';if(v){h+='<span class="s2-ext-unit-tag">'+App._escape(v.length>12?v.substring(0,12)+'..':v)+'</span>';}h+='</div></div>';return h;};
-    App.seedanceV2.addExtUnit=function(sid){for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){var sc=this.scenes[i];if(!sc._extUnits)sc._extUnits=this._initExtUnits(sc);var used={};for(var j=0;j<sc._extUnits.length;j++)used[sc._extUnits[j].field]=true;var next=null;for(var k=0;k<this._EF.length;k++){if(!used[this._EF[k]]){next=this._EF[k];break;}}if(!next){App.showToast('所有拓展字段已添加','info');return;}sc._extUnits.push({field:next});this.renderScenes();return;}}};
-    App.seedanceV2.removeExtUnit=function(sid,idx){for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){var unit=this.scenes[i]._extUnits[idx];if(!unit)return;var f=unit.field;this.scenes[i][f]='';this.updateSceneField(sid,f,'');this.scenes[i]._extUnits.splice(idx,1);if(this.scenes[i]._extUnits.length===0)this.scenes[i]._extUnits.push({field:this._EF[0]});this.renderScenes();return;}}};
-    App.seedanceV2._extUnitChange=function(sid,idx,newField){for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){var unit=this.scenes[i]._extUnits[idx];var oldField=unit.field;if(oldField===newField)return;this.scenes[i][oldField]='';this.updateSceneField(sid,oldField,'');unit.field=newField;this.renderScenes();return;}}};
+    App.seedanceV2._initExtUnits=function(scene){var units=[];for(var i=0;i<this._EF.length;i++){var v=scene[this._EF[i]];if(v!==undefined&&v!==null&&v!=='')units.push({field:this._EF[i]});}return units;};
+    App.seedanceV2._renderExtUnitHTML=function(scene,idx){var unit=scene._extUnits[idx];var f=unit.field;var n=this._F[f]||f;var v=scene[f]||'';var h='<div class="s2-ext-unit" data-scene-id="'+scene.id+'" data-ext-idx="'+idx+'">';h+='<div class="s2-ext-unit-header"><span class="s2-ext-unit-name">'+n+'</span><select class="s2-ext-unit-dropdown" >';for(var ei=0;ei<this._EF.length;ei++){var sel=this._EF[ei]===f?' selected':'';h+='<option value="'+this._EF[ei]+'"'+sel+'>'+(this._F[this._EF[ei]]||this._EF[ei])+'</option>';}h+='</select><button class="s2-ext-unit-remove" title="移除此单元">✖</button></div>';h+='<div class="s2-ext-unit-body"><button class="s2-ext-unit-addword">+ 选词</button>';if(v&&v.trim()){h+='<span class="s2-ext-unit-tag">'+App._escape(v.length>12?v.substring(0,12)+'..':v)+'</span>';}else if(v===' '){h+='<span class="s2-ext-unit-tag" style="color:#94a3b8;">点击选词</span>';}h+='</div></div>';return h;};
+    App.seedanceV2.addExtUnit=function(sid){for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){var sc=this.scenes[i];if(!sc._extUnits)sc._extUnits=[];var used={};for(var j=0;j<sc._extUnits.length;j++)used[sc._extUnits[j].field]=true;var next=null;for(var k=0;k<this._EF.length;k++){if(!used[this._EF[k]]){next=this._EF[k];break;}}if(!next){App.showToast('所有拓展字段已添加','info');return;}sc._extUnits.push({field:next});sc[next]=' ';this.updateSceneField(sid,next,' ');this.renderScenes();return;}}};
+    App.seedanceV2.removeExtUnit=function(sid,idx){for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){var unit=this.scenes[i]._extUnits[idx];if(!unit)return;var f=unit.field;this.scenes[i][f]='';this.updateSceneField(sid,f,'');this.scenes[i]._extUnits.splice(idx,1);this.renderScenes();return;}}};
+    App.seedanceV2._extUnitChange=function(sid,idx,newField){for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){var unit=this.scenes[i]._extUnits[idx];var oldField=unit.field;if(oldField===newField)return;this.scenes[i][oldField]='';this.updateSceneField(sid,oldField,'');unit.field=newField;this.scenes[i][newField]=' ';this.updateSceneField(sid,newField,' ');this.renderScenes();return;}}};
 App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnlocked(sid)){App.showToast('最后一个未锁定镜头不可手动锁定时长','warning');return;}App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sid+'/lock',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({locked:true})}).then(function(){return App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+sid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:v})});}).then(function(){self.openProject(self.currentProjectId);}).catch(function(e){console.warn("_doSetDuration error",e);});};
     App.seedanceV2.showRemainingChoice=function(sid,v,rem,hideDirectLock){
         var o=document.getElementById('s2RemainingModal');if(o)o.remove();
@@ -246,13 +246,106 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
     App.seedanceV2.toggleMoreLibs=function(){this.moreLibsOpen=!this.moreLibsOpen;this.renderPickerLibTabs(this.activePickerLibId);};
     App.seedanceV2.switchPickerLib=async function(libId){if(libId===this.activePickerLibId)return;this.activePickerLibId=libId;var lib=this.getLibraryById(libId);if(!lib)return;this.activeField=this._dimToFieldKey(lib.dimension_key);document.getElementById('s2PickerTitle').textContent='✏️ 镜头'+this._getSceneOrder(this.activeSceneId)+' - '+lib.dimension_name;document.getElementById('s2PickerSearch').value='';this.renderPickerLibTabs(libId);await this.loadCards(libId);this.renderCards(libId);};
     App.seedanceV2.loadCards=async function(libId){if(this.cardCache[libId])return;var d=await App.fetchJSON('/api/seedance/v2/libraries/'+libId+'/cards?page_size=200');if(d)this.cardCache[libId]=d.items;};
+
+    // ============ 画风词库选取器 ============
+    App.seedanceV2._stylesData = null;
+    App.seedanceV2.openStylePicker = async function() {
+        if (!this._stylesData) {
+            var d = await App.fetchJSON('/api/seedance/styles');
+            if (d && d.categories) this._stylesData = d.categories;
+        }
+        var categories = this._stylesData || [];
+        var overlay = document.createElement('div');
+        overlay.id = 's2StylePicker';
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'display:flex;z-index:800;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
+        overlay.onclick = function(e) { if (e.target === this) this.remove(); };
+        var h = '<div class="modal-content" style="max-width:700px;max-height:80vh;overflow-y:auto;">';
+        h += '<div class="modal-header"><h5>📚 画风词库</h5><button class="header-btn-sm" onclick="this.closest(\'#s2StylePicker\').remove()">&times;</button></div>';
+        h += '<div class="modal-body">';
+        for (var ci = 0; ci < categories.length; ci++) {
+            var cat = categories[ci];
+            h += '<div class="s2-style-category" style="margin-bottom:16px;">';
+            h += '<div class="s2-style-cat-title" style="font-weight:600;font-size:14px;margin-bottom:8px;">' + cat.icon + ' ' + cat.name + '</div>';
+            h += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+            for (var si = 0; si < cat.styles.length; si++) {
+                var st = cat.styles[si];
+                h += '<span class="s2-style-chip" data-prompt="' + App._escape(st.prompt) + '" onclick="App.seedanceV2._selectStyle(\'' + App._escape(st.prompt) + '\',\'' + App._escape(st.name) + '\')" style="cursor:pointer;padding:4px 10px;border-radius:12px;border:1px solid var(--border-color,#d1d5db);font-size:12px;background:var(--bg-card,#fff);">' + st.name + '</span>';
+            }
+            h += '</div></div>';
+        }
+        h += '</div></div>';
+        overlay.innerHTML = h;
+        document.body.appendChild(overlay);
+    };
+
+    App.seedanceV2._selectStyle = function(prompt, name) {
+        var inp = document.getElementById('s2_global_style');
+        if (inp) {
+            inp.value = prompt;
+            App.seedanceV2.setDirty();
+            App.seedanceV2.compose();
+        }
+        var picker = document.getElementById('s2StylePicker');
+        if (picker) picker.remove();
+        App.showToast('已选择画风: ' + name, 'success');
+    };
+
+    // ============ 负面提示词选取器 ============
+    App.seedanceV2._negativeData = null;
+    App.seedanceV2.openNegativePicker = async function() {
+        if (!this._negativeData) {
+            var d = await App.fetchJSON('/api/seedance/negative-prompts');
+            if (d && d.categories) this._negativeData = d.categories;
+        }
+        var categories = this._negativeData || [];
+        var overlay = document.createElement('div');
+        overlay.id = 's2NegativePicker';
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'display:flex;z-index:800;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
+        overlay.onclick = function(e) { if (e.target === this) this.remove(); };
+        var h = '<div class="modal-content" style="max-width:700px;max-height:80vh;overflow-y:auto;">';
+        h += '<div class="modal-header"><h5>🚫 负面提示词词库</h5><button class="header-btn-sm" onclick="this.closest(\'#s2NegativePicker\').remove()">&times;</button></div>';
+        h += '<div class="modal-body">';
+        h += '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">点击条目将完整提示词追加到负面提示词输入框中</p>';
+        for (var ci = 0; ci < categories.length; ci++) {
+            var cat = categories[ci];
+            h += '<div class="s2-style-category" style="margin-bottom:16px;">';
+            h += '<div class="s2-style-cat-title" style="font-weight:600;font-size:14px;margin-bottom:8px;">' + cat.icon + ' ' + cat.name + '</div>';
+            h += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+            for (var si = 0; si < cat.items.length; si++) {
+                var it = cat.items[si];
+                h += '<span class="s2-style-chip" onclick="App.seedanceV2._selectNegative(\'' + App._escape(it.prompt) + '\',\'' + App._escape(it.name) + '\')" style="cursor:pointer;padding:4px 10px;border-radius:12px;border:1px solid var(--border-color,#d1d5db);font-size:12px;background:var(--bg-card,#fff);">' + it.name + '</span>';
+            }
+            h += '</div></div>';
+        }
+        h += '</div></div>';
+        overlay.innerHTML = h;
+        document.body.appendChild(overlay);
+    };
+
+    App.seedanceV2._selectNegative = function(prompt, name) {
+        var inp = document.getElementById('s2_negative_prompt');
+        if (inp) {
+            if (inp.value.trim()) {
+                inp.value = inp.value.trim() + ', ' + prompt;
+            } else {
+                inp.value = prompt;
+            }
+            App.seedanceV2.setDirty();
+            App.seedanceV2.compose();
+        }
+        var picker = document.getElementById('s2NegativePicker');
+        if (picker) picker.remove();
+        App.showToast('已添加负面词: ' + name, 'success');
+    };
     App.seedanceV2.closePicker=async function(){var p=document.getElementById('s2CardPicker');if(p)p.style.display='none';if(this.currentProjectId){await this.openProject(this.currentProjectId);this.compose();}};
     App.seedanceV2.openCardPicker=async function(sid,f){this.activeSceneId=sid;this.activeField=f;var lib=this.getLibraryByKey(f)||this.getLibraryByKey(this._fieldToDim[f]);if(!lib){App.showToast('未找到词库: '+f,'error');return;}var o=document.getElementById('s2CardPicker');if(!o)return;o.style.display='block';document.getElementById('s2PickerTitle').textContent='✏️ 镜头'+this._getSceneOrder(sid)+' - '+lib.dimension_name;document.getElementById('s2PickerSearch').value='';document.getElementById('s2PickerSearch').focus();this.activePickerLibId=lib.id;this.renderPickerLibTabs(lib.id);await this.loadCards(lib.id);this.renderCards(lib.id);};
     App.seedanceV2.renderCards=function(libId){var c=document.getElementById('s2PickerCards');var cards=this.cardCache[libId]||[];var search=(document.getElementById('s2PickerSearch').value||'').toLowerCase();var lib=this.getLibraryById(libId);var scene=this._getCurrentScene();var currentVal='';if(lib&&scene){var fk=this._dimToFieldKey(lib.dimension_key);currentVal=scene[fk]||'';}var filtered=search?cards.filter(function(card){return card.word_text.toLowerCase().indexOf(search)>=0||(card.definition&&card.definition.toLowerCase().indexOf(search)>=0);}):cards;if(!filtered.length&&!search){c.innerHTML='<div class=\"s2-picker-empty\">暂无词条</div>';}else if(!filtered.length&&search){c.innerHTML='<div class=\"s2-picker-empty\">无匹配词条</div>';}if(filtered.length){var h='';for(var i=0;i<filtered.length;i++){var card=filtered[i];var sel=this._textMatches(currentVal,card.word_text)?' s2-picker-card-selected':'';h+='<div class=\"s2-picker-card'+sel+'\" onclick=\"App.seedanceV2.selectCard('+card.id+')\"><div class=\"s2-picker-word\">'+App._escape(card.word_text)+(sel?' <span class=\"sp-selected-badge\">\u2713 已选</span>':'')+'</div>'+(card.definition?'<div class=\"s2-picker-def\">'+App._escape(card.definition)+'</div>':'')+'<div class=\"s2-picker-usage\">使用 '+(card.usage_count||0)+' 次</div></div>';}c.innerHTML=h;}if(lib&&lib.category==='custom'){var addHtml='<div class=\"s2-picker-custom-add\"><input id=\"s2CustomWordInput_'+libId+'\" class=\"modal-input\" placeholder=\"输入自定义词条...\" style=\"flex:1;margin:0;font-size:13px;\"><input id=\"s2CustomWordDef_'+libId+'\" class=\"modal-input\" placeholder=\"释义(可选)\" style=\"flex:1;margin:0;font-size:13px;\"><button class=\"btn btn-sm btn-primary\" onclick=\"App.seedanceV2.onCustomLibAddWord('+libId+')\" style=\"white-space:nowrap;\">＋ 添加</button></div>';c.insertAdjacentHTML('beforeend',addHtml);}c.insertAdjacentHTML('beforeend','<div class=\"s2-picker-custom\" onclick=\"App.seedanceV2.customInput()\">\u270f\ufe0f 手动输入...</div>');};App.seedanceV2.selectCard=async function(cardId){var d=await App.fetchJSON('/api/seedance/v2/cards/'+cardId);if(!d||!d.card)return;var currentVal='';var scene=this._getCurrentScene();if(scene)currentVal=scene[this.activeField]||'';var isSame=this._textMatches(currentVal,d.card.word_text);if(isSame){await this.updateSceneField(this.activeSceneId,this.activeField,'');await this.openProject(this.currentProjectId);this.renderPickerLibTabs(this.activePickerLibId);this.renderCards(this.activePickerLibId);App.showToast('已取消: '+d.card.word_text,'info');}else{await this.updateSceneField(this.activeSceneId,this.activeField,d.card.word_text);await this.openProject(this.currentProjectId);this.renderPickerLibTabs(this.activePickerLibId);this.renderCards(this.activePickerLibId);App.showToast('已选择: '+d.card.word_text,'success');}};
     App.seedanceV2.customInput=function(){var f=this.activeField;var lib=this.getLibraryByKey(f);var v=prompt('输入自定义 '+(lib?lib.dimension_name:f)+' 描述:');if(!v||!v.trim())return;var self=this;var fu=function(){if(lib)App.fetchJSON('/api/seedance/v2/custom-words',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({library_id:lib.id,word_text:v.trim()})});self.updateSceneField(self.activeSceneId,f,v.trim()).then(function(){return self.openProject(self.currentProjectId);}).then(function(){self.renderPickerLibTabs(self.activePickerLibId);self.renderCards(self.activePickerLibId);App.showToast('已设定: '+v.trim(),'success');});};fu();};
 
     // 拼接引擎
-    App.seedanceV2.compose=function(){var p=this.currentProject;if(!p||!this.scenes.length){var o=document.getElementById('s2Output');if(o)o.value='';return;}var lines=[],hd=[];var ar=p.aspect_ratio||'16:9',res=p.resolution||'4K';if(ar==='16:9')hd.push('横屏'+res);else if(ar==='9:16')hd.push('竖屏'+res);else if(ar==='1:1')hd.push('方形'+res);else if(ar==='2.35:1')hd.push('电影宽屏'+res);else hd.push(ar+' '+res);if(p.global_style)hd.push(p.global_style);hd.push(p.total_duration+'s');if(p.global_transition)hd.push(p.global_transition);if(p.negative_prompt)lines.push('[NEGATIVE] '+p.negative_prompt);this.outputJson={header:hd.join(','),scenes:[]};for(var i=0;i<this.scenes.length;i++){var sc=this.scenes[i];var st=parseInt(sc.start_time),et=parseInt(sc.end_time);var sl=st+'-'+et+'s';var parts=[];if(sc.camera_move)parts.push(sc.camera_move);if(sc.subject)parts.push(sc.subject);if(sc.scene_desc)parts.push(sc.scene_desc);if(sc.composition)parts.push(sc.composition);if(sc.lighting)parts.push(sc.lighting);if(sc.action)parts.push(sc.action);if(sc.focal_length)parts.push(sc.focal_length);if(sc.texture)parts.push(sc.texture);if(sc.speed)parts.push(sc.speed);if(sc.emotion)parts.push(sc.emotion);if(sc.perspective)parts.push(sc.perspective);if(sc.color_grade)parts.push(sc.color_grade);if(sc.particles)parts.push(sc.particles);if(sc.weather)parts.push(sc.weather);if(sc.natural_force)parts.push(sc.natural_force);if(sc.environment_detail)parts.push(sc.environment_detail);if(sc.depth_of_field)parts.push(sc.depth_of_field);if(sc.filter)parts.push(sc.filter);if(sc.film_flaw)parts.push(sc.film_flaw);if(sc.fantasy_physics)parts.push(sc.fantasy_physics);if(parts.length)sl+=': '+parts.join(',');lines.push(sl);this.outputJson.scenes.push({time:st+'-'+et+'s',fields:parts});}var output='['+hd.join(',')+']\n'+lines.join('\n');this.outputText=output;var o=document.getElementById('s2Output');if(o)o.value=output;};
+    App.seedanceV2.compose=function(){var p=this.currentProject;if(!p||!this.scenes.length){var o=document.getElementById('s2Output');if(o)o.value='';return;}var lines=[],hd=[];var ar=p.aspect_ratio||'16:9',res=p.resolution||'1080p';if(ar==='16:9')hd.push('横屏'+res);else if(ar==='9:16')hd.push('竖屏'+res);else if(ar==='1:1')hd.push('方形'+res);else if(ar==='21:9')hd.push('超宽'+res);else if(ar==='4:3')hd.push('方屏'+res);else if(ar==='3:4')hd.push('竖屏3:4 '+res);else if(ar==='2.35:1')hd.push('超宽'+res);else hd.push(ar+' '+res);try{var gsEl=document.getElementById('s2_global_style');if(gsEl&&gsEl.value.trim())hd.push(gsEl.value.trim());else if(p.global_style)hd.push(p.global_style);}catch(e){}hd.push(p.total_duration+'s');try{var gtEl=document.getElementById('s2_global_transition');if(gtEl&&gtEl.value.trim())hd.push(gtEl.value.trim());else if(p.global_transition)hd.push(p.global_transition);}catch(e){}try{var npEl=document.getElementById('s2_negative_prompt');if(npEl&&npEl.value.trim())lines.push('[NEGATIVE] '+npEl.value.trim());else if(p.negative_prompt)lines.push('[NEGATIVE] '+p.negative_prompt);}catch(e){}this.outputJson={header:hd.join(','),scenes:[]};for(var i=0;i<this.scenes.length;i++){var sc=this.scenes[i];var st=parseInt(sc.start_time),et=parseInt(sc.end_time);var sl=st+'-'+et+'s';var parts=[];if(sc.camera_move)parts.push(sc.camera_move);if(sc.subject)parts.push(sc.subject);if(sc.scene_desc)parts.push(sc.scene_desc);if(sc.composition)parts.push(sc.composition);if(sc.lighting)parts.push(sc.lighting);if(sc.action)parts.push(sc.action);if(sc.focal_length)parts.push(sc.focal_length);if(sc.texture)parts.push(sc.texture);if(sc.speed)parts.push(sc.speed);if(sc.emotion)parts.push(sc.emotion);if(sc.perspective)parts.push(sc.perspective);if(sc.color_grade)parts.push(sc.color_grade);if(sc.particles)parts.push(sc.particles);if(sc.weather)parts.push(sc.weather);if(sc.natural_force)parts.push(sc.natural_force);if(sc.environment_detail)parts.push(sc.environment_detail);if(sc.depth_of_field)parts.push(sc.depth_of_field);if(sc.filter)parts.push(sc.filter);if(sc.film_flaw)parts.push(sc.film_flaw);if(sc.fantasy_physics)parts.push(sc.fantasy_physics);if(parts.length)sl+=': '+parts.join(',');lines.push(sl);this.outputJson.scenes.push({time:st+'-'+et+'s',fields:parts});}var output='['+hd.join(',')+']\n'+lines.join('\n');this.outputText=output;var o=document.getElementById('s2Output');if(o)o.value=output;};
     App.seedanceV2.copyText=function(){var el=document.getElementById('s2Output');if(!el||!el.value){App.showToast('无输出可复制','warning');return;}navigator.clipboard.writeText(el.value).then(function(){App.showToast('提示词已复制','success');});};
     App.seedanceV2.copyJSON=function(){if(!this.outputJson){App.showToast('无数据可复制','warning');return;}navigator.clipboard.writeText(JSON.stringify(this.outputJson,null,2)).then(function(){App.showToast('JSON已复制','success');});};
     App.seedanceV2.copyLibTV=function(){var t=this.outputText||'';if(!t){App.showToast('无输出可复制','warning');return;}window.open('https://libtv.ai/create?prompt='+encodeURIComponent(t),'_blank');};

@@ -424,6 +424,57 @@ def init_db():
             );
         """)
 
+        # ========== Phase 1: 统一提示词卡 + 词库资产库 ==========
+        conn.executescript("""
+            -- 核心提示词卡表 (统一生图/生视频)
+            CREATE TABLE IF NOT EXISTS prompt_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_type TEXT NOT NULL DEFAULT 'image',
+                name TEXT DEFAULT '',
+                content TEXT NOT NULL DEFAULT '',
+                meaning TEXT DEFAULT '',
+                scene TEXT DEFAULT '',
+                module TEXT NOT NULL DEFAULT 'custom',
+                category TEXT DEFAULT '',
+                tags TEXT DEFAULT '[]',
+                structured_fields TEXT DEFAULT '{}',
+                version INTEGER DEFAULT 1,
+                parent_card_id INTEGER DEFAULT NULL,
+                library_refs TEXT DEFAULT '[]',
+                usage_count INTEGER DEFAULT 0,
+                is_builtin INTEGER DEFAULT 0,
+                is_deleted INTEGER DEFAULT 0,
+                deleted_at TEXT DEFAULT NULL,
+                created_at TEXT DEFAULT (datetime('now','localtime')),
+                updated_at TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (parent_card_id) REFERENCES prompt_cards(id)
+            );
+
+            -- 统一词库资产表
+            CREATE TABLE IF NOT EXISTS library_assets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lib_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                icon TEXT DEFAULT '',
+                category TEXT DEFAULT '',
+                prompt TEXT DEFAULT '',
+                definition TEXT DEFAULT '',
+                tags TEXT DEFAULT '[]',
+                usage_count INTEGER DEFAULT 0,
+                is_builtin INTEGER DEFAULT 0,
+                sort_order INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now','localtime')),
+                updated_at TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- 索引
+            CREATE INDEX IF NOT EXISTS idx_prompt_cards_type ON prompt_cards(card_type);
+            CREATE INDEX IF NOT EXISTS idx_prompt_cards_module ON prompt_cards(module);
+            CREATE INDEX IF NOT EXISTS idx_prompt_cards_deleted ON prompt_cards(is_deleted);
+            CREATE INDEX IF NOT EXISTS idx_library_assets_type ON library_assets(lib_type);
+            CREATE INDEX IF NOT EXISTS idx_library_assets_builtin ON library_assets(is_builtin);
+        """)
+
         conn.commit()
     except sqlite3.Error as e:
         print("[数据库] 建表失败:", e)

@@ -28,6 +28,8 @@ from api.templates import router as templates_router
 from api.workflow import router as workflow_router
 from api.comfyui import router as comfyui_router
 from api.ocr import router as ocr_router
+from api.cards import router as cards_v4_router
+from api.composer_v3 import router as composer_v3_router
 from api.translate import router as translate_router
 from api.media import router as media_router
 from api.seedance_v2 import router as seedance_v2_router
@@ -127,6 +129,8 @@ app.include_router(templates_router)
 app.include_router(workflow_router)
 app.include_router(comfyui_router)
 app.include_router(ocr_router)
+app.include_router(cards_v4_router)
+app.include_router(composer_v3_router)
 app.include_router(translate_router)
 app.include_router(media_router)
 app.include_router(seedance_v2_router)
@@ -230,7 +234,16 @@ def get_status():
         db = get_db()
         total = db.execute("SELECT COUNT(*) as cnt FROM prompts").fetchone()["cnt"]
         usage = db.execute("SELECT SUM(usage_count) as cnt FROM prompts").fetchone()["cnt"] or 0
-        return {"status": "running", "total_prompts": total, "total_usage": usage, "version": "3.0.0"}
+        cards = db.execute("SELECT COUNT(*) as cnt FROM prompt_cards WHERE is_deleted=0").fetchone()["cnt"]
+        libs = db.execute("SELECT COUNT(*) as cnt FROM library_assets").fetchone()["cnt"]
+        return {
+            "status": "running",
+            "total_prompts": total,
+            "total_usage": usage,
+            "total_cards": cards,
+            "total_library_assets": libs,
+            "version": "4.0.0"
+        }
     except Exception as e:
         print("[状态] 查询失败:", e)
         return {"status": "degraded", "error": str(e), "version": "3.0.0"}

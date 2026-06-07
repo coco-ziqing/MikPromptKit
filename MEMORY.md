@@ -2,7 +2,7 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit)
-- 版本：v3.10.24 (2026-06-04 备份快照，待Git打标)
+- 版本：v3.10.30 (2026-06-07 组装器修复+词库)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\start.bat` **推荐: `.\QUICK_START.bat`**
 - 默认端口：8080
@@ -26,7 +26,11 @@
 - 收藏分组：2 / 词包：1
 
 ## Git Tag 节点
-- `v3.10.24` — 会话关闭前完整备份快照 (2026-06-04) [待打标]
+- `v4.0.0-phase4` — Phase 4: Home视图v4数据源 + 结构化字段编辑 + 版本管理 + 回滚API (2026-06-07)
+- `v4.0.0-phase3` — Phase 3: 统一卡片详情弹窗 + 跨表搜索 (2026-06-07)
+- `v4.0.0-phase2` — Phase 2: 词库增强 + 媒体资产管理面板 (2026-06-07)
+- `v4.0.0-phase1` — Phase 1: prompt_cards + library_assets 统一表结构, 数据迁移, 统一API v4 (2026-06-07)：防重复渲染bug + 画风/负面词库API+选取器 + 输出预览实时刷新 + 全局默认值持久化 + 画幅分辨率参数修正 + UI精简 (2026-06-07)
+- `v3.10.24` — 会话关闭前完整备份快照 (2026-06-04)
 - `v3.10.23` — 非编辑模式禁用拖入导入功能 (2026-06-03)
 - `v3.10.22` — PNG拖拽导入失败修复 — File流被预览消耗后无法复用
 - `v3.10.21` — 拖入缩略图区域替换+Ctrl+Z撤销
@@ -195,10 +199,16 @@ prompt-tool-dev/
 └── 开发需求/                     # 需求文档
 ```
 
-## 后端 API 总数：110+
+## 后端 API 总数：120+
 | 端点 | 功能 |
 |------|------|
-| `GET /api/status` | 服务状态 |
+| `GET /api/status` | 服务状态（含cards/library统计）|
+| `GET /api/v4/cards` | 统一提示词卡列表（搜索+类型/模块/分类筛选）|
+| `POST/PUT/DELETE /api/v4/cards/{id}` | 提示词卡创建/编辑/删除 |
+| `GET /api/v4/library` | 统一词库资产列表（类型/分类筛选）|
+| `GET/POST/PUT/DELETE /api/v4/library/{id}` | 词库条目 CRUD |
+| `GET /api/v4/library/types` | 词库类型统计 |
+| `GET /api/v4/library/categories` | 词库分类列表 |
 | `GET /api/modules` / `categories` | 模块/分类列表 |
 | `GET /api/prompts` | 搜索+筛选+分页+收藏归属 |
 | `POST/PUT/DELETE /api/prompts/{id}` | 创建/编辑/删除 |
@@ -229,14 +239,28 @@ prompt-tool-dev/
 - Tailscale 作为备用通道
 - 当前内网IP：192.168.0.103
 
+## 架构升级规划
+- 完整方案: `memory/ARCHITECTURE_PLAN_v4.md`
+- 核心理念：提示词卡作为系统基础数据单元
+- 5 个 Phase：数据结构重构 → 词库统一 → 媒体资产管理统一 → 高级功能重建 → 导入导出标准化
+- 下次会话优先启动 Phase 1：prompt_cards 表 + 迁移脚本
+
+## 已安装 ClawHub 技能
+- `page-builder` — WebUI 页面生成
+- `api-tester` — API 测试
+- `log-analyzer` — 日志分析
+- `bug-fixer` — Bug 修复
+
 ## 会话关闭备忘（2026-06-04 09:38）
 本次关闭前已完成以下操作：
 1. ✅ 数据库 WAL checkpoint 合并（WAL 已清除）
-2. ✅ `.pkb` 完整备份创建（784MB，含所有媒体 + manifest）
-3. ✅ `PROJECT_SUMMARY.md` 写入（完整项目快照）
-4. ✅ `QUICK_START.bat` 创建（快捷启动脚本）
-5. ✅ `MEMORY.md` 更新（最新数据统计 + 目录结构修正）
-6. ✅ 媒体文件统计确认（缩略图287/原图236/视频23）
+2. ✅ Git 打标 v4.0.0-phase1
+3. ✅ 项目统计更新: prompt_cards 189条 / library_assets 131条
+4. ✅ MEMORY.md + ARCHITECTURE_PLAN_v4.md 更新
+
+## 已安装技能与备忘
+- 已安装 ClawHub 技能: page-builder, api-tester, log-analyzer, bug-fixer
+- 下次打开请确认新 API `/api/v4/*` 可用，浏览前端兼容性
 
 下次打开后请执行：
 1. 读取 `PROJECT_SUMMARY.md` + `MEMORY.md` + `HEARTBEAT.md` 恢复上下文
