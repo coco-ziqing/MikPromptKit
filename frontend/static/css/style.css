@@ -1478,11 +1478,11 @@ body.dark-theme .s2-project-del:hover { background: rgba(239,68,68,0.15); }
 .s2-empty { text-align: center; padding: 30px 10px; color: var(--text-muted); font-size: 13px; }
 
 /* 编辑器 */
-.s2-editor-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.s2-editor-title { flex: 1; }
-.s2-title-input { font-size: 18px; font-weight: 700; border: none; background: transparent; color: var(--text-main); width: 100%; }
+.s2-editor-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; padding: 8px 12px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; }
+.s2-editor-title { flex: 1; min-width: 0; }
+.s2-title-input { font-size: 16px; font-weight: 700; border: none; background: transparent; color: var(--text-main); width: 100%; padding: 4px 0; }
 .s2-title-input:focus { outline: none; border-bottom: 2px solid var(--primary); }
-.s2-editor-actions { display: flex; gap: 6px; }
+.s2-editor-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
 /* 空状态 */
 .s2-empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
