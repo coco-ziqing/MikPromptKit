@@ -77,7 +77,7 @@ def create_composer_project(data: dict):
         
         # 3. 结构化字段映射到场景字段
         scene_data = {v: '' for v in [
-            'camera_move','subject','scene_desc','composition','lighting','action',
+            'camera_move','subject','scene_desc','shot_scale','composition','lighting','action',
             'focal_length','texture','speed','emotion','color_grade','weather',
             'particles','perspective','depth_of_field','filter','natural_force',
             'environment_detail','film_flaw','fantasy_physics'
@@ -104,15 +104,15 @@ def create_composer_project(data: dict):
         db.execute("""
             INSERT INTO user_project_scene
                 (project_id, scene_order, start_time, end_time,
-                 camera_move, subject, scene_desc, composition, lighting,
+                 camera_move, subject, scene_desc, shot_scale, composition, lighting,
                  action, focal_length, texture, speed, emotion, color_grade,
                  weather, particles, perspective, depth_of_field, filter,
                  natural_force, environment_detail, film_flaw, fantasy_physics)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             project_id, order + 1, start_time, end_time,
             scene_data['camera_move'], scene_data['subject'], scene_data['scene_desc'],
-            scene_data['composition'], scene_data['lighting'], scene_data['action'],
+            scene_data['shot_scale'], scene_data['composition'], scene_data['lighting'], scene_data['action'],
             scene_data['focal_length'], scene_data['texture'], scene_data['speed'],
             scene_data['emotion'], scene_data['color_grade'], scene_data['weather'],
             scene_data['particles'], scene_data['perspective'], scene_data['depth_of_field'],
@@ -203,7 +203,7 @@ def compose_project(project_id: int):
         
         parts = []
         field_keys = [
-            'camera_move','subject','scene_desc','composition','lighting',
+            'camera_move','subject','scene_desc','shot_scale','composition','lighting',
             'action','focal_length','texture','speed','emotion','perspective',
             'color_grade','particles','weather','natural_force','environment_detail',
             'depth_of_field','filter','film_flaw','fantasy_physics'

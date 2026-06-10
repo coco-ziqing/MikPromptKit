@@ -235,6 +235,10 @@ def init_db():
         except Exception:
             pass
         try:
+            conn.execute("ALTER TABLE user_project_scene ADD COLUMN shot_scale TEXT DEFAULT ''")
+        except:
+            pass
+        try:
             conn.execute("ALTER TABLE prompt_videos ADD COLUMN height INTEGER DEFAULT 0")
         except Exception:
             pass
@@ -383,6 +387,7 @@ def init_db():
                 camera_move TEXT DEFAULT '',
                 subject TEXT DEFAULT '',
                 scene_desc TEXT DEFAULT '',
+                shot_scale TEXT DEFAULT '',
                 composition TEXT DEFAULT '',
                 lighting TEXT DEFAULT '',
                 focal_length TEXT DEFAULT '',
