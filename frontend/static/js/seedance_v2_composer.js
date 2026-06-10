@@ -269,6 +269,18 @@
         var h='<div class="s2-project-header"><h5>📋 我的项目</h5><div class="s2-header-actions"><button class="btn btn-sm btn-danger s2-batch-del-btn" id="s2BatchDelHeader" onclick="App.seedanceV2.batchDeleteProjects()" style="display:none;">🗑 批量删除</button><button class="btn btn-sm btn-primary" onclick="App.seedanceV2.createProject()">+ 新建</button></div></div>';
         if(!this.projects.length){h+='<div class="s2-empty">暂无项目，点击新建开始</div>';} else{for(var i=0;i<this.projects.length;i++){var p=this.projects[i],a=p.id===this.currentProjectId?' s2-project-active':'';h+='<div class="s2-project-item'+a+'" data-pid="'+p.id+'"><label class="s2-project-check-wrap" onclick="event.stopPropagation()"><input type="checkbox" class="s2-project-check" data-pid="'+p.id+'" onchange="App.seedanceV2.toggleBatchDelete()"></label><div class="s2-project-info" onclick="App.seedanceV2.openProject('+p.id+')"><div class="s2-project-name">'+App._escape(p.name||'未命名')+'</div><div class="s2-project-meta">'+p.scene_count+'镜头 \u00b7 '+(p.total_duration||15)+'s</div></div><button class="s2-project-del" onclick="event.stopPropagation();App.seedanceV2.showProjectDelPopover(this,'+p.id+')">\u2716</button></div>';}}
         c.innerHTML=h;
+        var self = this;
+        document.querySelectorAll('.s2-project-name').forEach(function(el) {
+            el.addEventListener('dblclick', async function(e) {
+                e.stopPropagation();
+                var pid = parseInt(this.closest('.s2-project-item').dataset.pid);
+                var oldName = this.textContent.trim();
+                var newName = prompt('编辑项目名称：', oldName);
+                if (newName && newName.trim() && newName.trim() !== oldName) {
+                    await self._renameProject(pid, newName.trim());
+                }
+            });
+        });
     };
 
     // 编辑器
