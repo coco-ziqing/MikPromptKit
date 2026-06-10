@@ -406,7 +406,7 @@
             document.querySelectorAll('.s2-drag-handle').forEach(function(el){el.addEventListener('dragstart',function(e){var card=this.closest('.s2-scene-card');if(!card)return;e.dataTransfer.setData('text/plain',card.dataset.sceneId);card.classList.add('s2-dragging');});el.addEventListener('dragend',function(e){var card=this.closest('.s2-scene-card');if(card)card.classList.remove('s2-dragging');});});
             document.querySelectorAll('.s2-del-btn').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var pv=document.getElementById('s2GlobalDelPop');if(!pv)return;var sid=this.dataset.sceneId,r=this.getBoundingClientRect();pv.dataset.sceneId=sid;pv.style.position='fixed';pv.style.left=Math.max(4,r.left-140)+'px';pv.style.top=(r.bottom+4)+'px';pv.style.display='flex';});});
             document.addEventListener('click',function(e){if(!e.target.closest('.s2-del-btn')&&!e.target.closest('.s2-global-del-popover')){var p=document.getElementById('s2GlobalDelPop');if(p)p.style.display='none';}});
-            var ct=document.getElementById('s2ScenesContainer');if(ct&&!ct.dataset.dragBound){ct.dataset.dragBound='1';var dt=null;ct.addEventListener('dragover',function(e){e.preventDefault();var card=e.target.closest('.s2-scene-card');if(card){document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over');});card.classList.add('s2-drag-over');dt=card;}});ct.addEventListener('drop',function(e){e.preventDefault();document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over','s2-dragging');});var src=parseInt(e.dataTransfer.getData('text/plain'));if(!dt)return;var tgt=parseInt(dt.dataset.sceneId);if(src===tgt)return;self.reorderScenes(src,tgt);dt=null;});ct.addEventListener('dragleave',function(e){setTimeout(function(){document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over');});},100);});}
+            var ct=document.getElementById('s2ScenesContainer');if(ct&&!ct.dataset.dragBound){ct.dataset.dragBound='1';var dt=null;ct.addEventListener('dragover',function(e){e.preventDefault();if(e.dataTransfer.files&&e.dataTransfer.files.length){var card=e.target.closest('.s2-scene-card');if(card){document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over');});card.classList.add('s2-drag-over');card.classList.add('s2-file-over');dt=card;}}else{var card=e.target.closest('.s2-scene-card');if(card){document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over');});card.classList.add('s2-drag-over');dt=card;}}});ct.addEventListener('drop',function(e){e.preventDefault();document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over','s2-dragging','s2-file-over');});var files=e.dataTransfer.files;if(files&&files.length){var tgtCard=e.target.closest('.s2-scene-card');if(!tgtCard)return;var sid=parseInt(tgtCard.dataset.sceneId);if(!sid)return;self._handleFileDrop(files[0],sid);return;}var src=parseInt(e.dataTransfer.getData('text/plain'));if(!dt)return;var tgt=parseInt(dt.dataset.sceneId);if(src===tgt)return;self.reorderScenes(src,tgt);dt=null;});ct.addEventListener('dragleave',function(e){setTimeout(function(){document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over','s2-file-over');});},100);});}
             // 时间轴段拖拽排序
             var tb=document.getElementById('s2TimelineBar');if(tb&&!tb.dataset.dragBound){tb.dataset.dragBound='1';var tSeg=null;document.querySelectorAll('.s2-timeline-seg').forEach(function(seg){seg.addEventListener('dragstart',function(e){e.dataTransfer.setData('text/plain',this.dataset.sceneId);this.style.opacity='0.4';seg.source=this;});seg.addEventListener('dragend',function(e){this.style.opacity='1';document.querySelectorAll('.s2-timeline-seg').forEach(function(s){s.classList.remove('s2-seg-over');});});});tb.addEventListener('dragover',function(e){e.preventDefault();var seg=e.target.closest('.s2-timeline-seg');if(seg){document.querySelectorAll('.s2-timeline-seg').forEach(function(s){s.classList.remove('s2-seg-over');});seg.classList.add('s2-seg-over');tSeg=seg;}});tb.addEventListener('drop',function(e){e.preventDefault();document.querySelectorAll('.s2-timeline-seg').forEach(function(s){s.classList.remove('s2-seg-over');s.style.opacity='1';});var srcId=parseInt(e.dataTransfer.getData('text/plain'));if(!tSeg||!srcId)return;var tgtId=parseInt(tSeg.dataset.sceneId);if(srcId===tgtId)return;self.reorderScenes(srcId,tgtId);tSeg=null;});tb.addEventListener('dragleave',function(e){setTimeout(function(){if(!tb.contains(document.querySelector(':hover'))){document.querySelectorAll('.s2-timeline-seg').forEach(function(s){s.classList.remove('s2-seg-over');});tSeg=null;}},100);});}            // 拓展unit事件绑定
             document.querySelectorAll('.s2-ext-unit-addword').forEach(function(el){el.addEventListener('click',function(e){var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var f=p.querySelector('.s2-ext-unit-dropdown').value;if(!f)return;self.openCardPicker(sid,f);});});
@@ -457,6 +457,52 @@
     App.seedanceV2.onCustomLibAddWord=async function(libId){var inp=document.getElementById('s2CustomWordInput_'+libId);var wordText=(inp.value||'').trim();if(!wordText){App.showToast('请输入词条内容','warning');return;}var defInp=document.getElementById('s2CustomWordDef_'+libId);var def=defInp?(defInp.value||'').trim():'';var d=await App.fetchJSON('/api/seedance/v2/libraries/'+libId+'/cards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({word_text:wordText,definition:def})});if(d&&d.ok){inp.value='';if(defInp)defInp.value='';// 清除缓存强制刷新
         if(this.cardCache[libId])delete this.cardCache[libId];App.showToast('已添加: '+wordText,'success');if(this.activePickerLibId==libId){this.renderCards(libId);}}else{App.showToast('添加失败','error');}};
     App.seedanceV2.addScene=async function(){if(!this.currentProjectId)return;var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_order:this.scenes.length+1})});if(d&&d.ok)await this.openProject(this.currentProjectId);else console.warn("deleteScene failed");};
+
+    // 拖拽 JSON 文件到镜头卡片上导入
+    App.seedanceV2._handleFileDrop = function(file, sid) {
+        if (!file || !file.name || !file.name.endsWith('.json')) {
+            App.showToast('⚠️ 请拖入 PromptKit 导出的 .json 镜头文件', 'warning'); return;
+        }
+        var self = this;
+        var reader = new FileReader();
+        reader.onload = function(ev) {
+            try {
+                var data = JSON.parse(ev.target.result);
+                if (!data.fields || data.type !== 'promptkit_scene') {
+                    App.showToast('⚠️ 文件格式不正确', 'warning'); return;
+                }
+                var tgt = null, tgtIdx = -1;
+                for (var i = 0; i < self.scenes.length; i++) {
+                    if (self.scenes[i].id === sid) { tgt = self.scenes[i]; tgtIdx = i; break; }
+                }
+                if (!tgt) { App.showToast('目标镜头未找到', 'error'); return; }
+                var fks = Object.keys(data.fields);
+                var hasContent = false;
+                for (var fi = 0; fi < fks.length; fi++) {
+                    if (tgt[fks[fi]] && tgt[fks[fi]].trim()) { hasContent = true; break; }
+                }
+                var doImport = function() {
+                    var updates = {};
+                    for (var fi = 0; fi < fks.length; fi++) {
+                        updates[fks[fi]] = data.fields[fks[fi]];
+                        tgt[fks[fi]] = data.fields[fks[fi]];
+                    }
+                    App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+sid, {
+                        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(updates)
+                    }).then(function() {
+                        self.renderScenes(); self.compose();
+                        App.showToast('✅ 拖拽导入成功 → 镜头'+(tgtIdx+1), 'success');
+                    });
+                };
+                if (hasContent) {
+                    if (confirm('⚠️ 镜头'+(tgtIdx+1)+'已有内容，拖拽导入将覆盖。继续？')) { doImport(); }
+                } else { doImport(); }
+            } catch (err) {
+                App.showToast('⚠️ 解析失败: '+err.message, 'error');
+            }
+        };
+        reader.readAsText(file);
+    };
     App.seedanceV2._isLastUnlocked=function(sid){var uc=0;for(var ci=0;ci<this.scenes.length;ci++){var sc=this.scenes[ci];if(sc.id!==sid&&!sc.is_locked)uc++;}return uc===0;};
     App.seedanceV2.deleteScene=async function(sid){var p=document.getElementById('s2GlobalDelPop');if(p)p.style.display='none';var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sid,{method:'DELETE'});if(d&&d.ok)await this.openProject(this.currentProjectId);else console.warn("deleteScene failed");};
 
