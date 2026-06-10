@@ -474,7 +474,8 @@
         }
         var blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
         var url = URL.createObjectURL(blob);
-        var a = document.createElement('a'); a.href = url; a.download = 'promptkit_scene_'+(idx+1)+'_'+Date.now()+'.json';
+        var fn = (scene.subject||'镜头'+(idx+1)).replace(/[\\/:*?"<>|]/g,'_').substring(0,30).trim()||'scene';
+        var a = document.createElement('a'); a.href = url; a.download = fn;
         document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         App.showToast('✅ 镜头'+(idx+1)+'已导出', 'success');
     };
