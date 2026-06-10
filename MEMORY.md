@@ -2,7 +2,7 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit)
-- 版本：v3.10.30 (2026-06-07 组装器修复+词库)
+- 版本：v4.0.0-phase6.2 (2026-06-07 会话关闭)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\start.bat` **推荐: `.\QUICK_START.bat`**
 - 默认端口：8080
@@ -17,22 +17,25 @@
 - 版本管理：Git + Git tag
 
 ## 项目规模
-- 后端 API 端点：110+ 个
-- 前端 JS 源码：~5,617 行 (app.js) / CSS: ~1,371 行
+- 后端 API 端点：120+ 个
+- 前端 JS 源码：~6,200 行 (app.js) + ~3,500 行 (v4 模块) / CSS: ~1,400 行
 - 数据库表：23 张
 - 种子词条：165 条（5 模块）
-- 实际词条：206 条（内置 165 + 自定义 41）
+- 实际词条：213 条
+- library_assets 词库：302 条（10 类）
 - 媒体资产：缩略图 287 / 原图 236 / 视频 23
 - 收藏分组：2 / 词包：1
 
-## Git Tag 节点
-- `v4.0.0-phase6-hotfix` — v4 cards API 兼容修复: total_pages/tags字符串/collections (2026-06-07)
-- `v4.0.0-phase6` — Phase 6: 组装器v3 — 卡片编排 + 字段映射 (2026-06-07)
-- `v4.0.0-phase5` — Phase 5: 卡片类型统一 + CSS + 旧JSON清理 (2026-06-07)
-- `v4.0.0-phase4` — Phase 4: Home视图v4 + 结构化字段 + 版本 (2026-06-07)
+## Git Tag 节点（今日 9 个）
+- `v4.0.0-phase6.2` — Final: 画幅输出完整比例 + selectCard修复 + 词库302条 (2026-06-07)
+- `v4.0.0-phase6-hotfix` — v4 cards API兼容修复 (2026-06-07)
+- `v4.0.0-phase6` — Phase 6: 组装器v3 (2026-06-07)
+- `v4.0.0-phase5` — Phase 5: 卡片类型统一 + CSS (2026-06-07)
+- `v4.0.0-phase4` — Phase 4: Home视图v4 + 结构化字段 (2026-06-07)
 - `v4.0.0-phase3` — Phase 3: 卡片详情弹窗 + 跨表搜索 (2026-06-07)
 - `v4.0.0-phase2` — Phase 2: 词库 + 媒体面板 (2026-06-07)
-- `v4.0.0-phase1` — Phase 1: 统一表结构 + 迁移 + API v4 (2026-06-07)：防重复渲染bug + 画风/负面词库API+选取器 + 输出预览实时刷新 + 全局默认值持久化 + 画幅分辨率参数修正 + UI精简 (2026-06-07)
+- `v4.0.0-phase1` — Phase 1: 统一表结构 + 迁移 + API v4 (2026-06-07)
+- `v3.10.30` — Seedance 组装器修复 (2026-06-07)：防重复渲染bug + 画风/负面词库API+选取器 + 输出预览实时刷新 + 全局默认值持久化 + 画幅分辨率参数修正 + UI精简 (2026-06-07)
 - `v3.10.24` — 会话关闭前完整备份快照 (2026-06-04)
 - `v3.10.23` — 非编辑模式禁用拖入导入功能 (2026-06-03)
 - `v3.10.22` — PNG拖拽导入失败修复 — File流被预览消耗后无法复用
@@ -269,6 +272,17 @@ prompt-tool-dev/
 1. 读取 `PROJECT_SUMMARY.md` + `MEMORY.md` + `HEARTBEAT.md` 恢复上下文
 2. 启动服务：`.\QUICK_START.bat`
 3. Git 打标：`git tag -a v3.10.24 -m "会话关闭前完整备份快照"`
+
+## 会话关闭备忘（2026-06-07 18:07）
+本次关闭前已完成以下操作：
+1. ✅ 数据库 WAL checkpoint 合并（WAL 已清除）
+2. ✅ Git 打标 v4.0.0-phase6.2
+3. ✅ 项目统计更新: prompt_cards 189条 / library_assets 302条
+4. ✅ MEMORY.md + ARCHITECTURE_PLAN_v4.md 更新
+
+## 已安装技能与备忘
+- 已安装 ClawHub 技能: page-builder, api-tester, log-analyzer, bug-fixer
+- 下次打开请确认新 API `/api/v4/*` 可用，浏览前端兼容性
 
 ## 已知故障排除
 - 汉字乱码：前端文件必须 UTF-8 无 BOM
