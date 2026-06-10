@@ -142,14 +142,51 @@
     App.seedanceV2._renderRightPickerContent = async function(lib) {
         var panel = document.getElementById('s2RightPanel');
         if (!panel) return;
-        await App.seedanceV2.loadCards(lib.id);
-        var cards = App.seedanceV2.cardCache[lib.id] || [];
+        var activeLibId = lib.id;
+        await App.seedanceV2.loadCards(activeLibId);
+        var cards = App.seedanceV2.cardCache[activeLibId] || [];
         var scene = App.seedanceV2._getCurrentScene();
         var fieldVal = scene ? (scene[App.seedanceV2.activeField] || '') : '';
+        var self = App.seedanceV2;
+
+        // 顶部：关闭按钮
+        var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><strong>✏️ 选词 - '+App._escape(self._F[self.activeField]||lib.dimension_name)+'</strong><button class="btn btn-sm btn-outline" onclick="App.seedanceV2._closeRightPicker()">✕</button></div>';
         
-        var h = '<div class="d-flex justify-content-between align-items-center mb-2"><strong>✏️ '+lib.dimension_name+'</strong><button class="btn btn-sm btn-outline" onclick="App.seedanceV2._closeRightPicker()">&times;</button></div>';
+        // 词库切换 tabs（仅显示 basic 和 extended，排除 global/custom）
+        var basicLibs = [], extLibs = [];
+        for (var li = 0; li < self.libraries.length; li++) {
+            var l = self.libraries[li];
+            if (l.category === 'basic') basicLibs.push(l);
+            else if (l.category === 'extended') extLibs.push(l);
+        }
+        h += '<div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border-color);">';
+        for (var bi = 0; bi < basicLibs.length; bi++) {
+            var bl = basicLibs[bi];
+            var fk = self._dimToFieldKey(bl.dimension_key);
+            var sn = (bl.dimension_name || '').replace('词库','').replace('描述','').substring(0,6);
+            var ac = bl.id === activeLibId ? ' sp-lib-active' : '';
+            var fil = (scene && scene[fk] && scene[fk].trim()) ? ' sp-lib-tab-filled' : '';
+            h += '<button class="sp-lib-tab'+ac+fil+'" onclick="App.seedanceV2._switchRightLib('+bl.id+','+self.activeSceneId+',\''+fk+'\')" style="font-size:11px;padding:2px 8px;" title="'+App._escape(bl.dimension_name)+'">'+App._escape(sn)+'</button>';
+        }
+        h += '<button class="sp-lib-tab" onclick="App.seedanceV2._toggleRightExtLibs()" style="font-size:11px;padding:2px 8px;" title="更多词库"><span id="s2RightExtArrow">▶</span> 更多</button></div>';
+        
+        // 扩展词库（折叠）
+        if (self._rightExtOpen) {
+            h += '<div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border-color);">';
+            for (var ei = 0; ei < extLibs.length; ei++) {
+                var elib = extLibs[ei];
+                var efk = self._dimToFieldKey(elib.dimension_key);
+                var esn = (elib.dimension_name || '').replace('词库','').replace('描述','').substring(0,6);
+                var eac = elib.id === activeLibId ? ' sp-lib-active' : '';
+                var efil = (scene && scene[efk] && scene[efk].trim()) ? ' sp-lib-tab-filled' : '';
+                h += '<button class="sp-lib-tab sp-lib-tab-sm'+eac+efil+'" onclick="App.seedanceV2._switchRightLib('+elib.id+','+self.activeSceneId+',\''+efk+'\')" style="font-size:10px;padding:2px 6px;" title="'+App._escape(elib.dimension_name)+'">'+App._escape(esn)+'</button>';
+            }
+            h += '</div>';
+        }
+        
+        // 搜索 + 卡片列表
         h += '<input class="s2-input mb-2" placeholder="搜索..." oninput="App.seedanceV2._filterRightCards(this.value)">';
-        h += '<div class="s2-right-card-list" style="max-height:calc(100vh - 280px);overflow-y:auto;">';
+        h += '<div class="s2-right-card-list" style="max-height:calc(100vh - 320px);overflow-y:auto;">';
         if (!cards.length) {
             h += '<div class="s2-empty" style="padding:20px;">暂无词条</div>';
         } else {
@@ -157,8 +194,8 @@
                 var card = cards[ci];
                 var word = card.word_text || card.content || '';
                 var def = card.definition || card.meaning || '';
-                var isSelected = fieldVal && word && (fieldVal.indexOf(word) >= 0 || word.indexOf(fieldVal) >= 0);
-                h += '<div class="s2-right-card-item' + (isSelected ? ' selected' : '') + '" data-word="'+App._escape(word)+'" onclick="App.seedanceV2._pickRightWord(this)" style="padding:8px 10px;border:1px solid var(--border-color);border-radius:6px;margin-bottom:4px;cursor:pointer;transition:0.12s;'+ (isSelected?'background:rgba(16,185,129,0.08);border-color:#10b981;':'')+'">';
+                var isSelected = fieldVal && word && fieldVal.indexOf(word) >= 0;
+                h += '<div class="s2-right-card-item'+(isSelected?' selected':'')+'" data-word="'+App._escape(word)+'" onclick="App.seedanceV2._pickRightWord(this)" style="padding:8px 10px;border:1px solid var(--border-color);border-radius:6px;margin-bottom:4px;cursor:pointer;transition:0.12s;'+(isSelected?'background:rgba(16,185,129,0.08);border-color:#10b981;':'')+'">';
                 h += '<div style="font-size:13px;font-weight:600;">'+App._escape(word)+'</div>';
                 if (def) h += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">'+App._escape(def.substring(0,80))+'</div>';
                 h += '</div>';
@@ -166,6 +203,23 @@
         }
         h += '</div>';
         panel.innerHTML = h;
+    };
+
+    App.seedanceV2._rightExtOpen = false;
+    App.seedanceV2._toggleRightExtLibs = function() {
+        this._rightExtOpen = !this._rightExtOpen;
+        var lib = this.getLibraryById(this.activePickerLibId);
+        if (lib) this._renderRightPickerContent(lib);
+    };
+
+    App.seedanceV2._switchRightLib = async function(libId, sid, fieldKey) {
+        App.seedanceV2.activePickerLibId = libId;
+        App.seedanceV2.activeSceneId = sid;
+        App.seedanceV2.activeField = fieldKey;
+        var lib = App.seedanceV2.getLibraryById(libId);
+        if (!lib) return;
+        await App.seedanceV2.loadCards(libId);
+        App.seedanceV2._renderRightPickerContent(lib);
     };
     App.seedanceV2._filterRightCards = function(query) {
         var items = document.querySelectorAll('.s2-right-card-item');
@@ -187,6 +241,8 @@
         } else {
             currentVal = currentVal ? currentVal + ', ' + word : word;
         }
+        // 立即更新本地 scene 对象，消除异步滞后
+        scene[App.seedanceV2.activeField] = currentVal;
         App.seedanceV2.updateSceneField(App.seedanceV2.activeSceneId, App.seedanceV2.activeField, currentVal);
         App.seedanceV2._refreshRightSelection();
         App.seedanceV2.compose();
