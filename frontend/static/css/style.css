@@ -1503,8 +1503,8 @@ body.dark-theme .s2-project-del:hover { background: rgba(239,68,68,0.15); }
 .s2-input:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 2px rgba(79,70,229,0.1); }
 .s2-input[type="number"] { width: 80px; }
 
-/* 可交互时间轴 */
-.s2-timeline-wrapper { position: relative; margin-bottom: 12px; }
+/* 可交互时间轴 — 粘性置顶 */
+.s2-timeline-wrapper { position: sticky; top: 0; z-index: 10; background: var(--bg-main); padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); }
 .s2-timeline-bar { display: flex; height: 36px; background: var(--bg-main); border-radius: 8px; overflow: visible; border: 1px solid var(--border-color); gap: 2px; padding: 2px; cursor: pointer; }
 .s2-timeline-seg { display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; font-weight: 600; transition: all 0.2s; border-radius: 5px; position: relative; cursor: pointer; min-width: 24px; overflow: hidden; }
 .s2-timeline-seg:hover { filter: brightness(1.2); transform: scaleY(1.15); box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 2; }
