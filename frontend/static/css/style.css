@@ -1424,10 +1424,15 @@ body.dark-theme .s2-dur-preset {
     color: #94a3b8;
 }
 
-/* ============ Seedance V2 多镜头结构化组装器 ============ */
-.s2-layout { display: flex; gap: 16px; height: calc(100vh - 180px); min-height: 500px; }
-.s2-sidebar { width: 260px; min-width: 260px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
-.s2-editor { flex: 1; overflow-y: auto; padding-right: 4px; }
+/* ============ Seedance V2 多镜头结构化组装器 — v4.1 布局优化 ============ */
+.s2-layout { display: flex; gap: 12px; height: calc(100vh - 180px); min-height: 500px; position: relative; }
+/* 侧栏：支持折叠 */
+.s2-sidebar { width: 260px; min-width: 260px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; transition: margin-left 0.3s ease, width 0.3s ease; flex-shrink: 0; }
+.s2-sidebar.collapsed { width: 0; min-width: 0; overflow: hidden; margin-right: -12px; }
+/* 侧栏折叠按钮 */
+.s2-sidebar-toggle { position: absolute; left: 0; top: 50%; z-index: 10; width: 22px; height: 48px; border: 1px solid var(--border-color); border-left: none; border-radius: 0 6px 6px 0; background: var(--card-bg); cursor: pointer; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; justify-content: center; transition: left 0.3s ease; }
+.s2-sidebar-toggle:hover { background: var(--hover-bg); color: var(--primary); }
+.s2-editor { flex: 1; overflow-y: auto; padding-right: 4px; transition: margin-right 0.3s ease; }
 
 /* 搜索框 */
 .s2-search-box { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 8px; }
@@ -1498,10 +1503,12 @@ body.dark-theme .s2-project-del:hover { background: rgba(239,68,68,0.15); }
 .s2-input:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 2px rgba(79,70,229,0.1); }
 .s2-input[type="number"] { width: 80px; }
 
-/* 时间轴概览 */
-.s2-timeline-bar { display: flex; height: 28px; background: var(--bg-main); border-radius: 6px; overflow: hidden; margin-bottom: 12px; border: 1px solid var(--border-color); }
-.s2-timeline-seg { display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; font-weight: 600; cursor: pointer; transition: 0.15s; border-right: 1px solid rgba(255,255,255,0.2); }
-.s2-timeline-seg:last-child { border-right: none; }
+/* 可交互时间轴 */
+.s2-timeline-wrapper { position: relative; margin-bottom: 12px; }
+.s2-timeline-bar { display: flex; height: 36px; background: var(--bg-main); border-radius: 8px; overflow: visible; border: 1px solid var(--border-color); gap: 2px; padding: 2px; cursor: pointer; }
+.s2-timeline-seg { display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; font-weight: 600; transition: all 0.2s; border-radius: 5px; position: relative; cursor: pointer; min-width: 24px; overflow: hidden; }
+.s2-timeline-seg:hover { filter: brightness(1.2); transform: scaleY(1.15); box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 2; }
+.s2-timeline-seg.active { box-shadow: 0 0 0 2.5px #fff, 0 0 0 4px var(--primary); z-index: 3; }
 .s2-timeline-seg:nth-child(1) { background: #6366f1; }
 .s2-timeline-seg:nth-child(2) { background: #8b5cf6; }
 .s2-timeline-seg:nth-child(3) { background: #d946ef; }
@@ -1513,12 +1520,42 @@ body.dark-theme .s2-project-del:hover { background: rgba(239,68,68,0.15); }
 .s2-timeline-seg:nth-child(9) { background: #14b8a6; }
 .s2-timeline-seg:nth-child(10) { background: #06b6d4; }
 .s2-timeline-seg:nth-child(n+11) { background: #6366f1; }
-.s2-timeline-seg span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+.s2-timeline-seg span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 3px; font-size: 10px; }
+/* 时间轴刻度 */
+.s2-timeline-ticks { display: flex; justify-content: space-between; padding: 2px 2px 0; font-size: 10px; color: var(--text-muted); }
 
-/* 镜头卡片 */
-.s2-scenes-container { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; padding-right: 4px; }
-.s2-scene-card { border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; background: var(--bg-main); }
-.s2-scene-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+/* 输出预览区折叠 */
+.s2-output-section { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; margin-top: 12px; }
+.s2-output-section.collapsed .s2-output-actions,
+.s2-output-section.collapsed .s2-output-text { display: none; }
+.s2-output-section .s2-section-title { cursor: pointer; user-select: none; }
+.s2-output-section .s2-section-title:hover { color: var(--primary); }
+
+/* 右侧面板：选词并排对照 */
+.s2-right-panel { width: 0; min-width: 0; overflow: hidden; border-left: 1px solid var(--border-color); background: var(--card-bg); transition: width 0.3s ease, min-width 0.3s ease, padding 0.3s ease; }
+.s2-right-panel.open { width: 340px; min-width: 340px; padding: 12px; overflow-y: auto; }
+.editor-with-panel .s2-editor { margin-right: 0; }
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .s2-layout { flex-direction: column; height: auto; min-height: auto; }
+  .s2-sidebar { width: 100%; min-width: 100%; max-height: 200px; }
+  .s2-sidebar.collapsed { max-height: 0; min-height: 0; padding: 0; }
+  .s2-right-panel.open { width: 100%; min-width: 100%; max-height: 50vh; }
+  .s2-scene-card { padding: 6px 8px; }
+  .s2-scene-actions { flex-wrap: wrap; }
+  .s2-global-row { flex-direction: column; gap: 6px; }
+  .s2-field-chip { min-width: 48px; max-width: 90px; padding: 2px 4px; }
+  .s2-ext-unit { min-width: 110px; max-width: 160px; }
+  .s2-sidebar-toggle { display: none; }
+}
+
+/* 镜头卡片容器：去掉嵌套滚动，自然流 */
+.s2-scenes-container { display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+/* 卡片头部紧凑 */
+.s2-scene-card { border: 1px solid var(--border-color); border-radius: 8px; padding: 8px 10px; background: var(--bg-main); transition: border-color 0.15s; }
+.s2-scene-card:hover { border-color: var(--primary-light); }
+.s2-scene-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .s2-scene-title { font-size: 14px; }
 .s2-time-badge { background: var(--primary); color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 4px; }
 .s2-scene-actions { display: flex; gap: 4px; }
