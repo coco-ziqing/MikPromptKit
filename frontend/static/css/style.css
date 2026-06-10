@@ -1543,7 +1543,7 @@ body.dark-theme .s2-project-del:hover { background: rgba(239,68,68,0.15); }
 .s2-shotlist-section.collapsed .s2-shotlist-body { display: none; }
 
 /* 右侧面板：选词并排对照 */
-.s2-right-panel { width: 0; min-width: 0; overflow: hidden; border-left: 1px solid var(--border-color); background: var(--card-bg); transition: width 0.3s ease, min-width 0.3s ease, padding 0.3s ease; }
+.s2-right-panel { width: 0; min-width: 0; overflow: hidden; border-left: 1px solid var(--border-color); background: var(--card-bg); transition: width 0.3s ease, min-width 0.3s ease, padding 0.3s ease; position: relative; }
 .s2-right-panel.open { width: 340px; min-width: 340px; padding: 12px; overflow-y: auto; }
 .editor-with-panel .s2-editor { margin-right: 0; }
 

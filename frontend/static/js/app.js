@@ -96,7 +96,12 @@ const App = {
             // 恢复上次的视图状态（savedView/savedModule 已在 init 顶部读取）
             if (savedView === 'seedance') {
                 this.switchView('seedance');
-                var savedSeedanceTab = localStorage.getItem('promptkit_seedance_tab') || 'templates';
+                var savedSeedanceTab = localStorage.getItem('promptkit_seedance_tab');
+                var hash = window.location.hash;
+                if (!savedSeedanceTab && hash.indexOf('/composer') > 0) {
+                    savedSeedanceTab = 'composer';
+                }
+                if (!savedSeedanceTab) savedSeedanceTab = 'templates';
                 setTimeout(function() { App.switchSeedanceTab(savedSeedanceTab); }, 100);
             } else if (savedView === 'collections' || savedView === 'wordpacks' || savedView === 'history' || savedView === 'trash') {
                 this.switchView(savedView);
