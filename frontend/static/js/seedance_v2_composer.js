@@ -424,7 +424,7 @@
         h+='<div class="s2-drag-handle" draggable="true" title="拖拽排序" style="border-top:4px solid '+dotColor+';padding-top:2px;"><span class="s2-drag-icon">\u2e3f</span></div>';
         h+='<div class="s2-scene-header"><div class="s2-scene-title"><span class="s2-scene-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+dotColor+';margin-right:6px;vertical-align:middle;flex-shrink:0;" title="镜头'+(idx+1)+'"></span><strong>镜头 '+(idx+1)+'</strong> <span class="s2-time-badge">'+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span></div><div class="s2-scene-actions">';
         h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;before&apos;)">\u2b06插入</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;after&apos;)">\u2b07插入</button>';
-        h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.duplicateScene('+s.id+')">📋复制</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._copyScene('+s.id+')" title="拷贝提示词">📝拷贝</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._pasteScene('+s.id+')" title="粘贴提示词">📄粘贴</button><button class="btn btn-xs btn-danger s2-del-btn" data-scene-id="'+s.id+'" title="删除此镜头">🗑</button></div></div>';
+        h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.duplicateScene('+s.id+')">📋复制</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._copyScene('+s.id+')" title="拷贝提示词">📝拷贝</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._pasteScene('+s.id+')" title="粘贴提示词">📄粘贴</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._exportScene('+s.id+')" title="导出镜头">📤导出</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._importScene('+s.id+')" title="导入镜头">📥导入</button><button class="btn btn-xs btn-danger s2-del-btn" data-scene-id="'+s.id+'" title="删除此镜头">🗑</button></div></div>';
         h+='<div class="s2-scene-time"><span class="s2-time-label">\u23f1 '+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span>';
         h+='<input class="s2-scene-dur s2-time-input'+(s.is_locked?' s2-dur-manual':'')+'" type="number" min="0.5" max="15" step="0.5" onblur="if(parseFloat(this.value)<0.5)this.value=0.5;if(parseFloat(this.value)>15)this.value=15;" value="'+(s.duration||3)+'" data-scene-id="'+s.id+'" title="'+(s.is_locked?'🔒 已锁定':'🔓 未锁定')+'">';
         h+='<select class="s2-dur-preset" data-target-scene="'+s.id+'" onchange="App.seedanceV2.applyDurPreset(this)"><option value="">\u25bc</option>';
@@ -459,6 +459,75 @@
     App.seedanceV2.addScene=async function(){if(!this.currentProjectId)return;var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_order:this.scenes.length+1})});if(d&&d.ok)await this.openProject(this.currentProjectId);else console.warn("deleteScene failed");};
     App.seedanceV2._isLastUnlocked=function(sid){var uc=0;for(var ci=0;ci<this.scenes.length;ci++){var sc=this.scenes[ci];if(sc.id!==sid&&!sc.is_locked)uc++;}return uc===0;};
     App.seedanceV2.deleteScene=async function(sid){var p=document.getElementById('s2GlobalDelPop');if(p)p.style.display='none';var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sid,{method:'DELETE'});if(d&&d.ok)await this.openProject(this.currentProjectId);else console.warn("deleteScene failed");};
+
+    // 单镜头导出
+    App.seedanceV2._exportScene = function(sid) {
+        var scene = null, idx = -1;
+        for (var i = 0; i < this.scenes.length; i++) {
+            if (this.scenes[i].id === sid) { scene = this.scenes[i]; idx = i; break; }
+        }
+        if (!scene) { App.showToast('镜头未找到', 'error'); return; }
+        var fields = ['camera_move','subject','scene_desc','composition','lighting','action','focal_length','texture','speed','emotion','color_grade','weather','particles','perspective','depth_of_field','filter','natural_force','environment_detail','film_flaw','fantasy_physics'];
+        var data = { version: '1.0', type: 'promptkit_scene', exported_at: new Date().toISOString(), scene_name: '镜头'+(idx+1), duration: scene.duration, fields: {} };
+        for (var fi = 0; fi < fields.length; fi++) {
+            if (scene[fields[fi]]) data.fields[fields[fi]] = scene[fields[fi]];
+        }
+        var blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a'); a.href = url; a.download = 'promptkit_scene_'+(idx+1)+'_'+Date.now()+'.json';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        App.showToast('✅ 镜头'+(idx+1)+'已导出', 'success');
+    };
+
+    // 单镜头导入
+    App.seedanceV2._importScene = function(sid) {
+        var self = this;
+        var input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
+        input.onchange = function(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function(ev) {
+                try {
+                    var data = JSON.parse(ev.target.result);
+                    if (!data.fields || data.type !== 'promptkit_scene') {
+                        App.showToast('⚠️ 文件格式不正确，请选择 PromptKit 导出的镜头文件', 'warning'); return;
+                    }
+                    // 检测目标镜头是否有内容
+                    var tgt = null, tgtIdx = -1;
+                    for (var i = 0; i < self.scenes.length; i++) {
+                        if (self.scenes[i].id === sid) { tgt = self.scenes[i]; tgtIdx = i; break; }
+                    }
+                    if (!tgt) { App.showToast('目标镜头未找到', 'error'); return; }
+                    var fks = Object.keys(data.fields);
+                    var hasContent = false;
+                    for (var fi = 0; fi < fks.length; fi++) {
+                        if (tgt[fks[fi]] && tgt[fks[fi]].trim()) { hasContent = true; break; }
+                    }
+                    var doImport = function() {
+                        var updates = {};
+                        for (var fi = 0; fi < fks.length; fi++) {
+                            updates[fks[fi]] = data.fields[fks[fi]];
+                            tgt[fks[fi]] = data.fields[fks[fi]];
+                        }
+                        App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+sid, {
+                            method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(updates)
+                        }).then(function() {
+                            self.renderScenes(); self.compose();
+                            App.showToast('✅ 已导入到镜头'+(tgtIdx+1)+' (来自: '+App._escape(data.scene_name||'文件')+')', 'success');
+                        });
+                    };
+                    if (hasContent) {
+                        if (confirm('⚠️ 镜头'+(tgtIdx+1)+'已有提示词内容，导入将覆盖现有内容。继续？')) { doImport(); }
+                    } else { doImport(); }
+                } catch (err) {
+                    App.showToast('⚠️ 文件解析失败: '+err.message, 'error');
+                }
+            };
+            reader.readAsText(file);
+        };
+        input.click();
+    };
     App.seedanceV2.duplicateScene=async function(sid){var src=null;for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){src=this.scenes[i];break;}}if(!src)return;var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_order:this.scenes.length+1,duration:src.duration||3,camera_move:src.camera_move,subject:src.subject,scene_desc:src.scene_desc,composition:src.composition,lighting:src.lighting,action:src.action,focal_length:src.focal_length,texture:src.texture,speed:src.speed,emotion:src.emotion,color_grade:src.color_grade,weather:src.weather,particles:src.particles,perspective:src.perspective,depth_of_field:src.depth_of_field,filter:src.filter,natural_force:src.natural_force,environment_detail:src.environment_detail,film_flaw:src.film_flaw,fantasy_physics:src.fantasy_physics})});if(d&&d.ok)await this.openProject(this.currentProjectId);else console.warn("deleteScene failed");};
     App.seedanceV2.insertScene=async function(sid,pos){if(!this.currentProjectId)return;var ref=null;for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){ref=this.scenes[i];break;}}if(!ref)return;var o=(pos==='before')?ref.scene_order:ref.scene_order+1;var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_order:o})});if(d&&d.ok){await this.openProject(this.currentProjectId);App.showToast('已插入新镜头','success');}};
     App.seedanceV2.reorderScenes=async function(src,tgt){if(!this.currentProjectId)return;var ids=[];for(var i=0;i<this.scenes.length;i++)ids.push(this.scenes[i].id);var si=ids.indexOf(src),ti=ids.indexOf(tgt);if(si<0||ti<0)return;ids.splice(si,1);var newTi=ids.indexOf(tgt);if(si<ti)ids.splice(newTi+1,0,src);else ids.splice(newTi,0,src);var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_ids:ids})});if(d&&d.ok){await this.openProject(this.currentProjectId);App.showToast('镜头已重新排序','success');}};
