@@ -522,7 +522,7 @@ def create_scene(project_id: int, data: dict = Body(...)):
     if cc >= 30: raise HTTPException(400, "镜头数量不能超过30个")
 
     # 插入新镜头（duration 存为用户原始输入，start/end 由重算引擎填充）
-    extra_fields = ["camera_move", "subject", "scene_desc", "composition", "lighting",
+    extra_fields = ["camera_move", "subject", "scene_desc", "shot_scale", "composition", "lighting",
                    "focal_length", "texture", "speed", "perspective", "particles", "weather",
                    "color_grade", "emotion", "natural_force", "depth_of_field", "filter",
                    "film_flaw", "fantasy_physics", "environment_detail", "action", "details"]
@@ -570,7 +570,7 @@ def update_scene(project_id: int, scene_id: int, data: dict = Body(...)):
     # 可更新字段
     updatable = [
         "scene_order", "duration",
-        "camera_move", "subject", "scene_desc", "composition", "lighting",
+        "camera_move", "subject", "scene_desc", "shot_scale", "composition", "lighting",
         "focal_length", "texture", "speed", "perspective", "particles", "weather",
         "color_grade", "emotion", "natural_force", "depth_of_field", "filter",
         "film_flaw", "fantasy_physics", "environment_detail", "action", "details"
