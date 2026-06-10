@@ -220,7 +220,7 @@
         function ms(id,l,opts,v){var h='<div class="s2-field"><label>'+l+'</label><select id="'+id+'" class="s2-input" onchange="App.seedanceV2.compose()">';for(var i=0;i<opts.length;i++){var s=opts[i][0]===v?' selected':'';h+='<option value="'+opts[i][0]+'"'+s+'>'+opts[i][1]+'</option>';}h+='</select></div>';return h;}
         var h='<div class="s2-editor-header"><div class="s2-editor-title"><input id="s2_name" class="s2-input s2-title-input" value="'+App._escape(p.name)+'" onchange="App.seedanceV2.setDirty();App.seedanceV2.compose()"></div><div class="s2-editor-actions"><button class="btn btn-sm btn-success" onclick="App.seedanceV2.saveProject()">💾 保存</button><button class="btn btn-sm btn-danger" onclick="App.seedanceV2.deleteProject('+p.id+')">🗑 删除</button></div></div>';
         // ① 分镜列表
-        h+='<div class="s2-section"><div class="s2-section-title" style="cursor:pointer;">🎬 分镜列表 <span class="s2-badge">'+this.scenes.length+' 镜头</span></div><div class="s2-timeline-wrapper"><div class="s2-timeline-ticks">';var tickSpan=Math.max(1,Math.floor((p.total_duration||15)/6));for(var tk=0;tk<=p.total_duration;tk+=tickSpan){h+='<span>'+tk+'s</span>';}h+='</div><div class="s2-timeline-bar" id="s2TimelineBar">';for(var i=0;i<this.scenes.length;i++){var s=this.scenes[i];var w=Math.max(3,((s.end_time-s.start_time)/(p.total_duration||15))*100);var lb=(s.subject||'镜头'+(i+1)).substring(0,6);h+='<div class="s2-timeline-seg" data-scene-id="'+s.id+'" style="width:'+w+'%;" title="'+s.start_time+'-'+s.end_time+'s: '+App._escape(lb)+'" onclick="App.seedanceV2._scrollToScene('+s.id+')"><span>'+lb+'</span></div>';}h+='</div></div><div class="s2-scenes-container" id="s2ScenesContainer"></div></div>';
+        h+='<div class="s2-section"><div class="s2-section-title" style="cursor:pointer;">🎬 分镜列表 <span class="s2-badge">'+this.scenes.length+' 镜头</span></div><div class="s2-timeline-wrapper"><div class="s2-timeline-ticks">';var tickSpan=Math.max(1,Math.floor((p.total_duration||15)/6));for(var tk=0;tk<=p.total_duration;tk+=tickSpan){h+='<span>'+tk+'s</span>';}h+='</div><div class="s2-timeline-bar" id="s2TimelineBar">';for(var i=0;i<this.scenes.length;i++){var s=this.scenes[i];var w=Math.max(3,((s.end_time-s.start_time)/(p.total_duration||15))*100);var lb=(s.subject||'镜头'+(i+1)).substring(0,6);var segColor=App.seedanceV2._sceneColor(s.id);h+='<div class="s2-timeline-seg" data-scene-id="'+s.id+'" style="width:'+w+'%;background:'+segColor+';" title="'+s.start_time+'-'+s.end_time+'s: '+App._escape(lb)+'" onclick="App.seedanceV2._scrollToScene('+s.id+')"><span>'+lb+'</span></div>';}h+='</div></div><div class="s2-scenes-container" id="s2ScenesContainer"></div></div>';
         // ② 全局参数（分镜设完再调全局）
         h+='<div class="s2-section s2-global-params-section" id="s2GlobalParamsSection"><div class="s2-section-title" onclick="App.seedanceV2._toggleGlobalParams()" title="点击折叠/展开" style="cursor:pointer;">📐 全局参数 <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span></div><div class="s2-global-body"><div class="s2-global-row">';
         h+=ms('s2_aspect_ratio','画幅',[['16:9','横屏16:9'],['9:16','竖屏9:16'],['1:1','方形1:1'],['21:9','超宽21:9'],['4:3','方屏4:3'],['3:4','竖屏3:4']],p.aspect_ratio||'16:9');
@@ -249,7 +249,8 @@
         setTimeout(function() { App.seedanceV2._restoreSidebar(); }, 50);
     };
 
-    // 镜头渲染
+    // 镜头颜色（基于ID稳定不变）
+    App.seedanceV2._sceneColor=function(id){var TC=['#6366f1','#8b5cf6','#d946ef','#ec4899','#f43f5e','#f97316','#eab308','#22c55e','#14b8a6','#06b6d4'];return TC[(id||0)%10];};
     App.seedanceV2.renderScenes=function(){
         var c=document.getElementById('s2ScenesContainer');if(!c)return;
         var h='';for(var i=0;i<this.scenes.length;i++)h+=this.renderSceneCard(this.scenes[i],i);
@@ -296,9 +297,7 @@
     App.seedanceV2.renderSceneCard = function(scene,idx){
         var s=scene; var F={'camera_move':'运镜','subject':'主体','scene_desc':'场景','composition':'构图','lighting':'光影','action':'动作','focal_length':'焦段','texture':'质感','speed':'速率','emotion':'情绪','color_grade':'调色','weather':'天气','particles':'粒子','perspective':'视角','depth_of_field':'景深','filter':'滤镜','natural_force':'外力','environment_detail':'环境','film_flaw':'瑕疵','fantasy_physics':'奇幻'};
         var h='<div class="s2-scene-card" data-scene-id="'+s.id+'" data-scene-order="'+(idx+1)+'">';
-        // 色标颜色与时间轴 nth-child 一致
-        var TC=['#6366f1','#8b5cf6','#d946ef','#ec4899','#f43f5e','#f97316','#eab308','#22c55e','#14b8a6','#06b6d4'];
-        var dotColor=TC[idx%10];
+        var dotColor=App.seedanceV2._sceneColor(s.id);
         h+='<div class="s2-drag-handle" draggable="true" title="拖拽排序" style="border-top:4px solid '+dotColor+';padding-top:2px;"><span class="s2-drag-icon">\u2e3f</span></div>';
         h+='<div class="s2-scene-header"><div class="s2-scene-title"><span class="s2-scene-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+dotColor+';margin-right:6px;vertical-align:middle;flex-shrink:0;" title="镜头'+(idx+1)+'"></span><strong>镜头 '+(idx+1)+'</strong> <span class="s2-time-badge">'+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span></div><div class="s2-scene-actions">';
         h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;before&apos;)">\u2b06插入</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;after&apos;)">\u2b07插入</button>';
