@@ -280,7 +280,7 @@
         function ms(id,l,opts,v){var h='<div class="s2-field"><label>'+l+'</label><select id="'+id+'" class="s2-input" onchange="App.seedanceV2.compose()">';for(var i=0;i<opts.length;i++){var s=opts[i][0]===v?' selected':'';h+='<option value="'+opts[i][0]+'"'+s+'>'+opts[i][1]+'</option>';}h+='</select></div>';return h;}
         var h='<div class="s2-editor-header"><div class="s2-editor-title"><input id="s2_name" class="s2-input s2-title-input" value="'+App._escape(p.name)+'" onchange="App.seedanceV2.setDirty();App.seedanceV2.compose()"></div><div class="s2-editor-actions"><button class="btn btn-sm btn-success" onclick="App.seedanceV2.saveProject()">💾 保存</button><button class="btn btn-sm btn-danger" onclick="App.seedanceV2.deleteProject('+p.id+')">🗑 删除</button></div></div>';
         // ① 分镜列表（可折叠）
-        h+='<div class="s2-section s2-shotlist-section" id="s2ShotListSection"><div class="s2-section-title" onclick="App.seedanceV2._toggleShotList()" title="点击折叠/展开" style="cursor:pointer;">🎬 分镜列表 <span class="s2-badge">'+this.scenes.length+' 镜头</span> <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span></div><div class="s2-shotlist-body"><div class="s2-timeline-wrapper"><div class="s2-timeline-ticks">';var tickSpan=Math.max(1,Math.floor((p.total_duration||15)/6));for(var tk=0;tk<=p.total_duration;tk+=tickSpan){h+='<span>'+tk+'s</span>';}h+='</div><div class="s2-timeline-bar" id="s2TimelineBar">';for(var i=0;i<this.scenes.length;i++){var s=this.scenes[i];var w=Math.max(3,((s.end_time-s.start_time)/(p.total_duration||15))*100);var lb=(s.subject||'镜头'+(i+1)).substring(0,6);var segColor=App.seedanceV2._sceneColor(s.id);h+='<div class="s2-timeline-seg" draggable="true" data-scene-id="'+s.id+'" style="width:'+w+'%;background:'+segColor+';" title="'+s.start_time+'-'+s.end_time+'s: '+App._escape(lb)+' (拖拽排序)" onclick="App.seedanceV2._scrollToScene('+s.id+')"><span>'+lb+'</span></div>';}h+='</div></div><div class="s2-scenes-container" id="s2ScenesContainer"></div></div></div>';
+        h+='<div class="s2-section s2-shotlist-section" id="s2ShotListSection"><div class="s2-section-title" onclick="App.seedanceV2._toggleShotList()" title="点击折叠/展开" style="cursor:pointer;">🎬 分镜列表 <span class="s2-badge">'+this.scenes.length+' 镜头</span> <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span><button id="s2ToggleAllBtn" class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._toggleAllScenes()" title="折叠/展开全部子镜头" style="margin-left:auto;font-size:10px;padding:2px 8px;">▶ 折叠全部</button></div><div class="s2-shotlist-body"><div class="s2-timeline-wrapper"><div class="s2-timeline-ticks">';var tickSpan=Math.max(1,Math.floor((p.total_duration||15)/6));for(var tk=0;tk<=p.total_duration;tk+=tickSpan){h+='<span>'+tk+'s</span>';}h+='</div><div class="s2-timeline-bar" id="s2TimelineBar">';for(var i=0;i<this.scenes.length;i++){var s=this.scenes[i];var w=Math.max(3,((s.end_time-s.start_time)/(p.total_duration||15))*100);var lb=(s.subject||'镜头'+(i+1)).substring(0,6);var segColor=App.seedanceV2._sceneColor(s.id);h+='<div class="s2-timeline-seg" draggable="true" data-scene-id="'+s.id+'" style="width:'+w+'%;background:'+segColor+';" title="'+s.start_time+'-'+s.end_time+'s: '+App._escape(lb)+' (拖拽排序)" onclick="App.seedanceV2._scrollToScene('+s.id+')"><span>'+lb+'</span></div>';}h+='</div></div><div class="s2-scenes-container" id="s2ScenesContainer"></div></div></div>';
         // ② 全局参数（分镜设完再调全局）
         h+='<div class="s2-section s2-global-params-section" id="s2GlobalParamsSection"><div class="s2-section-title" onclick="App.seedanceV2._toggleGlobalParams()" title="点击折叠/展开" style="cursor:pointer;">📐 全局参数 <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span></div><div class="s2-global-body"><div class="s2-global-row">';
         h+=ms('s2_aspect_ratio','画幅',[['16:9','横屏16:9'],['9:16','竖屏9:16'],['1:1','方形1:1'],['21:9','超宽21:9'],['4:3','方屏4:3'],['3:4','竖屏3:4']],p.aspect_ratio||'16:9');
@@ -317,6 +317,22 @@
         var card = document.querySelector('.s2-scene-card[data-scene-id="'+sid+'"]');
         if (!card) return;
         card.classList.toggle('s2-scene-collapsed');
+    };
+    // 一键折叠/展开全部镜头
+    App.seedanceV2._toggleAllScenes = function() {
+        var cards = document.querySelectorAll('.s2-scene-card');
+        if (!cards.length) return;
+        var anyExpanded = false;
+        for (var i = 0; i < cards.length; i++) {
+            if (!cards[i].classList.contains('s2-scene-collapsed')) { anyExpanded = true; break; }
+        }
+        var action = anyExpanded ? 'collapse' : 'expand';
+        for (var i = 0; i < cards.length; i++) {
+            if (action === 'collapse') cards[i].classList.add('s2-scene-collapsed');
+            else cards[i].classList.remove('s2-scene-collapsed');
+        }
+        var btn = document.getElementById('s2ToggleAllBtn');
+        if (btn) btn.textContent = anyExpanded ? '▶ 折叠全部' : '▼ 展开全部';
     };
 
     // 镜头拷贝粘贴剪贴板
