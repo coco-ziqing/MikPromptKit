@@ -16,6 +16,7 @@ DIM_MAP = {
     'weather': 'weather',
     'speed': 'speed',
     'composition': 'composition',
+    'shot_scale': 'shot_scale',
 }
 
 # 中文名称
@@ -28,6 +29,7 @@ DIM_NAMES = {
     'weather': '天气词库',
     'speed': '速率词库',
     'composition': '构图词库',
+    'shot_scale': '景别词库',
 }
 
 def run():
