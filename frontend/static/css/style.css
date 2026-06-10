@@ -1941,6 +1941,11 @@ body.dark-theme .s2-drag-handle:hover { background: #334155; }
     box-shadow: 0 0 0 3px rgba(16,185,129,0.35);
     background: rgba(16,185,129,0.04);
 }
+/* 单个镜头折叠 */
+.s2-scene-card.s2-scene-collapsed .s2-scene-body { display: none; }
+.s2-scene-card.s2-scene-collapsed .s2-ext-unit-list { display: none; }
+.s2-scene-fold-arrow { display: inline-block; font-size: 10px; transition: transform 0.2s; margin-right: 2px; color: var(--text-muted); }
+.s2-scene-card.s2-scene-collapsed .s2-scene-fold-arrow { transform: rotate(-90deg); }
 .s2-scene-actions .btn-xs {
     padding: 3px 7px;
     font-size: 11px;
