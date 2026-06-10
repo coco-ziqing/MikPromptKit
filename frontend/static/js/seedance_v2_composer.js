@@ -474,7 +474,11 @@
         }
         var blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
         var url = URL.createObjectURL(blob);
-        var fn = (scene.subject||'镜头'+(idx+1)).replace(/[\\/:*?"<>|]/g,'_').substring(0,30).trim()||'scene';
+        var parts = [];
+        if (scene.duration) parts.push(scene.duration+'s');
+        if (scene.camera_move) parts.push(scene.camera_move);
+        parts.push((scene.subject||'镜头'+(idx+1)).replace(/[\\/:*?"<>|]/g,'_').substring(0,20).trim()||'scene');
+        var fn = parts.join('_').replace(/\s+/g,'') + '.json';
         var a = document.createElement('a'); a.href = url; a.download = fn;
         document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         App.showToast('✅ 镜头'+(idx+1)+'已导出', 'success');
