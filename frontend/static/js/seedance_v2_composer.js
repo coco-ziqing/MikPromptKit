@@ -311,6 +311,67 @@
 
     // 镜头颜色（基于ID稳定不变）
     App.seedanceV2._sceneColor=function(id){var TC=['#6366f1','#8b5cf6','#d946ef','#ec4899','#f43f5e','#f97316','#eab308','#22c55e','#14b8a6','#06b6d4'];return TC[(id||0)%10];};
+
+    // 镜头拷贝粘贴剪贴板
+    App.seedanceV2._sceneClipboard = null;
+    App.seedanceV2._copyScene = function(sid) {
+        for (var i = 0; i < this.scenes.length; i++) {
+            if (this.scenes[i].id === sid) {
+                var src = this.scenes[i];
+                var fields = ['camera_move','subject','scene_desc','composition','lighting',
+                    'action','focal_length','texture','speed','emotion','color_grade',
+                    'weather','particles','perspective','depth_of_field','filter',
+                    'natural_force','environment_detail','film_flaw','fantasy_physics'];
+                var clip = {};
+                for (var fi = 0; fi < fields.length; fi++) {
+                    if (src[fields[fi]]) clip[fields[fi]] = src[fields[fi]];
+                }
+                this._sceneClipboard = clip;
+                App.showToast('✅ 已复制镜头'+(i+1)+'的提示词内容', 'success');
+                return;
+            }
+        }
+    };
+    App.seedanceV2._pasteScene = function(tgtSid) {
+        if (!this._sceneClipboard || !Object.keys(this._sceneClipboard).length) {
+            App.showToast('📋 剪贴板为空，请先复制一个镜头', 'warning'); return;
+        }
+        // 检测目标镜头是否有内容
+        var tgt = null, tgtIdx = -1;
+        for (var i = 0; i < this.scenes.length; i++) {
+            if (this.scenes[i].id === tgtSid) { tgt = this.scenes[i]; tgtIdx = i; break; }
+        }
+        if (!tgt) { App.showToast('目标镜头未找到', 'error'); return; }
+        var hasContent = false;
+        var fields = Object.keys(this._sceneClipboard);
+        for (var fi = 0; fi < fields.length; fi++) {
+            if (tgt[fields[fi]] && tgt[fields[fi]].trim()) { hasContent = true; break; }
+        }
+        var self = this;
+        var doPaste = function() {
+            var clip = self._sceneClipboard;
+            var fks = Object.keys(clip);
+            var updates = {};
+            for (var fi = 0; fi < fks.length; fi++) {
+                updates[fks[fi]] = clip[fks[fi]];
+                tgt[fks[fi]] = clip[fks[fi]];
+            }
+            // 批量发送更新
+            App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+tgtSid, {
+                method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(updates)
+            }).then(function() {
+                self.renderScenes(); self.compose();
+                App.showToast('✅ 已粘贴到镜头'+(tgtIdx+1), 'success');
+            });
+        };
+        if (hasContent) {
+            if (confirm('⚠️ 镜头'+(tgtIdx+1)+'已有提示词内容，粘贴将覆盖现有内容。继续？')) {
+                doPaste();
+            }
+        } else {
+            doPaste();
+        }
+    };
     App.seedanceV2.renderScenes=function(){
         var c=document.getElementById('s2ScenesContainer');if(!c)return;
         var h='';for(var i=0;i<this.scenes.length;i++)h+=this.renderSceneCard(this.scenes[i],i);
@@ -363,7 +424,7 @@
         h+='<div class="s2-drag-handle" draggable="true" title="拖拽排序" style="border-top:4px solid '+dotColor+';padding-top:2px;"><span class="s2-drag-icon">\u2e3f</span></div>';
         h+='<div class="s2-scene-header"><div class="s2-scene-title"><span class="s2-scene-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+dotColor+';margin-right:6px;vertical-align:middle;flex-shrink:0;" title="镜头'+(idx+1)+'"></span><strong>镜头 '+(idx+1)+'</strong> <span class="s2-time-badge">'+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span></div><div class="s2-scene-actions">';
         h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;before&apos;)">\u2b06插入</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;after&apos;)">\u2b07插入</button>';
-        h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.duplicateScene('+s.id+')">📋复制</button><button class="btn btn-xs btn-danger s2-del-btn" data-scene-id="'+s.id+'" title="删除此镜头">🗑</button></div></div>';
+        h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.duplicateScene('+s.id+')">📋复制</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._copyScene('+s.id+')" title="拷贝提示词">📝拷贝</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._pasteScene('+s.id+')" title="粘贴提示词">📄粘贴</button><button class="btn btn-xs btn-danger s2-del-btn" data-scene-id="'+s.id+'" title="删除此镜头">🗑</button></div></div>';
         h+='<div class="s2-scene-time"><span class="s2-time-label">\u23f1 '+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span>';
         h+='<input class="s2-scene-dur s2-time-input'+(s.is_locked?' s2-dur-manual':'')+'" type="number" min="0.5" max="15" step="0.5" onblur="if(parseFloat(this.value)<0.5)this.value=0.5;if(parseFloat(this.value)>15)this.value=15;" value="'+(s.duration||3)+'" data-scene-id="'+s.id+'" title="'+(s.is_locked?'🔒 已锁定':'🔓 未锁定')+'">';
         h+='<select class="s2-dur-preset" data-target-scene="'+s.id+'" onchange="App.seedanceV2.applyDurPreset(this)"><option value="">\u25bc</option>';
