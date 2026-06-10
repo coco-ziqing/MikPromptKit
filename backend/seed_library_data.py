@@ -240,6 +240,33 @@ DATA = {
             {"name": "剪影构图", "prompt": "silhouette composition, subject dark against bright background"},
         ]
     },
+    "shot_scale": {
+        "lib_type": "shot_scale",
+        "name": "景别词库",
+        "icon": "🔬",
+        "items": [
+            {"name": "远景", "prompt": "long shot, wide shot, full body in frame, establishing shot"},
+            {"name": "全景", "prompt": "full shot, entire subject visible, head to toe in frame"},
+            {"name": "中景", "prompt": "medium shot, waist up, upper body framing"},
+            {"name": "近景", "prompt": "close-up, chest up, intimate framing, facial detail"},
+            {"name": "特写", "prompt": "extreme close-up, macro shot, detail focus, eyes or lips"},
+            {"name": "大远景", "prompt": "extreme long shot, tiny subject in vast landscape, epic scale"},
+            {"name": "中全景", "prompt": "medium full shot, knees up, cowboy shot"},
+            {"name": "中近景", "prompt": "medium close-up, shoulders up, upper chest framing"},
+            {"name": "全身景", "prompt": "full body shot, head to toe, complete figure visible"},
+            {"name": "半身景", "prompt": "half body shot, waist to head, medium framing"},
+            {"name": "低角度", "prompt": "low angle shot, worm's-eye view, looking up, heroic perspective"},
+            {"name": "高角度", "prompt": "high angle shot, looking down, diminishing effect"},
+            {"name": "平视", "prompt": "eye level shot, neutral angle, direct perspective"},
+            {"name": "鸟瞰", "prompt": "bird's eye view, aerial shot, top-down extreme"},
+            {"name": "仰拍", "prompt": "looking up, upward angle, imposing view"},
+            {"name": "俯拍", "prompt": "overhead shot, top-down, downward perspective"},
+            {"name": "倾斜角度", "prompt": "dutch angle, tilted frame, disorienting shot, canted camera"},
+            {"name": "骑肩视角", "prompt": "over-the-shoulder shot, behind character perspective"},
+            {"name": "主观视角", "prompt": "POV shot, first person perspective, character's eyes"},
+            {"name": "跟拍", "prompt": "tracking shot, follow shot, subject movement followed"},
+        ]
+    },
 }
 
 def run():
