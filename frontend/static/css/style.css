@@ -1935,6 +1935,12 @@ body.dark-theme .s2-drag-handle:hover { background: #334155; }
     box-shadow: 0 0 0 2px rgba(79,70,229,0.3);
     transform: translateY(4px);
 }
+.s2-scene-card.s2-file-over {
+    border-color: #10b981 !important;
+    border-style: dashed !important;
+    box-shadow: 0 0 0 3px rgba(16,185,129,0.35);
+    background: rgba(16,185,129,0.04);
+}
 .s2-scene-actions .btn-xs {
     padding: 3px 7px;
     font-size: 11px;
