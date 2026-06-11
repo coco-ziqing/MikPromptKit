@@ -2,12 +2,20 @@
 API 路由 — Seedance V2 多镜头结构化组装器 (全功能版)
 27套维度词库 / 分镜项目CRUD / 镜头管理 / 拼接引擎 / 联动
 """
-import json, math
-from fastapi import APIRouter, Query, Body, HTTPException
+import json, math, os, uuid
+from fastapi import APIRouter, Query, Body, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from database import get_db, safe_commit
 from seedance_v2_seed import init_seedance_v2_seed
 
 router = APIRouter(prefix="/api/seedance/v2", tags=["seedance-v2"])
+
+# 词卡缩略图存储目录
+WC_THUMB_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "wordcard_thumbs"
+)
+os.makedirs(WC_THUMB_DIR, exist_ok=True)
 
 
 # ==================== 词库接口 (27套) ====================
@@ -103,6 +111,77 @@ def get_card(card_id: int):
     if not card:
         raise HTTPException(404, "词卡不存在")
     return {"card": dict(card)}
+
+
+# ==================== 词卡缩略图 ====================
+
+@router.post("/cards/{card_id}/thumbnail")
+async def upload_word_card_thumbnail(card_id: int, file: UploadFile = File(...)):
+    """为词卡上传缩略图（自动裁剪为 100x67 JPEG）"""
+    db = get_db()
+    card = db.execute("SELECT * FROM prompt_word_card WHERE id=?", [card_id]).fetchone()
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"):
+        raise HTTPException(400, "仅支持 jpg/png/gif/webp/bmp 格式")
+    try:
+        from PIL import Image
+        import io
+        data = await file.read()
+        img = Image.open(io.BytesIO(data))
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        TW, TH = 100, 67
+        sw, sh = img.size
+        target_ratio = TW / TH
+        src_ratio = sw / sh
+        if src_ratio > target_ratio:
+            new_w = int(sh * target_ratio)
+            img = img.crop(((sw - new_w) // 2, 0, (sw + new_w) // 2, sh))
+        else:
+            new_h = int(sw / target_ratio)
+            img = img.crop((0, (sh - new_h) // 2, sw, (sh + new_h) // 2))
+        img = img.resize((TW, TH), Image.LANCZOS)
+        filename = f"{uuid.uuid4().hex}.jpg"
+        dest = os.path.join(WC_THUMB_DIR, filename)
+        img.save(dest, "JPEG", quality=82)
+    except ImportError:
+        raise HTTPException(500, "Pillow 未安装")
+    except Exception as e:
+        raise HTTPException(500, f"缩略图处理失败: {str(e)}")
+    if card["preview_image"]:
+        old_path = os.path.join(WC_THUMB_DIR, card["preview_image"])
+        if os.path.exists(old_path):
+            os.remove(old_path)
+    db.execute("UPDATE prompt_word_card SET preview_image=? WHERE id=?", [filename, card_id])
+    safe_commit()
+    return {"ok": True, "filename": filename}
+
+
+@router.delete("/cards/{card_id}/thumbnail")
+def delete_word_card_thumbnail(card_id: int):
+    """删除词卡缩略图"""
+    db = get_db()
+    card = db.execute("SELECT preview_image FROM prompt_word_card WHERE id=?", [card_id]).fetchone()
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    if card["preview_image"]:
+        path = os.path.join(WC_THUMB_DIR, card["preview_image"])
+        if os.path.exists(path):
+            os.remove(path)
+        db.execute("UPDATE prompt_word_card SET preview_image='' WHERE id=?", [card_id])
+        safe_commit()
+    return {"ok": True}
+
+
+@router.get("/thumbnails/{filename}")
+def serve_word_card_thumbnail(filename: str):
+    """返回词卡缩略图文件"""
+    path = os.path.join(WC_THUMB_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(404, "缩略图不存在")
+    return FileResponse(path, media_type="image/jpeg")
 
 
 # ==================== 自定义词库管理 ====================
