@@ -200,14 +200,18 @@
                 var word = card.word_text || card.content || '';
                 var def = card.definition || card.meaning || '';
                 var isSelected = fieldVal && word && fieldVal.indexOf(word) >= 0;
-                h += '<div class="s2-right-card-item'+(isSelected?' selected':'')+'" data-word="'+App._escape(word)+'" onclick="App.seedanceV2._pickRightWord(this)" style="padding:8px 10px;border:1px solid var(--border-color);border-radius:6px;margin-bottom:4px;cursor:pointer;transition:0.12s;'+(isSelected?'background:rgba(16,185,129,0.08);border-color:#10b981;':'')+'">';
+                var pt=card.preview_image?'/api/seedance/v2/thumbnails/'+card.preview_image:'';
+                h += '<div class="s2-right-card-item'+(isSelected?' selected':'')+'" data-word="'+App._escape(word)+'" data-card-id="'+card.id+'" onclick="App.seedanceV2._pickRightWord(this)" style="display:flex;gap:8px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;margin-bottom:4px;cursor:pointer;transition:0.12s;'+(isSelected?'background:rgba(16,185,129,0.08);border-color:#10b981;':'')+'">';
+                h += '<div class="s2-card-thumb-zone" data-card-id="'+card.id+'" onclick="event.stopPropagation();" style="width:100px;min-width:100px;height:67px;border-radius:3px;overflow:hidden;background:var(--bg-muted,#f1f5f9);position:relative;flex-shrink:0;">'+(pt?'<img src="'+pt+'" style="width:100%;height:100%;object-fit:cover;" loading="lazy" onerror="this.style.display=\\'none\\';this.nextElementSibling.style.display=\\'flex\\';"><span style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;font-size:10px;color:var(--text-muted);">+</span>':'<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-muted);cursor:pointer;" title="拖入图片为词卡添加预览">+</span>')+'</div>';
+                h += '<div style="flex:1;min-width:0;">';
                 h += '<div style="font-size:13px;font-weight:600;">'+App._escape(word)+'</div>';
-                if (def) h += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">'+App._escape(def.substring(0,80))+'</div>';
-                h += '</div>';
+                if (def) h += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+App._escape(def.substring(0,80))+'</div>';
+                h += '</div></div>';
             }
         }
         h += '</div>';
         panel.innerHTML = h;
+        setTimeout(function(){ App.seedanceV2._setupWordCardDropZones(); }, 120);
     };
 
     App.seedanceV2._rightExtOpen = false;
@@ -772,6 +776,37 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
     App.seedanceV2.customInput=function(){var f=this.activeField;var lib=this.getLibraryByKey(f);var v=prompt('输入自定义 '+(lib?lib.dimension_name:f)+' 描述:');if(!v||!v.trim())return;var self=this;var fu=function(){if(lib)App.fetchJSON('/api/seedance/v2/custom-words',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({library_id:lib.id,word_text:v.trim()})});self.updateSceneField(self.activeSceneId,f,v.trim()).then(function(){return self.openProject(self.currentProjectId);}).then(function(){self.renderPickerLibTabs(self.activePickerLibId);self.renderCards(self.activePickerLibId);App.showToast('已设定: '+v.trim(),'success');});};fu();};
 
     // 拼接引擎（含300ms防抖，避免高频输入时重复计算）
+    // ============ 词卡缩略图 ============
+    App.seedanceV2._uploadWordCardThumb=async function(cardId,file){
+        var fd=new FormData();fd.append('file',file);
+        try{
+            var r=await fetch('/api/seedance/v2/cards/'+cardId+'/thumbnail',{method:'POST',body:fd});
+            var d=await r.json();
+            if(d&&d.ok){
+                var lib=App.seedanceV2.getLibraryById(App.seedanceV2.activePickerLibId);
+                if(lib){delete App.seedanceV2.cardCache[lib.id];await App.seedanceV2.loadCards(lib.id);
+                App.seedanceV2._renderRightPickerContent(lib);}
+                App.showToast('缩略图已保存','success');
+            }else{App.showToast('上传失败','error');}
+        }catch(e){App.showToast('上传异常: '+e.message,'error');}
+    };
+    App.seedanceV2._setupWordCardDropZones=function(){
+        var self=this;
+        document.querySelectorAll('.s2-card-thumb-zone').forEach(function(z){
+            if(z.dataset.dropBound)return;z.dataset.dropBound='1';
+            z.addEventListener('dragover',function(e){e.preventDefault();e.stopPropagation();
+                this.style.background='rgba(16,185,129,0.12)';this.style.border='1px dashed #10b981';});
+            z.addEventListener('dragleave',function(e){this.style.background='';this.style.border='';});
+            z.addEventListener('drop',function(e){e.preventDefault();e.stopPropagation();
+                this.style.background='';this.style.border='';
+                var cid=parseInt(this.dataset.cardId);
+                if(!cid||!e.dataTransfer.files||!e.dataTransfer.files.length)return;
+                var f=e.dataTransfer.files[0];
+                if(!f.type.startsWith('image/')){App.showToast('请拖入图片文件','warning');return;}
+                self._uploadWordCardThumb(cid,f);
+            });
+        });
+    };
     App.seedanceV2._debouncedCompose = function() {
         var self = this;
         if (self._composeTimer) clearTimeout(self._composeTimer);
