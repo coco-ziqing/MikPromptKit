@@ -1,7 +1,7 @@
 """
 主入口 — FastAPI 应用 + Uvicorn 启动（加固版）
 """
-import sys, os, socket, traceback
+import sys, os, socket, traceback, subprocess
 from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI, Request, UploadFile, File
@@ -14,6 +14,32 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from database import init_db, rebuild_fts, get_db, safe_commit
 from seed_data import SEED_PROMPTS, get_builtin_count
 from backup import start_auto_backup, stop_auto_backup, do_backup, get_backup_info
+
+# 启动时读取 git 版本号（优先 tag，否则 short hash）
+def _get_git_version():
+    try:
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        r = subprocess.run(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            cwd=repo,
+            capture_output=True, text=True, timeout=3
+        )
+        tag = r.stdout.strip()
+        if tag:
+            return tag.lstrip("v")
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--short=7", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            capture_output=True, text=True, timeout=3
+        )
+        return r.stdout.strip()[:7]
+    except Exception:
+        return "unknown"
+
+APP_VERSION = _get_git_version()
 from api.prompts import router as prompts_router
 from api.v2 import router as v2_router
 from api.seedance import router as seedance_router
@@ -242,7 +268,7 @@ def get_status():
             "total_usage": usage,
             "total_cards": cards,
             "total_library_assets": libs,
-            "version": "4.0.0"
+            "version": APP_VERSION
         }
     except Exception as e:
         print("[状态] 查询失败:", e)

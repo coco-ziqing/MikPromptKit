@@ -81,6 +81,7 @@ const App = {
 
         this.bindEvents();
         this._initDropZone();
+        this._syncVersion();
         
         // 初始默认显示 home 视图（防止 JS 错误时白屏）
         this.switchView('home', true);  // true = 静默模式，不写 localStorage
@@ -6135,6 +6136,16 @@ openImageViewer(filename, promptId) {
         const d = document.createElement('div');
         d.textContent = str;
         return d.innerHTML;
+    },
+
+    // 从后端 /api/status 同步版本号到页面标题
+    _syncVersion() {
+        var self = this;
+        fetch('/api/status').then(function(r){return r.json();}).then(function(d){
+            var v = d.version || '4.0.0';
+            var brand = document.querySelector('.brand small');
+            if (brand) brand.textContent = 'v' + v;
+        }).catch(function(){});
     }
 };
 
