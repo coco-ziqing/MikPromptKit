@@ -218,10 +218,27 @@
                 h += '<div style="font-size:13px;font-weight:600;">'+App._escape(word)+'</div>';
                 if (def) h += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+App._escape(def.substring(0,80))+'</div>';
                 h += '</div>';
+                // 自定义词条显示编辑/删除按钮（非系统词卡）
+                if(!card.is_system){
+                    h += '<div style="flex-shrink:0;display:flex;gap:2px;margin-left:4px;">';
+                    h += '<span onclick="event.stopPropagation();App.seedanceV2._editCustomCard('+card.id+',\''+App._escape(word)+'\',\''+App._escape(def)+'\')" title="编辑词条" style="cursor:pointer;font-size:12px;opacity:0.5;" onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'0.5\'">✏️</span>';
+                    h += '<span onclick="event.stopPropagation();App.seedanceV2._deleteCustomCard('+card.id+')" title="删除词条" style="cursor:pointer;font-size:12px;opacity:0.5;" onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'0.5\'">🗑</span>';
+                    h += '</div>';
+                }
                 h += '</div></div>';
             }
         }
         h += '</div>';
+        // 自定义分组：添加词条入口
+        var curLib=App.seedanceV2.getLibraryById(App.seedanceV2.activePickerLibId);
+        if(curLib&&curLib.category==='custom'){
+            h += '<div style="margin-top:8px;display:flex;gap:4px;">';
+            h += '<input id="s2PanelWordInput" class="s2-input" placeholder="新词条..." style="flex:1;font-size:12px;padding:4px 8px;" onkeydown="if(event.key===\'Enter\')App.seedanceV2._addPanelWord('+curLib.id+')">';
+            h += '<input id="s2PanelWordDef" class="s2-input" placeholder="释义(可选)" style="width:80px;font-size:12px;padding:4px 8px;" onkeydown="if(event.key===\'Enter\')App.seedanceV2._addPanelWord('+curLib.id+')">';
+            h += '<button class="btn btn-sm btn-primary" onclick="App.seedanceV2._addPanelWord('+curLib.id+')" style="font-size:12px;padding:4px 10px;white-space:nowrap;">+添加</button>';
+            h += '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._renameGroup('+curLib.id+')" title="重命名分组" style="font-size:11px;padding:4px 8px;">✏️</button>';
+            h += '</div>';
+        }
         // 图库选取按钮
         h += '<div style="margin-top:8px;text-align:center;"><button class="btn btn-xs btn-outline" onclick="App.seedanceV2._openMediaLibrary()" style="font-size:11px;padding:3px 10px;">📚 从媒体库选取</button></div>';
         panel.innerHTML = h;
@@ -993,6 +1010,67 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
             App.seedanceV2._dispatchUpload(targetId,file);
             App.showToast('已添加预览到: '+(targetWord||'词卡#'+targetId),'success');
         }catch(e){App.showToast('选取失败: '+e.message,'error');}
+    };
+    // ============ 自定义词条增删改 ============
+    // 从面板输入框添加词条到自定义分组
+    App.seedanceV2._addPanelWord=async function(libId){
+        var wi=document.getElementById('s2PanelWordInput');
+        var di=document.getElementById('s2PanelWordDef');
+        var w=(wi.value||'').trim();
+        if(!w){App.showToast('请输入词条内容','warning');return;}
+        var def=di?(di.value||'').trim():'';
+        var d=await App.fetchJSON('/api/seedance/v2/libraries/'+libId+'/cards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({word_text:w,definition:def})});
+        if(d&&d.ok){wi.value='';if(di)di.value='';
+        delete App.seedanceV2.cardCache[libId];await App.seedanceV2.loadCards(libId);
+        var lib=App.seedanceV2.getLibraryById(libId);
+        if(lib)App.seedanceV2._renderRightPickerContent(lib);
+        App.showToast('已添加词条','success');}
+        else{App.showToast('添加失败','error');}};
+    // 编辑自定义词条（弹窗）
+    App.seedanceV2._editCustomCard=function(cardId,oldText,oldDef){
+        var w=prompt('编辑词条:',oldText);
+        if(w===null)return;w=(w||'').trim();
+        if(!w){App.showToast('词条内容不能为空','warning');return;}
+        var def=prompt('释义(可留空):',oldDef||'');
+        if(def===null)return;
+        var self=this;
+        App.fetchJSON('/api/seedance/v2/cards/'+cardId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({word_text:w,definition:def||''})}).then(function(d){
+            if(d&&d.ok){
+                var lib=App.seedanceV2.getLibraryById(App.seedanceV2.activePickerLibId);
+                if(lib){delete App.seedanceV2.cardCache[lib.id];App.seedanceV2.loadCards(lib.id).then(function(){
+                    App.seedanceV2._renderRightPickerContent(lib);});}
+                App.showToast('词条已更新','success');
+            }else{App.showToast('更新失败','error');}
+        });
+    };
+    // 删除自定义词条
+    App.seedanceV2._deleteCustomCard=async function(cardId){
+        if(!confirm('确定删除此词条？'))return;
+        var d=await App.fetchJSON('/api/seedance/v2/cards/'+cardId,{method:'DELETE'});
+        if(d&&d.ok){
+            var lib=App.seedanceV2.getLibraryById(App.seedanceV2.activePickerLibId);
+            if(lib){delete App.seedanceV2.cardCache[lib.id];await App.seedanceV2.loadCards(lib.id);
+            App.seedanceV2._renderRightPickerContent(lib);}
+            App.showToast('词条已删除','info');
+        }else{App.showToast('删除失败','error');}
+    };
+    // 重命名自定义分组
+    App.seedanceV2._renameGroup=function(libId){
+        var lib=App.seedanceV2.getLibraryById(libId);
+        if(!lib)return;
+        var name=prompt('重命名分组:',lib.dimension_name||'');
+        if(name===null||!(name||'').trim())return;
+        name=name.trim();
+        var self=this;
+        App.fetchJSON('/api/seedance/v2/libraries/'+libId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})}).then(function(d){
+            if(d&&d.ok){
+                self.loadLibraries().then(function(){
+                    var nl=App.seedanceV2.getLibraryById(libId);
+                    if(nl)App.seedanceV2._renderRightPickerContent(nl);
+                });
+                App.showToast('分组已重命名','success');
+            }else{App.showToast('重命名失败','error');}
+        });
     };
     // 词卡视频上传
     App.seedanceV2._uploadWordCardVideo=async function(cardId,file){
