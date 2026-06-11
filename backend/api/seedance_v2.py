@@ -299,6 +299,53 @@ def delete_library(lib_id: int):
     return {"ok": True}
 
 
+@router.put("/libraries/{lib_id}")
+def rename_library(lib_id: int, data: dict = Body(...)):
+    """重命名自定义分组（仅限 custom 类型）"""
+    name = (data.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "name 必填")
+    db = get_db()
+    lib = db.execute("SELECT * FROM prompt_library WHERE id=? AND category='custom'", [lib_id]).fetchone()
+    if not lib:
+        raise HTTPException(404, "自定义分组不存在或不可编辑")
+    db.execute("UPDATE prompt_library SET dimension_name=? WHERE id=?", [name, lib_id])
+    safe_commit()
+    return {"ok": True}
+
+
+@router.put("/cards/{card_id}")
+def update_card(card_id: int, data: dict = Body(...)):
+    """编辑自定义词条（仅限 is_system=0）"""
+    db = get_db()
+    card = db.execute("SELECT * FROM prompt_word_card WHERE id=? AND is_system=0", [card_id]).fetchone()
+    if not card:
+        raise HTTPException(404, "词条不存在或不可编辑")
+    word_text = data.get("word_text", "").strip()
+    definition = data.get("definition", "")
+    if not word_text:
+        raise HTTPException(400, "word_text 必填")
+    db.execute("UPDATE prompt_word_card SET word_text=?, definition=? WHERE id=?", [word_text, definition, card_id])
+    # 同步 user_custom_word
+    db.execute("UPDATE user_custom_word SET word_text=?, definition=? WHERE library_id=? AND word_text=?",
+               [word_text, definition, card["library_id"], card["word_text"]])
+    safe_commit()
+    return {"ok": True}
+
+
+@router.delete("/cards/{card_id}")
+def delete_card(card_id: int):
+    """删除自定义词条（仅限 is_system=0）"""
+    db = get_db()
+    card = db.execute("SELECT * FROM prompt_word_card WHERE id=? AND is_system=0", [card_id]).fetchone()
+    if not card:
+        raise HTTPException(404, "词条不存在或不可删除")
+    db.execute("DELETE FROM user_custom_word WHERE library_id=? AND word_text=?", [card["library_id"], card["word_text"]])
+    db.execute("DELETE FROM prompt_word_card WHERE id=?", [card_id])
+    safe_commit()
+    return {"ok": True}
+
+
 @router.post("/libraries/{lib_id}/cards")
 def create_library_card(lib_id: int, data: dict = Body(...)):
     """在指定词库中手动添加自定义词条"""
