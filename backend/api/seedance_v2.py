@@ -17,6 +17,13 @@ WC_THUMB_DIR = os.path.join(
 )
 os.makedirs(WC_THUMB_DIR, exist_ok=True)
 
+# 词卡视频存储目录
+WC_VIDEO_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "wordcard_videos"
+)
+os.makedirs(WC_VIDEO_DIR, exist_ok=True)
+
 
 # ==================== 词库接口 (27套) ====================
 
@@ -182,6 +189,62 @@ def serve_word_card_thumbnail(filename: str):
     if not os.path.exists(path):
         raise HTTPException(404, "缩略图不存在")
     return FileResponse(path, media_type="image/jpeg")
+
+
+# ==================== 词卡视频预览 ====================
+
+@router.post("/cards/{card_id}/video")
+async def upload_word_card_video(card_id: int, file: UploadFile = File(...)):
+    """为词卡上传预览视频（mp4/webm/mov，最大50MB）"""
+    db = get_db()
+    card = db.execute("SELECT * FROM prompt_word_card WHERE id=?", [card_id]).fetchone()
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in (".mp4", ".webm", ".mov"):
+        raise HTTPException(400, "仅支持 mp4/webm/mov 格式")
+    data = await file.read()
+    if len(data) > 50 * 1024 * 1024:
+        raise HTTPException(400, "视频不能超过50MB")
+    filename = f"{uuid.uuid4().hex}{ext}"
+    dest = os.path.join(WC_VIDEO_DIR, filename)
+    with open(dest, "wb") as f:
+        f.write(data)
+    # 删除旧视频
+    if card["preview_video"]:
+        old_path = os.path.join(WC_VIDEO_DIR, card["preview_video"])
+        if os.path.exists(old_path):
+            os.remove(old_path)
+    db.execute("UPDATE prompt_word_card SET preview_video=? WHERE id=?", [filename, card_id])
+    safe_commit()
+    return {"ok": True, "filename": filename}
+
+
+@router.delete("/cards/{card_id}/video")
+def delete_word_card_video(card_id: int):
+    """删除词卡预览视频"""
+    db = get_db()
+    card = db.execute("SELECT preview_video FROM prompt_word_card WHERE id=?", [card_id]).fetchone()
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    if card["preview_video"]:
+        path = os.path.join(WC_VIDEO_DIR, card["preview_video"])
+        if os.path.exists(path):
+            os.remove(path)
+        db.execute("UPDATE prompt_word_card SET preview_video='' WHERE id=?", [card_id])
+        safe_commit()
+    return {"ok": True}
+
+
+@router.get("/videos/{filename}")
+def serve_word_card_video(filename: str):
+    """返回词卡预览视频文件（支持Range请求）"""
+    path = os.path.join(WC_VIDEO_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(404, "视频不存在")
+    ext = os.path.splitext(filename)[1].lower()
+    mime = {".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime"}.get(ext, "video/mp4")
+    return FileResponse(path, media_type=mime)
 
 
 # ==================== 自定义词库管理 ====================
