@@ -117,23 +117,24 @@
     App.seedanceV2._openRightPicker = function(sid, field) {
         // 右侧面板选词代替 modal
         App.seedanceV2.activeSceneId = sid;
-        App.seedanceV2.activeField = field;
+        // 自定义分组: field 是 dimension_key (custom_xxx), 不覆盖 activeField
+        var isCustomKey = field && typeof field === 'string' && field.startsWith('custom_');
+        if (!isCustomKey) App.seedanceV2.activeField = field;
         var panel = document.getElementById('s2RightPanel');
         var layout = document.querySelector('.s2-layout');
         if (!panel || !layout) return;
-        
-        // 找到对应的 lib
+        // 找到对应的 lib: 先按 dimKey 映射, 再按原始字段名/dimension_key
         var dimKey = App.seedanceV2._fieldToDim && App.seedanceV2._fieldToDim[field] ? App.seedanceV2._fieldToDim[field] : field;
         var foundLib = null;
         for (var li = 0; li < App.seedanceV2.libraries.length; li++) {
             var lib = App.seedanceV2.libraries[li];
-            if (lib.dimension_key === dimKey) { foundLib = lib; break; }
+            if (lib.dimension_key === dimKey || lib.dimension_key === field) { foundLib = lib; break; }
         }
         if (!foundLib) { App.showToast('未找到对应词库: '+field, 'warning'); return; }
-        
+        var displayName = App.seedanceV2._F[field] || foundLib.dimension_name || '选词';
         layout.classList.add('editor-with-panel');
         panel.classList.add('open');
-        panel.innerHTML = '<div class="d-flex justify-content-between align-items-center mb-2"><strong>✏️ 选词 - '+App.seedanceV2._F[field]+'</strong><button class="btn btn-sm btn-outline" onclick="App.seedanceV2._closeRightPicker()">&times;</button></div><div class="loading-spinner"><div class="spinner-border spinner-border-sm"></div></div>';
+        panel.innerHTML = '<div class="d-flex justify-content-between align-items-center mb-2"><strong>✏️ 选词 - '+App._escape(displayName)+'</strong><button class="btn btn-sm btn-outline" onclick="App.seedanceV2._closeRightPicker()">&times;</button></div><div class="loading-spinner"><div class="spinner-border spinner-border-sm"></div></div>';
         App.seedanceV2.activePickerLibId = foundLib.id;
         App.seedanceV2._renderRightPickerContent(foundLib);
     };
@@ -155,7 +156,11 @@
         var self = App.seedanceV2;
 
         // 顶部：关闭按钮
-        var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><strong>✏️ 选词 - '+App._escape(self._F[self.activeField]||lib.dimension_name)+'</strong><div style="display:flex;gap:4px;"><button class="btn btn-xs btn-outline" onclick="App.seedanceV2._openGroupCreator()" title="新建自定义分组" style="font-size:10px;padding:2px 6px;">+ 分组</button><button class="btn btn-sm btn-outline" onclick="App.seedanceV2._closeRightPicker()">✕</button></div></div>';
+        var panelField = self._F[self.activeField]||'';
+        var isCustom = lib.category === 'custom';
+        var titleName = isCustom ? (lib.dimension_name||'自定义') : (panelField || lib.dimension_name||'选词');
+        var targetHint = isCustom && panelField ? ' → '+panelField : '';
+        var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><div><strong>✏️ '+App._escape(titleName)+'</strong><span style="font-size:10px;color:var(--text-muted);margin-left:4px;">'+App._escape(targetHint)+'</span></div><div style="display:flex;gap:4px;"><button class="btn btn-xs btn-outline" onclick="App.seedanceV2._openGroupCreator()" title="新建自定义分组" style="font-size:10px;padding:2px 6px;">+ 分组</button><button class="btn btn-sm btn-outline" onclick="App.seedanceV2._closeRightPicker()">✕</button></div></div>';
         
         // 词库切换 tabs（仅显示 basic 和 extended，排除 global/custom）
         var basicLibs = [], extLibs = [];
@@ -678,7 +683,7 @@
     // 拓展功能单元(Ext-Unit)系统
     // ============================================================
     App.seedanceV2._initExtUnits=function(scene){var units=[];for(var i=0;i<this._EF.length;i++){var v=scene[this._EF[i]];if(v!==undefined&&v!==null&&v!=='')units.push({field:this._EF[i]});}return units;};
-    App.seedanceV2._renderExtUnitHTML=function(scene,idx){var unit=scene._extUnits[idx];var f=unit.field;var n=this._F[f]||f;var v=scene[f]||'';var h='<div class="s2-ext-unit" data-scene-id="'+scene.id+'" data-ext-idx="'+idx+'">';h+='<div class="s2-ext-unit-header"><span class="s2-ext-unit-name">'+n+'</span><select class="s2-ext-unit-dropdown" >';for(var ei=0;ei<this._EF.length;ei++){var sel=this._EF[ei]===f?' selected':'';h+='<option value="'+this._EF[ei]+'"'+sel+'>'+(this._F[this._EF[ei]]||this._EF[ei])+'</option>';}h+='</select><button class="s2-ext-unit-remove" title="移除此单元">✖</button></div>';h+='<div class="s2-ext-unit-body"><button class="s2-ext-unit-addword">+ 选词</button>';if(v&&v.trim()){h+='<span class="s2-ext-unit-tag">'+App._escape(v.length>12?v.substring(0,12)+'..':v)+'</span>';}else if(v===' '){h+='<span class="s2-ext-unit-tag" style="color:#94a3b8;">点击选词</span>';}h+='</div></div>';return h;};
+    App.seedanceV2._renderExtUnitHTML=function(scene,idx){var unit=scene._extUnits[idx];var f=unit.field;var n=this._F[f]||f;var v=scene[f]||'';var h='<div class="s2-ext-unit" data-scene-id="'+scene.id+'" data-ext-idx="'+idx+'">';h+='<div class="s2-ext-unit-header"><span class="s2-ext-unit-name">'+n+'</span><select class="s2-ext-unit-dropdown" >';for(var ei=0;ei<this._EF.length;ei++){var sel=this._EF[ei]===f?' selected':'';h+='<option value="'+this._EF[ei]+'"'+sel+'>'+(this._F[this._EF[ei]]||this._EF[ei])+'</option>';};var cust=[];for(var cli=0;cli<this.libraries.length;cli++){if(this.libraries[cli].category==='custom')cust.push(this.libraries[cli]);}if(cust.length){h+='<optgroup label="📁 自定义分组">';for(var ci3=0;ci3<cust.length;ci3++){var cl=cust[ci3];var cdk=cl.dimension_key;var csel=cdk===f?' selected':'';h+='<option value="'+cdk+'"'+csel+'>'+App._escape((cl.dimension_name||'').substring(0,15))+'</option>';}h+='</optgroup>';}h+='</select><button class="s2-ext-unit-remove" title="移除此单元">✖</button></div>';h+='<div class="s2-ext-unit-body"><button class="s2-ext-unit-addword">+ 选词</button>';if(v&&v.trim()){h+='<span class="s2-ext-unit-tag">'+App._escape(v.length>12?v.substring(0,12)+'..':v)+'</span>';}else if(v===' '){h+='<span class="s2-ext-unit-tag" style="color:#94a3b8;">点击选词</span>';}h+='</div></div>';return h;};
     App.seedanceV2.addExtUnit=function(sid){for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){var sc=this.scenes[i];if(!sc._extUnits)sc._extUnits=[];var used={};for(var j=0;j<sc._extUnits.length;j++)used[sc._extUnits[j].field]=true;var next=null;for(var k=0;k<this._EF.length;k++){if(!used[this._EF[k]]){next=this._EF[k];break;}}if(!next){App.showToast('所有拓展字段已添加','info');return;}sc._extUnits.push({field:next});sc[next]=' ';this.updateSceneField(sid,next,' ');this.renderScenes();this._openRightPicker(sid,next);return;}}};
     App.seedanceV2.removeExtUnit=function(sid,idx){for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){var unit=this.scenes[i]._extUnits[idx];if(!unit)return;var f=unit.field;this.scenes[i][f]='';this.updateSceneField(sid,f,'');this.scenes[i]._extUnits.splice(idx,1);this.renderScenes();return;}}};
     App.seedanceV2._extUnitChange=function(sid,idx,newField){for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){var unit=this.scenes[i]._extUnits[idx];var oldField=unit.field;if(oldField===newField)return;this.scenes[i][oldField]='';this.updateSceneField(sid,oldField,'');unit.field=newField;this.scenes[i][newField]=' ';this.updateSceneField(sid,newField,' ');this.renderScenes();this._openRightPicker(sid,newField);return;}}};
@@ -814,7 +819,7 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
         App.showToast('已添加负面词: ' + name, 'success');
     };
     App.seedanceV2.closePicker=async function(){var p=document.getElementById('s2CardPicker');if(p)p.style.display='none';if(this.currentProjectId){await this.openProject(this.currentProjectId);this.compose();}};
-    App.seedanceV2.openCardPicker=async function(sid,f){this.activeSceneId=sid;this.activeField=f;var lib=this.getLibraryByKey(f)||this.getLibraryByKey(this._fieldToDim[f]);if(!lib){App.showToast('未找到词库: '+f,'error');return;}// 优先使用右侧面板
+    App.seedanceV2.openCardPicker=async function(sid,f){this.activeSceneId=sid;this.activeField=f;var lib=this.getLibraryByKey(f)||this.getLibraryByKey(this._fieldToDim[f]);if(!lib&&f&&f.startsWith&&f.startsWith('custom_')){for(var li=0;li<this.libraries.length;li++){if(this.libraries[li].dimension_key===f){lib=this.libraries[li];break;}}}if(!lib){App.showToast('未找到词库: '+f,'error');return;}// 优先使用右侧面板
         var panel = document.getElementById('s2RightPanel');
         if (panel) { this._openRightPicker(sid, f); return; }
         // 兜底：Modal 方式
