@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-06T12:47:51.843Z",
+  "updatedAt": "2026-06-11T02:26:31.852Z",
   "entries": {
     "memory:memory/2026-05-29.md:88:118": {
       "key": "memory:memory/2026-05-29.md:88:118",
@@ -590,6 +590,37 @@
         "module-presets",
         "comfyui-config",
         "路径"
+      ]
+    },
+    "memory:memory/2026-06-07.md:1:32": {
+      "key": "memory:memory/2026-06-07.md:1:32",
+      "path": "memory/2026-06-07.md",
+      "startLine": 1,
+      "endLine": 32,
+      "source": "memory",
+      "snippet": "# 2026-06-07 开发会话总结 — Seedance V2 组装器阶段 ## 时间 - 开始: 2026-06-07 12:00 (GMT+8) - 结束: 2026-06-07 14:54 (GMT+8) - 历时: ~3 小时 ## Git 标签 - `v3.10.30` — Seedance V2 组装器多项修复 ## 本次完成事项 ### Phase 4 — 高级功能重建 (15:50-15:56) - [x] Home 视图数据源切换: `/api/prompts` → `/api/v4/cards` - [x] 结构化字段编辑面板: 编辑弹窗中嵌入15个字段网格编辑 - [x] 版本管理: 卡片详情弹窗中嵌入「版本历史」+「编辑卡片」按钮 - [x] 版本回滚 API: `POST /api/v4/cards/{id}/rollback` - [x] 保存时自动同步结构化字段到 prompt_cards - [x] Git 打标 `v4.0.0-phase4` ### Phase 5 — 前端卡片统一 + CSS优化 (16:04-16:10) - [x] 卡片类型徽标 (image/video 双色显示) - [x] CSS 优化: `.card-type-image` + `.card-type-video` - [x] 旧 JSON 文件删除 (seedance_styles + negative_prompts) - [x] Git 打标 `v4.0.0-phase5` ### Phase 6 — 组装器 v3 卡片编排 (16:10-1",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-11T02:26:31.852Z",
+      "lastRecalledAt": "2026-06-11T02:26:31.852Z",
+      "queryHashes": [
+        "c252f2b854ec"
+      ],
+      "recallDays": [
+        "2026-06-11"
+      ],
+      "conceptTags": [
+        "v3.10.30",
+        "50-15",
+        "api/prompts",
+        "api/v4/cards",
+        "prompt-cards",
+        "v4.0.0-phase4",
+        "04-16",
+        "image/video"
       ]
     }
   }
