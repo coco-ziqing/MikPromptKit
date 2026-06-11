@@ -357,6 +357,7 @@ def init_db():
                 word_text TEXT NOT NULL,
                 definition TEXT,
                 preview_image TEXT,
+                preview_video TEXT DEFAULT '',
                 heat_weight REAL DEFAULT 0,
                 is_system INTEGER DEFAULT 1,
                 usage_count INTEGER DEFAULT 0,
