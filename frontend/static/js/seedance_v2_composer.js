@@ -216,11 +216,12 @@
                 var card = cards[ci];
                 var word = card.word_text || card.content || '';
                 var def = card.definition || card.meaning || '';
-                var isSelected = fieldVal && word && fieldVal.indexOf(word) >= 0;
+                var injectValue = def ? def : word;  // 释义优先: 填入预览用详细内容
+                var isSelected = fieldVal && (fieldVal.indexOf(injectValue) >= 0);
                 var pt=card.preview_image?'/api/seedance/v2/thumbnails/'+card.preview_image:'';
                 var vt=card.preview_video?'/api/seedance/v2/videos/'+card.preview_video:'';
                 var hasMedia=pt||vt;
-                h += '<div class="s2-right-card-item'+(isSelected?' selected':'')+'" data-word="'+App._escape(word)+'" data-card-id="'+card.id+'" data-video="'+(vt||'')+'" onclick="App.seedanceV2._pickRightWord(this)" style="display:flex;gap:8px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;margin-bottom:4px;cursor:pointer;transition:0.12s;'+(isSelected?'background:rgba(16,185,129,0.08);border-color:#10b981;':'')+'" onmouseenter="App.seedanceV2._thumbHoverIn(this)" onmouseleave="App.seedanceV2._thumbHoverOut(this)">';
+                h += '<div class="s2-right-card-item'+(isSelected?' selected':'')+'" data-word="'+App._escape(injectValue)+'" data-card-id="'+card.id+'" data-video="'+(vt||'')+'" onclick="App.seedanceV2._pickRightWord(this)" style="display:flex;gap:8px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;margin-bottom:4px;cursor:pointer;transition:0.12s;'+(isSelected?'background:rgba(16,185,129,0.08);border-color:#10b981;':'')+'" onmouseenter="App.seedanceV2._thumbHoverIn(this)" onmouseleave="App.seedanceV2._thumbHoverOut(this)">';
                 h += '<div class="s2-card-thumb-zone" data-card-id="'+card.id+'" onclick="event.stopPropagation();">';
                 if(vt){
                     h += '<video src="'+vt+'" muted loop preload="metadata" style="width:100%;height:100%;object-fit:cover;display:block;"></video>';
