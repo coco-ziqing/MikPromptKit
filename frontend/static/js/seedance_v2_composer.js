@@ -211,7 +211,7 @@
                 }else if(pt){
                     h += '<img src="'+pt+'" style="width:100%;height:100%;object-fit:cover;" loading="lazy">';
                 }else{
-                    h += '<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-muted);cursor:pointer;" title="拖入图片/视频为词卡添加预览">+</span>';
+                    h += '<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-muted);cursor:pointer;" title="点击选择 | 拖入 | Ctrl+V">+</span>';
                 }
                 h += '</div>';
                 h += '<div style="flex:1;min-width:0;">';
@@ -805,6 +805,7 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
         var self=this;
         document.querySelectorAll('.s2-card-thumb-zone').forEach(function(z){
             if(z.dataset.dropBound)return;z.dataset.dropBound='1';
+            // 拖入上传
             z.addEventListener('dragover',function(e){e.preventDefault();e.stopPropagation();
                 this.style.background='rgba(16,185,129,0.12)';this.style.border='1px dashed #10b981';});
             z.addEventListener('dragleave',function(e){this.style.background='';this.style.border='';});
@@ -813,10 +814,103 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
                 var cid=parseInt(this.dataset.cardId);
                 if(!cid||!e.dataTransfer.files||!e.dataTransfer.files.length)return;
                 var f=e.dataTransfer.files[0];
-                if(!f.type.startsWith('image/')&&!f.type.startsWith('video/')){App.showToast('请拖入图片或视频文件','warning');return;}
-                if(f.type.startsWith('video/')){self._uploadWordCardVideo(cid,f);}else{self._uploadWordCardThumb(cid,f);}
+                self._dispatchUpload(cid,f);
             });
+            // 点击上传：点击空白区或已有预览区打开文件选择器
+            z.addEventListener('click',function(e){
+                e.stopPropagation();
+                var cid=parseInt(this.dataset.cardId);
+                if(!cid)return;
+                var inp=document.createElement('input');inp.type='file';inp.accept='image/*,video/mp4,video/webm,video/mov';
+                inp.onchange=function(ev){
+                    var f=ev.target.files[0];
+                    if(!f)return;
+                    self._dispatchUpload(cid,f);
+                };
+                inp.click();
+            });
+            // 右键菜单：已有的预览可替换/删除
+            var hasMedia=z.querySelector('img, video');
+            if(hasMedia){
+                z.addEventListener('contextmenu',function(e){
+                    e.preventDefault();e.stopPropagation();
+                    var cid=parseInt(this.dataset.cardId);
+                    self._showThumbContextMenu(cid,e.clientX,e.clientY,this);
+                });
+            }
         });
+        // 全局粘贴监听：在右侧面板打开时Ctrl+V可直接粘贴到当前活跃镜头词库
+        if(!document.getElementById('s2RightPanel').dataset.pasteBound){
+            document.getElementById('s2RightPanel').dataset.pasteBound='1';
+            document.addEventListener('paste',function(e){
+                var panel=document.getElementById('s2RightPanel');
+                if(!panel||!panel.classList.contains('open'))return;
+                var items=e.clipboardData&&e.clipboardData.items;
+                if(!items)return;
+                for(var i=0;i<items.length;i++){
+                    if(items[i].type.startsWith('image/')||items[i].type.startsWith('video/')){
+                        e.preventDefault();
+                        var f=items[i].getAsFile();
+                        if(!f)continue;
+                        // 粘贴到当前活跃面板中第一个词卡（用户可通过悬停指示目标）
+                        var targetCard=self.activePickerLibId?self._getFirstVisibleWordCard():null;
+                        if(targetCard){
+                            self._dispatchUpload(targetCard,f);
+                            App.showToast('已粘贴到词卡预览','success');
+                        }
+                        break;
+                    }
+                }
+            });
+        }
+    };
+    // 统一上传分发：根据文件类型路由到图片或视频上传
+    App.seedanceV2._dispatchUpload=function(cardId,file){
+        if(!file)return;
+        if(file.type.startsWith('video/')){this._uploadWordCardVideo(cardId,file);}
+        else if(file.type.startsWith('image/')){this._uploadWordCardThumb(cardId,file);}
+        else{App.showToast('仅支持图片和视频文件','warning');}
+    };
+    // 获取面板中第一个可见的词卡ID（用于Ctrl+V粘贴目标）
+    App.seedanceV2._getFirstVisibleWordCard=function(){
+        var items=document.querySelectorAll('.s2-right-card-item');
+        for(var i=0;i<items.length;i++){
+            if(items[i].style.display!=='none'&&items[i].dataset.cardId){
+                return parseInt(items[i].dataset.cardId);
+            }
+        }
+        // fallback: 第一个缩略图区
+        var z=document.querySelector('.s2-card-thumb-zone');
+        return z?parseInt(z.dataset.cardId):null;
+    };
+    // 右键菜单：替换/删除预览
+    App.seedanceV2._showThumbContextMenu=function(cardId,x,y,zoneEl){
+        var old=document.getElementById('s2ThumbCtxMenu');
+        if(old)old.remove();
+        var menu=document.createElement('div');menu.id='s2ThumbCtxMenu';
+        menu.style.cssText='position:fixed;z-index:9999;left:'+x+'px;top:'+y+'px;background:var(--card-bg,#fff);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:4px;min-width:130px;font-size:12px;';
+        menu.innerHTML='<div style="padding:6px 10px;cursor:pointer;border-radius:3px;" onmouseover="this.style.background=\'var(--bg-muted,#f1f5f9)\'" onmouseout="this.style.background=\'\'" onclick="App.seedanceV2._replaceThumb('+cardId+');document.getElementById(\'s2ThumbCtxMenu\').remove()">📁 替换预览</div><div style="padding:6px 10px;cursor:pointer;border-radius:3px;" onmouseover="this.style.background=\'var(--bg-muted,#f1f5f9)\'" onmouseout="this.style.background=\'\'" onclick="App.seedanceV2._deleteThumb('+cardId+');document.getElementById(\'s2ThumbCtxMenu\').remove()">🗑 删除预览</div>';
+        document.body.appendChild(menu);
+        setTimeout(function(){
+            document.addEventListener('click',function h(){var m=document.getElementById('s2ThumbCtxMenu');if(m)m.remove();document.removeEventListener('click',h);});
+        },50);
+    };
+    // 替换预览：打开文件选择器
+    App.seedanceV2._replaceThumb=function(cardId){
+        var inp=document.createElement('input');inp.type='file';inp.accept='image/*,video/mp4,video/webm,video/mov';
+        inp.onchange=function(e){var f=e.target.files[0];if(f)App.seedanceV2._dispatchUpload(cardId,f);};
+        inp.click();
+    };
+    // 删除预览：调API删除
+    App.seedanceV2._deleteThumb=async function(cardId){
+        var lib=App.seedanceV2.getLibraryById(App.seedanceV2.activePickerLibId);
+        try{
+            await fetch('/api/seedance/v2/cards/'+cardId+'/thumbnail',{method:'DELETE'});
+            await fetch('/api/seedance/v2/cards/'+cardId+'/video',{method:'DELETE'});
+        }catch(e){}
+        if(lib){delete App.seedanceV2.cardCache[lib.id];await App.seedanceV2.loadCards(lib.id);
+        App.seedanceV2._renderRightPickerContent(lib);}
+        App.showToast('预览已删除','info');
     };
     // 词卡视频上传
     App.seedanceV2._uploadWordCardVideo=async function(cardId,file){
