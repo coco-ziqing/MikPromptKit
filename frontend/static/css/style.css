@@ -2057,4 +2057,9 @@ body.dark-theme .s2-drag-handle:hover { background: #334155; }
     font-size: 18px; font-weight: 300; cursor: pointer;
     user-select: none;
 }
+/* 右侧面板: 自定义分组tab & 创建按钮 */
+.sp-lib-tab-custom { border-color: var(--primary); opacity: 0.85; }
+.sp-lib-tab-custom:hover { opacity: 1; }
+.sp-lib-tab-add { border: 1px dashed var(--border-color); opacity: 0.6; }
+.sp-lib-tab-add:hover { border-color: var(--primary); opacity: 1; background: var(--hover-bg); }
 

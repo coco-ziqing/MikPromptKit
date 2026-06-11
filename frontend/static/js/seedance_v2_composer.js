@@ -155,7 +155,7 @@
         var self = App.seedanceV2;
 
         // 顶部：关闭按钮
-        var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><strong>✏️ 选词 - '+App._escape(self._F[self.activeField]||lib.dimension_name)+'</strong><button class="btn btn-sm btn-outline" onclick="App.seedanceV2._closeRightPicker()">✕</button></div>';
+        var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><strong>✏️ 选词 - '+App._escape(self._F[self.activeField]||lib.dimension_name)+'</strong><div style="display:flex;gap:4px;"><button class="btn btn-xs btn-outline" onclick="App.seedanceV2._openGroupCreator()" title="新建自定义分组" style="font-size:10px;padding:2px 6px;">+ 分组</button><button class="btn btn-sm btn-outline" onclick="App.seedanceV2._closeRightPicker()">✕</button></div></div>';
         
         // 词库切换 tabs（仅显示 basic 和 extended，排除 global/custom）
         var basicLibs = [], extLibs = [];
@@ -173,7 +173,19 @@
             var fil = (scene && scene[fk] && scene[fk].trim()) ? ' sp-lib-tab-filled' : '';
             h += '<button class="sp-lib-tab'+ac+fil+'" onclick="App.seedanceV2._switchRightLib('+bl.id+','+self.activeSceneId+',\''+fk+'\')" style="font-size:11px;padding:2px 8px;" title="'+App._escape(bl.dimension_name)+'">'+App._escape(sn)+'</button>';
         }
-        h += '<button class="sp-lib-tab" onclick="App.seedanceV2._toggleRightExtLibs()" style="font-size:11px;padding:2px 8px;" title="更多词库"><span id="s2RightExtArrow">▶</span> 更多</button></div>';
+        h += '<button class="sp-lib-tab" onclick="App.seedanceV2._toggleRightExtLibs()" style="font-size:11px;padding:2px 8px;" title="更多词库"><span id="s2RightExtArrow">▶</span> 更多</button>';
+        // 自定义分组 tab + 创建入口
+        var customLibs = [];
+        for (var cli = 0; cli < self.libraries.length; cli++) { if (self.libraries[cli].category === 'custom') customLibs.push(self.libraries[cli]); }
+        for (var ci2 = 0; ci2 < customLibs.length; ci2++) {
+            var cl = customLibs[ci2];
+            var cac = cl.id === activeLibId ? ' sp-lib-active' : '';
+            var ct_name = (cl.dimension_name || '').substring(0,8);
+            var cfk = self._dimToFieldKey(cl.dimension_key);
+            var cfil = (scene && scene[cfk] && scene[cfk].trim()) ? ' sp-lib-tab-filled' : '';
+            h += '<button class="sp-lib-tab sp-lib-tab-custom'+cac+cfil+'" onclick="App.seedanceV2._switchRightLib('+cl.id+','+self.activeSceneId+',\''+cfk+'\')" style="font-size:10px;padding:2px 6px;" title="'+App._escape(cl.dimension_name)+'">📁 '+App._escape(ct_name)+'</button>';
+        }
+        h += '<button class="sp-lib-tab sp-lib-tab-add" onclick="App.seedanceV2._openGroupCreator()" style="font-size:10px;padding:2px 6px;" title="新建自定义分组">+📁</button></div>';
         
         // 扩展词库（折叠）
         if (self._rightExtOpen) {
@@ -1012,6 +1024,21 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
         }catch(e){App.showToast('选取失败: '+e.message,'error');}
     };
     // ============ 自定义词条增删改 ============
+    // 快速创建自定义分组（弹窗输入名称）
+    App.seedanceV2._openGroupCreator=function(){
+        var name=prompt('新建自定义分组名称:','');
+        if(!name||!(name=name.trim()))return;
+        var self=this;
+        App.fetchJSON('/api/seedance/v2/libraries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})}).then(function(d){
+            if(d&&d.ok){
+                self.loadLibraries().then(function(){
+                    // 自动切换到新建的分组
+                    App.seedanceV2._renderRightPickerContent(App.seedanceV2.getLibraryById(d.id));
+                });
+                App.showToast('分组已创建: '+name,'success');
+            }else{App.showToast('创建失败, 名称可能重复','error');}
+        });
+    };
     // 从面板输入框添加词条到自定义分组
     App.seedanceV2._addPanelWord=async function(libId){
         var wi=document.getElementById('s2PanelWordInput');
