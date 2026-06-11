@@ -211,7 +211,7 @@
                 }else if(pt){
                     h += '<img src="'+pt+'" style="width:100%;height:100%;object-fit:cover;" loading="lazy">';
                 }else{
-                    h += '<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-muted);cursor:pointer;" title="点击选择 | 拖入 | Ctrl+V">+</span>';
+                    h += '<span class="s2-thumb-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;" onclick="event.stopPropagation();App.seedanceV2._pickFileForCard('+card.id+')" title="点击选择 | 拖入 | Ctrl+V">+</span>';
                 }
                 h += '</div>';
                 h += '<div style="flex:1;min-width:0;">';
@@ -831,21 +831,7 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
                 }
                 if(files.length>1)App.showToast(files.length+' 个文件正在上传','info');
             });
-            // 点击上传：仅无预览时弹出文件选择器
-            z.addEventListener('click',function(e){
-                e.stopPropagation();
-                var hasMedia=this.querySelector('img, video');
-                if(hasMedia)return;
-                var cid=parseInt(this.dataset.cardId);
-                if(!cid)return;
-                var inp=document.createElement('input');inp.type='file';inp.accept='image/*,video/mp4,video/webm,video/mov';
-                inp.onchange=function(ev){
-                    var f=ev.target.files[0];
-                    if(!f)return;
-                    self._dispatchUpload(cid,f);
-                };
-                inp.click();
-            });
+            // 点击上传：由+占位符自身处理，不影响其他元素点击
             // 右键菜单：已有的预览可替换/删除
             var hasMedia=z.querySelector('img, video');
             if(hasMedia){
@@ -880,6 +866,17 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
                 }
             });
         }
+    };
+    // 打开文件选择器为词卡添加预览（由+占位符onclick调用）
+    App.seedanceV2._pickFileForCard=function(cardId){
+        var inp=document.createElement('input');inp.type='file';
+        inp.accept='image/*,video/mp4,video/webm,video/mov';
+        inp.onchange=function(ev){
+            var f=ev.target.files[0];
+            if(!f)return;
+            App.seedanceV2._dispatchUpload(cardId,f);
+        };
+        inp.click();
     };
     // 统一上传分发：根据文件类型路由到图片或视频上传
     App.seedanceV2._dispatchUpload=function(cardId,file){
