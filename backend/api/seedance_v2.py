@@ -161,7 +161,12 @@ async def upload_word_card_thumbnail(card_id: int, file: UploadFile = File(...))
         old_path = os.path.join(WC_THUMB_DIR, card["preview_image"])
         if os.path.exists(old_path):
             os.remove(old_path)
-    db.execute("UPDATE prompt_word_card SET preview_image=? WHERE id=?", [filename, card_id])
+    # 若已有视频预览，一并清除（图片替换视频）
+    if card["preview_video"]:
+        old_v = os.path.join(WC_VIDEO_DIR, card["preview_video"])
+        if os.path.exists(old_v):
+            os.remove(old_v)
+    db.execute("UPDATE prompt_word_card SET preview_image=?, preview_video='' WHERE id=?", [filename, card_id])
     safe_commit()
     return {"ok": True, "filename": filename}
 
@@ -215,7 +220,12 @@ async def upload_word_card_video(card_id: int, file: UploadFile = File(...)):
         old_path = os.path.join(WC_VIDEO_DIR, card["preview_video"])
         if os.path.exists(old_path):
             os.remove(old_path)
-    db.execute("UPDATE prompt_word_card SET preview_video=? WHERE id=?", [filename, card_id])
+    # 若已有图片预览，一并清除（视频替换图片）
+    if card["preview_image"]:
+        old_i = os.path.join(WC_THUMB_DIR, card["preview_image"])
+        if os.path.exists(old_i):
+            os.remove(old_i)
+    db.execute("UPDATE prompt_word_card SET preview_video=?, preview_image='' WHERE id=?", [filename, card_id])
     safe_commit()
     return {"ok": True, "filename": filename}
 
