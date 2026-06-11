@@ -2036,3 +2036,17 @@ body.dark-theme .s2-drag-handle:hover { background: #334155; }
 .s2-group-item-count { font-size: 11px; color: var(--text-muted); }
 .s2-group-create { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; }
 
+/* 词卡缩略图区 — 主题自适应背景 */
+.s2-card-thumb-zone {
+    width: 100px; min-width: 100px; height: 67px;
+    border-radius: 4px; overflow: hidden;
+    border: 1px solid var(--border-color, #e2e8f0);
+    background: var(--hover-bg, #f1f5f9);
+    display: flex; align-items: center; justify-content: center;
+}
+.s2-card-thumb-zone .s2-thumb-placeholder {
+    color: var(--text-muted, #94a3b8);
+    font-size: 18px; font-weight: 300; cursor: pointer;
+    user-select: none;
+}
+
