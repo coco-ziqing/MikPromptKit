@@ -902,9 +902,14 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
     App.seedanceV2._showThumbContextMenu=function(cardId,x,y,zoneEl){
         var old=document.getElementById('s2ThumbCtxMenu');
         if(old)old.remove();
+        var isDark=document.documentElement.classList.contains('dark')||document.body.classList.contains('dark-theme');
         var menu=document.createElement('div');menu.id='s2ThumbCtxMenu';
-        menu.style.cssText='position:fixed;z-index:9999;left:'+x+'px;top:'+y+'px;background:var(--card-bg,#fff);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:4px;min-width:130px;font-size:12px;';
-        menu.innerHTML='<div style="padding:6px 10px;cursor:pointer;border-radius:3px;" onmouseover="this.style.background=\'var(--bg-muted,#f1f5f9)\'" onmouseout="this.style.background=\'\'" onclick="App.seedanceV2._replaceThumb('+cardId+');document.getElementById(\'s2ThumbCtxMenu\').remove()">📁 替换预览</div><div style="padding:6px 10px;cursor:pointer;border-radius:3px;" onmouseover="this.style.background=\'var(--bg-muted,#f1f5f9)\'" onmouseout="this.style.background=\'\'" onclick="App.seedanceV2._deleteThumb('+cardId+');document.getElementById(\'s2ThumbCtxMenu\').remove()">🗑 删除预览</div>';
+        menu.style.cssText='position:fixed;z-index:9999;left:'+x+'px;top:'+y+'px;'
+            +(isDark?'background:#1e293b;border:1px solid #334155;color:#e2e8f0;':'background:#fff;border:1px solid #e2e8f0;color:#1e293b;')
+            +'border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.25);padding:4px;min-width:140px;font-size:13px;';
+        menu.innerHTML=
+            '<div style="padding:7px 12px;cursor:pointer;border-radius:5px;display:flex;align-items:center;gap:6px;" onmouseover="this.style.background=\''+(isDark?'#334155':'#f1f5f9')+'\'" onmouseout="this.style.background=\'\'" onclick="App.seedanceV2._replaceThumb('+cardId+');document.getElementById(\'s2ThumbCtxMenu\').remove()">📁 替换预览</div>'
+            +'<div style="padding:7px 12px;cursor:pointer;border-radius:5px;display:flex;align-items:center;gap:6px;" onmouseover="this.style.background=\''+(isDark?'#334155':'#f1f5f9')+'\'" onmouseout="this.style.background=\'\'" onclick="App.seedanceV2._deleteThumb('+cardId+');document.getElementById(\'s2ThumbCtxMenu\').remove()">🗑 删除预览</div>';
         document.body.appendChild(menu);
         setTimeout(function(){
             document.addEventListener('click',function h(){var m=document.getElementById('s2ThumbCtxMenu');if(m)m.remove();document.removeEventListener('click',h);});
@@ -935,7 +940,7 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
         overlay.className='modal-overlay';
         overlay.style.cssText='display:flex;z-index:900;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
         overlay.onclick=function(e){if(e.target===this)this.style.display='none';};
-        overlay.innerHTML='<div class="modal-content" style="max-width:680px;max-height:85vh;"><div class="modal-header"><h5>📚 从媒体库选取预览</h5><button class="header-btn-sm s2-close-modal" data-modal="s2MediaLibModal">✕</button></div><div class="modal-body" style="max-height:60vh;overflow-y:auto;"><div id="s2MediaLibGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;"><div class="loading-spinner"><div class="spinner-border spinner-border-sm"></div></div></div></div><div class="modal-footer"><button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'s2MediaLibModal\').style.display=\'none\'">取消</button></div></div>';
+        overlay.innerHTML='<div class="modal-content" style="max-width:680px;max-height:85vh;"><div class="modal-header"><h5>📚 从媒体库选取预览</h5><span style="font-size:11px;color:var(--text-muted);margin-left:12px;" id="s2MediaLibTarget">→ 将添加到当前词库</span><button class="header-btn-sm s2-close-modal" data-modal="s2MediaLibModal">✕</button></div><div class="modal-body" style="max-height:60vh;overflow-y:auto;"><div id="s2MediaLibGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;"><div class="loading-spinner"><div class="spinner-border spinner-border-sm"></div></div></div></div><div class="modal-footer"><button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'s2MediaLibModal\').style.display=\'none\'">取消</button></div></div>';
         document.body.appendChild(overlay);
         // 加载图库
         var self=this;
@@ -961,7 +966,7 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
             grid.innerHTML=h||'<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-muted);">暂无媒体资产</div>';
         })();
     };
-    // 从媒体库选取后：下载缩略图→上传到词卡
+    // 从媒体库选取后：下载缩略图→上传到词卡（含目标高亮反馈）
     App.seedanceV2._pickFromMediaLib=async function(filename){
         var overlay=document.getElementById('s2MediaLibModal');
         if(overlay)overlay.style.display='none';
@@ -971,10 +976,23 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
             if(!resp.ok){App.showToast('获取文件失败','error');return;}
             var blob=await resp.blob();
             var file=new File([blob],filename,{type:blob.type||'image/jpeg'});
-            // 获取当前面板中第一个词卡ID作为目标
             var targetId=App.seedanceV2._getFirstVisibleWordCard();
             if(!targetId){App.showToast('未找到目标词卡','warning');return;}
+            // 获取目标词卡名称用于反馈
+            var targetWord='';
+            var lib=App.seedanceV2.getLibraryById(App.seedanceV2.activePickerLibId);
+            var cards=lib?App.seedanceV2.cardCache[lib.id]:null;
+            if(cards){for(var ci=0;ci<cards.length;ci++){if(cards[ci].id===targetId){targetWord=cards[ci].word_text||'';break;}}}
+            // 高亮目标词卡缩略图区
+            var targetZone=document.querySelector('.s2-card-thumb-zone[data-card-id="'+targetId+'"]');
+            if(targetZone){
+                targetZone.style.transition='0.15s';
+                targetZone.style.boxShadow='0 0 0 3px #10b981';
+                targetZone.style.borderColor='#10b981';
+                setTimeout(function(){targetZone.style.boxShadow='';targetZone.style.borderColor='';},1500);
+            }
             App.seedanceV2._dispatchUpload(targetId,file);
+            App.showToast('已添加预览到: '+(targetWord||'词卡#'+targetId),'success');
         }catch(e){App.showToast('选取失败: '+e.message,'error');}
     };
     // 词卡视频上传
