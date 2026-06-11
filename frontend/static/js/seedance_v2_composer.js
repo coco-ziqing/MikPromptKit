@@ -204,7 +204,7 @@
                 var vt=card.preview_video?'/api/seedance/v2/videos/'+card.preview_video:'';
                 var hasMedia=pt||vt;
                 h += '<div class="s2-right-card-item'+(isSelected?' selected':'')+'" data-word="'+App._escape(word)+'" data-card-id="'+card.id+'" data-video="'+(vt||'')+'" onclick="App.seedanceV2._pickRightWord(this)" style="display:flex;gap:8px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;margin-bottom:4px;cursor:pointer;transition:0.12s;'+(isSelected?'background:rgba(16,185,129,0.08);border-color:#10b981;':'')+'" onmouseenter="App.seedanceV2._thumbHoverIn(this)" onmouseleave="App.seedanceV2._thumbHoverOut(this)">';
-                h += '<div class="s2-card-thumb-zone" data-card-id="'+card.id+'" onclick="event.stopPropagation();" style="position:relative;flex-shrink:0;">';
+                h += '<div class="s2-card-thumb-zone" data-card-id="'+card.id+'" onclick="event.stopPropagation();">';
                 if(vt){
                     h += '<video src="'+vt+'" muted loop preload="metadata" style="width:100%;height:100%;object-fit:cover;display:block;"></video>';
                     h += '<span style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:#fff;font-size:8px;padding:1px 4px;border-radius:2px;pointer-events:none;">VID</span>';
@@ -831,9 +831,11 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
                 }
                 if(files.length>1)App.showToast(files.length+' 个文件正在上传','info');
             });
-            // 点击上传：点击空白区或已有预览区打开文件选择器
+            // 点击上传：仅无预览时弹出文件选择器
             z.addEventListener('click',function(e){
                 e.stopPropagation();
+                var hasMedia=this.querySelector('img, video');
+                if(hasMedia)return;
                 var cid=parseInt(this.dataset.cardId);
                 if(!cid)return;
                 var inp=document.createElement('input');inp.type='file';inp.accept='image/*,video/mp4,video/webm,video/mov';
