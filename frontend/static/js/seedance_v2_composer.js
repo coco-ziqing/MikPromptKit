@@ -265,11 +265,14 @@
     };
 
     App.seedanceV2._switchRightLib = async function(libId, sid, fieldKey) {
-        App.seedanceV2.activePickerLibId = libId;
-        App.seedanceV2.activeSceneId = sid;
-        App.seedanceV2.activeField = fieldKey;
         var lib = App.seedanceV2.getLibraryById(libId);
         if (!lib) return;
+        App.seedanceV2.activePickerLibId = libId;
+        App.seedanceV2.activeSceneId = sid;
+        // 自定义分组保留用户当前编辑的镜头字段, 不覆盖 activeField
+        if (lib.category !== 'custom') {
+            App.seedanceV2.activeField = fieldKey;
+        }
         await App.seedanceV2.loadCards(libId);
         App.seedanceV2._renderRightPickerContent(lib);
     };
@@ -283,7 +286,8 @@
     };
     App.seedanceV2._pickRightWord = function(el) {
         var word = el.dataset.word;
-        if (!word || !App.seedanceV2.activeSceneId || !App.seedanceV2.activeField) return;
+        if (!word || !App.seedanceV2.activeSceneId) return;
+        if (!App.seedanceV2.activeField) { App.showToast('请先在镜头卡片中点击一个字段(如运镜/构图)', 'warning'); return; }
         var scene = App.seedanceV2._getCurrentScene();
         if (!scene) return;
         var currentVal = scene[App.seedanceV2.activeField] || '';
@@ -712,7 +716,7 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
     App.seedanceV2._dimToField={'scene':'scene_desc','env_detail':'environment_detail'};App.seedanceV2._fieldToDim={'scene_desc':'scene','environment_detail':'env_detail'};
     App.seedanceV2._dimToFieldKey=function(dimKey){return this._dimToField[dimKey]||dimKey;};
     App.seedanceV2.renderPickerLibTabs=function(libId){var c=document.getElementById('s2PickerLibTabs');if(!c)return;var scene=this._getCurrentScene();var basic=[],more=[],custom=[];var self=this;for(var i=0;i<this.libraries.length;i++){var lib=this.libraries[i];lib._sn=lib.dimension_name.replace('词库','').replace('描述','').substring(0,6);var fk=self._dimToFieldKey(lib.dimension_key);lib._filled=scene&&scene[fk]&&scene[fk].trim().length>0;if(lib.category==='basic')basic.push(lib);else if(lib.category==='custom'){lib._sn_custom=lib.dimension_name.substring(0,6);custom.push(lib);}else more.push(lib);}var tabHtml=function(libs,isSm){var h='';for(var j=0;j<libs.length;j++){var lib=libs[j];var a=lib.id===libId?' sp-lib-active':'';var dot=lib._filled?'<span class="sp-lib-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;margin-left:3px;vertical-align:middle;" title="已填充"></span>':'';var cls='sp-lib-tab'+(isSm?' sp-lib-tab-sm':'')+a+(lib._filled?' sp-lib-tab-filled':'');h+='<button class="'+cls+'" onclick="App.seedanceV2.switchPickerLib('+lib.id+')" title="'+App._escape(lib.dimension_name)+(lib._filled?' (已填充)':'')+'">'+App._escape(lib._sn)+dot+'</button>';}return h;};var h='<div class="sp-lib-primary">'+tabHtml(basic,false)+'</div><div class="sp-lib-secondary"><button class="sp-lib-more-btn" onclick="App.seedanceV2.toggleMoreLibs()"><span class="sp-more-icon">'+(this.moreLibsOpen?'\u25BC':'\u25B6')+'</span> '+(this.moreLibsOpen?'收起扩展词库':'更多词库')+'</button>';if(this.moreLibsOpen){h+='<div class="sp-lib-more-grid">'+tabHtml(more,true)+'</div>';}h+='</div>';// 自定义分组
-        if(custom.length){h+='<div class="sp-lib-custom"><div class="sp-lib-custom-header"><span class="sp-lib-custom-label">\ud83d\udce1 自定义</span><button class="sp-lib-custom-manage" onclick="App.seedanceV2.openGroupManagerFromPicker()" title="管理自定义分组">⚙</button></div><div class="sp-lib-custom-grid">'+tabHtml(custom,true)+'</div></div>';}c.innerHTML=h;};
+        if(custom.length){h+='<div class="sp-lib-custom"><div class="sp-lib-custom-header"><span class="sp-lib-custom-label">\ud83d\udce1 自定义</span><button class="sp-lib-custom-manage" onclick="App.seedanceV2.openGroupManagerFromPicker()" title="管理自定义分组">⚙</button><button class="sp-lib-custom-manage" onclick="App.seedanceV2._openGroupCreator()" title="新建分组" style="margin-left:4px;">+📁</button></div><div class="sp-lib-custom-grid">'+tabHtml(custom,true)+'</div></div>';}c.innerHTML=h;};
     App.seedanceV2.toggleMoreLibs=function(){this.moreLibsOpen=!this.moreLibsOpen;this.renderPickerLibTabs(this.activePickerLibId);};
     App.seedanceV2.switchPickerLib=async function(libId){if(libId===this.activePickerLibId)return;this.activePickerLibId=libId;var lib=this.getLibraryById(libId);if(!lib)return;this.activeField=this._dimToFieldKey(lib.dimension_key);document.getElementById('s2PickerTitle').textContent='✏️ 镜头'+this._getSceneOrder(this.activeSceneId)+' - '+lib.dimension_name;document.getElementById('s2PickerSearch').value='';this.renderPickerLibTabs(libId);await this.loadCards(libId);this.renderCards(libId);};
     App.seedanceV2.loadCards=async function(libId){if(this.cardCache[libId])return;var d=await App.fetchJSON('/api/seedance/v2/libraries/'+libId+'/cards?page_size=200');if(d)this.cardCache[libId]=d.items;};App.seedanceV2.preloadAllCardCaches=async function(){var self=this,libs=this.libraries||[];for(var i=0;i<libs.length;i++){var lid=libs[i].id;if(self.cardCache[lid])continue;try{var d=await App.fetchJSON('/api/seedance/v2/libraries/'+lid+'/cards?page_size=200');if(d&&d.items)self.cardCache[lid]=d.items;}catch(e){}}};
