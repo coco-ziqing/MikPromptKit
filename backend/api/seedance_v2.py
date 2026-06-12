@@ -947,8 +947,8 @@ RESOLUTION_MAP = {
     "6K": (5760, 3240), "8K": (7680, 4320),
 }
 ASPECT_MAX_MAP = {
-    "16:9": 2160, "9:16": 3840, "1:1": 2160, "21:9": 2160,
-    "2.35:1": 2160, "4:3": 2160, "3:4": 2880, "3:2": 2160, "2:3": 2880,
+    "16:9": 2160, "9:16": 2160, "1:1": 2160, "21:9": 2160,
+    "2.35:1": 2160, "4:3": 2160, "3:4": 2160, "3:2": 2160, "2:3": 2160,
 }
 
 
@@ -1030,15 +1030,15 @@ def _pick_non_empty(d: dict, keys: list) -> str:
 
 
 def _calc_pixel_res(ar: str, res: str) -> str:
-    """计算画幅像素分辨率 e.g. 16:9 4K → 3840x2160"""
+    """计算画幅像素分辨率 e.g. 16:9 4K -> 3840x2160, 9:16 4K -> 2160x3840"""
     base_w, base_h = RESOLUTION_MAP.get(res, (1920, 1080))
-    max_dim = ASPECT_MAX_MAP.get(ar, base_h)
     w_ratio, h_ratio = map(int, ar.split(":"))
-    if w_ratio >= h_ratio:  # 横屏/方形
-        h = max_dim
+    base_short = min(base_w, base_h)
+    if w_ratio >= h_ratio:
+        h = base_short
         w = int(h * w_ratio / h_ratio)
-    else:  # 竖屏
-        w = max_dim
+    else:
+        w = base_short
         h = int(w * h_ratio / w_ratio)
     return f"{w}x{h}"
 
