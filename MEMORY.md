@@ -2,40 +2,37 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit)
-- 版本：v4.0.0-phase6.2 (2026-06-07 会话关闭)
+- 版本：v4.0.0-phase9.2-final (2026-06-12 会话关闭)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\start.bat` **推荐: `.\QUICK_START.bat`**
 - 默认端口：8080
-- 局域网地址：http://192.168.0.103:8080
+- 局域网地址：http://192.168.0.101:8080
 
 ## 技术栈
 - Python 3.10+ / FastAPI / Uvicorn / SQLite (WAL + FTS5)
-- 前端：Bootstrap 5 CDN + Vanilla JS SPA (~5600 行)
+- 前端：Bootstrap 5 CDN + Vanilla JS SPA (已拆分为6模块)
 - 图片处理：Pillow（自动 3:2 裁剪）
 - 视频处理：ffmpeg（封面提取 + 裁剪压缩）
 - 语义搜索：sentence-transformers + all-MiniLM-L6-v2
 - 版本管理：Git + Git tag
 
-## 项目规模
-- 后端 API 端点：120+ 个
-- 前端 JS 源码：~6,200 行 (app.js) + ~3,500 行 (v4 模块) / CSS: ~1,400 行
-- 数据库表：23 张
+## 项目规模（2026-06-12 更新）
+- 后端 API 端点：165 个 (v4: 17 / Seedance: 35)
+- 前端 JS 源码：app_core.js(658行) + 5模块 + seedance_v2_composer(1250行) ≈ 8,500 行
+- CSS: 2,100 行
+- 数据库表：30 张
 - 种子词条：165 条（5 模块）
 - 实际词条：213 条
 - library_assets 词库：302 条（10 类）
 - 媒体资产：缩略图 287 / 原图 236 / 视频 23
 - 收藏分组：2 / 词包：1
 
-## Git Tag 节点（今日 9 个）
-- `v4.0.0-phase6.2` — Final: 画幅输出完整比例 + selectCard修复 + 词库302条 (2026-06-07)
-- `v4.0.0-phase6-hotfix` — v4 cards API兼容修复 (2026-06-07)
-- `v4.0.0-phase6` — Phase 6: 组装器v3 (2026-06-07)
-- `v4.0.0-phase5` — Phase 5: 卡片类型统一 + CSS (2026-06-07)
-- `v4.0.0-phase4` — Phase 4: Home视图v4 + 结构化字段 (2026-06-07)
-- `v4.0.0-phase3` — Phase 3: 卡片详情弹窗 + 跨表搜索 (2026-06-07)
-- `v4.0.0-phase2` — Phase 2: 词库 + 媒体面板 (2026-06-07)
-- `v4.0.0-phase1` — Phase 1: 统一表结构 + 迁移 + API v4 (2026-06-07)
-- `v3.10.30` — Seedance 组装器修复 (2026-06-07)：防重复渲染bug + 画风/负面词库API+选取器 + 输出预览实时刷新 + 全局默认值持久化 + 画幅分辨率参数修正 + UI精简 (2026-06-07)
+## Git Tag 节点（最近 10 个）
+- `v4.0.0-phase9.2-final` — 本次关闭: 组装器v2+审阅+预览+项目管理+深色UI (2026-06-12)
+- `v4.0.0-phase9.1-ui` — 组装器前端对接: 5格式/3密度/音频面板+4K-8K (2026-06-12)
+- `v4.0.0-phase9-assembler` — 组装器v2引擎: 5格式+像素分辨率+音频+3档密度 (2026-06-12)
+- `v4.0.0-phase8.6-split` — 前端拆分: app.js→6模块(264方法零丢失) (2026-06-12)
+- `v4.0.0-phase8.5-vm` — 版本管理: 编辑自动存档+完整回滚+v4历史/diff (2026-06-12)：防重复渲染bug + 画风/负面词库API+选取器 + 输出预览实时刷新 + 全局默认值持久化 + 画幅分辨率参数修正 + UI精简 (2026-06-07)
 - `v3.10.24` — 会话关闭前完整备份快照 (2026-06-04)
 - `v3.10.23` — 非编辑模式禁用拖入导入功能 (2026-06-03)
 - `v3.10.22` — PNG拖拽导入失败修复 — File流被预览消耗后无法复用
@@ -257,35 +254,35 @@ prompt-tool-dev/
 - `log-analyzer` — 日志分析
 - `bug-fixer` — Bug 修复
 
-## 会话关闭备忘（2026-06-04 09:38）
+## 会话关闭备忘（2026-06-12 20:10）
 本次关闭前已完成以下操作：
 1. ✅ 数据库 WAL checkpoint 合并（WAL 已清除）
-2. ✅ Git 打标 v4.0.0-phase1
-3. ✅ 项目统计更新: prompt_cards 189条 / library_assets 131条
-4. ✅ MEMORY.md + ARCHITECTURE_PLAN_v4.md 更新
+2. ✅ Git 打标 v4.0.0-phase9.2-final
+3. ✅ MEMORY.md 更新 + 会话记忆归档到 memory/2026-06-12.md
 
-## 已安装技能与备忘
-- 已安装 ClawHub 技能: page-builder, api-tester, log-analyzer, bug-fixer
-- 下次打开请确认新 API `/api/v4/*` 可用，浏览前端兼容性
+## 本次会话成果总结（Phase 8.5 — Phase 9.2）
 
-下次打开后请执行：
-1. 读取 `PROJECT_SUMMARY.md` + `MEMORY.md` + `HEARTBEAT.md` 恢复上下文
-2. 启动服务：`.\QUICK_START.bat`
-3. Git 打标：`git tag -a v3.10.24 -m "会话关闭前完整备份快照"`
+### 版本管理系统 (v4.0.0-phase8.5-vm)
+- 编辑自动存档：每次编辑前将完整状态存入 prompt_versions
+- 完整回滚：恢复全部字段（原仅恢复2个）
+- v4 版本历史 API: GET /cards/{id}/versions, v4 diff
 
-## 会话关闭备忘（2026-06-07 18:07）
-本次关闭前已完成以下操作：
-1. ✅ 数据库 WAL checkpoint 合并（WAL 已清除）
-2. ✅ Git 打标 v4.0.0-phase6.2
-3. ✅ 项目统计更新: prompt_cards 189条 / library_assets 302条
-4. ✅ MEMORY.md + ARCHITECTURE_PLAN_v4.md 更新
+### 前端拆分 (v4.0.0-phase8.6-split)
+- app.js 6164行→6模块: app_core/tools/sync/collections/media/editor
+- 264方法零丢失，Object.assign 注入
 
-## 已安装技能与备忘
-- 已安装 ClawHub 技能: page-builder, api-tester, log-analyzer, bug-fixer
-- 下次打开请确认新 API `/api/v4/*` 可用，浏览前端兼容性
+### 组装器v2 (Phase 9-9.2)
+- 5平台多格式引擎：Seedance/Kling/MiniMax/ComfyUI/Raw
+- 像素级分辨率计算：16:9 4K→3840×2160, 9:16→2160×3840
+- 3档密度：compact/standard/detailed
+- 音频支持：BGM+音效+对白
+- 镜头文本审阅弹窗（衬线体阅读排版+ESC关闭+一键复制）
+- 字段悬停预览：鼠标悬停标签弹出词卡缩略图/视频
+- 项目重命名保存+卡片移动修复（v4表读写统一）
+- 侧边栏折叠按钮（fixed定位+localStorage记忆）
+- 深色主题按钮/标签可读性修复（!important+ID优先）
 
-## 已知故障排除
-- 汉字乱码：前端文件必须 UTF-8 无 BOM
-- 端口冲突：start.bat 自动检测 8080-8100
-- 局域网不通：WiFi 设为专用网络 / 运行 firewall_open.bat
-- JS 重复函数定义：检查 console.error，运行 `dedup` 清理
+### 架构补丁
+- 模块统计改为 prompt_cards 主表（不再双表重复计数）
+- PUT端点数据表统一（/api/v4/cards替代/api/prompts）
+- 创建项目时长上限15s→60s
