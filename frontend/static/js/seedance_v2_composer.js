@@ -344,7 +344,7 @@
     // 编辑器
     App.seedanceV2.renderComposerEmpty = function(){var c=document.getElementById('s2Editor');if(c)c.innerHTML='<div class="s2-empty-state"><div class="s2-empty-icon">🎬</div><h4>选择或创建项目开始编辑</h4></div>';};
     App.seedanceV2.setDirty = function(){this.dirty=true;};
-    App.seedanceV2.onTotalDurationChange = function(){var el=document.getElementById('s2_total_duration');if(!el)return;var val=parseInt(el.value);if(isNaN(val)||val<4||val>15)return;var self=this;App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({total_duration:val})}).then(function(){self.openProject(self.currentProjectId);self.compose();});};
+    App.seedanceV2.onTotalDurationChange = function(){var el=document.getElementById('s2_total_duration');if(!el)return;var val=parseInt(el.value);if(isNaN(val)||val<2||val>60)return;var self=this;App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({total_duration:val})}).then(function(){self.openProject(self.currentProjectId);self.compose();});};
     App.seedanceV2.renderProjectEditor = function() {
         var c=document.getElementById('s2Editor');if(!c)return;var p=this.currentProject;if(!p){this.renderComposerEmpty();return;}
         function ms(id,l,opts,v){var h='<div class="s2-field"><label>'+l+'</label><select id="'+id+'" class="s2-input" onchange="App.seedanceV2._debouncedCompose()">';for(var i=0;i<opts.length;i++){var s=opts[i][0]===v?' selected':'';h+='<option value="'+opts[i][0]+'"'+s+'>'+opts[i][1]+'</option>';}h+='</select></div>';return h;}
@@ -354,14 +354,35 @@
         // ② 全局参数（分镜设完再调全局）
         h+='<div class="s2-section s2-global-params-section" id="s2GlobalParamsSection"><div class="s2-section-title" onclick="App.seedanceV2._toggleGlobalParams()" title="点击折叠/展开" style="cursor:pointer;">📐 全局参数 <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span></div><div class="s2-global-body"><div class="s2-global-row">';
         h+=ms('s2_aspect_ratio','画幅',[['16:9','横屏16:9'],['9:16','竖屏9:16'],['1:1','方形1:1'],['21:9','超宽21:9'],['4:3','方屏4:3'],['3:4','竖屏3:4']],p.aspect_ratio||'16:9');
-        h+=ms('s2_resolution','分辨率',[['480p','480p'],['720p','720p'],['1080p','1080p'],['2K','2K']],p.resolution||'1080p');
-        h+='<div class="s2-field"><label>总时长(秒)</label><select id="s2_total_duration" class="s2-input" onchange="App.seedanceV2.onTotalDurationChange()">';for(var td=4;td<=15;td++){h+='<option value="'+td+'"'+(td===(p.total_duration||15)?' selected':'')+'>'+td+'秒</option>';}h+='</select></div></div>';
+        h+=ms('s2_resolution','分辨率',[['480p','480p'],['720p','720p'],['1080p','1080p'],['2K','2K'],['4K','4K'],['6K','6K'],['8K','8K']],p.resolution||'4K');
+        h+='<div class="s2-field"><label>总时长(秒)</label><select id="s2_total_duration" class="s2-input" onchange="App.seedanceV2.onTotalDurationChange()">';for(var td=4;td<=60;td+=2){h+='<option value="'+td+'"'+(td===(p.total_duration||15)?' selected':'')+'>'+td+'秒</option>';}h+='</select></div></div>';
         h+='<div class="s2-global-row"><div class="s2-field" style="flex:2;"><label>全局画风 <span class="s2-style-picker-btn" onclick="App.seedanceV2.openStylePicker()" title="从画风词库选择">📚 选风格</span></label><input id="s2_global_style" class="s2-input" placeholder="..." value="'+App._escape(p.global_style||'')+'" onchange="App.seedanceV2.setDirty();App.seedanceV2._debouncedCompose()"></div><div class="s2-field" style="flex:1;"><label>全局转场</label><input id="s2_global_transition" class="s2-input" placeholder="..." value="'+App._escape(p.global_transition||'')+'" onchange="App.seedanceV2.setDirty();App.seedanceV2._debouncedCompose()"></div></div>';
         h+='<div class="s2-field"><label>负面提示词 <span class="s2-np-picker-btn" onclick="App.seedanceV2.openNegativePicker()" title="从负面词库选择">📖 选负面</span></label><input id="s2_negative_prompt" class="s2-input" placeholder="..." value="'+App._escape(p.negative_prompt||'')+'" onchange="App.seedanceV2.setDirty();App.seedanceV2._debouncedCompose()"></div>';
         var rm=(p.remaining_duration!==undefined)?p.remaining_duration:p.remaining;
         h+='<div style="font-size:12px;color:var(--text-muted);margin-top:4px;"><span>已分配: <strong>'+(p.total_dur_input||0)+'</strong>s / <strong>'+p.total_duration+'</strong>s</span><span style="margin-left:12px;'+(rm<=0?'color:#ef4444;':'')+'">剩余: <strong>'+Math.max(0,rm)+'</strong>s</span></div></div></div>';
         // ③ 输出预览
-        h+='<div class="s2-output-section"><div class="s2-section-title" onclick="App.seedanceV2._toggleOutput()" title="点击折叠/展开">📤 输出预览 <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span></div><div class="s2-output-actions"><button class="btn btn-sm btn-success" onclick="App.seedanceV2.copyText()">📋 复制提示词</button><button class="btn btn-sm btn-info" onclick="App.seedanceV2.copyJSON()">📋 复制JSON</button><button class="btn btn-sm btn-warning" onclick="App.seedanceV2.copyLibTV()">🚀 填入LibTV</button><button class="btn btn-sm btn-secondary" onclick="App.seedanceV2.resetProject()">↺ 重置</button></div><textarea id="s2Output" class="s2-output-text" readonly></textarea></div>';
+        h+='<div class="s2-output-section"><div class="s2-section-title" onclick="App.seedanceV2._toggleOutput()" title="点击折叠/展开"> 输出预览 <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span></div>';
+        // 格式/密度/音频控制行
+        h+='<div class="s2-global-row" style="margin-bottom:6px;">';
+        h+=ms('s2_format','输出格式',[['seedance','Seedance'],['kling','Kling'],['minimax','MiniMax'],['comfyui','ComfyUI'],['raw','纯镜头Raw']],'seedance');
+        h+=ms('s2_density','详细度',[['compact','简洁 compact'],['standard','标准 standard'],['detailed','详细 detailed']],'standard');
+        h+='<div class="s2-field"><label>音频 <input type="checkbox" id="s2_audio_enabled" onchange="App.seedanceV2._toggleAudioSection();App.seedanceV2._debouncedCompose()"></label></div>';
+        h+='</div>';
+        // 音频子面板（默认隐藏）
+        h+='<div id="s2_audio_section" style="display:none;margin-bottom:6px;padding:8px;background:var(--hover-bg);border-radius:6px;">';
+        h+='<div class="s2-global-row">';
+        h+='<div class="s2-field" style="flex:1;"><label>BGM背景音乐</label><input id="s2_bgm" class="s2-input" placeholder="史诗管弦乐…" onchange="App.seedanceV2._debouncedCompose()"></div>';
+        h+='<div class="s2-field" style="flex:1;"><label>音效SFX</label><input id="s2_sfx" class="s2-input" placeholder="风声、雷鸣…" onchange="App.seedanceV2._debouncedCompose()"></div>';
+        h+='<div class="s2-field" style="flex:2;"><label>对白/旁白</label><input id="s2_dialogue" class="s2-input" placeholder="准备好了吗?" onchange="App.seedanceV2._debouncedCompose()"></div>';
+        h+='</div></div>';
+        h+='<div class="s2-output-actions">';
+        h+='<button class="btn btn-sm btn-success" onclick="App.seedanceV2.copyText()"> 复制提示词</button>';
+        h+='<button class="btn btn-sm btn-info" onclick="App.seedanceV2.copyJSON()"> 复制JSON</button>';
+        h+='<button class="btn btn-sm btn-outline" onclick="App.seedanceV2.copyLibTV()"> 填入LibTV</button>';
+        h+='<button class="btn btn-sm btn-secondary" onclick="App.seedanceV2.resetProject()"> 重置</button>';
+        h+='</div>';
+        h+='<textarea id="s2Output" class="s2-output-text" readonly placeholder="切换镜头字段后实时合成…"></textarea>';
+        h+='<div id="s2OutputMeta" style="font-size:11px;color:var(--text-muted);margin-top:4px;"></div></div>';
         c.innerHTML=h;
         // 创建右侧面板
         var layout = document.querySelector('.s2-layout');
@@ -1139,9 +1160,44 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
         if (self._composeTimer) clearTimeout(self._composeTimer);
         self._composeTimer = setTimeout(function() { self.compose(); }, self._composeDebounceMs);
     };
-    App.seedanceV2.compose=function(){var p=this.currentProject;if(!p||!this.scenes.length){var o=document.getElementById('s2Output');if(o)o.value='';return;}var lines=[],hd=[];var arEl=document.getElementById('s2_aspect_ratio');var ar=arEl&&arEl.value?arEl.value:(p.aspect_ratio||'16:9');var resEl=document.getElementById('s2_resolution');var res=resEl&&resEl.value?resEl.value:(p.resolution||'1080p');if(ar==='16:9')hd.push('横屏16:9 '+res);else if(ar==='9:16')hd.push('竖屏9:16 '+res);else if(ar==='1:1')hd.push('方形1:1 '+res);else if(ar==='21:9')hd.push('超宽21:9 '+res);else if(ar==='4:3')hd.push('方屏4:3 '+res);else if(ar==='3:4')hd.push('竖屏3:4 '+res);else if(ar==='2.35:1')hd.push('超宽2.35:1 '+res);else hd.push(ar+' '+res);try{var gsEl=document.getElementById('s2_global_style');if(gsEl&&gsEl.value.trim())hd.push(gsEl.value.trim());else if(p.global_style)hd.push(p.global_style);}catch(e){}hd.push(p.total_duration+'s');try{var gtEl=document.getElementById('s2_global_transition');if(gtEl&&gtEl.value.trim())hd.push(gtEl.value.trim());else if(p.global_transition)hd.push(p.global_transition);}catch(e){}try{var npEl=document.getElementById('s2_negative_prompt');if(npEl&&npEl.value.trim())lines.push('[NEGATIVE] '+npEl.value.trim());else if(p.negative_prompt)lines.push('[NEGATIVE] '+p.negative_prompt);}catch(e){}this.outputJson={header:hd.join(','),scenes:[]};for(var i=0;i<this.scenes.length;i++){var sc=this.scenes[i];var st=parseInt(sc.start_time),et=parseInt(sc.end_time);var sl=st+'-'+et+'s';var parts=[];if(sc.camera_move)parts.push(sc.camera_move);if(sc.subject)parts.push(sc.subject);if(sc.scene_desc)parts.push(sc.scene_desc);if(sc.composition)parts.push(sc.composition);if(sc.lighting)parts.push(sc.lighting);if(sc.action)parts.push(sc.action);if(sc.focal_length)parts.push(sc.focal_length);if(sc.texture)parts.push(sc.texture);if(sc.speed)parts.push(sc.speed);if(sc.emotion)parts.push(sc.emotion);if(sc.perspective)parts.push(sc.perspective);if(sc.color_grade)parts.push(sc.color_grade);if(sc.particles)parts.push(sc.particles);if(sc.weather)parts.push(sc.weather);if(sc.natural_force)parts.push(sc.natural_force);if(sc.environment_detail)parts.push(sc.environment_detail);if(sc.depth_of_field)parts.push(sc.depth_of_field);if(sc.filter)parts.push(sc.filter);if(sc.film_flaw)parts.push(sc.film_flaw);if(sc.fantasy_physics)parts.push(sc.fantasy_physics);if(parts.length)sl+=': '+parts.join(',');lines.push(sl);this.outputJson.scenes.push({time:st+'-'+et+'s',fields:parts});}var output='['+hd.join(',')+']\n'+lines.join('\n');this.outputText=output;var o=document.getElementById('s2Output');if(o)o.value=output;};
+    App.seedanceV2._toggleAudioSection = function() {
+        var panel = document.getElementById('s2_audio_section');
+        var cb = document.getElementById('s2_audio_enabled');
+        if (panel && cb) panel.style.display = cb.checked ? 'block' : 'none';
+    };
+    App.seedanceV2.compose=function(){
+        var p=this.currentProject;
+        if(!p||!this.scenes.length){var o=document.getElementById('s2Output');if(o)o.value='';return;}
+        // 收集当前全局参数
+        var fmt=document.getElementById('s2_format')?.value||'seedance';
+        var density=document.getElementById('s2_density')?.value||'standard';
+        var includeAudio=document.getElementById('s2_audio_enabled')?.checked||false;
+        var body={format:fmt,density:density};
+        if(includeAudio){
+            body.include_audio=true;
+            var bgm=document.getElementById('s2_bgm');if(bgm&&bgm.value.trim())body.bgm=bgm.value.trim();
+            var sfx=document.getElementById('s2_sfx');if(sfx&&sfx.value.trim())body.sfx=sfx.value.trim();
+            var dialogue=document.getElementById('s2_dialogue');if(dialogue&&dialogue.value.trim())body.dialogue=dialogue.value.trim();
+        }
+        // 调用后端引擎
+        var self=this;
+        var o=document.getElementById('s2Output');if(o)o.value='正在合成…';
+        App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/compose',{
+            method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)
+        }).then(function(r){
+            if(!r||!r.text){if(o)o.value='合成失败';return;}
+            self.outputText=r.text;
+            self.outputJson=r.json||{};
+            if(o)o.value=r.text;
+            // 显示元信息
+            var meta=document.getElementById('s2OutputMeta');
+            if(meta)meta.textContent=(r.shot_count||0)+'镜头 · '+(r.pixel_res||'')+' · '+(r.density||'standard');
+        }).catch(function(e){
+            if(o)o.value='合成失败: '+e.message;
+        });
+    };
     App.seedanceV2.copyText=function(){var el=document.getElementById('s2Output');if(!el||!el.value){App.showToast('无输出可复制','warning');return;}navigator.clipboard.writeText(el.value).then(function(){App.showToast('提示词已复制','success');});};
-    App.seedanceV2.copyJSON=function(){if(!this.outputJson){App.showToast('无数据可复制','warning');return;}navigator.clipboard.writeText(JSON.stringify(this.outputJson,null,2)).then(function(){App.showToast('JSON已复制','success');});};
+    App.seedanceV2.copyJSON=function(){var obj=this.outputJson;if(!obj||!Object.keys(obj).length){App.showToast('无数据可复制','warning');return;}navigator.clipboard.writeText(JSON.stringify(obj,null,2)).then(function(){App.showToast('JSON已复制','success');});};
     App.seedanceV2.copyLibTV=function(){var t=this.outputText||'';if(!t){App.showToast('无输出可复制','warning');return;}window.open('https://libtv.ai/create?prompt='+encodeURIComponent(t),'_blank');};
     App.seedanceV2.resetProject=function(){if(!confirm('确定重置此项目？'))return;var self=this;App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes',{method:'GET'}).then(function(d){if(!d||!d.items)return;var ids=d.items.map(function(s){return s.id;});(async function(){for(var j=0;j<ids.length;j++)await App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+ids[j],{method:'DELETE'});self.openProject(self.currentProjectId);App.showToast('项目已重置','info');})();});};
 })();
