@@ -558,22 +558,28 @@ def _recalculate_scene_times(project_id: int):
 
 @router.post("/projects")
 def create_project(data: dict = Body(...)):
-    """新建分镜项目"""
+    """新建分镜项目（支持全局风格/转场/负词/音频字段）"""
     name = (data.get("name") or "").strip() or "未命名项目"
     total_duration = data.get("total_duration", 15)
     aspect_ratio = data.get("aspect_ratio", "16:9")
     resolution = data.get("resolution", "4K")
 
-    max_duration = 15  # Seedance 硬性限制
-    if total_duration < 4:
-        total_duration = 4
+    max_duration = 60  # 升级：最长60秒
+    if total_duration < 2:
+        total_duration = 2
     if total_duration > max_duration:
         raise HTTPException(400, f"总时长不能超过{max_duration}秒")
 
     db = get_db()
     cur = db.execute(
-        "INSERT INTO user_project (name, total_duration, aspect_ratio, resolution) VALUES (?, ?, ?, ?)",
-        [name, total_duration, aspect_ratio, resolution]
+        """INSERT INTO user_project 
+            (name, total_duration, aspect_ratio, resolution,
+             global_style, global_transition, negative_prompt, bgm, sfx, dialogue)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        [name, total_duration, aspect_ratio, resolution,
+         data.get("global_style", ""), data.get("global_transition", ""),
+         data.get("negative_prompt", ""), data.get("bgm", ""),
+         data.get("sfx", ""), data.get("dialogue", "")]
     )
 
     # 创建默认第一个镜头（duration = 总时长，重算后精确贴合）
@@ -935,11 +941,188 @@ def remove_scene_prompt(project_id: int, scene_id: int, sp_id: int):
 
 # ==================== 核心: 提示词拼接引擎 ====================
 
+# ==================== 分辨率映射表 ====================
+RESOLUTION_MAP = {
+    "1080p": (1920, 1080), "2K": (2560, 1440), "4K": (3840, 2160),
+    "6K": (5760, 3240), "8K": (7680, 4320),
+}
+ASPECT_MAX_MAP = {
+    "16:9": 2160, "9:16": 3840, "1:1": 2160, "21:9": 2160,
+    "2.35:1": 2160, "4:3": 2160, "3:4": 2880, "3:2": 2160, "2:3": 2880,
+}
+
+
+def _make_structured_description(scene_data: dict, density: str) -> str:
+    """将镜头维度字段拼接为自然语言描述（按标准公式）
+   
+    拼接公式（行业标准）：
+    运镜 → 主体 → 动作 → 场景 → 构图 → 光影 → 焦段 → 质感 → 速率 → 氛围 → 特效 → 细节
+  
+    密度:
+      compact  = 运镜+主体+场景 (Sora/Kling 模式，简洁有力)
+      standard = 运镜+主体+动作+场景+构图+光影+氛围 (Midjourney/Seedance)
+      detailed = 全部维度 (ComfyUI/专业后期排错用)
+    """
+    d = scene_data
+    parts = []
+
+    # Layer 1: 运镜（所有密度）
+    if d.get("camera_move"):
+        parts.append(d["camera_move"])
+
+    # Layer 2: 主体（所有密度）
+    if d.get("subject"):
+        parts.append(d["subject"])
+
+    # Layer 3: 动作 (standard+)
+    if d.get("action") and density != "compact":
+        parts.append(d["action"])
+
+    # Layer 4: 场景 (所有密度)
+    if d.get("scene_desc"):
+        parts.append(d["scene_desc"])
+
+    # Layer 5: 构图 (standard+)
+    if d.get("composition") and density != "compact":
+        parts.append(d["composition"])
+
+    # Layer 6: 光影 (standard+)
+    if d.get("lighting") and density != "compact":
+        parts.append(d["lighting"])
+
+    # Layer 7: 焦段 (detailed only)
+    if d.get("focal_length") and density == "detailed":
+        parts.append(d["focal_length"])
+
+    # Layer 8: 质感 (detailed only)
+    if d.get("texture") and density == "detailed":
+        parts.append(d["texture"])
+
+    # Layer 9: 速率 (detailed only)
+    if d.get("speed") and density == "detailed":
+        parts.append(d["speed"])
+
+    # Layer 10: 氛围组 (standard+)
+    if density != "compact":
+        mood = _pick_non_empty(d, ["emotion", "color_grade", "weather"])
+        if mood:
+            parts.append(mood)
+
+    # Layer 11: 特效组 (detailed only)
+    if density == "detailed":
+        fx = _pick_non_empty(d, ["particles", "natural_force", "fantasy_physics", "filter"])
+        if fx:
+            parts.append(fx)
+
+    # Layer 12: 细节组 (detailed only)
+    if density == "detailed":
+        detail = _pick_non_empty(d, ["perspective", "depth_of_field", "environment_detail",
+                                      "film_flaw", "details"])
+        if detail:
+            parts.append(detail)
+
+    return "，".join(p for p in parts if p.strip())
+
+
+def _pick_non_empty(d: dict, keys: list) -> str:
+    vals = [d.get(k) for k in keys if d.get(k)]
+    return "，".join(vals) if vals else ""
+
+
+def _calc_pixel_res(ar: str, res: str) -> str:
+    """计算画幅像素分辨率 e.g. 16:9 4K → 3840x2160"""
+    base_w, base_h = RESOLUTION_MAP.get(res, (1920, 1080))
+    max_dim = ASPECT_MAX_MAP.get(ar, base_h)
+    w_ratio, h_ratio = map(int, ar.split(":"))
+    if w_ratio >= h_ratio:  # 横屏/方形
+        h = max_dim
+        w = int(h * w_ratio / h_ratio)
+    else:  # 竖屏
+        w = max_dim
+        h = int(w * h_ratio / w_ratio)
+    return f"{w}x{h}"
+
+
+def _fmt_header(proj: dict, fmt: str) -> str:
+    """按目标平台格式生成全局头部"""
+    ar = proj["aspect_ratio"] or "16:9"
+    res = proj["resolution"] or "4K"
+    dur = int(proj["total_duration"] or 15)
+    style = proj["global_style"] or ""
+    transition = proj["global_transition"] or ""
+    neg = proj["negative_prompt"] or ""
+    pix = _calc_pixel_res(ar, res)
+
+    AR_LABEL = {
+        "16:9": "横屏", "9:16": "竖屏", "1:1": "方形",
+        "21:9": "超宽", "2.35:1": "电影宽屏", "4:3": "方屏", "3:4": "竖屏3:4"
+    }
+    ar_label = AR_LABEL.get(ar, ar)
+
+    if fmt == "kling":
+        # Kling 1.6 / 2.0 格式: 镜头语言前缀+主体+环境
+        line = f"{ar_label}{res} 视频 {dur}s"
+        if style:
+            line += f" {style}"
+        return line
+
+    elif fmt == "minimax":
+        # MiniMax Hailuo 格式: 英文为主
+        line = f"{ar_label}_{res}_{pix}_{dur}s"
+        if style:
+            line += f", {style}"
+        return line
+
+    elif fmt == "comfyui":
+        # ComfyUI 格式: 技术标注精确
+        line = f"resolution={pix}, duration={dur}s, fps=24"
+        if style:
+            line += f", style={style}"
+        return line
+
+    elif fmt == "raw":
+        return ""  # 纯镜头描述，无全局头
+
+    else:  # seedance (default)
+        parts = [f"{ar_label}{res}"]
+        if style:
+            parts.append(style)
+        parts.append(f"{dur}s")
+        if transition:
+            parts.append(transition)
+        return "，".join(parts)
+
+
+def _fmt_scene(shot: int, start: float, end: float, desc: str, sc: dict, fmt: str) -> str:
+    """按目标平台格式生成单个镜头行"""
+    st, et = int(start), int(end)
+    dur = round(end - start, 1)
+
+    if fmt == "kling":
+        return f"Shot{shot}[{st}s-{et}s]({dur}s): {desc}"
+    elif fmt == "minimax":
+        return f"[{st}-{et}]({dur}s) {desc}"
+    elif fmt == "comfyui":
+        fields = []
+        if sc.get("camera_move"):
+            fields.append(f"camera:{sc['camera_move']}")
+        fields.append(f"desc:{desc}")
+        return f"frame{shot}[{st}-{et}]: {'; '.join(fields)}"
+    elif fmt == "raw":
+        return desc
+    else:  # seedance
+        return f"{st}-{et}s：{desc}"
+
+
 @router.post("/projects/{project_id}/compose")
 def compose_project(project_id: int, data: dict = Body({})):
     """
-    核心拼接引擎
-    将项目全局参数 + N个镜头的各维度字段 → 拼接为 Seedance 标准提示词
+    核心拼接引擎 v2.0 — 5平台多格式输出
+    
+    参数:
+      format: seedance|kling|minimax|comfyui|raw (default: seedance)
+      density: compact|standard|detailed (default: standard)
+      include_audio: bool (default: false)
     """
     db = get_db()
     proj = db.execute("SELECT * FROM user_project WHERE id=?", [project_id]).fetchone()
@@ -954,162 +1137,130 @@ def compose_project(project_id: int, data: dict = Body({})):
     if not scenes:
         return {"text": "", "json": {}, "error": "无镜头数据"}
 
-    fmt = data.get("format", "seedance")  # seedance | json
+    fmt = data.get("format", "seedance")
+    density = data.get("density", "standard")
+    include_audio = data.get("include_audio", False)
 
     # ---- 全局头部 ----
-    header_parts = []
-    # 画幅
     ar = proj["aspect_ratio"] or "16:9"
     res = proj["resolution"] or "4K"
-    if ar == "16:9":
-        header_parts.append(f"横屏{res}")
-    elif ar == "9:16":
-        header_parts.append(f"竖屏{res}")
-    elif ar == "1:1":
-        header_parts.append(f"方形{res}")
-    elif ar == "2.35:1":
-        header_parts.append(f"电影宽屏{res}")
-    else:
-        header_parts.append(f"{ar} {res}")
-
-    # 全局画风
-    if proj["global_style"]:
-        header_parts.append(proj["global_style"])
-
-    # 时长 + 帧率
-    duration = proj["total_duration"]
-    header_parts.append(f"{duration}s")
-
-    # 全局转场
-    if proj["global_transition"]:
-        header_parts.append(proj["global_transition"])
-
-    header_line = "，".join(header_parts)
+    duration = int(proj["total_duration"] or 15)
+    pix = _calc_pixel_res(ar, res)
+    header_line = _fmt_header(dict(proj), fmt)
 
     # ---- 多镜头描述 ----
     scene_lines = []
     json_scenes = []
+    all_negatives = []  # 镜头级负词汇总
 
     for sc in scenes:
-        st = int(sc["start_time"])
-        et = int(sc["end_time"])
-        time_str = f"{st}-{et}s"
+        scd = dict(sc)
+        st = float(scd["start_time"])
+        et = float(scd["end_time"])
 
-        # 按公式拼接: 运镜+主体+动作+场景+地域+构图+光影+焦段+质感+速率+氛围+特效+细节
-        parts = []
-        if sc["camera_move"]:
-            parts.append(sc["camera_move"])
-        if sc["subject"]:
-            parts.append(sc["subject"])
-        if sc["action"]:
-            parts.append(sc["action"])
-        if sc["scene_desc"]:
-            parts.append(sc["scene_desc"])
-        if sc["composition"]:
-            parts.append(sc["composition"])
-        if sc["lighting"]:
-            parts.append(sc["lighting"])
-        if sc["focal_length"]:
-            parts.append(sc["focal_length"])
-        if sc["texture"]:
-            parts.append(sc["texture"])
-        if sc["speed"]:
-            parts.append(sc["speed"])
+        # 拼接镜头描述
+        scene_desc = _make_structured_description(scd, density)
 
-        # 氛围/情绪
-        mood_parts = []
-        if sc["emotion"]:
-            mood_parts.append(sc["emotion"])
-        if sc["color_grade"]:
-            mood_parts.append(sc["color_grade"])
-        if sc["weather"]:
-            mood_parts.append(sc["weather"])
-        if mood_parts:
-            parts.append("，".join(mood_parts))
+        # 镜头负词
+        shot_neg = scd.get("details") or ""
+        if shot_neg and shot_neg.startswith("--neg"):
+            all_negatives.append(shot_neg.replace("--neg", "").strip())
+            shot_neg = ""
 
-        # 特效
-        fx_parts = []
-        if sc["particles"]:
-            fx_parts.append(sc["particles"])
-        if sc["natural_force"]:
-            fx_parts.append(sc["natural_force"])
-        if sc["fantasy_physics"]:
-            fx_parts.append(sc["fantasy_physics"])
-        if sc["filter"]:
-            fx_parts.append(sc["filter"])
-        if fx_parts:
-            parts.append("，".join(fx_parts))
-
-        # 细节
-        detail_parts = []
-        if sc["perspective"]:
-            detail_parts.append(sc["perspective"])
-        if sc["depth_of_field"]:
-            detail_parts.append(sc["depth_of_field"])
-        if sc["texture"] and sc["texture"] not in str(parts):
-            pass  # already added
-        if sc["environment_detail"]:
-            detail_parts.append(sc["environment_detail"])
-        if sc["film_flaw"]:
-            detail_parts.append(sc["film_flaw"])
-        if sc["details"]:
-            detail_parts.append(sc["details"])
-        if detail_parts:
-            parts.append("，".join(detail_parts))
-
-        # 过滤空
-        scene_desc = "，".join(p for p in parts if p.strip())
+        # 格式化镜头行
         if scene_desc:
-            scene_lines.append(f"{time_str}：{scene_desc}")
+            scene_lines.append(
+                _fmt_scene(scd["scene_order"], st, et, scene_desc, scd, fmt)
+            )
 
         json_scenes.append({
-            "shot": sc["scene_order"],
+            "shot": scd["scene_order"],
             "start": st,
             "end": et,
+            "duration": round(et - st, 1),
             "text": scene_desc,
+            "negative": shot_neg,
             "fields": {
-                "camera_move": sc["camera_move"],
-                "subject": sc["subject"],
-                "action": sc["action"],
-                "scene": sc["scene_desc"],
-                "composition": sc["composition"],
-                "lighting": sc["lighting"],
-                "focal_length": sc["focal_length"],
-                "texture": sc["texture"],
-                "speed": sc["speed"],
-                "emotion": sc["emotion"],
-                "color_grade": sc["color_grade"],
-                "weather": sc["weather"],
-                "particles": sc["particles"],
-                "perspective": sc["perspective"],
+                "camera_move": scd.get("camera_move") or "",
+                "subject": scd.get("subject") or "",
+                "action": scd.get("action") or "",
+                "scene": scd.get("scene_desc") or "",
+                "composition": scd.get("composition") or "",
+                "lighting": scd.get("lighting") or "",
+                "focal_length": scd.get("focal_length") or "",
+                "texture": scd.get("texture") or "",
+                "speed": scd.get("speed") or "",
+                "emotion": scd.get("emotion") or "",
+                "color_grade": scd.get("color_grade") or "",
+                "weather": scd.get("weather") or "",
+                "particles": scd.get("particles") or "",
+                "perspective": scd.get("perspective") or "",
+                "depth_of_field": scd.get("depth_of_field") or "",
+                "environment_detail": scd.get("environment_detail") or "",
+                "film_flaw": scd.get("film_flaw") or "",
+                "fantasy_physics": scd.get("fantasy_physics") or "",
             }
         })
 
     # ---- 负面词 ----
-    neg = ""
-    if proj["negative_prompt"]:
-        neg = proj["negative_prompt"]
+    global_neg = proj["negative_prompt"] or ""
+    all_neg = []
+    if global_neg:
+        all_neg.append(global_neg)
+    all_neg.extend(all_negatives)
+    neg_line = "，".join(all_neg) if all_neg else ""
+
+    # ---- 音频（可选）----
+    audio_text = ""
+    if include_audio:
+        bgm = data.get("bgm", "") or proj["bgm"] or ""
+        sfx = data.get("sfx", "") or proj["sfx"] or ""
+        dialogue = data.get("dialogue", "") or proj["dialogue"] or ""
+        if bgm:
+            audio_text += f"BGM: {bgm}\n"
+        if sfx:
+            audio_text += f"音效: {sfx}\n"
+        if dialogue:
+            audio_text += f"对白: {dialogue}\n"
 
     # ---- 完整提示词 ----
-    full_lines = [header_line]
-    full_lines.append("")
-    full_lines.extend(scene_lines)
-    if neg:
+    full_lines = []
+    if header_line:
+        full_lines.append(header_line)
+    if audio_text:
+        full_lines.append(audio_text.strip())
+    if full_lines and scene_lines:
         full_lines.append("")
-        full_lines.append(f"负面：{neg}")
+    full_lines.extend(scene_lines)
+    if neg_line:
+        full_lines.append("")
+        full_lines.append(f"负面：{neg_line}")
 
     full_text = "\n".join(full_lines).strip()
 
-    # ---- 返回 ----
+    # ---- JSON 输出 ----
     json_output = {
+        "meta": {
+            "format": fmt,
+            "density": density,
+            "pixel_res": pix,
+            "fps": 24,
+        },
         "global": {
             "aspect_ratio": ar,
             "resolution": res,
+            "pixel_width": int(pix.split("x")[0]) if "x" in pix else 0,
+            "pixel_height": int(pix.split("x")[1]) if "x" in pix else 0,
             "duration": duration,
             "style": proj["global_style"] or "",
             "transition": proj["global_transition"] or "",
-            "negative": neg
+            "negative": neg_line,
         },
+        "audio": {
+            "bgm": data.get("bgm", "") or proj["bgm"] or "",
+            "sfx": data.get("sfx", "") or proj["sfx"] or "",
+            "dialogue": data.get("dialogue", "") or proj["dialogue"] or "",
+        } if include_audio else None,
         "shots": json_scenes,
         "full_text": full_text
     }
@@ -1122,7 +1273,10 @@ def compose_project(project_id: int, data: dict = Body({})):
         "json": json_output,
         "length": len(full_text),
         "shot_count": len(scenes),
-        "duration": duration
+        "duration": duration,
+        "format": fmt,
+        "density": density,
+        "pixel_res": pix,
     }
 
 
