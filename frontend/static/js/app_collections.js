@@ -916,17 +916,17 @@ Object.assign(App, {
         if (!p) { self.showToast('提示词不存在', 'error'); return; }
         if (p.module === newModule) { return; }
 
-        // 发送 PUT 请求更新模块
-        var result = await this.fetchJSON('/api/prompts/' + promptId, {
+        // 发送 PUT 请求更新模块（v4 API: prompt_cards 表）
+        var result = await this.fetchJSON('/api/v4/cards/' + promptId, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                module: newModule,
                 content: p.content,
                 meaning: p.meaning || '',
                 scene: p.scene || '',
-                module: newModule,
                 category: p.category || '',
-                tags: JSON.stringify(p.tags || [])
+                tags: p.tags || []
             })
         });
 
