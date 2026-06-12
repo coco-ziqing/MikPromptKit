@@ -171,7 +171,7 @@
                 var btn = document.createElement('button');
                 btn.id = 'btnV3CardComposer';
                 btn.className = 'btn btn-sm btn-outline';
-                btn.style.cssText = 'margin-left:8px;';
+                btn.style.cssText = 'margin-left:8px;color:#6366f1;border-color:#6366f1;';
                 btn.onclick = function() { V2.showCardComposer(); };
                 btn.innerHTML = '📇 卡片编排';
                 header.querySelector('.s2-editor-actions')?.prepend(btn);

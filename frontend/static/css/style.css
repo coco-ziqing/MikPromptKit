@@ -2063,3 +2063,17 @@ body.dark-theme .s2-drag-handle:hover { background: #334155; }
 .sp-lib-tab-add { border: 1px dashed var(--border-color); opacity: 0.6; }
 .sp-lib-tab-add:hover { border-color: var(--primary); opacity: 1; background: var(--hover-bg); }
 
+/* 深色主题: btn-outline / btn-sm-outline 文字可读性修复 */
+body.dark-theme .btn-outline:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning):not(.btn-info),
+body.dark-theme .btn.btn-outline,
+body.dark-theme .btn-sm.btn-outline,
+body.dark-theme .btn-xs.btn-outline { color: #e2e8f0 !important; border-color: #475569 !important; background: rgba(30,41,59,0.6) !important; }
+body.dark-theme .btn-outline:hover:not(.btn-primary):not(.btn-success):not(.btn-danger),
+body.dark-theme .btn.btn-outline:hover { color: #fff !important; border-color: var(--primary) !important; background: rgba(79,70,229,0.25) !important; }
+body.dark-theme .btn-xs { color: #cbd5e1; }
+/* 卡片编排按钮 深色模式——ID 最高优先级 */
+body.dark-theme #btnV3CardComposer,
+#btnV3CardComposer { color: #6366f1 !important; border-color: #6366f1 !important; background: transparent !important; }
+body.dark-theme #btnV3CardComposer:hover,
+#btnV3CardComposer:hover { color: #fff !important; background: #6366f1 !important; }
+
