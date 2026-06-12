@@ -174,7 +174,7 @@ body {
     overflow: hidden;
 }
 body.sidebar-collapsed .main-content {
-    margin-left: 0;
+    margin-left: 28px;
 }
 .main-content.with-rec { margin-right: var(--rec-width); }
 
@@ -1450,11 +1450,12 @@ body.dark-theme .s2-dur-preset {
 /* ============ Seedance V2 多镜头结构化组装器 — v4.1 布局优化 ============ */
 .s2-layout { display: flex; gap: 12px; height: calc(100vh - 180px); min-height: 500px; position: relative; }
 /* 侧栏：支持折叠 */
-.s2-sidebar { width: 260px; min-width: 260px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; transition: margin-left 0.3s ease, width 0.3s ease; flex-shrink: 0; }
-.s2-sidebar.collapsed { width: 0; min-width: 0; overflow: hidden; margin-right: -12px; }
-/* 侧栏折叠按钮 */
-.s2-sidebar-toggle { position: absolute; left: 0; top: 50%; z-index: 10; width: 22px; height: 48px; border: 1px solid var(--border-color); border-left: none; border-radius: 0 6px 6px 0; background: var(--card-bg); cursor: pointer; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; justify-content: center; transition: left 0.3s ease; }
-.s2-sidebar-toggle:hover { background: var(--hover-bg); color: var(--primary); }
+.s2-sidebar { width: 260px; min-width: 260px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; transition: width 0.25s ease; flex-shrink: 0; }
+.s2-sidebar.collapsed { width: 0; min-width: 0; overflow: hidden; }
+/* 侧栏折叠按钮 — 独立于侧栏，停在s2-layout左边缘 */
+.s2-sidebar-toggle { position: absolute; left: 260px; top: 50%; z-index: 15; width: 22px; height: 48px; border: 1px solid var(--border-color); border-left: none; border-radius: 0 6px 6px 0; background: var(--card-bg); cursor: pointer; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; justify-content: center; transform: translateY(-50%); transition: left 0.25s ease, background 0.15s, color 0.15s; user-select: none; }
+.s2-sidebar.collapsed ~ .s2-sidebar-toggle { left: 0; }
+.s2-sidebar-toggle:hover { background: var(--hover-bg); color: var(--primary); border-color: var(--primary); }
 .s2-editor { flex: 1; overflow-y: auto; padding-right: 4px; transition: margin-right 0.3s ease; }
 
 /* 搜索框 */
@@ -2099,4 +2100,52 @@ body.dark-theme #btnV3CardComposer,
 #btnV3CardComposer { color: #6366f1 !important; border-color: #6366f1 !important; background: transparent !important; }
 body.dark-theme #btnV3CardComposer:hover,
 #btnV3CardComposer:hover { color: #fff !important; background: #6366f1 !important; }
+
+/* ============ 镜头文本审阅弹窗 ============ */
+.scene-review-panel {
+    width: min(900px, 94vw); max-height: 90vh;
+    background: var(--bg-card); border: 1px solid var(--border-color);
+    border-radius: 16px; display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.scene-review-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px; border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.scene-review-title {
+    font-size: 18px; font-weight: 700; color: var(--text-main);
+}
+.scene-review-body {
+    padding: 24px 32px; overflow-y: auto; flex: 1;
+    font-family: 'Georgia', 'Noto Serif SC', 'Source Han Serif SC', serif;
+    font-size: 17px; line-height: 2; color: var(--text-main);
+    letter-spacing: 0.02em; word-break: break-word;
+    white-space: pre-wrap;
+}
+.scene-review-body .sr-field-name {
+    display: inline-block; font-size: 12px; font-weight: 600;
+    color: var(--primary); background: rgba(79,70,229,0.1);
+    padding: 1px 8px; border-radius: 4px; margin-right: 6px;
+    vertical-align: middle; letter-spacing: 0;
+}
+.scene-review-body .sr-separator {
+    display: block; height: 0; margin: 8px 0;
+}
+.scene-review-body .sr-meta {
+    font-size: 13px; color: var(--text-muted);
+    margin-bottom: 16px; padding-bottom: 12px;
+    border-bottom: 1px dashed var(--border-color);
+}
+body.dark-theme .scene-review-panel { background: #1a1f2e; border-color: #2d3348; }
+body.dark-theme .scene-review-body { color: #e2e8f0; }
+body.dark-theme .scene-review-body .sr-field-name {
+    color: #c4b5fd; background: rgba(139,92,246,0.2);
+}
+/* 审阅按钮深色保持可见 */
+body.dark-theme .s2-review-btn { color: #a78bfa !important; border-color: #a78bfa !important; }
+body.dark-theme .s2-review-btn:hover { color: #fff !important; background: rgba(139,92,246,0.25) !important; }
+/* 审阅按钮深色保持可见 */
+body.dark-theme .s2-review-btn { color: #a78bfa !important; border-color: #a78bfa !important; }
+body.dark-theme .s2-review-btn:hover { color: #fff !important; background: rgba(139,92,246,0.2) !important; }
 

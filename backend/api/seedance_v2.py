@@ -640,10 +640,14 @@ def update_project(project_id: int, data: dict = Body(...)):
         raise HTTPException(400, "无更新字段")
 
     if "total_duration" in fields:
-        if fields["total_duration"] < 4:
-            fields["total_duration"] = 4
-        elif fields["total_duration"] > 15:
-            raise HTTPException(400, "总时长不能超过15秒")
+        try:
+            fields["total_duration"] = int(fields["total_duration"])
+        except (ValueError, TypeError):
+            raise HTTPException(400, "时长格式无效")
+        if fields["total_duration"] < 2:
+            fields["total_duration"] = 2
+        elif fields["total_duration"] > 60:
+            raise HTTPException(400, "总时长不能超过60秒")
 
     set_clause = ", ".join(f"{k}=?" for k in fields)
     values = list(fields.values()) + [project_id]

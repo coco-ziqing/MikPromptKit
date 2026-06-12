@@ -847,10 +847,23 @@
     <script src="/static/js/app_collections.js?v=9.5"></script>
     <script src="/static/js/app_tools.js?v=8.5"></script>
     <script src="/static/js/app_media.js?v=8.5"></script>
-    <script src="/static/js/seedance_v2_composer.js?v=36"></script>
+    <script src="/static/js/seedance_v2_composer.js?v=37"></script>
     <script src="/static/js/v4_library.js?v=1"></script>
     <script src="/static/js/v4_cards.js?v=1"></script>
     <script src="/static/js/v4_editor.js?v=1"></script>
     <script src="/static/js/v3_composer.js?v=9.1"></script>
+
+<div class="modal-overlay" id="sceneReviewModal" style="display:none;z-index:700;align-items:center;justify-content:center;" onclick="if(event.target===this)App.seedanceV2.closeSceneReview()">
+  <div class="scene-review-panel" onclick="event.stopPropagation()">
+    <div class="scene-review-header">
+      <span class="scene-review-title" id="sceneReviewTitle">镜头审阅</span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm btn-outline" onclick="App.seedanceV2.copySceneReview()">📋 复制</button>
+        <button class="btn btn-sm btn-outline" onclick="App.seedanceV2.closeSceneReview()">✕ 关闭</button>
+      </div>
+    </div>
+    <div class="scene-review-body" id="sceneReviewBody"></div>
+  </div>
+</div>
 </body>
 </html>
