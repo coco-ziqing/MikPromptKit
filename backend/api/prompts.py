@@ -32,14 +32,14 @@ def _safe_tags(tags_str):
 def list_modules():
     try:
         db = get_db()
-        # 内置模块：所有非删除词条的 module 统计
-        rows = db.execute("SELECT module, COUNT(*) as cnt FROM prompts WHERE deleted_at IS NULL GROUP BY module ORDER BY module").fetchall()
         seen = {}
         result = []
+        # 主统计来源: prompt_cards (v4 主表)
+        rows = db.execute("SELECT module, COUNT(*) as cnt FROM prompt_cards WHERE is_deleted=0 AND module IS NOT NULL AND module!='' GROUP BY module").fetchall()
         for r in rows:
             mid = r["module"]
             if mid not in seen:
-                seen[mid] = True
+                seen[mid] = r["cnt"]
                 result.append({"id": mid, "name": _module_name(mid), "count": r["cnt"], "builtin": mid in ("emotion","color","tone","storyboard","camera_move","seedance")})
         # 自定义模块（无词条的也显示，排除 custom）
         custom = db.execute("SELECT name, sort_order FROM custom_modules ORDER BY sort_order, id").fetchall()

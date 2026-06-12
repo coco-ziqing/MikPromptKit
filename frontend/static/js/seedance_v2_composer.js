@@ -75,7 +75,28 @@
     App.seedanceV2.createProject = async function() { var n=prompt('项目名称:','新项目 '+(this.projects.length+1)); if(!n)return; var d=await App.fetchJSON('/api/seedance/v2/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})}); if(d&&d.ok){await this.loadProjects();this.renderProjectList();this.openProject(d.id);App.showToast('项目已创建','success');} };
     App.seedanceV2.deleteProject = async function(id){var d=await App.fetchJSON('/api/seedance/v2/projects/'+id,{method:'DELETE'});if(d&&d.ok){if(this.currentProjectId===id){this.currentProjectId=null;this.currentProject=null;this.scenes=[];this.renderComposerEmpty();}await this.loadProjects();this.renderProjectList();App.showToast('项目已删除','info');}};
     App.seedanceV2.openProject = async function(id) { this.currentProjectId=id; try{localStorage.setItem('promptkit_seedance_project',id);localStorage.setItem('promptkit_view','seedance');localStorage.setItem('promptkit_seedance_tab','composer');}catch(e){} var d=await App.fetchJSON('/api/seedance/v2/projects/'+id); if(!d) return; this.currentProject=d.project; this.scenes=d.scenes; var editor=document.getElementById('s2Editor'); var savedScroll=editor?editor.scrollTop:0; this.renderProjectList(); this.renderProjectEditor(); this.renderScenes(); this.compose(); var self=this; requestAnimationFrame(function(){var e=document.getElementById('s2Editor');if(e&&savedScroll>0)e.scrollTop=savedScroll;}); };
-    App.seedanceV2.saveProject = async function(){if(!this.currentProjectId)return;var d={};['name','total_duration','aspect_ratio','resolution','global_style','global_transition','negative_prompt'].forEach(function(f){var e=document.getElementById('s2_'+f);if(e)d[f]=e.value;});await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});App.showToast('项目已保存','success');};
+    App.seedanceV2.saveProject = async function(){
+        if(!this.currentProjectId)return;
+        var d={};
+        var fields=['name','total_duration','aspect_ratio','resolution','global_style','global_transition','negative_prompt'];
+        for(var i=0;i<fields.length;i++){
+            var f=fields[i];
+            var e=document.getElementById('s2_'+f);
+            if(e)d[f]=e.value;
+        }
+        var self=this;
+        var result=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{
+            method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)
+        });
+        if(result&&result.ok){
+            if(this.currentProject&&d.name)this.currentProject.name=d.name;
+            await this.loadProjects();
+            this.renderProjectList();
+            App.showToast('已保存','success');
+        }else{
+            App.showToast('保存失败:'+(result?result.error:'错误'),'error');
+        }
+    };
 
     App.seedanceV2.showProjectDelPopover = function(btnEl,pid){var pv=document.getElementById('s2ProjectDelPop');if(!pv)return;var r=btnEl.getBoundingClientRect();pv.dataset.projectId=pid;pv.style.position='fixed';pv.style.left=Math.max(4,r.left-140)+'px';pv.style.top=(r.bottom+4)+'px';pv.style.display='flex';};
     App.seedanceV2.quickDeleteProject = function(id){this.deleteProject(id);};
@@ -493,7 +514,7 @@
         c.innerHTML=h;var self=this;
         this.compose();
         setTimeout(function(){
-            document.querySelectorAll('.s2-field-chip').forEach(function(el){el.addEventListener('click',function(e){var sid=parseInt(this.dataset.sceneId),f=this.dataset.field;if(!f)return;self.openCardPicker(sid,f);});});
+            document.querySelectorAll('.s2-field-chip').forEach(function(el){el.addEventListener('click',function(e){var sid=parseInt(this.dataset.sceneId),f=this.dataset.field;if(!f)return;self.openCardPicker(sid,f);});el.addEventListener('mouseenter',function(e){var sid=parseInt(this.dataset.sceneId),f=this.dataset.field;if(!f||!sid)return;App.seedanceV2._showChipPreview(sid,f,this,e);});el.addEventListener('mouseleave',function(){App.seedanceV2._hideChipPreview();});});
             document.querySelectorAll('.s2-scene-input').forEach(function(el){el.addEventListener('change',function(){var sid=parseInt(this.dataset.sceneId),f=this.dataset.field,v=this.value;self.updateSceneField(sid,f,v);self._debouncedCompose();});});
             document.querySelectorAll('.s2-scene-dur').forEach(function(el){
                 el.addEventListener('change',function(){
@@ -524,6 +545,7 @@
             // 时间轴段拖拽排序
             var tb=document.getElementById('s2TimelineBar');if(tb&&!tb.dataset.dragBound){tb.dataset.dragBound='1';var tSeg=null;document.querySelectorAll('.s2-timeline-seg').forEach(function(seg){seg.addEventListener('dragstart',function(e){e.dataTransfer.setData('text/plain',this.dataset.sceneId);this.style.opacity='0.4';seg.source=this;});seg.addEventListener('dragend',function(e){this.style.opacity='1';document.querySelectorAll('.s2-timeline-seg').forEach(function(s){s.classList.remove('s2-seg-over');});});});tb.addEventListener('dragover',function(e){e.preventDefault();var seg=e.target.closest('.s2-timeline-seg');if(seg){document.querySelectorAll('.s2-timeline-seg').forEach(function(s){s.classList.remove('s2-seg-over');});seg.classList.add('s2-seg-over');tSeg=seg;}});tb.addEventListener('drop',function(e){e.preventDefault();document.querySelectorAll('.s2-timeline-seg').forEach(function(s){s.classList.remove('s2-seg-over');s.style.opacity='1';});var srcId=parseInt(e.dataTransfer.getData('text/plain'));if(!tSeg||!srcId)return;var tgtId=parseInt(tSeg.dataset.sceneId);if(srcId===tgtId)return;self.reorderScenes(srcId,tgtId);tSeg=null;});tb.addEventListener('dragleave',function(e){setTimeout(function(){if(!tb.contains(document.querySelector(':hover'))){document.querySelectorAll('.s2-timeline-seg').forEach(function(s){s.classList.remove('s2-seg-over');});tSeg=null;}},100);});}            // 拓展unit事件绑定
             document.querySelectorAll('.s2-ext-unit-addword').forEach(function(el){el.addEventListener('click',function(e){var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var f=p.querySelector('.s2-ext-unit-dropdown').value;if(!f)return;self.openCardPicker(sid,f);});});
+            document.querySelectorAll('.s2-ext-unit-tag').forEach(function(el){el.addEventListener('mouseenter',function(e){var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var f=p.querySelector('.s2-ext-unit-dropdown').value;if(!f||!sid)return;App.seedanceV2._showChipPreview(sid,f,this,e);});el.addEventListener('mouseleave',function(){App.seedanceV2._hideChipPreview();});});
             document.querySelectorAll('.s2-ext-unit-dropdown').forEach(function(el){el.addEventListener('change',function(){var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var idx=parseInt(p.dataset.extIdx);self._extUnitChange(sid,idx,this.value);});});
             document.querySelectorAll('.s2-ext-unit-remove').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var idx=parseInt(p.dataset.extIdx);self.removeExtUnit(sid,idx);});});
             document.querySelectorAll('.s2-ext-unit-add-btn').forEach(function(el){el.addEventListener('click',function(){var p=this.closest('.s2-ext-unit-list');var sid=parseInt(p.dataset.sceneId);if(!sid)return;self.addExtUnit(sid);});});
@@ -538,7 +560,7 @@
         h+='<div class="s2-drag-handle" draggable="true" title="拖拽排序" style="border-top:4px solid '+dotColor+';padding-top:2px;"><span class="s2-drag-icon">\u2e3f</span></div>';
         h+='<div class="s2-scene-header"><div class="s2-scene-title"><span class="s2-scene-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+dotColor+';margin-right:6px;vertical-align:middle;flex-shrink:0;" title="镜头'+(idx+1)+'"></span><strong onclick="event.stopPropagation();App.seedanceV2._toggleSceneCard('+s.id+')" style="cursor:pointer;" title="点击折叠/展开"><span class="s2-scene-fold-arrow">▼</span> 镜头 '+(idx+1)+'</strong> <span class="s2-time-badge">'+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span></div><div class="s2-scene-actions">';
         h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;before&apos;)">\u2b06插入</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;after&apos;)">\u2b07插入</button>';
-        h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.duplicateScene('+s.id+')">📋复制</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._copyScene('+s.id+')" title="拷贝提示词">📝拷贝</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._pasteScene('+s.id+')" title="粘贴提示词">📄粘贴</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._exportScene('+s.id+')" title="导出镜头">📤导出</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._importScene('+s.id+')" title="导入镜头">📥导入</button><button class="btn btn-xs btn-danger s2-del-btn" data-scene-id="'+s.id+'" title="删除此镜头">🗑</button></div></div>';
+        h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.duplicateScene('+s.id+')">📋复制</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._copyScene('+s.id+')" title="拷贝提示词">📝拷贝</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._pasteScene('+s.id+')" title="粘贴提示词">📄粘贴</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._exportScene('+s.id+')" title="导出镜头">📤导出</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._importScene('+s.id+')" title="导入镜头">📥导入</button><button class="btn btn-xs btn-outline s2-review-btn" style="color:#8b5cf6;border-color:#8b5cf6;" onclick="event.stopPropagation();App.seedanceV2.openSceneReview('+s.id+')" title="审阅">📖审阅</button><button class="btn btn-xs btn-danger s2-del-btn" data-scene-id="'+s.id+'" title="删除此镜头">🗑</button></div></div>';
         h+='<div class="s2-scene-body"><div class="s2-scene-time"><span class="s2-time-label">\u23f1 '+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span>';
         h+='<input class="s2-scene-dur s2-time-input'+(s.is_locked?' s2-dur-manual':'')+'" type="number" min="0.5" max="15" step="0.5" onblur="if(parseFloat(this.value)<0.5)this.value=0.5;if(parseFloat(this.value)>15)this.value=15;" value="'+(s.duration||3)+'" data-scene-id="'+s.id+'" title="'+(s.is_locked?'🔒 已锁定':'🔓 未锁定')+'">';
         h+='<select class="s2-dur-preset" data-target-scene="'+s.id+'" onchange="App.seedanceV2.applyDurPreset(this)"><option value="">\u25bc</option>';
@@ -1160,6 +1182,40 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
         if (self._composeTimer) clearTimeout(self._composeTimer);
         self._composeTimer = setTimeout(function() { self.compose(); }, self._composeDebounceMs);
     };
+    // ============ 镜头文本审阅 ============
+    App.seedanceV2.openSceneReview = function(sceneId) {
+        var s = null, idx = -1;
+        for (var i = 0; i < this.scenes.length; i++) {
+            if (this.scenes[i].id === sceneId) { s = this.scenes[i]; idx = i; break; }
+        }
+        if (!s) return;
+        var F = {camera_move:'运镜',subject:'主体',scene_desc:'场景',composition:'构图',lighting:'光影',action:'动作',focal_length:'焦段',texture:'质感',speed:'速率',emotion:'情绪',color_grade:'调色',weather:'天气',particles:'粒子',perspective:'视角',depth_of_field:'景深',filter:'滤镜',natural_force:'外力',environment_detail:'环境',film_flaw:'瑕疵',fantasy_physics:'奇幻'};
+        var fields = ['camera_move','subject','scene_desc','composition','lighting','action','focal_length','texture','speed','emotion','color_grade','weather','particles','perspective','depth_of_field','filter','natural_force','environment_detail','film_flaw','fantasy_physics'];
+        var meta = parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s · '+Math.round((s.end_time-s.start_time)*10)/10+'s';
+        var html = '<div class="sr-meta">◆ 镜头'+(idx+1)+' · '+App._escape(meta)+'</div>';
+        for (var fi = 0; fi < fields.length; fi++) {
+            var f = fields[fi], v = (s[f] || '').trim();
+            if (!v) continue;
+            html += '<span class="sr-field-name">'+(F[f]||f)+'</span>'+App._escape(v)+'<span class="sr-separator"></span>';
+        }
+        document.getElementById('sceneReviewTitle').textContent = '镜头'+(idx+1)+' · 审阅';
+        document.getElementById('sceneReviewBody').innerHTML = html;
+        document.getElementById('sceneReviewModal').style.display = 'flex';
+    };
+    App.seedanceV2.closeSceneReview = function() { document.getElementById('sceneReviewModal').style.display = 'none'; };
+    // ESC 快捷关闭审阅弹窗
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            var m = document.getElementById('sceneReviewModal');
+            if (m && m.style.display === 'flex') App.seedanceV2.closeSceneReview();
+        }
+    });
+    App.seedanceV2.copySceneReview = function() {
+        var b = document.getElementById('sceneReviewBody');
+        if (!b || !b.textContent) { App.showToast('无可复制', 'warning'); return; }
+        navigator.clipboard.writeText(b.textContent.trim()).then(function() { App.showToast('已复制', 'success'); });
+    };
+
     App.seedanceV2._toggleAudioSection = function() {
         var panel = document.getElementById('s2_audio_section');
         var cb = document.getElementById('s2_audio_enabled');
@@ -1200,4 +1256,96 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
     App.seedanceV2.copyJSON=function(){var obj=this.outputJson;if(!obj||!Object.keys(obj).length){App.showToast('无数据可复制','warning');return;}navigator.clipboard.writeText(JSON.stringify(obj,null,2)).then(function(){App.showToast('JSON已复制','success');});};
     App.seedanceV2.copyLibTV=function(){var t=this.outputText||'';if(!t){App.showToast('无输出可复制','warning');return;}window.open('https://libtv.ai/create?prompt='+encodeURIComponent(t),'_blank');};
     App.seedanceV2.resetProject=function(){if(!confirm('确定重置此项目？'))return;var self=this;App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes',{method:'GET'}).then(function(d){if(!d||!d.items)return;var ids=d.items.map(function(s){return s.id;});(async function(){for(var j=0;j<ids.length;j++)await App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+ids[j],{method:'DELETE'});self.openProject(self.currentProjectId);App.showToast('项目已重置','info');})();});};
+
+    // ============ Chip hover preview ============
+    var _hoverTimer = null;
+    var _hoverPreview = null;
+    function _makePreviewEl() {
+        var el = document.createElement('div');
+        el.id = 's2ChipPreview';
+        el.style.cssText = 'display:none;position:fixed;z-index:999;min-width:160px;max-width:280px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,0.25);padding:8px;pointer-events:none;';
+        document.body.appendChild(el);
+        return el;
+    }
+    App.seedanceV2._showChipPreview = function(sceneId, field, chipEl, e) {
+        // Map dimension_key → scene field name
+        var sceneField = (App.seedanceV2._dimToField || {})[field] || field;
+        if (_hoverTimer) clearTimeout(_hoverTimer);
+        _hoverTimer = setTimeout(function() {
+            var s = null;
+            for (var i = 0; i < App.seedanceV2.scenes.length; i++) {
+                if (App.seedanceV2.scenes[i].id === sceneId) { s = App.seedanceV2.scenes[i]; break; }
+            }
+            if (!s) return;
+            var fv = (s[sceneField] || '').trim();
+            // Also grab visible text from the tag element itself as fallback
+            var tagText = (chipEl && chipEl.textContent) ? chipEl.textContent.trim() : '';
+            if (!fv && !tagText) return;
+            var searchText = fv || tagText;
+            // Normalize: lowercase, trim
+            var nv = searchText.toLowerCase().replace(/\s+/g,' ');
+            // Find matching word card across ALL loaded caches
+            var card = null;
+            var libId = App.seedanceV2._fieldToLibId(field) || App.seedanceV2._fieldToLibId(sceneField);
+            var allKeys = Object.keys(App.seedanceV2.cardCache || {});
+            // Try all caches (field-matched lib first)
+            var keys = [];
+            if (libId) keys.push(String(libId));
+            for (var ki = 0; ki < allKeys.length; ki++) { if (String(allKeys[ki]) !== String(libId)) keys.push(String(allKeys[ki])); }
+            for (var ki = 0; ki < keys.length && !card; ki++) {
+                var cards = App.seedanceV2.cardCache[keys[ki]] || [];
+                for (var ci = 0; ci < cards.length; ci++) {
+                    var wt = (cards[ci].word_text||'').toLowerCase().replace(/\s+/g,' ');
+                    var df = (cards[ci].definition||'').toLowerCase().replace(/\s+/g,' ');
+                    if (wt === nv || df === nv || wt.indexOf(nv) >= 0 || nv.indexOf(wt) >= 0 || df.indexOf(nv) >= 0 || nv.indexOf(df) >= 0) {
+                        card = cards[ci]; break;
+                    }
+                }
+            }
+            if (!_hoverPreview) _hoverPreview = _makePreviewEl();
+            var html = '';
+            if (card && card.preview_video) {
+                html += '<video src="/api/seedance/v2/videos/'+card.preview_video+'" style="width:100%;height:auto;border-radius:6px;" autoplay muted loop></video>';
+            } else if (card && card.preview_image) {
+                html += '<img src="/api/seedance/v2/thumbnails/'+card.preview_image+'" style="width:100%;height:auto;border-radius:6px;">';
+            } else {
+                html += '<div style="padding:12px;text-align:center;color:var(--text-muted);font-size:12px;">'+(card?'无媒体预览':'无匹配词卡')+'</div>';
+            }
+            html += '<div style="font-size:11px;margin-top:6px;color:var(--text-main);line-height:1.4;max-width:260px;word-break:break-word;"><strong>'+App._escape(card?card.word_text:searchText)+'</strong></div>';
+            if (card && card.definition && card.definition !== card.word_text) {
+                html += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">'+App._escape(card.definition.substring(0,80))+'</div>';
+            }
+            _hoverPreview.innerHTML = html;
+            var rect = chipEl.getBoundingClientRect();
+            _hoverPreview.style.left = Math.min(rect.left, window.innerWidth-290)+'px';
+            _hoverPreview.style.top = (rect.bottom+4)+'px';
+            _hoverPreview.style.display = 'block';
+        }, 400);
+    };
+    App.seedanceV2._hideChipPreview = function() {
+        if (_hoverTimer) clearTimeout(_hoverTimer);
+        if (_hoverPreview) _hoverPreview.style.display = 'none';
+    };
+    App.seedanceV2._fieldToLibId = function(field) {
+        // Map dimension_key ↔ scene field name both ways
+        var dimToField = App.seedanceV2._dimToField || {};
+        var fieldToDim = App.seedanceV2._fieldToDim || {};
+        // Try: field as sceneField → dimKey, and field as dimKey → dimKey
+        var dimKey = fieldToDim[field] || dimToField[field] || field;
+        // Also try the reverse: if field is actually the dim_key, return directly
+        var libs = App.seedanceV2.libraries || [];
+        // Exact match on dimension_key
+        for (var i = 0; i < libs.length; i++) {
+            if (libs[i].dimension_key === dimKey) return libs[i].id;
+        }
+        // If field is the dimKey itself, try direct match
+        for (var j = 0; j < libs.length; j++) {
+            if (libs[j].dimension_key === field) return libs[j].id;
+        }
+        // For custom libraries, match by category
+        for (var k = 0; k < libs.length; k++) {
+            if (libs[k].category === 'custom' && libs[k].dimension_key === field) return libs[k].id;
+        }
+        return null;
+    };
 })();
