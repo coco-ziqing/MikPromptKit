@@ -157,18 +157,46 @@ def create_card(data: dict):
 
 @router.put("/cards/{card_id}")
 def update_card(card_id: int, data: dict):
-    """更新提示词卡"""
+    """更新提示词卡（编辑前自动存档当前版本）"""
     db = get_db()
-    r = db.execute("SELECT id FROM prompt_cards WHERE id=? AND is_deleted=0", (card_id,)).fetchone()
-    if not r:
+    current = db.execute("SELECT * FROM prompt_cards WHERE id=? AND is_deleted=0", (card_id,)).fetchone()
+    if not current:
         raise HTTPException(status_code=404, detail='卡片不存在')
-    
+
+    # 自动存档：编辑前将当前完整内容存入版本历史
+    change_note = data.get('change_note', '') or ''
+    if data.get('content') is not None or data.get('structured_fields') is not None:
+        # 计算下一个版本号
+        last_ver = db.execute(
+            "SELECT MAX(version) as max_v FROM prompt_versions WHERE prompt_id=?",
+            (card_id,)
+        ).fetchone()
+        next_ver = (last_ver['max_v'] or 0) + 1
+        current_ver = current['version'] or 0
+
+        db.execute("""
+            INSERT INTO prompt_versions
+                (prompt_id, content, meaning, scene, change_note, version)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, [
+            card_id,
+            current['content'] or '',
+            current['meaning'] or '',
+            current['scene'] or '',
+            change_note or '编辑存档',
+            next_ver
+        ])
+
     fields = []
     params = []
-    for key in ['card_type','name','content','meaning','scene','module','category','version']:
+    for key in ['card_type','name','content','meaning','scene','module','category']:
         if key in data:
             fields.append(f'{key}=?')
             params.append(data[key])
+    # 编辑时自动递增版本号
+    if data.get('content') is not None or data.get('structured_fields') is not None:
+        fields.append('version=?')
+        params.append((current['version'] or 0) + 1)
     if 'structured_fields' in data:
         fields.append('structured_fields=?')
         params.append(json.dumps(data['structured_fields'], ensure_ascii=False))
@@ -178,13 +206,13 @@ def update_card(card_id: int, data: dict):
     if 'library_refs' in data:
         fields.append('library_refs=?')
         params.append(json.dumps(data['library_refs'], ensure_ascii=False))
-    
+
     if fields:
         fields.append("updated_at=datetime('now','localtime')")
         params.append(card_id)
         db.execute(f'UPDATE prompt_cards SET {",".join(fields)} WHERE id=?', params)
         safe_commit()
-    
+
     return {'ok': True}
 
 
@@ -487,21 +515,114 @@ def get_card_full(card_id: int):
 
 @router.post("/cards/{card_id}/rollback")
 def rollback_card(card_id: int, data: dict):
-    """回滚提示词卡到指定版本"""
+    """回滚提示词卡到指定版本（完整恢复所有字段，回滚前存档当前版本）"""
     version = data.get("version")
     if not version:
         return {"ok": False, "error": "缺少版本号"}
     db = get_db()
+    current = db.execute("SELECT * FROM prompt_cards WHERE id=? AND is_deleted=0", (card_id,)).fetchone()
+    if not current:
+        return {"ok": False, "error": "卡片不存在"}
     row = db.execute(
         "SELECT * FROM prompt_versions WHERE prompt_id=? AND version=?",
         (card_id, version)
     ).fetchone()
     if not row:
         return {"ok": False, "error": "版本未找到"}
-    new_ver = version + 1
-    db.execute(
-        "UPDATE prompt_cards SET content=?, meaning=?, version=? WHERE id=?",
-        (row["content"], row["meaning"], new_ver, card_id)
-    )
+
+    # 回滚前将当前内容存档
+    last_ver = db.execute(
+        "SELECT MAX(version) as max_v FROM prompt_versions WHERE prompt_id=?",
+        (card_id,)
+    ).fetchone()
+    next_ver = (last_ver['max_v'] or 0) + 1
+    db.execute("""
+        INSERT INTO prompt_versions
+            (prompt_id, content, meaning, scene, change_note, version)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, [card_id, current['content'] or '', current['meaning'] or '',
+          current['scene'] or '', f'回滚到 v{version}', next_ver])
+
+    # 完整恢复所有字段
+    new_ver = next_ver + 1
+    db.execute("""
+        UPDATE prompt_cards SET
+            content=?, meaning=?, scene=?,
+            module=?, category=?, version=?
+        WHERE id=?
+    """, [
+        row['content'] or '',
+        row['meaning'] or '',
+        row['scene'] or '',
+        row['module'] or current['module'],
+        row['category'] or current['category'],
+        new_ver, card_id
+    ])
     safe_commit()
-    return {'ok': True, 'message': f'已回滚到 v{version}', 'new_version': new_ver}
+    return {'ok': True, 'message': f'已回滚到 v{version}', 'new_version': new_ver, 'archived_as_v': next_ver}
+
+
+# ==================== 7. v4 版本管理 ====================
+
+@router.get("/cards/{card_id}/versions")
+def card_version_history(card_id: int):
+    """v4 卡片版本历史（含当前内容）"""
+    db = get_db()
+    current = db.execute("SELECT * FROM prompt_cards WHERE id=? AND is_deleted=0", (card_id,)).fetchone()
+    if not current:
+        return {"ok": False, "error": "卡片不存在"}
+
+    rows = db.execute("""
+        SELECT id, version, content, meaning, scene, module, category,
+               change_note, created_at
+        FROM prompt_versions WHERE prompt_id=?
+        ORDER BY version DESC
+    """, (card_id,)).fetchall()
+
+    return {
+        "ok": True,
+        "current": {
+            "id": current['id'],
+            "version": current['version'],
+            "content": current['content'],
+            "meaning": current['meaning'],
+            "scene": current['scene'],
+            "module": current['module'],
+            "category": current['category']
+        },
+        "versions": [dict(r) for r in rows],
+        "total": len(rows)
+    }
+
+
+@router.get("/cards/{card_id}/versions/diff/{v1}/{v2}")
+def card_version_diff(card_id: int, v1: int, v2: int):
+    """v4 卡片两个版本差异对比"""
+    db = get_db()
+    ver1 = db.execute(
+        "SELECT * FROM prompt_versions WHERE prompt_id=? AND version=?",
+        (card_id, v1)
+    ).fetchone()
+    ver2 = db.execute(
+        "SELECT * FROM prompt_versions WHERE prompt_id=? AND version=?",
+        (card_id, v2)
+    ).fetchone()
+    if not ver1 or not ver2:
+        return {"ok": False, "error": "版本不存在"}
+
+    diffs = []
+    for field in ['content', 'meaning', 'scene', 'module', 'category']:
+        if ver1[field] != ver2[field]:
+            diffs.append({
+                "field": field,
+                "old": ver1[field] or '',
+                "new": ver2[field] or ''
+            })
+
+    return {
+        "ok": True,
+        "v1": {"version": ver1['version'], "id": ver1['id'], "created_at": ver1['created_at']},
+        "v2": {"version": ver2['version'], "id": ver2['id'], "created_at": ver2['created_at']},
+        "diffs": diffs,
+        "total_changes": len(diffs)
+    }
