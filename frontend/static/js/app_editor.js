@@ -706,8 +706,7 @@ Object.assign(App, {
         const d = document.createElement('div');
         d.textContent = str;
         return d.innerHTML;
-
-
+    },
     // ============ 侧边栏折叠 ============
     _injectSidebarToggle(sidebar) {
         // Remove existing toggle
@@ -750,7 +749,6 @@ Object.assign(App, {
                 if (btn) btn.innerHTML = '▶';
             }
         } catch(e) {}
-    },
     },
 
     // 从后端 /api/status 同步版本号到页面标题
