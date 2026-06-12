@@ -156,6 +156,9 @@ Object.assign(App, {
         }
         sidebar.innerHTML = html;
 
+        // 注入折叠按钮到侧边栏
+        App._injectSidebarToggle(sidebar);
+
         sidebar.innerHTML += `
             <div ${editClass} style="margin-top:auto;padding:12px;border-top:1px solid #334155;display:flex;gap:6px;flex-wrap:wrap;">
                 <button onclick="App.showImportModal()" style="flex:1;padding:6px 8px;background:transparent;border:1px solid #475569;border-radius:6px;color:#94a3b8;cursor:pointer;font-size:11px;transition:all 0.15s;" onmouseenter="this.style.borderColor='#6366f1';this.style.color='#a5b4fc'" onmouseleave="this.style.borderColor='#475569';this.style.color='#94a3b8'">
@@ -703,6 +706,51 @@ Object.assign(App, {
         const d = document.createElement('div');
         d.textContent = str;
         return d.innerHTML;
+
+
+    // ============ 侧边栏折叠 ============
+    _injectSidebarToggle(sidebar) {
+        // Remove existing toggle
+        var old = sidebar.querySelector('.sidebar-toggle-btn');
+        if (old) old.remove();
+        // Create toggle button
+        var btn = document.createElement('div');
+        btn.className = 'sidebar-toggle-btn';
+        btn.title = '折叠/展开模块列表';
+        btn.innerHTML = '◀';
+        btn.onclick = function(e) { e.stopPropagation(); App.toggleSidebarCollapse(); };
+        sidebar.appendChild(btn);
+        // Restore state
+        App._restoreSidebarState();
+    },
+
+    toggleSidebarCollapse() {
+        var sidebar = document.getElementById('sidebar');
+        if (!sidebar) return;
+        var collapsed = sidebar.classList.toggle('collapsed');
+        if (collapsed) {
+            document.body.classList.add('sidebar-collapsed');
+            sidebar.querySelector('.sidebar-toggle-btn').innerHTML = '▶';
+        } else {
+            document.body.classList.remove('sidebar-collapsed');
+            sidebar.querySelector('.sidebar-toggle-btn').innerHTML = '◀';
+        }
+        try { localStorage.setItem('promptkit_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
+    },
+
+    _restoreSidebarState() {
+        var sidebar = document.getElementById('sidebar');
+        if (!sidebar) return;
+        try {
+            var saved = localStorage.getItem('promptkit_sidebar_collapsed');
+            if (saved === '1') {
+                sidebar.classList.add('collapsed');
+                document.body.classList.add('sidebar-collapsed');
+                var btn = sidebar.querySelector('.sidebar-toggle-btn');
+                if (btn) btn.innerHTML = '▶';
+            }
+        } catch(e) {}
+    },
     },
 
     // 从后端 /api/status 同步版本号到页面标题

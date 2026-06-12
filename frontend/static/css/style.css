@@ -123,7 +123,23 @@ body {
     position: fixed; top: var(--nav-height); left: 0; bottom: 0;
     width: var(--sidebar-width); background: var(--bg-sidebar);
     overflow-y: auto; z-index: 99; padding-top: 8px;
+    transition: transform 0.25s ease, width 0.25s ease;
 }
+.sidebar.collapsed {
+    transform: translateX(calc(-1 * var(--sidebar-width)));
+}
+/* 折叠按钮 — 停靠在侧边栏右侧边缘 */
+.sidebar-toggle-btn {
+    position: absolute; right: -28px; top: 50%;
+    width: 22px; height: 48px;
+    background: var(--bg-sidebar); border: 1px solid var(--border-color);
+    border-left: none; border-radius: 0 6px 6px 0;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; z-index: 100; color: var(--text-muted);
+    font-size: 11px; transition: background 0.15s, color 0.15s;
+}
+.sidebar-toggle-btn:hover { background: var(--hover-bg); color: var(--primary); }
+.sidebar.collapsed .sidebar-toggle-btn { right: -26px; }
 .sidebar::-webkit-scrollbar { width: 4px; }
 .sidebar::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
 .sidebar .module-item {
@@ -146,7 +162,11 @@ body {
 /* ============ 主内容区 ============ */
 .main-content {
     margin-left: var(--sidebar-width);
-    margin-top: var(--nav-height);
+    transition: margin-left 0.25s ease;
+}
+body.sidebar-collapsed .main-content {
+    margin-left: 0;
+}    margin-top: var(--nav-height);
     padding: 20px 24px;
     height: calc(100vh - var(--nav-height));
     display: flex; flex-direction: column;
