@@ -709,44 +709,51 @@ Object.assign(App, {
     },
     // ============ 侧边栏折叠 ============
     _injectSidebarToggle(sidebar) {
-        // Remove existing toggle
-        var old = sidebar.querySelector('.sidebar-toggle-btn');
+        // Remove existing toggle from both sidebar and body
+        var old = document.querySelector('.sidebar-toggle-btn');
         if (old) old.remove();
-        // Create toggle button
+        // Create toggle button as body child (independent of sidebar)
         var btn = document.createElement('div');
         btn.className = 'sidebar-toggle-btn';
+        btn.id = 'sidebarToggleBtn';
         btn.title = '折叠/展开模块列表';
-        btn.innerHTML = '◀';
-        btn.onclick = function(e) { e.stopPropagation(); App.toggleSidebarCollapse(); };
-        sidebar.appendChild(btn);
+        btn.innerHTML = '\u25C0';
+        btn.addEventListener('click', function(e) { e.stopPropagation(); App.toggleSidebarCollapse(); });
+        document.body.appendChild(btn);
         // Restore state
         App._restoreSidebarState();
     },
 
     toggleSidebarCollapse() {
         var sidebar = document.getElementById('sidebar');
-        if (!sidebar) return;
-        var collapsed = sidebar.classList.toggle('collapsed');
+        var btn = document.getElementById('sidebarToggleBtn');
+        if (!sidebar || !btn) return;
+        var collapsed = !sidebar.classList.contains('collapsed');
         if (collapsed) {
+            sidebar.classList.add('collapsed');
             document.body.classList.add('sidebar-collapsed');
-            sidebar.querySelector('.sidebar-toggle-btn').innerHTML = '▶';
+            btn.innerHTML = '\u25B6';
+            btn.title = '展开模块列表';
         } else {
+            sidebar.classList.remove('collapsed');
             document.body.classList.remove('sidebar-collapsed');
-            sidebar.querySelector('.sidebar-toggle-btn').innerHTML = '◀';
+            btn.innerHTML = '\u25C0';
+            btn.title = '折叠模块列表';
         }
         try { localStorage.setItem('promptkit_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
     },
 
     _restoreSidebarState() {
         var sidebar = document.getElementById('sidebar');
-        if (!sidebar) return;
+        var btn = document.getElementById('sidebarToggleBtn');
+        if (!sidebar || !btn) return;
         try {
             var saved = localStorage.getItem('promptkit_sidebar_collapsed');
             if (saved === '1') {
                 sidebar.classList.add('collapsed');
                 document.body.classList.add('sidebar-collapsed');
-                var btn = sidebar.querySelector('.sidebar-toggle-btn');
-                if (btn) btn.innerHTML = '▶';
+                btn.innerHTML = '\u25B6';
+                btn.title = '展开模块列表';
             }
         } catch(e) {}
     },
