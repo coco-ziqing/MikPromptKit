@@ -83,33 +83,24 @@ async def import_single_png(
     if conflict not in ("skip", "overwrite", "rename"):
         conflict = "skip"
     file_bytes = await file.read()
-    result = import_prompt_from_png(file_bytes, conflict=conflict)
-    # 应用 overrides 覆盖
+    # 解析 overrides 并直接传入 importer（避免二次 UPDATE 双表不同步）
     import json
+    ov_mod = None
+    ov_cat = None
+    ov_cont = None
     try:
         ov_list = json.loads(overrides) if overrides and overrides != "[]" else []
         if ov_list and len(ov_list) > 0:
             ov = ov_list[0]
-            # 如果创建成功，update 字段
-            if result.get("created") and result.get("id"):
-                db = get_db()
-                updates = []
-                params = []
-                if ov.get("module"):
-                    updates.append("module=?")
-                    params.append(ov["module"])
-                if ov.get("category"):
-                    updates.append("category=?")
-                    params.append(ov["category"])
-                if ov.get("content"):
-                    updates.append("content=?")
-                    params.append(ov["content"])
-                if updates:
-                    params.append(result["id"])
-                    db.execute(f"UPDATE prompts SET {','.join(updates)} WHERE id=?", params)
-                    db.commit()
+            ov_mod = ov.get("module")
+            ov_cat = ov.get("category")
+            ov_cont = ov.get("content")
     except Exception:
         pass
+    result = import_prompt_from_png(file_bytes, conflict=conflict,
+                                     override_module=ov_mod,
+                                     override_category=ov_cat,
+                                     override_content=ov_cont)
     return {"ok": True, "result": result}
 
 

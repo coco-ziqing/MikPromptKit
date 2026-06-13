@@ -736,6 +736,8 @@ async def import_pt_package(
                         for tbl in ["collection_items", "wordpack_items", "usage_history", "prompt_thumbnails", "prompt_videos"]:
                             db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [existing["id"]])
                         db.execute("DELETE FROM prompts WHERE id=?", [existing["id"]])
+                        # 同步清理 prompt_cards
+                        db.execute("DELETE FROM prompt_cards WHERE name=? AND content=?", [entry.get("subcategory","") or entry.get("content","")[:30], existing["content"]])
 
                 module = entry.get("module", "custom")
                 category = entry.get("category", "通用")
@@ -745,11 +747,16 @@ async def import_pt_package(
                 tags = json.dumps(entry.get("tags", []), ensure_ascii=False)
 
                 db.execute(
-                    "INSERT INTO prompts (module, category, subcategory, content, meaning, scene, tags) VALUES (?,?,?,?,?,?,?)",
-                    [module, category, subcategory, content, meaning, scene, tags]
+                    "INSERT INTO prompts (module, category, subcategory, content, meaning, scene, tags, is_builtin) VALUES (?,?,?,?,?,?,?,?)",
+                    [module, category, subcategory, content, meaning, scene, tags, 0]
+                )
+                new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+                # 同步写入 prompt_cards（v4 主表，id 与 prompts 同步）
+                db.execute(
+                    "INSERT INTO prompt_cards (id, card_type, name, content, meaning, scene, module, category, tags, structured_fields, is_builtin, is_deleted, created_at, updated_at) VALUES (?,'image',?,?,?,?,?,?,?,'{}',0,0,datetime('now','localtime'),datetime('now','localtime'))",
+                    [new_id, subcategory or content[:30], content, meaning, scene, module, category, tags]
                 )
                 db.commit()
-                new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
                 # 还原缩略图
                 thumb_arc = entry.get("thumbnail")
@@ -871,8 +878,14 @@ def import_json_data(data: dict):
         tags = json.dumps(item.get("tags", []), ensure_ascii=False)
 
         db.execute(
-            "INSERT INTO prompts (module, category, subcategory, content, meaning, scene, tags) VALUES (?,?,?,?,?,?,?)",
-            [module, category, subcategory, content, meaning, scene, tags]
+            "INSERT INTO prompts (module, category, subcategory, content, meaning, scene, tags, is_builtin) VALUES (?,?,?,?,?,?,?,?)",
+            [module, category, subcategory, content, meaning, scene, tags, 0]
+        )
+        new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        # 同步写入 prompt_cards（v4 主表，id 与 prompts 同步）
+        db.execute(
+            "INSERT INTO prompt_cards (id, card_type, name, content, meaning, scene, module, category, tags, structured_fields, is_builtin, is_deleted, created_at, updated_at) VALUES (?,'image',?,?,?,?,?,?,'{}',0,0,datetime('now','localtime'),datetime('now','localtime'))",
+            [new_id, subcategory or content[:30], content, meaning, scene, module, category, tags]
         )
         db.commit()
         created += 1
@@ -895,10 +908,13 @@ def batch_trash(data: dict):
     db = get_db()
     trashed = 0
     for pid in prompt_ids:
-        row = db.execute("SELECT id FROM prompts WHERE id=? AND deleted_at IS NULL", [pid]).fetchone()
+        # 优先查 prompt_cards（v4 主表），其次 prompts 旧表
+        row = db.execute("SELECT id FROM prompt_cards WHERE id=? AND is_deleted=0", [pid]).fetchone()
         if not row:
             continue
-        db.execute("UPDATE prompts SET deleted_at=datetime('now','localtime') WHERE id=?", [pid])
+        # 双表同步软删除
+        db.execute("UPDATE prompt_cards SET is_deleted=1, deleted_at=datetime('now','localtime') WHERE id=?", [pid])
+        db.execute("UPDATE prompts SET deleted_at=datetime('now','localtime') WHERE id=? AND deleted_at IS NULL", [pid])
         db.execute("DELETE FROM collection_items WHERE prompt_id=?", [pid])
         db.execute("DELETE FROM wordpack_items WHERE prompt_id=?", [pid])
         trashed += 1
@@ -1018,6 +1034,11 @@ def list_trash(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=2
 def restore_from_trash(prompt_id: int):
     """从回收站恢复词条"""
     db = get_db()
+    # 优先查 prompt_cards（v4 主表）
+    row = db.execute("SELECT id FROM prompt_cards WHERE id=? AND is_deleted=1", [prompt_id]).fetchone()
+    if not row:
+        raise HTTPException(404, "提示词不存在或不在回收站")
+    db.execute("UPDATE prompt_cards SET is_deleted=0, deleted_at=NULL WHERE id=?", [prompt_id])
     db.execute("UPDATE prompts SET deleted_at=NULL WHERE id=? AND deleted_at IS NOT NULL", [prompt_id])
     db.commit()
     return {"ok": True}
@@ -1031,6 +1052,7 @@ def batch_restore_from_trash(data: dict):
         raise HTTPException(400, "缺少 prompt_ids")
     db = get_db()
     for pid in prompt_ids:
+        db.execute("UPDATE prompt_cards SET is_deleted=0, deleted_at=NULL WHERE id=? AND is_deleted=1", [pid])
         db.execute("UPDATE prompts SET deleted_at=NULL WHERE id=? AND deleted_at IS NOT NULL", [pid])
     db.commit()
     return {"ok": True, "count": len(prompt_ids)}
@@ -1040,7 +1062,8 @@ def batch_restore_from_trash(data: dict):
 def permanent_delete_prompt(prompt_id: int):
     """永久删除（内置词条禁止永久删除）"""
     db = get_db()
-    row = db.execute("SELECT is_builtin FROM prompts WHERE id=?", [prompt_id]).fetchone()
+    # 优先查 prompt_cards（v4 主表）
+    row = db.execute("SELECT id, is_builtin FROM prompt_cards WHERE id=?", [prompt_id]).fetchone()
     if not row:
         raise HTTPException(404, "提示词不存在")
     if row["is_builtin"] == 1:
@@ -1049,6 +1072,7 @@ def permanent_delete_prompt(prompt_id: int):
     for tbl in ["collection_items", "wordpack_items", "usage_history", "prompt_thumbnails", "prompt_videos"]:
         db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [prompt_id])
     db.execute("DELETE FROM prompts WHERE id=?", [prompt_id])
+    db.execute("DELETE FROM prompt_cards WHERE id=?", [prompt_id])
     db.commit()
     return {"ok": True}
 
@@ -1057,16 +1081,18 @@ def permanent_delete_prompt(prompt_id: int):
 def empty_trash():
     """清空回收站（内置词条跳过不清除）"""
     db = get_db()
-    # 只删除非内置的词条
-    ids = db.execute("SELECT id, is_builtin FROM prompts WHERE deleted_at IS NOT NULL").fetchall()
+    # 以 prompt_cards 为准（v4 主表）
+    ids = db.execute("SELECT id, is_builtin FROM prompt_cards WHERE is_deleted=1").fetchall()
     for row in ids:
         pid = row["id"]
         if row["is_builtin"] == 1:
             # 内置词条只恢复不清除
+            db.execute("UPDATE prompt_cards SET is_deleted=0, deleted_at=NULL WHERE id=?", [pid])
             db.execute("UPDATE prompts SET deleted_at=NULL WHERE id=?", [pid])
             continue
         for tbl in ["collection_items", "wordpack_items", "usage_history", "prompt_thumbnails", "prompt_videos"]:
             db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [pid])
         db.execute("DELETE FROM prompts WHERE id=?", [pid])
+        db.execute("DELETE FROM prompt_cards WHERE id=?", [pid])
     db.commit()
     return {"ok": True, "count": len(ids)}

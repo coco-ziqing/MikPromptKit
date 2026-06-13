@@ -16,53 +16,60 @@
     };
 
     App.seedanceV2.init = async function() {
-        await this.loadLibraries(); this.preloadAllCardCaches(); await this.loadProjects(); this.renderProjectList();
-        // 恢复上次编辑的项目
-        try{var savedPid=localStorage.getItem('promptkit_seedance_project');if(savedPid){var found=false;for(var i=0;i<this.projects.length;i++){if(this.projects[i].id==parseInt(savedPid)){found=true;break;}}if(found)this.openProject(parseInt(savedPid));}}catch(e){}
-        // 恢复侧栏状态
-        setTimeout(function() { App.seedanceV2._restoreSidebar(); }, 200);
-        if (!document.getElementById('s2GlobalDelPop')) {
-            var d = document.createElement('div'); d.id = 's2GlobalDelPop'; d.className = 's2-global-del-popover';
-            d.style.cssText = 'display:none;position:fixed;z-index:999;';
-            d.innerHTML = '<span class="s2-del-popover-text">\u786e\u5b9a\u5220\u9664\u6b64\u955c\u5934\uff1f</span><button class="s2-del-popover-yes" onclick="App.seedanceV2.deleteScene(parseInt(this.parentElement.dataset.sceneId))">\u786e\u8ba4</button><button class="s2-del-popover-no" onclick="this.parentElement.style.display=\x27none\x27">\u53d6\u6d88</button>';
-            document.body.appendChild(d);
-        }
-        if (!document.getElementById('s2ProjectDelPop')) {
-            var d2 = document.createElement('div'); d2.id = 's2ProjectDelPop'; d2.className = 's2-global-del-popover';
-            d2.style.cssText = 'display:none;position:fixed;z-index:999;';
-            d2.innerHTML = '<span class="s2-del-popover-text">\u786e\u5b9a\u5220\u9664\u6b64\u9879\u76ee\uff1f</span><button class="s2-del-proj-confirm">\u786e\u8ba4</button><button class="s2-proj-del-cancel">\u53d6\u6d88</button>';
-            document.body.appendChild(d2);
-        }
+        // 防重入: 多个调用者共享同一个初始化 Promise
+        if (this._initPromise) return this._initPromise;
         var self = this;
-        // ESC 键关闭词库弹窗
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && document.getElementById('s2CardPicker').style.display !== 'none') {
-                self.closePicker();
-            }
-        });
-        setTimeout(function() {
-            document.addEventListener('click', function(e) {
-                var btn = e.target.closest('.s2-unlock-item');
-                if (btn) { self._doUnlockAndSet(parseInt(btn.dataset.scene), parseFloat(btn.dataset.val), parseInt(btn.dataset.unlock)); }
-            });
-            document.addEventListener('click', function(e) {
-                var b = e.target.closest('.s2-close-modal'); if(b) { var m = document.getElementById(b.dataset.modal); if(m)m.style.display='none'; }
-                var pb = e.target.closest('.s2-del-proj-confirm'); if(pb) { var pop = document.getElementById('s2ProjectDelPop'); if(pop){pop.style.display='none';App.seedanceV2.deleteProject(parseInt(pop.dataset.projectId));} }
-                var cb = e.target.closest('.s2-proj-del-cancel'); if(cb) { var pop = document.getElementById('s2ProjectDelPop'); if(pop)pop.style.display='none'; }
-                // 选择弹窗按钮分发
-                var btn = e.target.closest('.s2-choice-btn');
-                if (btn) {
-                    var action = btn.dataset.action;
-                    var sid = parseInt(btn.dataset.scene);
-                    var val = parseFloat(btn.dataset.val);
-                    var rem = parseFloat(btn.dataset.rem || 0);
-                    if (action === 'addScene') { self._choiceAddScene(sid, val); }
-                    else if (action === 'changeTotal') { self._choiceChangeTotal(sid, val, rem); }
-                    else if (action === 'unlockOther') { self._choiceUnlockOther(sid, val, rem); }
-                    else if (action === 'directLock') { self._doSetDuration(sid, val); }
+
+        // 事件监听器只注册一次（与 Promise 无关，用独立标记防重）
+        if (!this._eventsBound) {
+            this._eventsBound = true;
+            // ESC 键关闭词库弹窗
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && document.getElementById('s2CardPicker').style.display !== 'none') {
+                    self.closePicker();
                 }
             });
-        }, 100);
+            setTimeout(function() {
+                document.addEventListener('click', function(e) {
+                    var btn = e.target.closest('.s2-unlock-item');
+                    if (btn) { self._doUnlockAndSet(parseInt(btn.dataset.scene), parseFloat(btn.dataset.val), parseInt(btn.dataset.unlock)); }
+                });
+                document.addEventListener('click', function(e) {
+                    var b = e.target.closest('.s2-close-modal'); if(b) { var m = document.getElementById(b.dataset.modal); if(m)m.style.display='none'; }
+                    var pb = e.target.closest('.s2-del-proj-confirm'); if(pb) { var pop = document.getElementById('s2ProjectDelPop'); if(pop){pop.style.display='none';App.seedanceV2.deleteProject(parseInt(pop.dataset.projectId));} }
+                    var cb = e.target.closest('.s2-proj-del-cancel'); if(cb) { var pop = document.getElementById('s2ProjectDelPop'); if(pop)pop.style.display='none'; }
+                    // 选择弹窗按钮分发
+                    var btn = e.target.closest('.s2-choice-btn');
+                    if (btn) {
+                        var action = btn.dataset.action, sid = parseInt(btn.dataset.scene), val = parseFloat(btn.dataset.val), rem = parseFloat(btn.dataset.rem||0);
+                        if (action==='addScene') { self._choiceAddScene(sid,val); }
+                        else if (action==='changeTotal') { self._choiceChangeTotal(sid,val,rem); }
+                        else if (action==='unlockOther') { self._choiceUnlockOther(sid,val,rem); }
+                        else if (action==='directLock') { self._doSetDuration(sid,val); }
+                    }
+                });
+            }, 100);
+        }
+
+        this._initPromise = (async function() {
+            await self.loadLibraries(); self.preloadAllCardCaches(); await self.loadProjects(); self.renderProjectList();
+            try{var savedPid=localStorage.getItem('promptkit_seedance_project');if(savedPid){var found=false;for(var i=0;i<self.projects.length;i++){if(self.projects[i].id==parseInt(savedPid)){found=true;break;}}if(found)self.openProject(parseInt(savedPid));}}catch(e){}
+            setTimeout(function() { self._restoreSidebar(); }, 200);
+            if (!document.getElementById('s2GlobalDelPop')) {
+                var d = document.createElement('div'); d.id = 's2GlobalDelPop'; d.className = 's2-global-del-popover';
+                d.style.cssText = 'display:none;position:fixed;z-index:999;';
+                d.innerHTML = '<span class="s2-del-popover-text">\u786e\u5b9a\u5220\u9664\u6b64\u955c\u5934\uff1f</span><button class="s2-del-popover-yes" onclick="App.seedanceV2.deleteScene(parseInt(this.parentElement.dataset.sceneId))">\u786e\u8ba4</button><button class="s2-del-popover-no" onclick="this.parentElement.style.display=\x27none\x27">\u53d6\u6d88</button>';
+                document.body.appendChild(d);
+            }
+            if (!document.getElementById('s2ProjectDelPop')) {
+                var d2 = document.createElement('div'); d2.id = 's2ProjectDelPop'; d2.className = 's2-global-del-popover';
+                d2.style.cssText = 'display:none;position:fixed;z-index:999;';
+                d2.innerHTML = '<span class="s2-del-popover-text">\u786e\u5b9a\u5220\u9664\u6b64\u9879\u76ee\uff1f</span><button class="s2-del-proj-confirm">\u786e\u8ba4</button><button class="s2-proj-del-cancel">\u53d6\u6d88</button>';
+                document.body.appendChild(d2);
+            }
+            self._initPromise = null;
+        })();
+        return this._initPromise;
     };
 
     // 词库
@@ -74,6 +81,82 @@
     App.seedanceV2.loadProjects = async function() { var d=await App.fetchJSON('/api/seedance/v2/projects?page_size=100'); if(d) this.projects = d.items; };
     App.seedanceV2.createProject = async function() { var n=prompt('项目名称:','新项目 '+(this.projects.length+1)); if(!n)return; var d=await App.fetchJSON('/api/seedance/v2/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})}); if(d&&d.ok){await this.loadProjects();this.renderProjectList();this.openProject(d.id);App.showToast('项目已创建','success');} };
     App.seedanceV2.deleteProject = async function(id){var d=await App.fetchJSON('/api/seedance/v2/projects/'+id,{method:'DELETE'});if(d&&d.ok){if(this.currentProjectId===id){this.currentProjectId=null;this.currentProject=null;this.scenes=[];this.renderComposerEmpty();}await this.loadProjects();this.renderProjectList();App.showToast('项目已删除','info');}};
+    App.seedanceV2.confirmDeleteProject = function(id){if(!confirm('确定删除此项目？所有镜头数据将永久丢失。'))return;this.deleteProject(id);};
+    // 闭环: 组装器 → 回写场景模版
+    // 弹出更新模版选择窗口
+    App.seedanceV2._showUpdateTemplatePopup = function(projectId, templateId) {
+        // 移除已有弹窗
+        var old = document.getElementById('s2UpdateTplPopup');
+        if (old) old.remove();
+        var overlay = document.createElement('div'); overlay.id = 's2UpdateTplPopup';
+        overlay.className = 's2-popup-overlay';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+        overlay.innerHTML = '<div class="s2-popup-card" style="max-width:360px;padding:24px;border-radius:12px;background:var(--bg-card);box-shadow:0 20px 60px rgba(0,0,0,0.25);">'
+            + '<h4 style="margin:0 0 6px;">📋 场景模版操作</h4>'
+            + '<p style="font-size:12px;color:var(--text-muted);margin:0 0 16px;">请选择如何处理当前组装的提示词：</p>'
+            + '<div style="display:flex;flex-direction:column;gap:10px;">'
+            + '<button class="btn btn-primary" style="padding:10px 16px;font-size:14px;" onclick="App.seedanceV2._doUpdateTemplate(' + projectId + ',' + templateId + ')">🔄 更新内容 — 覆盖原模版</button>'
+            + '<button class="btn btn-outline" style="padding:10px 16px;font-size:14px;color:#7c3aed;border-color:#7c3aed;" onclick="App.seedanceV2._doDuplicateTemplate(' + projectId + ',' + templateId + ')">📄 新建副本 — 另存为新模版</button>'
+            + '<button class="btn btn-sm btn-outline" style="margin-top:4px;" onclick="document.getElementById(\'s2UpdateTplPopup\').remove()">取消</button>'
+            + '</div></div>';
+        document.body.appendChild(overlay);
+    };
+    // 更新原模版内容
+    App.seedanceV2._doUpdateTemplate = async function(projectId, templateId) {
+        document.getElementById('s2UpdateTplPopup')?.remove();
+        App.showToast('正在更新模版...', 'info');
+        var content = document.getElementById('s2Output')?.value?.trim();
+        if (!content) {
+            await this.saveProject();
+            var resp = await App.fetchJSON('/api/seedance/v2/projects/' + projectId + '/compose', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ format: 'seedance', density: 'standard' })
+            });
+            if (!resp || !resp.text) { App.showToast('组装失败', 'error'); return; }
+            content = resp.text;
+        }
+        var scene = (this.currentProject && this.currentProject.global_style) || '';
+        var d = await App.fetchJSON('/api/seedance/v2/projects/' + projectId + '/update-template', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content, scene: scene })
+        });
+        if (d && d.ok) {
+            App.showToast('✅ 模版已更新！刷新模版列表即可查看', 'success');
+        } else {
+            App.showToast('更新失败：' + (d ? (d.detail || '无响应') : '无响应'), 'error');
+        }
+    };
+    // 新建模版副本
+    App.seedanceV2._doDuplicateTemplate = async function(projectId, templateId) {
+        document.getElementById('s2UpdateTplPopup')?.remove();
+        App.showToast('正在创建副本...', 'info');
+        var content = document.getElementById('s2Output')?.value?.trim();
+        if (!content) {
+            await this.saveProject();
+            var resp = await App.fetchJSON('/api/seedance/v2/projects/' + projectId + '/compose', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ format: 'seedance', density: 'standard' })
+            });
+            if (!resp || !resp.text) { App.showToast('组装失败', 'error'); return; }
+            content = resp.text;
+        }
+        var scene = (this.currentProject && this.currentProject.global_style) || '';
+        var d = await App.fetchJSON('/api/seedance/v2/projects/' + projectId + '/update-template', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content, scene: scene, duplicate: true })
+        });
+        if (d && d.ok) {
+            App.showToast('✅ 已创建模版副本 (ID: ' + d.new_template_id + ')，刷新模版列表即可查看', 'success');
+        } else {
+            App.showToast('创建副本失败：' + (d ? (d.detail || '无响应') : '无响应'), 'error');
+        }
+    };
+    // [DEPRECATED] 旧 updateTemplate 已被 _doUpdateTemplate 替代
+    App.seedanceV2.updateTemplate = function(projectId, templateId) {
+        App.seedanceV2._showUpdateTemplatePopup(projectId, templateId);
+    };
     App.seedanceV2.openProject = async function(id) { this.currentProjectId=id; try{localStorage.setItem('promptkit_seedance_project',id);localStorage.setItem('promptkit_view','seedance');localStorage.setItem('promptkit_seedance_tab','composer');}catch(e){} var d=await App.fetchJSON('/api/seedance/v2/projects/'+id); if(!d) return; this.currentProject=d.project; this.scenes=d.scenes; var editor=document.getElementById('s2Editor'); var savedScroll=editor?editor.scrollTop:0; this.renderProjectList(); this.renderProjectEditor(); this.renderScenes(); this.compose(); var self=this; requestAnimationFrame(function(){var e=document.getElementById('s2Editor');if(e&&savedScroll>0)e.scrollTop=savedScroll;}); };
     App.seedanceV2.saveProject = async function(){
         if(!this.currentProjectId)return;
@@ -135,16 +218,39 @@
         var sec = document.getElementById('s2ShotListSection');
         if (sec) sec.classList.toggle('collapsed');
     };
+    // 右侧面板折叠/展开（按钮独立于面板，与左侧sidebar-toggle完全对称）
+    App.seedanceV2.toggleRightPanel = function() {
+        var panel = document.getElementById('s2RightPanel');
+        var btn = document.getElementById('s2RightToggle');
+        if (!panel || !btn) return;
+        var isCollapsed = panel.classList.toggle('collapsed');
+        btn.textContent = isCollapsed ? '◀' : '▶';
+        btn.title = isCollapsed ? '展开词库面板' : '折叠词库面板';
+        try { localStorage.setItem('promptkit_s2_right_panel', isCollapsed ? '1' : '0'); } catch(e) {}
+    };
+    // 恢复右侧面板状态
+    App.seedanceV2._restoreRightPanel = function() {
+        try {
+            var v = localStorage.getItem('promptkit_s2_right_panel');
+            // 默认折叠，仅当上次显式展开时才保持展开
+            if (v !== '1') {
+                var panel = document.getElementById('s2RightPanel');
+                var btn = document.getElementById('s2RightToggle');
+                if (panel) panel.classList.add('collapsed');
+                if (btn) { btn.textContent = '◀'; btn.title = '展开词库面板'; }
+            }
+        } catch(e) {}
+    };
     App.seedanceV2._openRightPicker = function(sid, field) {
-        // 右侧面板选词代替 modal
         App.seedanceV2.activeSceneId = sid;
-        // 自定义分组: field 是 dimension_key (custom_xxx), 不覆盖 activeField
         var isCustomKey = field && typeof field === 'string' && field.startsWith('custom_');
         if (!isCustomKey) App.seedanceV2.activeField = field;
         var panel = document.getElementById('s2RightPanel');
-        var layout = document.querySelector('.s2-layout');
-        if (!panel || !layout) return;
-        // 找到对应的 lib: 先按 dimKey 映射, 再按原始字段名/dimension_key
+        if (!panel) return;
+        // 如果面板折叠，自动展开
+        if (panel.classList.contains('collapsed')) {
+            App.seedanceV2.toggleRightPanel();
+        }
         var dimKey = App.seedanceV2._fieldToDim && App.seedanceV2._fieldToDim[field] ? App.seedanceV2._fieldToDim[field] : field;
         var foundLib = null;
         for (var li = 0; li < App.seedanceV2.libraries.length; li++) {
@@ -152,18 +258,11 @@
             if (lib.dimension_key === dimKey || lib.dimension_key === field) { foundLib = lib; break; }
         }
         if (!foundLib) { App.showToast('未找到对应词库: '+field, 'warning'); return; }
-        var displayName = App.seedanceV2._F[field] || foundLib.dimension_name || '选词';
-        layout.classList.add('editor-with-panel');
-        panel.classList.add('open');
-        panel.innerHTML = '<div class="d-flex justify-content-between align-items-center mb-2"><strong>✏️ 选词 - '+App._escape(displayName)+'</strong><button class="btn btn-sm btn-outline" onclick="App.seedanceV2._closeRightPicker()">&times;</button></div><div class="loading-spinner"><div class="spinner-border spinner-border-sm"></div></div>';
         App.seedanceV2.activePickerLibId = foundLib.id;
         App.seedanceV2._renderRightPickerContent(foundLib);
     };
     App.seedanceV2._closeRightPicker = function() {
-        var panel = document.getElementById('s2RightPanel');
-        var layout = document.querySelector('.s2-layout');
-        if (panel) panel.classList.remove('open');
-        if (layout) layout.classList.remove('editor-with-panel');
+        // 不再关闭面板，只清空当前选中（面板始终存在）
         App.seedanceV2.activePickerLibId = null;
     };
     App.seedanceV2._renderRightPickerContent = async function(lib) {
@@ -181,7 +280,10 @@
         var isCustom = lib.category === 'custom';
         var titleName = isCustom ? (lib.dimension_name||'自定义') : (panelField || lib.dimension_name||'选词');
         var targetHint = isCustom && panelField ? ' → '+panelField : '';
-        var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><div><strong>✏️ '+App._escape(titleName)+'</strong><span style="font-size:10px;color:var(--text-muted);margin-left:4px;">'+App._escape(targetHint)+'</span></div><div style="display:flex;gap:4px;"><button class="btn btn-xs btn-outline" onclick="App.seedanceV2._openGroupCreator()" title="新建自定义分组" style="font-size:10px;padding:2px 6px;">+ 分组</button><button class="btn btn-sm btn-outline" onclick="App.seedanceV2._closeRightPicker()">✕</button></div></div>';
+        // 工具栏：简洁标题
+        var h = '<div class="s2-panel-toolbar"><div><strong>✏️ '+App._escape(titleName)+'</strong><span style="font-size:10px;color:var(--text-muted);margin-left:4px;">'+App._escape(targetHint)+'</span></div><div style="display:flex;gap:4px;">';
+        h += '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._openGroupCreator()" title="新建自定义分组">+分组</button>';
+        h += '</div></div>';
         
         // 词库切换 tabs（仅显示 basic 和 extended，排除 global/custom）
         var basicLibs = [], extLibs = [];
@@ -237,8 +339,8 @@
                 var card = cards[ci];
                 var word = card.word_text || card.content || '';
                 var def = card.definition || card.meaning || '';
-                var injectValue = def ? def : word;  // 释义优先: 填入预览用详细内容
-                var isSelected = fieldVal && (fieldVal.indexOf(injectValue) >= 0);
+                var injectValue = word;  // 使用词条名填充，与字段值做精确匹配（定义文本太长会导致 indexOf 误判）
+                var isSelected = fieldVal && injectValue && (fieldVal.indexOf(injectValue) >= 0 || injectValue.indexOf(fieldVal) >= 0);
                 var pt=card.preview_image?'/api/seedance/v2/thumbnails/'+card.preview_image:'';
                 var vt=card.preview_video?'/api/seedance/v2/videos/'+card.preview_video:'';
                 var hasMedia=pt||vt;
@@ -280,7 +382,10 @@
         }
         // 图库选取按钮
         h += '<div style="margin-top:8px;text-align:center;"><button class="btn btn-xs btn-outline" onclick="App.seedanceV2._openMediaLibrary()" style="font-size:11px;padding:3px 10px;">📚 从媒体库选取</button></div>';
-        panel.innerHTML = h;
+        // 写入面板内部容器
+        var inner = document.getElementById('s2PanelInner');
+        if (inner) inner.innerHTML = h;
+        else panel.innerHTML = h;
         setTimeout(function(){ App.seedanceV2._setupWordCardDropZones(); }, 120);
     };
 
@@ -317,14 +422,19 @@
         if (!App.seedanceV2.activeField) { App.showToast('请先在镜头卡片中点击一个字段(如运镜/构图)', 'warning'); return; }
         var scene = App.seedanceV2._getCurrentScene();
         if (!scene) return;
-        var currentVal = scene[App.seedanceV2.activeField] || '';
-        // 点击切换：已选则移除，未选则添加
-        if (currentVal.indexOf(word) >= 0) {
+        var currentVal = (scene[App.seedanceV2.activeField] || '').trim();
+        // 判断当前值是「词卡拼接」（逗号分隔）还是「模板长文本」
+        var isComposite = currentVal.indexOf(',') >= 0 || currentVal.length <= 20;
+        if (isComposite && currentVal.indexOf(word) >= 0) {
+            // 已选则移除
             currentVal = currentVal.replace(word, '').replace(/,\s*,/g, ',').replace(/^,|,$/g, '').trim();
+        } else if (isComposite && currentVal) {
+            // 词卡模式下追加
+            currentVal = currentVal + ', ' + word;
         } else {
-            currentVal = currentVal ? currentVal + ', ' + word : word;
+            // 模板长文本或空字段 → 直接替换为词卡值
+            currentVal = word;
         }
-        // 立即更新本地 scene 对象，消除异步滞后
         scene[App.seedanceV2.activeField] = currentVal;
         App.seedanceV2.updateSceneField(App.seedanceV2.activeSceneId, App.seedanceV2.activeField, currentVal);
         App.seedanceV2._refreshRightSelection();
@@ -369,7 +479,16 @@
     App.seedanceV2.renderProjectEditor = function() {
         var c=document.getElementById('s2Editor');if(!c)return;var p=this.currentProject;if(!p){this.renderComposerEmpty();return;}
         function ms(id,l,opts,v){var h='<div class="s2-field"><label>'+l+'</label><select id="'+id+'" class="s2-input" onchange="App.seedanceV2._debouncedCompose()">';for(var i=0;i<opts.length;i++){var s=opts[i][0]===v?' selected':'';h+='<option value="'+opts[i][0]+'"'+s+'>'+opts[i][1]+'</option>';}h+='</select></div>';return h;}
-        var h='<div class="s2-editor-header"><div class="s2-editor-title"><input id="s2_name" class="s2-input s2-title-input" value="'+App._escape(p.name)+'" onchange="App.seedanceV2.setDirty();App.seedanceV2._debouncedCompose()"></div><div class="s2-editor-actions"><button class="btn btn-sm btn-success" onclick="App.seedanceV2.saveProject()">💾 保存</button><button class="btn btn-sm btn-danger" onclick="App.seedanceV2.deleteProject('+p.id+')">🗑 删除</button></div></div>';
+        var h='<div class="s2-editor-header"><div class="s2-editor-title"><input id="s2_name" class="s2-input s2-title-input" value="'+App._escape(p.name)+'" onchange="App.seedanceV2.setDirty();App.seedanceV2._debouncedCompose()">';
+        // 模板来源标签
+        if (p.template_id) {
+            h+='<span class="s2-tpl-badge" title="来源模版ID: '+p.template_id+'" style="display:inline-block;font-size:10px;padding:2px 8px;border-radius:12px;background:#ede9fe;color:#7c3aed;margin-left:8px;white-space:nowrap;">📋 场景模版</span>';
+        }
+        h+='</div><div class="s2-editor-actions">';
+        if (p.template_id) {
+            h+='<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._showUpdateTemplatePopup('+p.id+','+p.template_id+')" style="color:#7c3aed;border-color:#7c3aed;margin-right:6px;" title="当前组装的提示词操作">📤 更新模版</button>';
+        }
+        h+='<button class="btn btn-sm btn-success" onclick="App.seedanceV2.saveProject()">💾 保存</button><button class="btn btn-sm btn-danger" onclick="App.seedanceV2.confirmDeleteProject('+p.id+')">🗑 删除</button></div></div>';
         // ① 分镜列表（可折叠）
         h+='<div class="s2-section s2-shotlist-section" id="s2ShotListSection"><div class="s2-section-title" onclick="App.seedanceV2._toggleShotList()" title="点击折叠/展开" style="cursor:pointer;">🎬 分镜列表 <span class="s2-badge">'+this.scenes.length+' 镜头</span> <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span><button id="s2ToggleAllBtn" class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._toggleAllScenes()" title="折叠/展开全部子镜头" style="margin-left:auto;font-size:10px;padding:2px 8px;color:#6366f1;border-color:#6366f1;">▶ 折叠全部</button></div><div class="s2-shotlist-body"><div class="s2-timeline-wrapper"><div class="s2-timeline-ticks">';var tickSpan=Math.max(1,Math.floor((p.total_duration||15)/6));for(var tk=0;tk<=p.total_duration;tk+=tickSpan){h+='<span>'+tk+'s</span>';}h+='</div><div class="s2-timeline-bar" id="s2TimelineBar">';for(var i=0;i<this.scenes.length;i++){var s=this.scenes[i];var w=Math.max(3,((s.end_time-s.start_time)/(p.total_duration||15))*100);var lb=(s.subject||'镜头'+(i+1)).substring(0,6);var segColor=App.seedanceV2._sceneColor(s.id);h+='<div class="s2-timeline-seg" draggable="true" data-scene-id="'+s.id+'" style="width:'+w+'%;background:'+segColor+';" title="'+s.start_time+'-'+s.end_time+'s: '+App._escape(lb)+' (拖拽排序)" onclick="App.seedanceV2._scrollToScene('+s.id+')"><span>'+lb+'</span></div>';}h+='</div></div><div class="s2-scenes-container" id="s2ScenesContainer"></div></div></div>';
         // ② 全局参数（分镜设完再调全局）
@@ -405,20 +524,33 @@
         h+='<textarea id="s2Output" class="s2-output-text" readonly placeholder="切换镜头字段后实时合成…"></textarea>';
         h+='<div id="s2OutputMeta" style="font-size:11px;color:var(--text-muted);margin-top:4px;"></div></div>';
         c.innerHTML=h;
-        // 创建右侧面板
+        // 创建右侧面板（始终存在于布局中，类似左栏项目列表）
         var layout = document.querySelector('.s2-layout');
         if (layout && !document.getElementById('s2RightPanel')) {
-            var rp = document.createElement('div'); rp.id = 's2RightPanel'; rp.className = 's2-right-panel';
+            var rp = document.createElement('div'); rp.id = 's2RightPanel'; rp.className = 's2-right-panel collapsed';
+            // 内容容器
+            var inner = document.createElement('div'); inner.className = 's2-panel-inner'; inner.id = 's2PanelInner';
+            inner.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">📚 点击镜头卡片上的字段标签<br>开始选择词卡</div>';
+            rp.appendChild(inner);
             layout.appendChild(rp);
+            // 折叠按钮 — 独立于面板挂在 layout 上（与左栏 toggle 完全对称）
+            var tb = document.createElement('div'); tb.className = 's2-right-toggle'; tb.id = 's2RightToggle';
+            tb.textContent = '▶';
+            tb.title = '折叠/展开 词库面板';
+            tb.onclick = function() { App.seedanceV2.toggleRightPanel(); };
+            layout.appendChild(tb);
         }
-        // 创建折叠按钮
+        // 删除旧浮动手柄
+        var oldHandle = document.getElementById('s2RightHandle');
+        if (oldHandle) oldHandle.remove();
+        // 创建折叠按钮（左栏折叠）
         if (layout && !document.querySelector('.s2-sidebar-toggle')) {
             var tgl = document.createElement('div'); tgl.className = 's2-sidebar-toggle'; tgl.textContent = '◀'; tgl.title = '折叠项目列表'; tgl.onclick = function() { App.seedanceV2.toggleSidebar(); };
             layout.appendChild(tgl);
         }
         this.renderScenes();
-        // 恢复侧栏状态
-        setTimeout(function() { App.seedanceV2._restoreSidebar(); }, 50);
+        // 恢复侧栏+右侧面板状态
+        setTimeout(function() { App.seedanceV2._restoreSidebar(); App.seedanceV2._restoreRightPanel(); }, 50);
     };
 
     // 镜头颜色（基于ID稳定不变）
@@ -561,8 +693,10 @@
         h+='<div class="s2-scene-header"><div class="s2-scene-title"><span class="s2-scene-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+dotColor+';margin-right:6px;vertical-align:middle;flex-shrink:0;" title="镜头'+(idx+1)+'"></span><strong onclick="event.stopPropagation();App.seedanceV2._toggleSceneCard('+s.id+')" style="cursor:pointer;" title="点击折叠/展开"><span class="s2-scene-fold-arrow">▼</span> 镜头 '+(idx+1)+'</strong> <span class="s2-time-badge">'+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span></div><div class="s2-scene-actions">';
         h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;before&apos;)">\u2b06插入</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;after&apos;)">\u2b07插入</button>';
         h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.duplicateScene('+s.id+')">📋复制</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._copyScene('+s.id+')" title="拷贝提示词">📝拷贝</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._pasteScene('+s.id+')" title="粘贴提示词">📄粘贴</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._exportScene('+s.id+')" title="导出镜头">📤导出</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._importScene('+s.id+')" title="导入镜头">📥导入</button><button class="btn btn-xs btn-outline s2-review-btn" style="color:#8b5cf6;border-color:#8b5cf6;" onclick="event.stopPropagation();App.seedanceV2.openSceneReview('+s.id+')" title="审阅">📖审阅</button><button class="btn btn-xs btn-danger s2-del-btn" data-scene-id="'+s.id+'" title="删除此镜头">🗑</button></div></div>';
-        h+='<div class="s2-scene-body"><div class="s2-scene-time"><span class="s2-time-label">\u23f1 '+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span>';
-        h+='<input class="s2-scene-dur s2-time-input'+(s.is_locked?' s2-dur-manual':'')+'" type="number" min="0.5" max="15" step="0.5" onblur="if(parseFloat(this.value)<0.5)this.value=0.5;if(parseFloat(this.value)>15)this.value=15;" value="'+(s.duration||3)+'" data-scene-id="'+s.id+'" title="'+(s.is_locked?'🔒 已锁定':'🔓 未锁定')+'">';
+        // 折叠后第二行：纯文本单行省略
+        var plainText = App.seedanceV2._scenePlainText(s);
+        h+='<div class="s2-scene-collapsed-text" title="'+App._escape(plainText)+'">'+App._escape(plainText)+'</div>';
+        h+='<div class="s2-scene-body"><div class="s2-scene-time"><span class="s2-time-label">\u23f1 '+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span>';        h+='<input class="s2-scene-dur s2-time-input'+(s.is_locked?' s2-dur-manual':'')+'" type="number" min="0.5" max="15" step="0.5" onblur="if(parseFloat(this.value)<0.5)this.value=0.5;if(parseFloat(this.value)>15)this.value=15;" value="'+(s.duration||3)+'" data-scene-id="'+s.id+'" title="'+(s.is_locked?'🔒 已锁定':'🔓 未锁定')+'">';
         h+='<select class="s2-dur-preset" data-target-scene="'+s.id+'" onchange="App.seedanceV2.applyDurPreset(this)"><option value="">\u25bc</option>';
         var P=[0.5,1,1.5,2,2.5,3,4,5,6,7,8,9,10,12,15];for(var pi=0;pi<P.length;pi++){var sel=Math.abs(P[pi]-(s.duration||3))<0.01?' selected':'';h+='<option value="'+P[pi]+'"'+sel+'>'+P[pi]+'</option>';}
         h+='</select><span class="s2-dur-label">秒</span><button class="s2-lock-btn'+(s.is_locked?' s2-locked':'')+'" data-scene-id="'+s.id+'" title="'+(s.is_locked?'点击解锁时长':'点击锁定时长')+'"><span class="s2-lock-icon"></span></button></div>';
@@ -579,6 +713,17 @@
         h+='<div class="s2-ext-unit-add-btn">+</div>';
         h+='</div>';
         h+='</div></div></div></div>';return h;
+    };
+
+    // 折叠后纯文本行（无分组标签，仅字段值拼接）
+    App.seedanceV2._scenePlainText = function(s) {
+        var fields = ['camera_move','subject','action','scene_desc','composition','lighting','focal_length','texture','speed','emotion','color_grade','weather','particles','perspective','depth_of_field','filter','natural_force','environment_detail','film_flaw','fantasy_physics'];
+        var parts = [];
+        for (var i = 0; i < fields.length; i++) {
+            var v = s[fields[i]];
+            if (v && v.trim()) parts.push(v.trim());
+        }
+        return parts.join('\uff0c') || '(\u7a7a)';
     };
 
     // 镜头操作
@@ -1182,25 +1327,130 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
         if (self._composeTimer) clearTimeout(self._composeTimer);
         self._composeTimer = setTimeout(function() { self.compose(); }, self._composeDebounceMs);
     };
-    // ============ 镜头文本审阅 ============
+    // ============ 镜头文本审阅 v2 — 多镜头+时间线+拖拽排序 ============
+    App.seedanceV2._srStartIdx = 0;
+    App.seedanceV2._srShowCount = 1;
+    App.seedanceV2._srDragData = null;  // { sceneId, startIdx, offsetX }
+
     App.seedanceV2.openSceneReview = function(sceneId) {
-        var s = null, idx = -1;
+        var idx = -1;
         for (var i = 0; i < this.scenes.length; i++) {
-            if (this.scenes[i].id === sceneId) { s = this.scenes[i]; idx = i; break; }
+            if (this.scenes[i].id === sceneId) { idx = i; break; }
         }
-        if (!s) return;
+        if (idx < 0) idx = 0;
+        this._srStartIdx = idx;
+        this._srShowCount = parseInt(document.getElementById('srShowCount')?.value || '1');
+        if (!this._srShowCount || this._srShowCount < 1) this._srShowCount = 0;
+        this._renderSrTimeline();
+        this._renderSrShots();
+        document.getElementById('sceneReviewTitle').textContent = '镜头审阅 ('+this.scenes.length+'镜)';
+        document.getElementById('sceneReviewModal').style.display = 'flex';
+    };
+    App.seedanceV2._renderSrTimeline = function() {
+        var bar = document.getElementById('srTimelineBar');
+        if (!bar) return;
+        var p = this.currentProject;
+        var total = p ? (p.total_duration || 15) : 15;
+        var h = '';
+        for (var i = 0; i < this.scenes.length; i++) {
+            var s = this.scenes[i];
+            var w = Math.max(3, ((s.end_time - s.start_time) / total) * 100);
+            var segColor = App.seedanceV2._sceneColor(s.id);
+            var isActive = (i >= this._srStartIdx && i < this._srStartIdx + (this._srShowCount || this.scenes.length));
+            var label = (s.subject || '镜头'+(i+1)).substring(0, 5);
+            h += '<div class="sr-timeline-seg' + (isActive ? ' sr-timeline-active' : '') + '" draggable="true" data-scene-id="'+s.id+'" data-scene-idx="'+i+'" style="width:'+w+'%;background:'+segColor+';" title="'+App._escape(s.start_time+'-'+s.end_time+'s: '+label)+' (点击查看，拖拽排序)" onclick="App.seedanceV2._srJumpTo('+i+')"><span>'+label+'</span></div>';
+        }
+        bar.innerHTML = '<div class="sr-timeline-inner">'+h+'</div>';
+        // 拖拽排序绑定
+        var self = this;
+        var segs = bar.querySelectorAll('.sr-timeline-seg');
+        segs.forEach(function(el) {
+            el.addEventListener('dragstart', function(e) {
+                self._srDragData = { sceneId: parseInt(this.dataset.sceneId), startIdx: parseInt(this.dataset.sceneIdx), offsetX: e.clientX - this.getBoundingClientRect().left };
+                this.style.opacity = '0.5';
+            });
+            el.addEventListener('dragend', function(e) { this.style.opacity = '1'; self._srDragData = null; });
+            el.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('sr-drag-over'); });
+            el.addEventListener('dragleave', function(e) { this.classList.remove('sr-drag-over'); });
+            el.addEventListener('drop', function(e) {
+                e.preventDefault(); this.classList.remove('sr-drag-over');
+                if (!self._srDragData) return;
+                var fromId = self._srDragData.sceneId;
+                var toIdx = parseInt(this.dataset.sceneIdx);
+                if (fromId === parseInt(this.dataset.sceneId)) return;
+                var fromIdx = -1;
+                for (var j = 0; j < self.scenes.length; j++) { if (self.scenes[j].id === fromId) { fromIdx = j; break; } }
+                if (fromIdx < 0) return;
+                // 移动scene对象
+                var moved = self.scenes.splice(fromIdx, 1)[0];
+                self.scenes.splice(toIdx, 0, moved);
+                // 更新后端排序
+                var ids = self.scenes.map(function(s) { return s.id; });
+                App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/reorder', {
+                    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({scene_ids:ids})
+                }).then(function() {
+                    self._renderSrTimeline();
+                    self._renderSrShots();
+                    self.renderScenes();
+                    self.compose();
+                });
+            });
+        });
+    };
+    App.seedanceV2._srJumpTo = function(idx) {
+        this._srStartIdx = idx;
+        this._renderSrTimeline();
+        this._renderSrShots();
+    };
+    App.seedanceV2._onSrShowCountChange = function() {
+        var v = parseInt(document.getElementById('srShowCount')?.value);
+        this._srShowCount = (v && v > 0) ? v : 0;
+        if (this._srStartIdx >= this.scenes.length) this._srStartIdx = 0;
+        this._renderSrTimeline();
+        this._renderSrShots();
+    };
+    // 向前/后翻页
+    App.seedanceV2._srPrevPage = function() {
+        var cnt = this._srShowCount || this.scenes.length;
+        this._srStartIdx = Math.max(0, this._srStartIdx - cnt);
+        this._renderSrTimeline();
+        this._renderSrShots();
+    };
+    App.seedanceV2._srNextPage = function() {
+        var cnt = this._srShowCount || this.scenes.length;
+        this._srStartIdx = Math.min(this.scenes.length - cnt, this._srStartIdx + cnt);
+        if (this._srStartIdx < 0) this._srStartIdx = 0;
+        this._renderSrTimeline();
+        this._renderSrShots();
+    };
+    App.seedanceV2._renderSrShots = function() {
+        var body = document.getElementById('sceneReviewBody');
+        if (!body) return;
         var F = {camera_move:'运镜',subject:'主体',scene_desc:'场景',composition:'构图',lighting:'光影',action:'动作',focal_length:'焦段',texture:'质感',speed:'速率',emotion:'情绪',color_grade:'调色',weather:'天气',particles:'粒子',perspective:'视角',depth_of_field:'景深',filter:'滤镜',natural_force:'外力',environment_detail:'环境',film_flaw:'瑕疵',fantasy_physics:'奇幻'};
         var fields = ['camera_move','subject','scene_desc','composition','lighting','action','focal_length','texture','speed','emotion','color_grade','weather','particles','perspective','depth_of_field','filter','natural_force','environment_detail','film_flaw','fantasy_physics'];
-        var meta = parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s · '+Math.round((s.end_time-s.start_time)*10)/10+'s';
-        var html = '<div class="sr-meta">◆ 镜头'+(idx+1)+' · '+App._escape(meta)+'</div>';
-        for (var fi = 0; fi < fields.length; fi++) {
-            var f = fields[fi], v = (s[f] || '').trim();
-            if (!v) continue;
-            html += '<span class="sr-field-name">'+(F[f]||f)+'</span>'+App._escape(v)+'<span class="sr-separator"></span>';
+        var count = this._srShowCount || this.scenes.length;
+        var end = Math.min(this._srStartIdx + count, this.scenes.length);
+        var html = '';
+        // 导航条
+        html += '<div class="sr-nav-row">';
+        html += '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._srPrevPage()" '+(this._srStartIdx<=0?'disabled':'')+'>◀ 上一组</button>';
+        html += '<span class="sr-nav-info">镜头 '+(this._srStartIdx+1)+'-'+end+' / 共'+this.scenes.length+'镜</span>';
+        html += '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._srNextPage()" '+(end>=this.scenes.length?'disabled':'')+'>下一组 ▶</button>';
+        html += '</div>';
+        for (var si = this._srStartIdx; si < end; si++) {
+            var s = this.scenes[si];
+            var dotColor = App.seedanceV2._sceneColor(s.id);
+            var meta = parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s · '+Math.round((s.end_time-s.start_time)*10)/10+'s';
+            html += '<div class="sr-shot-block" style="border-left:3px solid '+dotColor+';">';
+            html += '<div class="sr-shot-header"><span class="sr-shot-num">镜头 '+(si+1)+'</span><span class="sr-shot-time">'+App._escape(meta)+'</span><span class="sr-shot-subject">'+(s.subject ? App._escape(s.subject.substring(0,20)) : '')+'</span></div>';
+            for (var fi = 0; fi < fields.length; fi++) {
+                var f = fields[fi], v = (s[f] || '').trim();
+                if (!v) continue;
+                html += '<span class="sr-field-name">'+(F[f]||f)+'</span>'+App._escape(v)+'<span class="sr-separator"></span>';
+            }
+            html += '</div>';
         }
-        document.getElementById('sceneReviewTitle').textContent = '镜头'+(idx+1)+' · 审阅';
-        document.getElementById('sceneReviewBody').innerHTML = html;
-        document.getElementById('sceneReviewModal').style.display = 'flex';
+        body.innerHTML = html;
     };
     App.seedanceV2.closeSceneReview = function() { document.getElementById('sceneReviewModal').style.display = 'none'; };
     // ESC 快捷关闭审阅弹窗
@@ -1213,7 +1463,12 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
     App.seedanceV2.copySceneReview = function() {
         var b = document.getElementById('sceneReviewBody');
         if (!b || !b.textContent) { App.showToast('无可复制', 'warning'); return; }
-        navigator.clipboard.writeText(b.textContent.trim()).then(function() { App.showToast('已复制', 'success'); });
+        var blocks = b.querySelectorAll('.sr-shot-block');
+        var texts = [];
+        for (var i = 0; i < blocks.length; i++) {
+            texts.push(blocks[i].textContent.replace(/\s+/g, ' ').trim());
+        }
+        navigator.clipboard.writeText(texts.join('\n\n---\n\n')).then(function() { App.showToast('已复制 '+texts.length+' 个镜头', 'success'); });
     };
 
     App.seedanceV2._toggleAudioSection = function() {

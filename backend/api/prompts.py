@@ -245,11 +245,13 @@ def update_prompt(prompt_id: int, data: dict):
 def delete_prompt(prompt_id: int):
     try:
         db = get_db()
-        row = db.execute("SELECT is_builtin FROM prompts WHERE id=?", [prompt_id]).fetchone()
+        # 优先查 prompt_cards（v4 主表），其次 prompts 兼容
+        row = db.execute("SELECT id, is_builtin FROM prompt_cards WHERE id=? AND is_deleted=0", [prompt_id]).fetchone()
         if not row:
             raise HTTPException(404, "提示词不存在")
-        # 软删除：标记 deleted_at，所有词条（含内置）均可移入回收站
-        db.execute("UPDATE prompts SET deleted_at=datetime('now','localtime') WHERE id=?", [prompt_id])
+        # 软删除双表同步
+        db.execute("UPDATE prompt_cards SET is_deleted=1, deleted_at=datetime('now','localtime') WHERE id=?", [prompt_id])
+        db.execute("UPDATE prompts SET deleted_at=datetime('now','localtime') WHERE id=? AND deleted_at IS NULL", [prompt_id])
         # 清除收藏/词包关联避免空引用
         db.execute("DELETE FROM collection_items WHERE prompt_id=?", [prompt_id])
         db.execute("DELETE FROM wordpack_items WHERE prompt_id=?", [prompt_id])

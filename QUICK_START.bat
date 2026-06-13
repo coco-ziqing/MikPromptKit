@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title PromptKit 快捷启动 — v3.10.23
+title 咪卡MiK提示词助手 快捷启动 — v3.10.23
 cd /d %~dp0
 
 echo ========================================
-echo    PromptKit v3.10.23 — 一键启动
+echo    咪卡MiK提示词助手 v3.10.23 — 一键启动
 echo    内网地址: http://192.168.0.103:8080
 echo ========================================
 echo.
@@ -43,9 +43,9 @@ exit /b 1
 :FOUND
 
 :: 4. 防火墙提示
-netsh advfirewall firewall show rule name="PromptKit %PORT%" >nul 2>&1
+netsh advfirewall firewall show rule name="咪卡MiK %PORT%" >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [提示] 防火墙规则 "PromptKit %PORT%" 未配置
+    echo [提示] 防火墙规则 "咪卡MiK %PORT%" 未配置
     echo       如需局域网访问，请以管理员身份运行:
     echo       firewall_open.ps1
     echo.

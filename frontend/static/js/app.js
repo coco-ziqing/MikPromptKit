@@ -4091,7 +4091,7 @@ const App = {
                                 <button class="btn-copy" onclick="App.toggleTranslation(${p.id})" title="中英文切换" style="border-color:#6366f1;color:#6366f1;">🌐 ${App.state._cardTranslations[p.id] ? '中文' : '英文'}</button>
                                 ${App.state.editMode ? '<button class="btn-copy" style="border-color:#eab308;color:#eab308;" onclick="App.openEditModal(' + p.id + ')">\u270f \u7f16\u8f91</button>' : ''}
                                 <button class="btn-copy" onclick="App.handleCopy(${p.id}, '${this._escape(p.content).replace(/'/g, "\\'")}')">📋 复制</button>
-                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.trashPrompt(' + p.id + ')">🗑 删除</button>' : ''}
+                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.trashPrompt(' + p.id + ', this)">🗑 删除</button>' : ''}
                             </div>
                         </div>
                     </div>
@@ -4476,18 +4476,30 @@ const App = {
             container.innerHTML = '<div class="empty-state"><div class="icon">🎬</div><p>暂无模板</p></div>';
             return;
         }
+        // 查找是否有活跃项目正在编辑此模板（跨引用高亮）
+        var editingTplIds = {};
+        if (App.seedanceV2 && App.seedanceV2.projects) {
+            var projs = App.seedanceV2.projects;
+            for (var pi = 0; pi < projs.length; pi++) {
+                if (projs[pi].template_id) editingTplIds[projs[pi].template_id] = projs[pi];
+            }
+        }
         let html = '<div class="prompt-grid">';
         for (const tpl of items) {
             const preview = tpl.content.length > 150 ? tpl.content.substring(0, 150) + '...' : tpl.content;
             const previewHtml = preview.replace(/\n/g, '<br>');
             let tags = [];
             try { tags = JSON.parse(tpl.tags); } catch(e) {}
+            var isEditing = editingTplIds[tpl.id];
+            var extraStyle = isEditing ? 'border-left: 3px solid #7c3aed;' : '';
+            var extraClass = isEditing ? ' seedance-tpl-editing' : '';
+            var editBadge = isEditing ? '<span class="seedance-tpl-editing-badge" title="已有关联项目编辑中" style="color:#7c3aed;font-size:10px;">✏️ 编辑中</span>' : '';
             html += `
-                <div class="prompt-card">
+                <div class="prompt-card${extraClass}" style="${extraStyle}">
                     <span class="card-badge">${this._escape(tpl.category)}</span>
                     <div style="font-size:11px;color:#64748b;margin-bottom:6px;">${this._escape(tpl.meaning)}</div>
                     <div class="card-content" style="font-size:12px;line-height:1.4;">${previewHtml}</div>
-                    <div style="font-size:10px;color:#94a3b8;margin-bottom:6px;">${tags.map(t=>'#'+this._escape(t)).join(' ')}</div>
+                    <div style="font-size:10px;color:#94a3b8;margin-bottom:6px;">${tags.map(t=>'#'+this._escape(t)).join(' ')} ${editBadge}</div>
                     <div class="card-actions">
                         <button class="btn-copy" onclick="App.handleCopy(${tpl.id}, '${this._escape(tpl.content).replace(/'/g, "\\'")}')">📋 复制模板</button>
                         <button class="btn-copy" onclick="App.openInComposer(${tpl.id})">✏️ 编辑</button>
@@ -4527,37 +4539,50 @@ const App = {
         if (tab === 'gallery') this.loadGallery();
         if (tab === 'glossary') this.loadGlossary();
         if (tab === 'templates') this.loadSeedanceTemplates();
-        if (tab === 'composer' && App.seedanceV2) {
+        if (tab === 'composer' && App.seedanceV2 && !App.seedanceV2._skipSwitchInit) {
             App.seedanceV2.init();
         }
     },
 
     async openInComposer(tplId) {
-        const data = await this.fetchJSON('/api/seedance/templates/' + tplId);
-        if (!data || !data.template) return;
+        var d = await this.fetchJSON('/api/seedance/templates/' + tplId);
+        if (!d || !d.template) { this.showToast('模板数据加载失败', 'error'); return; }
+        var tpl = d.template;
+        var tplCategory = tpl.category || 'Seedance';
+        var tplMeaning = tpl.meaning || '';
+
+        // 禁止 switchSeedanceTab 触发额外 init
+        if (App.seedanceV2) App.seedanceV2._skipSwitchInit = true;
         this.switchSeedanceTab('composer');
-        if (App.seedanceV2) {
-            App.seedanceV2.init().then(function() {
-                App.fetchJSON('/api/seedance/v2/projects', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: '模板: ' + ((data.template.meaning||'').substring(0,20) || '导入模板') })
-                }).then(function(resp) {
-                    if (resp && resp.ok) {
-                        App.fetchJSON('/api/seedance/v2/projects/' + resp.id + '/scenes/1', {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ scene_desc: data.template.content.substring(0, 200) })
-                        }).then(function() {
-                            App.seedanceV2.openProject(resp.id);
-                            App.showToast('模板已加载到组装器', 'info');
-                        });
-                    }
-                });
-            });
-        } else {
-            this.showToast('组装器未加载', 'warning');
+        if (App.seedanceV2) App.seedanceV2._skipSwitchInit = false;
+
+        if (!App.seedanceV2) { this.showToast('组装器未加载', 'warning'); return; }
+
+        await App.seedanceV2.init();
+
+        // 调用智能导入端点：解析+匹配词卡+创建项目+填充镜头
+        var importResp = await this.fetchJSON('/api/seedance/v2/import-from-template', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ template_id: tplId })
+        });
+
+        if (!importResp || !importResp.ok) {
+            this.showToast('智能导入失败: ' + (importResp ? importResp.detail : '无响应'), 'error');
+            return;
         }
+
+        // 刷新项目列表并打开新项目
+        await App.seedanceV2.loadProjects();
+        App.seedanceV2.renderProjectList();
+        await App.seedanceV2.openProject(importResp.project_id);
+
+        var shotCount = importResp.scene_count || 0;
+        var populated = importResp.fields_populated || 0;
+        var msg = '模板「' + (tplMeaning.substring(0, 15) || tplCategory) + '」已智能导入';
+        if (shotCount > 1) msg += '，拆分为 ' + shotCount + ' 个镜头';
+        if (populated > 0) msg += '，' + populated + ' 个镜头已自动填充词卡';
+        App.showToast(msg, 'success');
     },
 
     async composePrompt() {

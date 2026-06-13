@@ -115,7 +115,7 @@ async def lifespan(app: FastAPI):
         total = 0
     print()
     print("=" * 50)
-    print("  [OK] 提示词检索工具 v3.0 已启动")
+    print("  [OK] 咪卡MiK提示词助手 v3.0 已启动")
     print("  [本机] http://127.0.0.1:8080")
     print("  [局域网] http://%s:8080" % host_ip)
     print("  [词库] %d 条" % total)
@@ -127,8 +127,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="提示词检索工具",
-    description="Windows桌面端AI创作提示词检索工具 WebUI",
+    title="咪卡MiK提示词助手",
+    description="AI创作提示词管理与组装 WebUI",
     version="3.0.0.1",
     lifespan=lifespan
 )
