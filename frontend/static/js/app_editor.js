@@ -104,7 +104,19 @@ Object.assign(App, {
     async deleteEditPrompt() {
         var pid = this._editingPromptId;
         if (!pid || pid <= 151) { this.showToast('内置词条不可删除', 'error'); return; }
-        if (!confirm('确定删除此提示词?')) return;
+        // 编辑弹窗内删除: 使用停靠式确认框（停靠在编辑弹窗的删除按钮旁）
+        var delBtn = document.getElementById('editDeleteBtn');
+        if (delBtn) {
+            this._pendingDeleteId = pid;
+            this._pendingDeleteCallback = this._doDeleteFromEditor.bind(this);
+            this._showDeleteConfirm('确定删除此提示词？', delBtn);
+        } else {
+            if (!confirm('确定删除此提示词?')) return;
+            await this._doDeleteFromEditor(pid);
+        }
+    },
+
+    async _doDeleteFromEditor(pid) {
         var result = await this.fetchJSON('/api/prompts/' + pid, { method: 'DELETE' });
         if (result) {
             this.closeEditModal();
@@ -303,7 +315,7 @@ Object.assign(App, {
                                 <button class="btn-copy" onclick="App.toggleTranslation(${p.id})" title="中英文切换" style="border-color:#6366f1;color:#6366f1;">🌐 ${App.state._cardTranslations[p.id] ? '中文' : '英文'}</button>
                                 ${App.state.editMode ? '<button class="btn-copy" style="border-color:#eab308;color:#eab308;" onclick="App.openEditModal(' + p.id + ')">\u270f \u7f16\u8f91</button>' : ''}
                                 <button class="btn-copy" onclick="App.handleCopy(${p.id}, '${this._escape(p.content).replace(/'/g, "\\'")}')">📋 复制</button>
-                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.trashPrompt(' + p.id + ')">🗑 删除</button>' : ''}
+                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.trashPrompt(' + p.id + ', this)">🗑 删除</button>' : ''}
                             </div>
                         </div>
                     </div>
@@ -372,18 +384,29 @@ Object.assign(App, {
             container.innerHTML = '<div class="empty-state"><div class="icon">🎬</div><p>暂无模板</p></div>';
             return;
         }
+        // 活跃项目编辑高亮
+        var editingTplIds = {};
+        if (App.seedanceV2 && App.seedanceV2.projects) {
+            for (var pi = 0; pi < App.seedanceV2.projects.length; pi++) {
+                var proj = App.seedanceV2.projects[pi];
+                if (proj.template_id) editingTplIds[proj.template_id] = proj;
+            }
+        }
         let html = '<div class="prompt-grid">';
         for (const tpl of items) {
             const preview = tpl.content.length > 150 ? tpl.content.substring(0, 150) + '...' : tpl.content;
             const previewHtml = preview.replace(/\n/g, '<br>');
             let tags = [];
             try { tags = JSON.parse(tpl.tags); } catch(e) {}
+            var isEditing = editingTplIds[tpl.id];
+            var extraStyle = isEditing ? 'border-left: 3px solid #7c3aed;' : '';
+            var editBadge = isEditing ? '<span style="color:#7c3aed;font-size:10px;">✏️ 编辑中</span>' : '';
             html += `
-                <div class="prompt-card">
+                <div class="prompt-card" style="${extraStyle}">
                     <span class="card-badge">${this._escape(tpl.category)}</span>
                     <div style="font-size:11px;color:#64748b;margin-bottom:6px;">${this._escape(tpl.meaning)}</div>
                     <div class="card-content" style="font-size:12px;line-height:1.4;">${previewHtml}</div>
-                    <div style="font-size:10px;color:#94a3b8;margin-bottom:6px;">${tags.map(t=>'#'+this._escape(t)).join(' ')}</div>
+                    <div style="font-size:10px;color:#94a3b8;margin-bottom:6px;">${tags.map(t=>'#'+this._escape(t)).join(' ')} ${editBadge}</div>
                     <div class="card-actions">
                         <button class="btn-copy" onclick="App.handleCopy(${tpl.id}, '${this._escape(tpl.content).replace(/'/g, "\\'")}')">📋 复制模板</button>
                         <button class="btn-copy" onclick="App.openInComposer(${tpl.id})">✏️ 编辑</button>
@@ -423,37 +446,49 @@ Object.assign(App, {
         if (tab === 'gallery') this.loadGallery();
         if (tab === 'glossary') this.loadGlossary();
         if (tab === 'templates') this.loadSeedanceTemplates();
-        if (tab === 'composer' && App.seedanceV2) {
+        if (tab === 'composer' && App.seedanceV2 && !App.seedanceV2._skipSwitchInit) {
             App.seedanceV2.init();
         }
     },
 
     async openInComposer(tplId) {
-        const data = await this.fetchJSON('/api/seedance/templates/' + tplId);
-        if (!data || !data.template) return;
+        var d = await this.fetchJSON('/api/seedance/templates/' + tplId);
+        if (!d || !d.template) { this.showToast('模板数据加载失败', 'error'); return; }
+        var tpl = d.template;
+        var tplCategory = tpl.category || 'Seedance';
+        var tplMeaning = tpl.meaning || '';
+
+        // 禁止 switchSeedanceTab 触发额外 init
+        if (App.seedanceV2) App.seedanceV2._skipSwitchInit = true;
         this.switchSeedanceTab('composer');
-        if (App.seedanceV2) {
-            App.seedanceV2.init().then(function() {
-                App.fetchJSON('/api/seedance/v2/projects', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: '模板: ' + ((data.template.meaning||'').substring(0,20) || '导入模板') })
-                }).then(function(resp) {
-                    if (resp && resp.ok) {
-                        App.fetchJSON('/api/seedance/v2/projects/' + resp.id + '/scenes/1', {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ scene_desc: data.template.content.substring(0, 200) })
-                        }).then(function() {
-                            App.seedanceV2.openProject(resp.id);
-                            App.showToast('模板已加载到组装器', 'info');
-                        });
-                    }
-                });
-            });
-        } else {
-            this.showToast('组装器未加载', 'warning');
+        if (App.seedanceV2) App.seedanceV2._skipSwitchInit = false;
+
+        if (!App.seedanceV2) { this.showToast('组装器未加载', 'warning'); return; }
+
+        await App.seedanceV2.init();
+
+        // 调用智能导入端点
+        var importResp = await this.fetchJSON('/api/seedance/v2/import-from-template', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ template_id: tplId })
+        });
+
+        if (!importResp || !importResp.ok) {
+            this.showToast('智能导入失败: ' + (importResp ? importResp.detail : '无响应'), 'error');
+            return;
         }
+
+        await App.seedanceV2.loadProjects();
+        App.seedanceV2.renderProjectList();
+        await App.seedanceV2.openProject(importResp.project_id);
+
+        var shotCount = importResp.scene_count || 0;
+        var populated = importResp.fields_populated || 0;
+        var msg = '模板「' + (tplMeaning.substring(0, 15) || tplCategory) + '」已智能导入';
+        if (shotCount > 1) msg += '，拆分为 ' + shotCount + ' 个镜头';
+        if (populated > 0) msg += '，' + populated + ' 个镜头已自动填充词卡';
+        App.showToast(msg, 'success');
     },
 
     async composePrompt() {
@@ -684,15 +719,12 @@ Object.assign(App, {
                 return;
             }
 
-            // 仅编辑模式下支持页面空白区域拖入导入
-            if (App.state.editMode) {
-                for (var fi = 0; fi < files.length; fi++) {
-                    var name = files[fi].name.toLowerCase();
-                    if (name.endsWith('.json')) { App._handleDropFile(files[fi]); return; }
-                    if (name.endsWith('.pt')) { App._handleDropPtFile(files[fi]); return; }
-                    if (name.endsWith('.png') || files[fi].type === 'image/png') { App.handleDropPngFile(files[fi]); return; }
-                }
-                App.showToast('请拖入 JSON / .pt / PNG 格式的提示词文件', 'error');
+            // 页面空白区域拖入导入（编辑/非编辑模式均支持）
+            for (var fi = 0; fi < files.length; fi++) {
+                var name = files[fi].name.toLowerCase();
+                if (name.endsWith('.json')) { App._handleDropFile(files[fi]); return; }
+                if (name.endsWith('.pt')) { App._handleDropPtFile(files[fi]); return; }
+                if (name.endsWith('.png') || files[fi].type === 'image/png') { App.handleDropPngFile(files[fi]); return; }
             }
         });
         this._dropAttached = true;

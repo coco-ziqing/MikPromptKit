@@ -328,7 +328,7 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
     return buf.getvalue()
 
 
-def import_prompt_from_png(file_bytes: bytes, conflict: str = "skip") -> dict:
+def import_prompt_from_png(file_bytes: bytes, conflict: str = "skip", override_module: str = None, override_category: str = None, override_content: str = None) -> dict:
     """从 PNG 字节流导入提示词，返回创建结果"""
     try:
         img = Image.open(io.BytesIO(file_bytes))
@@ -358,22 +358,30 @@ def import_prompt_from_png(file_bytes: bytes, conflict: str = "skip") -> dict:
         # "overwrite" 删除旧记录重建
         elif conflict == "overwrite":
             db.execute("DELETE FROM prompts WHERE id=?", [existing["id"]])
+            db.execute("DELETE FROM prompt_cards WHERE id=?", [existing["id"]])
 
-    # 提取字段
-    module = data.get("module", "emotion")
-    category = data.get("category", "通用")
+    # 提取字段（override 参数优先）
+    module = override_module or data.get("module", "emotion")
+    category = override_category or data.get("category", "通用")
+    if override_content:
+        content = override_content
     subcategory = data.get("subcategory", "")
     meaning = data.get("meaning", "")
     scene = data.get("scene", "")
     tags = json.dumps(data.get("tags", []), ensure_ascii=False)
 
-    # 插入词条
+    # 插入词条到旧表 prompts（兼容性，显式设置 is_builtin=0）
     db.execute("""
-        INSERT INTO prompts (module, category, subcategory, content, meaning, scene, tags, usage_count)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO prompts (module, category, subcategory, content, meaning, scene, tags, usage_count, is_builtin)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
     """, [module, category, subcategory, content, meaning, scene, tags, data.get("usage_count", 0)])
-    db.commit()
     new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    # 同时写入 prompt_cards 表（v4 API 主表，前端列表渲染依赖此表，id 与 prompts 同步）
+    db.execute("""
+        INSERT INTO prompt_cards (id, card_type, name, content, meaning, scene, module, category, tags, structured_fields, is_builtin, is_deleted, created_at, updated_at)
+        VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?, '{}', 0, 0, datetime('now','localtime'), datetime('now','localtime'))
+    """, [new_id, subcategory or content[:30], content, meaning, scene, module, category, tags])
+    db.commit()
 
     # 还原缩略图
     thumbnail_base64 = data.get("thumbnail_base64")

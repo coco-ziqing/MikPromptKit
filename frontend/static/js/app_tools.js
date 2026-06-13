@@ -318,7 +318,7 @@ Object.assign(App, {
 
     // ============ 拖拽导入 ============
 
-    _initDropZone() { this._dropAttached = true; },
+    // _initDropZone 实现在 app_editor.js 中（此处不覆盖）
 
     async handleDropPngFile(file) {
         try {
@@ -356,6 +356,7 @@ Object.assign(App, {
             document.getElementById('diResult').style.display = 'none';
             document.getElementById('btnDiImport').disabled = false;
             document.getElementById('btnDiImport').innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+            document.getElementById('btnDiImport').onclick = function() { App._confirmDropImport(); };
             document.getElementById('modalDropImport').style.display = 'flex';
         } catch (e) {
             this.showToast('PNG 解析失败: ' + e.message, 'error');
@@ -498,21 +499,25 @@ Object.assign(App, {
                 btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
                 return;
             }
-            // 标准化返回值（后端 import-png 返回 {ok, result}，统一为 {created, skipped}）
+            // 标准化返回值（后端 import-png 返回 {ok, result}，统一为 {created, skipped, failed}）
             if (data && data.ok) {
-                if (data.result && data.result.created) {
+                var r = data.result || {};
+                if (r.created === true || r.created === 'true' || r.created > 0) {
                     data.created = 1;
                     data.skipped = 0;
                     data.failed = 0;
-                } else if (data.result && data.result.reason === 'skip') {
+                } else if (r.reason === 'skip' || r.created === false) {
                     data.created = 0;
                     data.skipped = 1;
                     data.failed = 0;
                 } else {
-                    data.created = 0;
-                    data.skipped = 0;
-                    data.failed = 1;
+                    // 检查是否 result 本身就包含 created/skipped
+                    if (typeof data.created === 'undefined') data.created = 0;
+                    if (typeof data.skipped === 'undefined') data.skipped = 0;
+                    if (typeof data.failed === 'undefined') data.failed = 0;
                 }
+            } else {
+                data = { created: 0, skipped: 0, failed: 1 };
             }
         } else if (this._diIsPt) {
             // .pt 包导入：收集用户编辑覆盖 + 上传原文件
@@ -586,7 +591,18 @@ Object.assign(App, {
 
         if (data.created > 0) {
             this.state.page = 1;
-            await this.loadPrompts();
+            // 跳转到用户选择的模块（取第一个选中行）
+            var targetModule = null;
+            if (cbs.length > 0) {
+                var firstIdx = parseInt(cbs[0].getAttribute('data-idx'));
+                var ms = document.querySelector('.di-module-select[data-idx="' + firstIdx + '"]');
+                if (ms) targetModule = ms.value;
+            }
+            if (targetModule && this.state.modules && this.state.modules.find(function(m){return m.id===targetModule;})) {
+                this.switchModule(targetModule);
+            } else {
+                this.switchAllModules();
+            }
             this.showToast('成功导入 ' + data.created + ' 条提示词', 'success');
         }
     },
@@ -618,6 +634,7 @@ Object.assign(App, {
         document.getElementById('diResult').style.display = 'none';
         document.getElementById('btnDiImport').disabled = false;
         document.getElementById('btnDiImport').innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+        document.getElementById('btnDiImport').onclick = function() { App._confirmDropImport(); };
         document.getElementById('modalDropImport').style.display = 'flex';
     },
 

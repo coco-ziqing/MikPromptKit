@@ -73,10 +73,113 @@ Object.assign(App, {
         }
     },
 
-    async trashPrompt(promptId) {
-        if (!confirm('确认将此词条移入回收站？')) return;
+    _showDeleteConfirm(message, deleteBtn) {
+        // 移除已有确认框避免重复
+        document.querySelectorAll('.confirm-modal').forEach(function(el){el.remove()});
+
+        // 计算停靠位置
+        var modal = document.createElement('div');
+        modal.className = 'confirm-modal';
+        this._pendingDeleteId = this._pendingDeleteId;  // 保留已有ID
+
+        if (deleteBtn && typeof deleteBtn.getBoundingClientRect === 'function') {
+            var rect = deleteBtn.getBoundingClientRect();
+            var left;
+            // 优先停靠在按钮右侧，空间不足则左侧
+            if (rect.right + 310 < window.innerWidth) {
+                left = rect.right + 6;
+            } else {
+                left = Math.max(6, rect.left - 266);
+            }
+            modal.style.left = left + 'px';
+            modal.style.top = (rect.bottom + 4) + 'px';
+        }
+
+        modal.innerHTML = '<div class="confirm-content">' +
+            '<p class="confirm-msg">' + this._escape(message) + '</p>' +
+            '<div class="confirm-btns">' +
+            '<button class="btn-cancel">取消</button>' +
+            '<button class="btn-confirm">删除</button>' +
+            '</div></div>';
+
+        document.body.appendChild(modal);
+
+        // 绑定事件
+        var self = this;
+        modal.querySelector('.btn-cancel').onclick = function(e) {
+            e.stopPropagation();
+            self._closeDeleteConfirm();
+        };
+        modal.querySelector('.btn-confirm').onclick = function(e) {
+            e.stopPropagation();
+            self._processDeleteConfirm();
+        };
+
+        // ESC 关闭
+        this._confirmKeyHandler = function(e) {
+            if (e.key === 'Escape') { self._closeDeleteConfirm(); }
+        };
+        document.addEventListener('keydown', this._confirmKeyHandler);
+
+        // 点击外部关闭（延迟绑定避免立即触发）
+        var self2 = this;
+        setTimeout(function() {
+            self2._confirmClickHandler = function(e) {
+                var m = document.querySelector('.confirm-modal');
+                if (m && !m.contains(e.target)) { self2._closeDeleteConfirm(); }
+            };
+            document.addEventListener('click', self2._confirmClickHandler);
+        }, 50);
+    },
+
+    _closeDeleteConfirm() {
+        document.querySelectorAll('.confirm-modal').forEach(function(el){el.remove()});
+        if (this._confirmKeyHandler) {
+            document.removeEventListener('keydown', this._confirmKeyHandler);
+            this._confirmKeyHandler = null;
+        }
+        if (this._confirmClickHandler) {
+            document.removeEventListener('click', this._confirmClickHandler);
+            this._confirmClickHandler = null;
+        }
+        this._pendingDeleteId = null;
+        this._pendingDeleteCallback = null;
+    },
+
+    async trashPrompt(promptId, deleteBtn) {
+        this._pendingDeleteId = promptId;
+        this._pendingDeleteCallback = null;  // 清除编辑弹窗残留回调
+        if (!deleteBtn && window.matchMedia('(max-width: 768px)').matches) {
+            // 移动端: 原生 confirm
+            if (!confirm('确认将此词条移入回收站？')) return;
+            await this._doTrashDelete(promptId);
+            return;
+        }
+        if (!deleteBtn) {
+            // 无按钮引用: 降级到原生 confirm
+            if (!confirm('确认将此词条移入回收站？')) return;
+            await this._doTrashDelete(promptId);
+            return;
+        }
+        this._showDeleteConfirm('确认将此词条移入回收站？', deleteBtn);
+    },
+
+    async _processDeleteConfirm() {
+        var pid = this._pendingDeleteId;
+        var cb = this._pendingDeleteCallback;
+        this._closeDeleteConfirm();
+        if (!pid) return;
+        if (cb) {
+            // 编辑弹窗等定制删除回调
+            await cb(pid);
+            return;
+        }
+        await this._doTrashDelete(pid);
+    },
+
+    async _doTrashDelete(pid) {
         try {
-            var res = await fetch('/api/prompts/' + promptId, { method: 'DELETE' });
+            var res = await fetch('/api/prompts/' + pid, { method: 'DELETE' });
             var data = await res.json();
             if (data.trashed) {
                 this.showToast('已移入回收站', 'info');
@@ -811,17 +914,19 @@ Object.assign(App, {
     async loadTrash() {
         var grid = document.getElementById('trashList');
         grid.innerHTML = '<div class="loading-spinner"><p>加载中...</p></div>';
-        var data = await this.fetchJSON('/api/v2/trash?page=' + this._trashPage + '&page_size=50');
-        if (!data) { grid.innerHTML = '<div class="empty-state"><div class="icon">🗑️</div><p>回收站为空</p></div>'; return; }
-        var html = '';
-        if (data.items.length === 0) {
-            html = '<div class="empty-state"><div class="icon">🗑️</div><p>回收站为空</p></div>';
-        } else {
-            html = '<div class="prompt-grid">';
-            for (var i = 0; i < data.items.length; i++) {
-                var p = data.items[i];
-                const tags = JSON.parse(p.tags || '[]');
-                const tagHtml = tags.map(t => `<span class="card-badge">${this._escape(t)}</span>`).join('');
+        try {
+            var data = await this.fetchJSON('/api/v2/trash?page=' + this._trashPage + '&page_size=50');
+            if (!data) { grid.innerHTML = '<div class="empty-state"><div class="icon">🗑️</div><p>回收站为空</p></div>'; return; }
+            var html = '';
+            if (data.items.length === 0) {
+                html = '<div class="empty-state"><div class="icon">🗑️</div><p>回收站为空</p></div>';
+            } else {
+                html = '<div class="prompt-grid">';
+                for (var i = 0; i < data.items.length; i++) {
+                    var p = data.items[i];
+                    var tags = [];
+                    try { var parsed = JSON.parse(p.tags || '[]'); if (Array.isArray(parsed)) tags = parsed; } catch(e2) { tags = []; }
+                    var tagHtml = tags.length ? tags.map(function(t) { return '<span class="card-badge">' + App._escape(typeof t === 'string' ? t : '') + '</span>'; }).join('') : '';
                 html += '<div class="prompt-card" style="opacity:0.85;">' +
                     '<div class="card-body">' +
                     '<div class="card-thumb">' +
@@ -869,6 +974,10 @@ Object.assign(App, {
         var b2 = document.getElementById('btnEmptyTrash');
         if (b1) b1.style.display = data.total > 0 ? 'inline-flex' : 'none';
         if (b2) b2.style.display = data.total > 0 ? 'inline-flex' : 'none';
+        } catch(e) {
+            console.warn('loadTrash error:', e);
+            grid.innerHTML = '<div class="empty-state"><div class="icon">🗑️</div><p>加载回收站失败: ' + (e.message || '未知错误') + '</p></div>';
+        }
     },
 
     async restoreFromTrash(pid) {

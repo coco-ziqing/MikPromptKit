@@ -12,10 +12,10 @@ Write-Host "[OK] 管理员权限已获取" -ForegroundColor Green
 
 # 添加防火墙入站规则
 Write-Host "添加防火墙规则: TCP 8080 端口入站允许..." -ForegroundColor Cyan
-netsh advfirewall firewall add rule name="PromptKit 8080" dir=in action=allow protocol=TCP localport=8080
+netsh advfirewall firewall add rule name="咪卡MiK 8080" dir=in action=allow protocol=TCP localport=8080
 
 # 验证
-$rule = netsh advfirewall firewall show rule name="PromptKit 8080" 2>&1
+$rule = netsh advfirewall firewall show rule name="咪卡MiK 8080" 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Host "[OK] 防火墙规则已生效" -ForegroundColor Green
 } else {
