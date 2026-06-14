@@ -339,7 +339,7 @@ const App = {
             html += '<div class="card-content" id="cc_' + card.id + '">' + this._escape(card.content || '') + '</div>';
             if (card.meaning) html += '<div class="card-meaning">' + this._escape(card.meaning) + '</div>';
             html += '<div style="display:flex;gap:4px;">';
-            if (card.module) html += '<span class="card-badge">' + this._escape(card.module) + '</span>';
+            if (card.module) html += '<span class="card-badge">' + this._escape(this._moduleDisplayName(card.module)) + '</span>';
             if (card.category) html += '<span class="card-badge" style="background:#f0fdf4;color:#059669;">' + this._escape(card.category) + '</span>';
             html += '</div>';
             html += '</div>';
@@ -350,6 +350,16 @@ const App = {
         }
         html += '</div>';
         container.innerHTML = html;
+    },
+
+    // ============ 模块名中文化 ============
+    _moduleDisplayName(id) {
+        var map = {
+            emotion: '人物表情', color: '场景色彩', tone: '画面色调',
+            composition: '分镜构图', storyboard: '分镜构图',
+            camera_move: '运镜模版', seedance: '视频模版'
+        };
+        return map[id] || id;
     },
 
     // ============ 数据加载 ============

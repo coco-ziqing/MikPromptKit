@@ -3913,7 +3913,7 @@ const App = {
         var sidebar = document.getElementById('sidebar');
         if (!sidebar || !this.state.modules) return;
         const icons = { emotion: '😊', color: '🎨', tone: '💡', storyboard: '📋', camera_move: '🎥', seedance: '🎬' };
-        const names = { emotion: '人物表情', color: '场景色彩', tone: '画面色调', storyboard: '分镜构图', camera_move: '运镜模版', seedance: '视频模版' };
+        const names = { emotion: '人物表情', color: '场景色彩', tone: '画面色调', storyboard: '分镜构图', composition: '分镜构图', camera_move: '运镜模版', seedance: '视频模版' };
         var editClass = this.state.editMode ? '' : 'style="display:none;"';
         let html = '<div style="padding:8px 20px 10px;color:#64748b;font-size:11px;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;">' +
             '<span>功能模块</span>' +

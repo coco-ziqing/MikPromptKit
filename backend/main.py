@@ -1,4 +1,4 @@
-"""
+﻿"""
 主入口 — FastAPI 应用 + Uvicorn 启动（加固版）
 """
 import sys, os, socket, traceback, subprocess
@@ -9,6 +9,9 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from paths import get_base_dir, get_frontend_dir
+
+# 实际端口（__main__ 探测后设置，lifespan 读取）
+ACTUAL_PORT = 8080
 
 BASE_DIR = get_base_dir()
 sys.path.insert(0, os.path.join(BASE_DIR, 'backend'))
@@ -45,6 +48,62 @@ from sync import (
     export_package, restore_package, import_package,
     list_packages, delete_package, get_package_info
 )
+
+
+def _migrate_v4(db):
+    """幂等迁移: prompts→prompt_cards, prompt_library+word_card→library_assets, 表结构补列"""
+    # === 第〇步：确保 user_project 有完整列（bgm/sfx/dialogue/template_id）===
+    cols = [c[1] for c in db.execute("PRAGMA table_info(user_project)").fetchall()]
+    for name, typ in [
+        ("bgm", "TEXT DEFAULT ''"),
+        ("sfx", "TEXT DEFAULT ''"),
+        ("dialogue", "TEXT DEFAULT ''"),
+        ("template_id", "INTEGER DEFAULT NULL"),
+    ]:
+        if name not in cols:
+            db.execute(f"ALTER TABLE user_project ADD COLUMN {name} {typ}")
+            print("[迁移] user_project 补列: %s" % name)
+    # === 同样确保 user_project_scene 有完整列 ===
+    scols = [c[1] for c in db.execute("PRAGMA table_info(user_project_scene)").fetchall()]
+    for name, typ in [
+        ("duration", "REAL DEFAULT 3"),
+        ("is_manual", "INTEGER DEFAULT 0"),
+        ("is_locked", "INTEGER DEFAULT 0"),
+    ]:
+        if name not in scols:
+            db.execute(f"ALTER TABLE user_project_scene ADD COLUMN {name} {typ}")
+            print("[迁移] user_project_scene 补列: %s" % name)
+    # === 第一步: prompts → prompt_cards ===
+    count = db.execute("SELECT COUNT(*) FROM prompt_cards").fetchone()[0]
+    if count == 0:
+        rows = db.execute("SELECT * FROM prompts ORDER BY id").fetchall()
+        if rows:
+            for r in rows:
+                r = dict(r)
+                db.execute(
+                    "INSERT INTO prompt_cards (card_type,name,content,meaning,scene,module,category,tags,structured_fields,usage_count,is_builtin,is_deleted) VALUES (?,?,?,?,?,?,?,?,?,?,1,0)",
+                    ('image',(r.get('subcategory','') or '')[:60],r.get('content',''),r.get('meaning',''),r.get('scene',''),r.get('module',''),r.get('category',''),r.get('tags','[]'),'{}',r.get('usage_count',0))
+                )
+            db.commit()
+            print("[迁移] prompts -> prompt_cards: %d 条" % len(rows))
+    # === 第二步: prompt_library + prompt_word_card → library_assets ===
+    count2 = db.execute("SELECT COUNT(*) FROM library_assets").fetchone()[0]
+    if count2 == 0:
+        libs = db.execute("SELECT * FROM prompt_library ORDER BY sort_order").fetchall()
+        for lib in libs:
+            lib = dict(lib)
+            db.execute("INSERT INTO library_assets (name,lib_type,category,prompt,icon,is_builtin,sort_order) VALUES (?,?,?,?,?,1,?)",(
+                lib.get('dimension_name',''),'style',lib.get('category',''),lib.get('description',''),'📚',lib.get('sort_order',0)
+            ))
+            cards = db.execute("SELECT * FROM prompt_word_card WHERE library_id=? ORDER BY id",[lib['id']]).fetchall()
+            for card in cards:
+                card = dict(card)
+                db.execute("INSERT INTO library_assets (name,lib_type,category,prompt,icon,is_builtin,sort_order) VALUES (?,?,?,?,?,1,999)",(
+                    card.get('word_text','')[:60],'style',lib.get('category',''),card.get('definition','') or card.get('word_text',''),'📄'
+                ))
+        db.commit()
+        total = db.execute("SELECT COUNT(*) FROM library_assets").fetchone()[0]
+        print("[迁移] prompt_library -> library_assets: %d 条" % total)
 
 
 @asynccontextmanager
@@ -95,6 +154,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print("[Seedance V2] 种子初始化失败:", e)
 
+    # v4 数据迁移: prompts→prompt_cards, prompt_library→library_assets
+    _migrate_v4(db)
+
     try:
         total = db.execute("SELECT COUNT(*) as cnt FROM prompts").fetchone()["cnt"]
         cards = db.execute("SELECT COUNT(*) as cnt FROM prompt_cards WHERE is_deleted=0").fetchone()["cnt"]
@@ -104,8 +166,8 @@ async def lifespan(app: FastAPI):
     print()
     print("=" * 50)
     print("  [OK] 咪卡MiK提示词助手 v4.0.0-phase9.3 已启动")
-    print("  [本机] http://127.0.0.1:8080")
-    print("  [局域网] http://%s:8080" % host_ip)
+    print("  [本机] http://127.0.0.1:%s" % ACTUAL_PORT)
+    print("  [局域网] http://%s:%s" % (host_ip, ACTUAL_PORT))
     print("  [词库] %d 条 | 卡片 %d | 资产 %d" % (total, cards, libs))
     print("=" * 50)
     print()
@@ -163,6 +225,16 @@ async def sync_list_packages():
 async def sync_get_package(pkg_name: str):
     """获取单个包详细信息"""
     return get_package_info(pkg_name)
+
+
+@app.get("/api/sync/download/{pkg_name}")
+async def sync_download(pkg_name: str):
+    """直接下载 .pkb 包文件"""
+    from paths import get_data_dir
+    pkg_path = os.path.join(get_data_dir(), "packages", pkg_name)
+    if not os.path.isfile(pkg_path):
+        return JSONResponse({"ok": False, "error": "包不存在"}, 404)
+    return FileResponse(pkg_path, filename=pkg_name, media_type="application/zip")
 
 
 @app.post("/api/sync/export")
@@ -354,7 +426,34 @@ def _get_local_ip() -> str:
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
+    import sys as _sys
+    base_port = int(os.environ.get("PORT", 8080))
+    # 预探测可用端口（自兜底 +0..+9）
+    port = base_port
+    for offset in range(10):
+        candidate = base_port + offset
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        try:
+            sock.bind(("0.0.0.0", candidate))
+            sock.close()
+            port = candidate
+            break
+        except Exception:
+            sock.close()
+            if offset < 9:
+                print("[启动] 端口 %d 被占用，尝试 %d..." % (candidate, candidate + 1))
+            else:
+                print("[启动] ❌ 端口 %d~%d 均被占用" % (base_port, base_port + 9))
+                try:
+                    _sys.stdout.flush()
+                    import msvcrt
+                    print("[启动] 按任意键退出...")
+                    msvcrt.getch()
+                except Exception:
+                    pass
+                _sys.exit(1)
     print("[启动] 服务启动中 (端口: %d)..." % port)
-    # PyInstaller 兼容：直接传 app 对象而非模块字符串 "main:app"
+    # 更新全局端口号（lifespan 中打印用）
+    globals()['ACTUAL_PORT'] = port
     uvicorn.run(app, host="0.0.0.0", port=port, reload=False, log_level="info")

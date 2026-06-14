@@ -64,7 +64,7 @@
                 h += '<div class="v3-card" data-id="' + card.id + '" style="border:2px solid ' + (isSelected ? '#10b981' : 'var(--border-color,#e2e8f0)') + ';border-radius:8px;padding:10px;cursor:pointer;background:' + (isSelected ? 'rgba(16,185,129,0.05)' : 'var(--bg-card,#fff)') + ';" onclick="App.seedanceV2._v3ToggleCard(' + card.id + ')">';
                 h += '  <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px;">';
                 h += '    <div><span class="card-type-badge card-type-' + (card.card_type || 'image') + '">' + ((card.card_type || 'image') === 'video' ? '🎬' : '📷') + ' ' + (card.card_type || '图片') + '</span>';
-                h += '      <span style="font-size:11px;color:#94a3b8;margin-left:4px;">' + App._escape(card.module || '') + '</span>';
+                h += '      <span style="font-size:11px;color:#94a3b8;margin-left:4px;">' + App._escape(App._moduleDisplayName(card.module || '')) + '</span>';
                 h += '    </div>';
                 h += '    <input type="checkbox" ' + (isSelected ? 'checked' : '') + ' style="pointer-events:none;">';
                 h += '  </div>';
