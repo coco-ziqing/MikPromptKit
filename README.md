@@ -5,8 +5,12 @@
 <h1 align="center">咪卡MiK提示词助手</h1>
 
 <p align="center">
-  <strong>AI 创作者提示词管理与组装 WebUI</strong><br>
-  Windows / macOS · 局域网多终端访问 · 离线可用
+  <strong>AI创作者本地媒体 + 提示词一体化工作站</strong><br>
+  Windows / macOS · 纯局域网 · 离线可用 · 跨设备访问
+</p>
+
+<p align="center">
+  🎨 提示词管理 · 🖼️ 媒体资产库 · 🎬 Seedance 组装器 · 📦 一键迁移
 </p>
 
 <p align="center">
@@ -50,6 +54,39 @@ chmod +x macos/build_dmg.sh
 ```
 
 > macOS 构建细节详见 [`macos/BUILD.md`](macos/BUILD.md)
+
+---
+
+## 🎯 适用场景
+
+### 使用 AI 出图的创作者
+
+与 Stable Diffusion、Midjourney、ComfyUI 配合使用：
+
+| 场景 | 怎么做 |
+|------|--------|
+| 记不住好的 prompt | 看到满意的 prompt 马上录入 → 按模块/分类归档 → 下次复用 |
+| 出图需要配图参考 | 拖入原图 → 自动生成缩略图 → 提示词卡片直接关联媒体资产 |
+| ComfyUI 工作流配词 | Seedance 组装器选取维度词条 → 一键输出 Raw 格式 → 粘贴到节点 |
+| 批量导出 prompt 素材 | 勾选勾选 → 批量复制 / 导出 TXT+JSON / 加入词包 |
+
+### 使用 AI 视频工具的创作者
+
+与 Seedance、Kling、MiniMax 配合使用：
+
+| 场景 | 怎么做 |
+|------|--------|
+| 视频分镜需要结构化的 prompt | 新建项目 → 添加镜头 → 从 27 套词库选词填充每个镜头字段 |
+| 不同平台输出格式不统一 | 组装器内置 5 平台适配（Seedance / Kling / MiniMax / ComfyUI / Raw）|
+| 视频素材管理散乱 | 上传视频 → 自动提取封面 → 关联到提示词卡片 → 统一管理 |
+
+### 跨设备使用的创作者
+
+| 场景 | 怎么做 |
+|------|--------|
+| 台式机放创作素材，沙发上用手机查 prompt | 同一 WiFi 下，手机浏览器打开 `http://台式机IP:8080` |
+| 换电脑/重装系统 | `.pkb` 包一键导出全部数据（DB+321缩略图+243原图+23视频）→ 新机器恢复 |
+| 备份重要 prompt 库 | 自动备份（每小时）+ 手动导出 `.pkb` + CRC 校验 |
 
 ---
 
