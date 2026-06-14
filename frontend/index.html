@@ -97,16 +97,20 @@
         </div>
         <div id="viewCollections" class="view-panel">
             <div class="page-header"><h3><i class="bi bi-bookmark-star"></i> 收藏夹</h3><button class="btn btn-primary btn-sm" onclick="App.showCreateCollectionModal()"><i class="bi bi-plus-lg"></i> 新建分组</button></div>
+            <div class="view-scroll">
             <div id="collectionGroups" class="collection-grid"></div>
             <div id="collectionItems" style="display:none;"><button class="btn btn-outline-secondary btn-sm mb-3" onclick="App.backToCollections()"><i class="bi bi-arrow-left"></i> 返回分组列表</button><div id="collectionItemList"></div><div id="collectionPagination" class="pagination-bar"></div></div>
+            </div>
         </div>
         <div id="viewWordpacks" class="view-panel">
             <div class="page-header"><h3><i class="bi bi-folder"></i> 自定义词包</h3><button class="btn btn-primary btn-sm" onclick="App.showCreateWordpackModal()"><i class="bi bi-plus-lg"></i> 新建词包</button></div>
+            <div class="view-scroll">
             <div id="wordpackList" class="collection-grid"></div>
             <div id="wordpackDetail" style="display:none;"><button class="btn btn-outline-secondary btn-sm mb-3" onclick="App.backToWordpacks()"><i class="bi bi-arrow-left"></i> 返回词包列表</button><div id="wordpackDetailHeader" class="mb-3"></div><div id="wordpackItemList"></div></div>
+            </div>
         </div>
         <div id="viewHistory" class="view-panel">
-            <div class="page-header"><h3><i class="bi bi-clock-history"></i> 最近使用</h3><button class="btn btn-outline-danger btn-sm" onclick="App.clearHistory()" title="清空历史"><i class="bi bi-trash"></i> 清空</button></div><div id="historyList"></div>
+            <div class="page-header"><h3><i class="bi bi-clock-history"></i> 最近使用</h3><button class="btn btn-outline-danger btn-sm" onclick="App.clearHistory()" title="清空历史"><i class="bi bi-trash"></i> 清空</button></div><div class="view-scroll"><div id="historyList"></div></div>
         </div>
         <div id="viewTrash" class="view-panel">
             <div class="page-header"><h3><i class="bi bi-trash"></i> 回收站</h3>
@@ -115,8 +119,8 @@
                     <button class="btn btn-sm btn-outline-danger" onclick="App.emptyTrash()" id="btnEmptyTrash" style="display:none;"><i class="bi bi-trash3"></i> 清空回收站</button>
                 </div>
             </div>
-            <div id="trashList"><div class="empty-state"><div class="icon">🗑️</div><p>回收站为空</p></div></div>
-            <div id="trashPagination" class="pagination-bar" style="margin-top:12px;"></div>
+            <div class="view-scroll"><div id="trashList"><div class="empty-state"><div class="icon">🗑️</div><p>回收站为空</p></div></div>
+            <div id="trashPagination" class="pagination-bar" style="margin-top:12px;"></div></div>
         </div>
         <div id="viewV4library" class="view-panel">
             <div class="page-header"><h3><i class="bi bi-database-gear"></i> 词库资产</h3>
@@ -128,11 +132,14 @@
                     <button class="btn btn-sm btn-primary" onclick="App.showV4LibCreateModal()"><i class="bi bi-plus-lg"></i> 新建词条</button>
                 </div>
             </div>
+            <!-- 可滚动内容区 -->
+            <div class="view-scroll">
             <!-- 分类统计 -->
             <div id="v4libStats" style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;"></div>
             <!-- 词条列表 -->
             <div id="v4libList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;">
                 <div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div></div>
+            </div>
             </div>
             <!-- 新建/编辑弹窗 -->
             <div class="modal-overlay" id="modalV4Lib" style="display:none;z-index:400;" onclick="if(event.target===this)this.style.display='none'">
@@ -178,10 +185,12 @@
                     <span id="v4mediaCount" style="font-size:12px;color:var(--text-muted);align-self:center;"></span>
                 </div>
             </div>
+            <div class="view-scroll">
             <div id="v4mediaList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">
                 <div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div></div>
             </div>
             <div id="v4mediaPagination" class="pagination-bar"></div>
+            </div>
         </div>
         <div id="viewSeedance" class="view-panel">
             <div class="seedance-tabs mb-3">
@@ -847,7 +856,7 @@
     <script src="/static/js/app_collections.js?v=9.8"></script>
     <script src="/static/js/app_tools.js?v=8.8"></script>
     <script src="/static/js/app_media.js?v=8.5"></script>
-    <script src="/static/js/seedance_v2_composer.js?v=48"></script>
+    <script src="/static/js/seedance_v2_composer.js?v=66"></script>
     <script src="/static/js/v4_library.js?v=1"></script>
     <script src="/static/js/v4_cards.js?v=1"></script>
     <script src="/static/js/v4_editor.js?v=1"></script>

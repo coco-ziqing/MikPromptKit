@@ -1,4 +1,4 @@
-// ================================================================
+﻿// ================================================================
 // Seedance V2 多镜头结构化组装器
 // ================================================================
 
@@ -42,6 +42,8 @@
                     var btn = e.target.closest('.s2-choice-btn');
                     if (btn) {
                         var action = btn.dataset.action, sid = parseInt(btn.dataset.scene), val = parseFloat(btn.dataset.val), rem = parseFloat(btn.dataset.rem||0);
+                        // 关闭选择弹窗
+                        var m=document.getElementById('s2RemainingModal');if(m)m.style.display='none';
                         if (action==='addScene') { self._choiceAddScene(sid,val); }
                         else if (action==='changeTotal') { self._choiceChangeTotal(sid,val,rem); }
                         else if (action==='unlockOther') { self._choiceUnlockOther(sid,val,rem); }
@@ -475,7 +477,29 @@
     // 编辑器
     App.seedanceV2.renderComposerEmpty = function(){var c=document.getElementById('s2Editor');if(c)c.innerHTML='<div class="s2-empty-state"><div class="s2-empty-icon">🎬</div><h4>选择或创建项目开始编辑</h4></div>';};
     App.seedanceV2.setDirty = function(){this.dirty=true;};
-    App.seedanceV2.onTotalDurationChange = function(){var el=document.getElementById('s2_total_duration');if(!el)return;var val=parseInt(el.value);if(isNaN(val)||val<2||val>60)return;var self=this;App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({total_duration:val})}).then(function(){self.openProject(self.currentProjectId);self.compose();});};
+    App.seedanceV2.onTotalDurationChange = function(){
+        var el=document.getElementById('s2_total_duration');if(!el)return;
+        var val=parseInt(el.value);if(isNaN(val)||val<2||val>60)return;
+        var self=this;
+        // 立即更新内存中的 project 对象（避免 reopen 前显示不一致）
+        if(self.currentProject) self.currentProject.total_duration = val;
+        // 写入后端 → 后端 _recalculate_scene_times 重算镜头时长
+        App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{
+            method:'PUT',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({total_duration:val})
+        }).then(function(resp){
+            if(!resp){ App.showToast('时长更新失败','error'); return; }
+            // 重新加载镜头数据（含后端重算后的 start_time/end_time/duration）
+            return App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId);
+        }).then(function(d){
+            if(!d) return;
+            self.currentProject = d.project;
+            self.scenes = d.scenes;
+            self.renderProjectEditor();
+            self.renderScenes();
+            self.compose();
+        });
+    };
     App.seedanceV2.renderProjectEditor = function() {
         var c=document.getElementById('s2Editor');if(!c)return;var p=this.currentProject;if(!p){this.renderComposerEmpty();return;}
         function ms(id,l,opts,v){var h='<div class="s2-field"><label>'+l+'</label><select id="'+id+'" class="s2-input" onchange="App.seedanceV2._debouncedCompose()">';for(var i=0;i<opts.length;i++){var s=opts[i][0]===v?' selected':'';h+='<option value="'+opts[i][0]+'"'+s+'>'+opts[i][1]+'</option>';}h+='</select></div>';return h;}
@@ -490,12 +514,12 @@
         }
         h+='<button class="btn btn-sm btn-success" onclick="App.seedanceV2.saveProject()">💾 保存</button><button class="btn btn-sm btn-danger" onclick="App.seedanceV2.confirmDeleteProject('+p.id+')">🗑 删除</button></div></div>';
         // ① 分镜列表（可折叠）
-        h+='<div class="s2-section s2-shotlist-section" id="s2ShotListSection"><div class="s2-section-title" onclick="App.seedanceV2._toggleShotList()" title="点击折叠/展开" style="cursor:pointer;">🎬 分镜列表 <span class="s2-badge">'+this.scenes.length+' 镜头</span> <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span><button id="s2ToggleAllBtn" class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._toggleAllScenes()" title="折叠/展开全部子镜头" style="margin-left:auto;font-size:10px;padding:2px 8px;color:#6366f1;border-color:#6366f1;">▶ 折叠全部</button></div><div class="s2-shotlist-body"><div class="s2-timeline-wrapper"><div class="s2-timeline-ticks">';var tickSpan=Math.max(1,Math.floor((p.total_duration||15)/6));for(var tk=0;tk<=p.total_duration;tk+=tickSpan){h+='<span>'+tk+'s</span>';}h+='</div><div class="s2-timeline-bar" id="s2TimelineBar">';for(var i=0;i<this.scenes.length;i++){var s=this.scenes[i];var w=Math.max(3,((s.end_time-s.start_time)/(p.total_duration||15))*100);var lb=(s.subject||'镜头'+(i+1)).substring(0,6);var segColor=App.seedanceV2._sceneColor(s.id);h+='<div class="s2-timeline-seg" draggable="true" data-scene-id="'+s.id+'" style="width:'+w+'%;background:'+segColor+';" title="'+s.start_time+'-'+s.end_time+'s: '+App._escape(lb)+' (拖拽排序)" onclick="App.seedanceV2._scrollToScene('+s.id+')"><span>'+lb+'</span></div>';}h+='</div></div><div class="s2-scenes-container" id="s2ScenesContainer"></div></div></div>';
+        h+='<div class="s2-section s2-shotlist-section" id="s2ShotListSection"><div class="s2-section-title" onclick="App.seedanceV2._toggleShotList()" title="点击折叠/展开" style="cursor:pointer;">🎬 分镜列表 <span class="s2-badge">'+this.scenes.length+' 镜头</span> <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span><button id="s2ToggleAllBtn" class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._toggleAllScenes()" title="折叠/展开全部子镜头" style="margin-left:auto;font-size:10px;padding:2px 8px;color:#6366f1;border-color:#6366f1;">▶ 折叠全部</button></div><div class="s2-shotlist-body">'+this._buildTimelineHTML()+'<div class="s2-scenes-container" id="s2ScenesContainer"></div></div></div>';
         // ② 全局参数（分镜设完再调全局）
         h+='<div class="s2-section s2-global-params-section" id="s2GlobalParamsSection"><div class="s2-section-title" onclick="App.seedanceV2._toggleGlobalParams()" title="点击折叠/展开" style="cursor:pointer;">📐 全局参数 <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span></div><div class="s2-global-body"><div class="s2-global-row">';
         h+=ms('s2_aspect_ratio','画幅',[['16:9','横屏16:9'],['9:16','竖屏9:16'],['1:1','方形1:1'],['21:9','超宽21:9'],['4:3','方屏4:3'],['3:4','竖屏3:4']],p.aspect_ratio||'16:9');
         h+=ms('s2_resolution','分辨率',[['480p','480p'],['720p','720p'],['1080p','1080p'],['2K','2K'],['4K','4K'],['6K','6K'],['8K','8K']],p.resolution||'4K');
-        h+='<div class="s2-field"><label>总时长(秒)</label><select id="s2_total_duration" class="s2-input" onchange="App.seedanceV2.onTotalDurationChange()">';for(var td=4;td<=60;td+=2){h+='<option value="'+td+'"'+(td===(p.total_duration||15)?' selected':'')+'>'+td+'秒</option>';}h+='</select></div></div>';
+        h+='<div class="s2-field"><label>总时长(秒)</label><select id="s2_total_duration" class="s2-input" onchange="App.seedanceV2.onTotalDurationChange()">';for(var td=4;td<=15;td+=1){h+='<option value="'+td+'"'+(td===(p.total_duration||15)?' selected':'')+'>'+td+'秒</option>';}h+='</select></div></div>';
         h+='<div class="s2-global-row"><div class="s2-field" style="flex:2;"><label>全局画风 <span class="s2-style-picker-btn" onclick="App.seedanceV2.openStylePicker()" title="从画风词库选择">📚 选风格</span></label><input id="s2_global_style" class="s2-input" placeholder="..." value="'+App._escape(p.global_style||'')+'" onchange="App.seedanceV2.setDirty();App.seedanceV2._debouncedCompose()"></div><div class="s2-field" style="flex:1;"><label>全局转场</label><input id="s2_global_transition" class="s2-input" placeholder="..." value="'+App._escape(p.global_transition||'')+'" onchange="App.seedanceV2.setDirty();App.seedanceV2._debouncedCompose()"></div></div>';
         h+='<div class="s2-field"><label>负面提示词 <span class="s2-np-picker-btn" onclick="App.seedanceV2.openNegativePicker()" title="从负面词库选择">📖 选负面</span></label><input id="s2_negative_prompt" class="s2-input" placeholder="..." value="'+App._escape(p.negative_prompt||'')+'" onchange="App.seedanceV2.setDirty();App.seedanceV2._debouncedCompose()"></div>';
         var rm=(p.remaining_duration!==undefined)?p.remaining_duration:p.remaining;
@@ -639,6 +663,135 @@
             doPaste();
         }
     };
+    // ============================================================
+    // v9.3.9: 上下两行独立flex——渲染后JS测量分段真实像素，精确放置刻度
+    App.seedanceV2._buildTimelineHTML = function() {
+        var td = (this.currentProject && this.currentProject.total_duration) || 15;
+        var scenes = this.scenes.slice().sort(function(a, b) { return (a.start_time||0) - (b.start_time||0); });
+        // ====== 刻度行(上): flex占位，内容由_syncTicks填充 ======
+        var tkHTML = '<div class="s2-timeline-ticks" id="s2TimelineTicks">';
+        // 与分段相同flex-grow的占位cell
+        for (var i = 0; i < scenes.length; i++) {
+            var s = scenes[i];
+            var dur = (s.duration && s.duration > 0 ? s.duration : (s.end_time - s.start_time)) || 0.5;
+            tkHTML += '<span class="s2-tick-cell" style="flex-grow:' + dur + ';"></span>';
+        }
+        tkHTML += '</div>';
+        // ====== 分段行(下) ======
+        var segHTML = '';
+        for (var i = 0; i < scenes.length; i++) {
+            var s = scenes[i];
+            var dur = (s.duration && s.duration > 0 ? s.duration : (s.end_time - s.start_time)) || 0.5;
+            var lb = (s.subject || '镜头' + (i + 1)).substring(0, 6);
+            var segColor = this._sceneColor(s.id);
+            segHTML += '<div class="s2-timeline-seg" draggable="true" data-scene-id="' + s.id + '" style="flex-grow:' + dur + ';background:' + segColor + ';" title="' + s.start_time + '-' + s.end_time + 's: ' + App._escape(lb) + ' (拖拽排序)" onclick="App.seedanceV2._scrollToScene(' + s.id + ')"><span>' + lb + '</span></div>';
+        }
+        return '<div class="s2-timeline-wrapper">' + tkHTML + '<div class="s2-timeline-bar" id="s2TimelineBar">' + segHTML + '</div></div>';
+    };
+    // v9.3.9: JS测量bar中分段真实像素，刻度用absolute px定位
+    App.seedanceV2._syncTicks = function() {
+        var bar = document.getElementById('s2TimelineBar');
+        var ticksRow = document.getElementById('s2TimelineTicks');
+        if (!bar || !ticksRow) return;
+        var scenes = this.scenes.slice().sort(function(a, b) { return (a.start_time||0) - (b.start_time||0); });
+        if (!scenes.length) return;
+        var barR = bar.getBoundingClientRect();
+        var tkR = ticksRow.getBoundingClientRect();
+        // bar与ticksRow的x偏移差（border导致）
+        var xOff = barR.left - tkR.left;
+        // 收集每个分段结束时间的实际像素（相对于ticksRow左缘）
+        var pts = [{t:0, px:xOff, label:'0s'}];
+        for (var i = 0; i < scenes.length; i++) {
+            var seg = bar.querySelector('.s2-timeline-seg[data-scene-id="' + scenes[i].id + '"]');
+            if (!seg) continue;
+            var sr = seg.getBoundingClientRect();
+            var rightPx = sr.right - barR.left + xOff;
+            var endLabel = Number.isInteger(scenes[i].end_time) ? scenes[i].end_time + 's' : scenes[i].end_time.toFixed(1) + 's';
+            pts.push({t:scenes[i].end_time, px:rightPx, label:endLabel});
+        }
+        // 去重
+        var f = [pts[0]];
+        for (var pi = 1; pi < pts.length; pi++) {
+            if (pts[pi].t - f[f.length-1].t > 0.3) f.push(pts[pi]);
+            else f[f.length-1] = pts[pi];
+        }
+        // 不替换innerHTML（会清空flex-cell导致行高塌陷），改为追加span
+        var oldTicks = ticksRow.querySelectorAll('.s2-tick');
+        for (var et = 0; et < oldTicks.length; et++) oldTicks[et].remove();
+        for (var fi = 0; fi < f.length; fi++) {
+            var span = document.createElement('span');
+            span.className = 's2-tick';
+            span.style.left = f[fi].px + 'px';
+            span.textContent = f[fi].label;
+            ticksRow.appendChild(span);
+        }
+    };
+    App.seedanceV2._refreshTimeline = function() {
+        var wrapper = document.querySelector('.s2-timeline-wrapper');
+        if (!wrapper) return;
+        var parent = wrapper.parentNode;
+        if (!parent) return;
+        // 保存当前active状态
+        var activeId = null;
+        var activeSeg = wrapper.querySelector('.s2-timeline-seg.active');
+        if (activeSeg) activeId = activeSeg.dataset.sceneId;
+        wrapper.outerHTML = this._buildTimelineHTML();
+        // 恢复active状态
+        if (activeId) {
+            var seg = document.querySelector('.s2-timeline-seg[data-scene-id="' + activeId + '"]');
+            if (seg) seg.classList.add('active');
+        }
+        // 重新绑定拖拽事件
+        this._rebindTimelineDrag();
+        // v9.3.9: 测量分段像素 → 同步刻度位置
+        var self = this;
+        requestAnimationFrame(function() { self._syncTicks(); });
+    };
+    // 时间轴拖拽事件（每次build后重新绑定）
+    App.seedanceV2._rebindTimelineDrag = function() {
+        var self = this;
+        var tb = document.getElementById('s2TimelineBar');
+        if (!tb || tb.dataset.dragBound) return;
+        tb.dataset.dragBound = '1';
+        var tSeg = null;
+        document.querySelectorAll('.s2-timeline-seg').forEach(function(seg) {
+            seg.addEventListener('dragstart', function(e) {
+                e.dataTransfer.setData('text/plain', this.dataset.sceneId);
+                this.style.opacity = '0.4';
+            });
+            seg.addEventListener('dragend', function(e) {
+                this.style.opacity = '1';
+                document.querySelectorAll('.s2-timeline-seg').forEach(function(s) { s.classList.remove('s2-seg-over'); });
+            });
+        });
+        tb.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            var seg = e.target.closest('.s2-timeline-seg');
+            if (seg) {
+                document.querySelectorAll('.s2-timeline-seg').forEach(function(s) { s.classList.remove('s2-seg-over'); });
+                seg.classList.add('s2-seg-over');
+                tSeg = seg;
+            }
+        });
+        tb.addEventListener('drop', function(e) {
+            e.preventDefault();
+            document.querySelectorAll('.s2-timeline-seg').forEach(function(s) { s.classList.remove('s2-seg-over'); s.style.opacity = '1'; });
+            var srcId = parseInt(e.dataTransfer.getData('text/plain'));
+            if (!tSeg || !srcId) return;
+            var tgtId = parseInt(tSeg.dataset.sceneId);
+            if (srcId === tgtId) return;
+            self.reorderScenes(srcId, tgtId);
+            tSeg = null;
+        });
+        tb.addEventListener('dragleave', function(e) {
+            setTimeout(function() {
+                if (!tb.contains(document.querySelector(':hover'))) {
+                    document.querySelectorAll('.s2-timeline-seg').forEach(function(s) { s.classList.remove('s2-seg-over'); });
+                    tSeg = null;
+                }
+            }, 100);
+        });
+    };
     App.seedanceV2.renderScenes=function(){
         var c=document.getElementById('s2ScenesContainer');if(!c)return;
         var h='';for(var i=0;i<this.scenes.length;i++)h+=this.renderSceneCard(this.scenes[i],i);
@@ -674,8 +827,7 @@
             document.querySelectorAll('.s2-del-btn').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var pv=document.getElementById('s2GlobalDelPop');if(!pv)return;var sid=this.dataset.sceneId,r=this.getBoundingClientRect();pv.dataset.sceneId=sid;pv.style.position='fixed';pv.style.left=Math.max(4,r.left-140)+'px';pv.style.top=(r.bottom+4)+'px';pv.style.display='flex';});});
             document.addEventListener('click',function(e){if(!e.target.closest('.s2-del-btn')&&!e.target.closest('.s2-global-del-popover')){var p=document.getElementById('s2GlobalDelPop');if(p)p.style.display='none';}});
             var ct=document.getElementById('s2ScenesContainer');if(ct&&!ct.dataset.dragBound){ct.dataset.dragBound='1';var dt=null;ct.addEventListener('dragover',function(e){e.preventDefault();if(e.dataTransfer.files&&e.dataTransfer.files.length){var card=e.target.closest('.s2-scene-card');if(card){document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over');});card.classList.add('s2-drag-over');card.classList.add('s2-file-over');dt=card;}}else{var card=e.target.closest('.s2-scene-card');if(card){document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over');});card.classList.add('s2-drag-over');dt=card;}}});ct.addEventListener('drop',function(e){e.preventDefault();document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over','s2-dragging','s2-file-over');});var files=e.dataTransfer.files;if(files&&files.length){var tgtCard=e.target.closest('.s2-scene-card');if(!tgtCard)return;var sid=parseInt(tgtCard.dataset.sceneId);if(!sid)return;self._handleFileDrop(files[0],sid);return;}var src=parseInt(e.dataTransfer.getData('text/plain'));if(!dt)return;var tgt=parseInt(dt.dataset.sceneId);if(src===tgt)return;self.reorderScenes(src,tgt);dt=null;});ct.addEventListener('dragleave',function(e){setTimeout(function(){document.querySelectorAll('.s2-scene-card').forEach(function(c){c.classList.remove('s2-drag-over','s2-file-over');});},100);});}
-            // 时间轴段拖拽排序
-            var tb=document.getElementById('s2TimelineBar');if(tb&&!tb.dataset.dragBound){tb.dataset.dragBound='1';var tSeg=null;document.querySelectorAll('.s2-timeline-seg').forEach(function(seg){seg.addEventListener('dragstart',function(e){e.dataTransfer.setData('text/plain',this.dataset.sceneId);this.style.opacity='0.4';seg.source=this;});seg.addEventListener('dragend',function(e){this.style.opacity='1';document.querySelectorAll('.s2-timeline-seg').forEach(function(s){s.classList.remove('s2-seg-over');});});});tb.addEventListener('dragover',function(e){e.preventDefault();var seg=e.target.closest('.s2-timeline-seg');if(seg){document.querySelectorAll('.s2-timeline-seg').forEach(function(s){s.classList.remove('s2-seg-over');});seg.classList.add('s2-seg-over');tSeg=seg;}});tb.addEventListener('drop',function(e){e.preventDefault();document.querySelectorAll('.s2-timeline-seg').forEach(function(s){s.classList.remove('s2-seg-over');s.style.opacity='1';});var srcId=parseInt(e.dataTransfer.getData('text/plain'));if(!tSeg||!srcId)return;var tgtId=parseInt(tSeg.dataset.sceneId);if(srcId===tgtId)return;self.reorderScenes(srcId,tgtId);tSeg=null;});tb.addEventListener('dragleave',function(e){setTimeout(function(){if(!tb.contains(document.querySelector(':hover'))){document.querySelectorAll('.s2-timeline-seg').forEach(function(s){s.classList.remove('s2-seg-over');});tSeg=null;}},100);});}            // 拓展unit事件绑定
+            // 拓展unit事件绑定
             document.querySelectorAll('.s2-ext-unit-addword').forEach(function(el){el.addEventListener('click',function(e){var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var f=p.querySelector('.s2-ext-unit-dropdown').value;if(!f)return;self.openCardPicker(sid,f);});});
             document.querySelectorAll('.s2-ext-unit-tag').forEach(function(el){el.addEventListener('mouseenter',function(e){var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var f=p.querySelector('.s2-ext-unit-dropdown').value;if(!f||!sid)return;App.seedanceV2._showChipPreview(sid,f,this,e);});el.addEventListener('mouseleave',function(){App.seedanceV2._hideChipPreview();});});
             document.querySelectorAll('.s2-ext-unit-dropdown').forEach(function(el){el.addEventListener('change',function(){var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var idx=parseInt(p.dataset.extIdx);self._extUnitChange(sid,idx,this.value);});});
@@ -683,6 +835,8 @@
             document.querySelectorAll('.s2-ext-unit-add-btn').forEach(function(el){el.addEventListener('click',function(){var p=this.closest('.s2-ext-unit-list');var sid=parseInt(p.dataset.sceneId);if(!sid)return;self.addExtUnit(sid);});});
 
         },100);
+        // v9.3: 每次渲染镜头卡片后刷新时间轴
+        this._refreshTimeline();
     };
 
     App.seedanceV2.renderSceneCard = function(scene,idx){
@@ -897,7 +1051,32 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
         for(var ci=0;ci<self.scenes.length;ci++){if(self.scenes[ci].id===sid){refOrder=self.scenes[ci].scene_order;break;}}
         App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sid+'/lock',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({locked:true})}).then(function(){return App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+sid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:v})});}).then(function(){return App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_order:self.scenes.length+1,duration:remain,is_locked:true})});}).then(function(){self.openProject(self.currentProjectId);App.showToast('已自动新建镜头填补剩余 '+remain+' 秒','success');});
     };
-    App.seedanceV2._choiceChangeTotal=function(sid,v,rem){var self=this;App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({total_duration:rem})}).then(function(){return App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+sid+'/lock',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({locked:true})});}).then(function(){return App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+sid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:v})});}).then(function(){self.openProject(self.currentProjectId);App.showToast('总时长已改为 '+rem+' 秒','success');});};
+    App.seedanceV2._choiceChangeTotal=function(sid,v,rem){
+        var self=this;
+        var ls=0, uc=0;
+        for(var ci=0;ci<self.scenes.length;ci++){
+            var sc=self.scenes[ci];
+            if(sc.id===sid) continue;
+            if(sc.is_locked) ls+=sc.duration;
+            else uc++;
+        }
+        var newTotal=Math.round(ls+v+uc*0.5);
+        if(newTotal<2) newTotal=2;
+        // ① 先改总时长为新值（让后端 max_allowed 校验通过）
+        App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{
+            method:'PUT',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({total_duration:newTotal})
+        }).then(function(){
+            // ② 同时设置 duration + 锁定（一次 PUT 完成，避免两次 recalculate 互相覆盖）
+            return App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+sid,{
+                method:'PUT',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({duration:v, is_locked:true})
+            });
+        }).then(function(){
+            self.openProject(self.currentProjectId);
+            App.showToast('总时长已改为 '+newTotal+' 秒','success');
+        });
+    };
     App.seedanceV2._choiceUnlockOther=function(sid,v,rem){var locked=[];for(var ci=0;ci<this.scenes.length;ci++){if(this.scenes[ci].is_locked&&this.scenes[ci].id!==sid)locked.push(this.scenes[ci]);}if(!locked.length){App.showToast('没有其他已锁定镜头可解锁','warning');return;}var o=document.getElementById('s2UnlockModal');if(o)o.remove();var overlay=document.createElement('div');overlay.id='s2UnlockModal';overlay.className='modal-overlay';overlay.style.cssText='display:flex;z-index:701;background:rgba(0,0,0,0.4);align-items:center;justify-content:center;';overlay.onclick=function(e){if(e.target===this)this.style.display='none';};var html='<div class="modal-content" style="max-width:400px;"><div class="modal-header"><h5>🔓 选择解锁镜头</h5><button class="header-btn-sm s2-close-modal" data-modal="s2UnlockModal">&times;</button></div><div class="modal-body"><p style="font-size:12px;color:var(--text-muted);">选择一个已锁定镜头解锁</p>';for(var ci=0;ci<locked.length;ci++){var sc=locked[ci];html+='<button class="s2-choice-btn s2-unlock-item" data-scene="'+sid+'" data-val="'+v+'" data-unlock="'+sc.id+'"><span class="s2-choice-text"><strong>镜头 '+sc.scene_order+'</strong><small>当前 '+sc.duration+'s</small></span></button>';}html+='</div></div>';overlay.innerHTML=html;document.body.appendChild(overlay);};
     App.seedanceV2._doUnlockAndSet=function(sid,v,uid){var self=this;App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+uid+'/lock',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({locked:false})}).then(function(){return App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+sid+'/lock',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({locked:true})});}).then(function(){return App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+sid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:v})});}).then(function(){self.openProject(self.currentProjectId);App.showToast('已解锁镜头，剩余时长均分','success');});};
 
@@ -1351,18 +1530,30 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
         if (!bar) return;
         var p = this.currentProject;
         var total = p ? (p.total_duration || 15) : 15;
-        var h = '';
+        // 刻度行HTML
+        var tkHTML = '<div class="sr-timeline-ticks" id="srTimelineTicks">';
         for (var i = 0; i < this.scenes.length; i++) {
             var s = this.scenes[i];
-            var w = Math.max(3, ((s.end_time - s.start_time) / total) * 100);
+            var dur = (s.duration && s.duration > 0 ? s.duration : (s.end_time - s.start_time)) || 0.5;
+            tkHTML += '<span class="sr-tick-cell" style="flex-grow:' + dur + ';"></span>';
+        }
+        tkHTML += '</div>';
+        // 分段HTML
+        var segHTML = '';
+        for (var i = 0; i < this.scenes.length; i++) {
+            var s = this.scenes[i];
+            var w = ((s.end_time - s.start_time) / total) * 100;
+            var dur = (s.duration && s.duration > 0 ? s.duration : (s.end_time - s.start_time)) || 0.5;
             var segColor = App.seedanceV2._sceneColor(s.id);
             var isActive = (i >= this._srStartIdx && i < this._srStartIdx + (this._srShowCount || this.scenes.length));
             var label = (s.subject || '镜头'+(i+1)).substring(0, 5);
-            h += '<div class="sr-timeline-seg' + (isActive ? ' sr-timeline-active' : '') + '" draggable="true" data-scene-id="'+s.id+'" data-scene-idx="'+i+'" style="width:'+w+'%;background:'+segColor+';" title="'+App._escape(s.start_time+'-'+s.end_time+'s: '+label)+' (点击查看，拖拽排序)" onclick="App.seedanceV2._srJumpTo('+i+')"><span>'+label+'</span></div>';
+            segHTML += '<div class="sr-timeline-seg' + (isActive ? ' sr-timeline-active' : '') + '" draggable="true" data-scene-id="'+s.id+'" data-scene-idx="'+i+'" style="flex-grow:' + dur + ';background:'+segColor+';" title="'+App._escape(s.start_time+'-'+s.end_time+'s: '+label)+' (点击查看，拖拽排序)" onclick="App.seedanceV2._srJumpTo('+i+')"><span>'+label+'</span></div>';
         }
-        bar.innerHTML = '<div class="sr-timeline-inner">'+h+'</div>';
-        // 拖拽排序绑定
+        bar.innerHTML = '<div class="sr-timeline-inner">' + tkHTML + '<div class="sr-timeline-segs">' + segHTML + '</div></div>';
+        // v9.3.9: JS测量分段实际像素后精确定位刻度
         var self = this;
+        requestAnimationFrame(function() { self._syncSrTicks(); });
+        // 拖拽排序绑定
         var segs = bar.querySelectorAll('.sr-timeline-seg');
         segs.forEach(function(el) {
             el.addEventListener('dragstart', function(e) {
@@ -1396,6 +1587,40 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
                 });
             });
         });
+    };
+    // v9.3.9: 审阅弹窗刻度同步——测量sr分段真实像素
+    App.seedanceV2._syncSrTicks = function() {
+        var bar = document.getElementById('srTimelineBar');
+        var ticksRow = document.getElementById('srTimelineTicks');
+        if (!bar || !ticksRow) return;
+        var scenes = this.scenes.slice().sort(function(a, b) { return (a.start_time||0) - (b.start_time||0); });
+        if (!scenes.length) return;
+        var barR = bar.getBoundingClientRect();
+        var tkR = ticksRow.getBoundingClientRect();
+        var xOff = barR.left - tkR.left;
+        var pts = [{t:0, px:xOff, label:'0s'}];
+        for (var i = 0; i < scenes.length; i++) {
+            var seg = bar.querySelector('.sr-timeline-seg[data-scene-id="' + scenes[i].id + '"]');
+            if (!seg) continue;
+            var sr = seg.getBoundingClientRect();
+            var rightPx = sr.right - barR.left + xOff;
+            var endLabel = Number.isInteger(scenes[i].end_time) ? scenes[i].end_time + 's' : scenes[i].end_time.toFixed(1) + 's';
+            pts.push({t:scenes[i].end_time, px:rightPx, label:endLabel});
+        }
+        var f = [pts[0]];
+        for (var pi = 1; pi < pts.length; pi++) {
+            if (pts[pi].t - f[f.length-1].t > 0.3) f.push(pts[pi]);
+            else f[f.length-1] = pts[pi];
+        }
+        var oldTicks = ticksRow.querySelectorAll('.sr-tick');
+        for (var et = 0; et < oldTicks.length; et++) oldTicks[et].remove();
+        for (var fi = 0; fi < f.length; fi++) {
+            var span = document.createElement('span');
+            span.className = 'sr-tick';
+            span.style.left = f[fi].px + 'px';
+            span.textContent = f[fi].label;
+            ticksRow.appendChild(span);
+        }
     };
     App.seedanceV2._srJumpTo = function(idx) {
         this._srStartIdx = idx;
