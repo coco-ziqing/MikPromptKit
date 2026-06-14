@@ -1,99 +1,134 @@
-# 咪卡MiK提示词助手 (PromptKit)
+# 咪卡MiK提示词助手
 
-> AI创作者本地媒体+提示词一体化工作站
+> AI 创作者提示词管理与组装 WebUI — Windows/macOS 局域网多终端访问
 
-![Version](https://img.shields.io/badge/version-4.0.0_phase9.3-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-![Platform](https://img.shields.io/badge/platform-Windows_10/11-lightgrey)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688)](https://fastapi.tiangolo.com)
+[![SQLite](https://img.shields.io/badge/SQLite-FTS5-003B57)](https://sqlite.org)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-## 简介
+---
 
-面向 **Windows 系统后端 + 局域网跨设备访问** 的提示词快捷管理 WebUI 工具。
+## ✨ 功能
 
-- 🗄️ **提示词管理** — 录入、编辑、删除、检索提示词
-- 🔍 **智能搜索** — FTS5 全文搜索 + 语义搜索
-- 📦 **词库系统** — 27 套维度词库，302 条专业词条
-- 🎬 **视频脚本组装器** — 多镜头结构化组装，实时合成提示词
-- 🖼️ **媒体资产管理** — 缩略图/视频上传+管理
-- 🌐 **局域网跨设备** — 手机/平板/其他电脑浏览器访问
-- 💾 **本地优先** — SQLite 数据库，完全离线可用
-
-## 快速开始
-
-### 开发环境启动
-
-```powershell
-# 1. 安装依赖
-pip install -r requirements.txt
-
-# 2. 启动服务
-python backend/main.py
-
-# 3. 浏览器访问
-http://127.0.0.1:8080
-```
-
-### 打包 EXE 启动
-
-```powershell
-# 构建
-python -m PyInstaller build.spec --clean --noconfirm
-
-# 产物在 dist/PromptKit/
-# 双击 PromptKit.exe 即可运行
-```
-
-## 技术栈
-
-| 层级 | 技术 |
+| 功能 | 说明 |
 |------|------|
-| 后端 | Python 3.10+ / FastAPI / Uvicorn |
-| 数据库 | SQLite (WAL + FTS5) |
-| 前端 | Vanilla JS SPA / Bootstrap 5 / CSS3 |
-| 图片 | Pillow (自动 3:2 裁剪) |
-| 视频 | ffmpeg (封面提取 + 裁剪压缩) |
-| 语义搜索 | sentence-transformers / all-MiniLM-L6-v2 |
-| 打包 | PyInstaller |
+| 📝 **提示词管理** | 5 模块 151 条种子 + 自定义编辑/分类/搜索 |
+| 🖼️ **媒体资产管理** | 缩略图上传 3:2 裁剪 + 原图查看 + 视频封面提取 |
+| 🎬 **Seedance 组装器** | 27 套维度词库 + 多镜头时间轴编排 + 5 平台输出 |
+| 🔍 **智能搜索** | 关键词模糊搜索 + FTS5 全文索引 |
+| 🌗 **深色主题** | 一键切换，持久化偏好 |
+| 📦 **数据同步** | .pkb 包：导出(含媒体文件) → 上传 → CRC 校验 → 恢复 |
+| 🌐 **局域网共享** | 手机/平板/其他电脑浏览器直接访问 |
 
-## 项目结构
+## 🚀 快速开始（Windows）
 
-```
-prompt-tool-dev/
-├── backend/              # Python 后端
-│   ├── main.py           # FastAPI 入口 + 路由注册
-│   ├── database.py       # SQLite 30表 + FTS5
-│   ├── semantic.py       # 语义搜索引擎
-│   ├── seed_data.py      # 151 条种子数据
-│   ├── backup.py         # 自动备份
-│   ├── paths.py          # 路径适配
-│   └── api/              # 16 个 API 模块
-├── frontend/             # WebUI 前端
-│   ├── index.html        # SPA 主页面
-│   └── static/
-│       ├── css/style.css
-│       └── js/           # 10 个 JS 模块
-├── memory/               # 开发记忆+路线图
-├── build.spec            # PyInstaller 打包配置
-└── requirements.txt      # Python 依赖
-```
+### 方式一：下载 EXE
 
-## 功能模块
+从 [Releases](https://github.com/coco-ziqing/MikPromptKit/releases) 下载 MikPromptKit_Windows_v4.0.0.zip
 
-- **提示词 CRUD** — 搜索/分页/筛选
-- **收藏夹** — 多分组 + 图标 + 批量管理
-- **自定义词包** — TXT/JSON 导出
-- **最近使用** — 自动记录 + 清空
-- **回收站** — 恢复/清空
-- **智能推荐** — 标签匹配算法
-- **组装器 v2** — 5 格式输出 + 3 档密度 + 音频 + 像素分辨率
-- **审阅弹窗** — 多镜头时间线 + 拖拽排序
-- **词库资产管理** — 27 维度词库 / 302 条专业词条
-- **截图导入** — OCR 识别 + 自动创建词条
-- **PNG 元数据导出** — 提示词嵌入 PNG zTXt
-- **数据同步** — .pkb 包系统（ZIP 打包 + 恢复）
-- **深色主题** — 一键切换
-- **移动端适配** — 响应式布局
+`ash
+# 解压后
+双击 启动.bat    # 推荐
+# 或
+双击 PromptKit.exe
+`
 
-## 许可证
+浏览器打开 http://127.0.0.1:8080
 
-[MIT License](LICENSE) © 2026 咪卡MiK
+### 方式二：源码运行
+
+`ash
+pip install -r requirements.txt
+python backend/main.py
+`
+
+## 🍎 快速开始（macOS）
+
+在 Mac 上从源码构建：
+
+`ash
+# 1. 下载 macOS 构建包
+# 2. 解压后执行
+chmod +x macos/build_dmg.sh
+./macos/build_dmg.sh
+`
+
+详见 [macos/BUILD.md](macos/BUILD.md)
+
+## 📖 使用说明
+
+### 首次打开
+
+`
+http://127.0.0.1:8080     ← 本机访问
+http://192.168.x.x:8080   ← 局域网其他设备访问（WiFi 下）
+`
+
+### 五大模块
+
+| 模块 | 词条 | 说明 |
+|------|------|------|
+| 人物表情 | 26 | 喜悦/沉静/氛围感/动态表情 |
+| 场景色彩 | 31 | 自然/城市/复古/科幻/奇幻 |
+| 画面色调 | 23 | 暖色调/冷色调/对比色/黑白 |
+| 分镜构图 | 52 | 景别/构图方式/镜头角度/透视 |
+| 视频模版 | 19 | 叙事/产品/角色/风景等场景模版 |
+
+### 数据同步（跨机迁移）
+
+`ash
+# 源机器导出
+curl -X POST http://源机IP:8080/api/sync/export -o backup.pkb
+
+# 目标机导入（通过 WebUI 同步面板）
+打开 同步面板 → 上传 .pkb → 恢复
+`
+
+## 🏗️ 项目结构
+
+`
+backend/          # FastAPI 后端（30+ 表 / 165+ API）
+├── main.py       # 入口
+├── database.py   # SQLite 建表/迁移
+├── sync.py       # .pkb 打包/恢复/验证
+├── paths.py      # 开发/封装路径统一
+└── api/          # API 路由模块
+
+frontend/         # Bootstrap5 SPA
+├── index.html    # 主页面
+└── static/
+    ├── css/style.css
+    └── js/       # 6 模块拆分
+
+macos/            # macOS 构建资源
+└── build_dmg.sh  # 一键 .dmg 生成器
+
+data/             # 运行数据（.gitignore）
+├── prompts.db    # SQLite 数据库
+├── thumbnails/   # 缩略图(240×160)
+├── originals/    # 上传原图
+└── videos/       # 上传视频
+`
+
+## 📊 数据统计
+
+| 指标 | 数量 |
+|------|------|
+| 后端 API 端点 | 165+ |
+| 数据库表 | 30 |
+| 种子词条 | 151 |
+| 词库资产 | 233 |
+| JS 源码 | ~8500 行 |
+| CSS | 2100 行 |
+
+## 🧪 技术栈
+
+- **后端**: Python 3.10+ / FastAPI / Uvicorn / SQLite3 (WAL+FTS5)
+- **前端**: HTML5 / Bootstrap5 CDN / Vanilla JS SPA
+- **媒体**: Pillow (3:2 裁剪) / ffmpeg (封面提取+压缩)
+- **打包**: PyInstaller (Windows EXE) / PyInstaller + create-dmg (macOS .dmg)
+
+## 📝 License
+
+MIT License — 自由使用、修改、分发

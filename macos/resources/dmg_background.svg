@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="660" height="480" viewBox="0 0 660 480" xmlns="http://www.w3.org/2000/svg">
+  <rect width="660" height="480" fill="#1e1b4b"/>
+  <text x="330" y="140" font-family="Helvetica, Arial" font-weight="700" font-size="24" fill="#c7d2fe" text-anchor="middle" letter-spacing="4">咪卡MiK提示词助手</text>
+  <text x="330" y="175" font-family="Helvetica, Arial" font-weight="400" font-size="13" fill="#6366f1" text-anchor="middle">拖拽应用到 Applications 文件夹</text>
+  <!-- 箭头 -->
+  <path d="M 230 280 L 280 280 L 280 320" stroke="#6366f1" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6366f1"/>
+    </marker>
+  </defs>
+  <text x="330" y="380" font-family="Helvetica, Arial" font-weight="400" font-size="11" fill="#6366f1" text-anchor="middle">v4.0.0 · macOS 10.10+</text>
+</svg>

@@ -167,7 +167,7 @@ Object.assign(App, {
                 }
                 html += '    </div>';
                 html += '    <div style="display:flex;gap:6px;flex-wrap:wrap;">';
-                html += '      <button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation();App.syncRestorePkg(\'' + pkg.name + '\')"><i class="bi bi-arrow-counterclockwise"></i> 恢复</button>';
+                html += '      <button class="btn btn-sm btn-outline-info" onclick="event.stopPropagation();App.syncDownloadPkg(' + pkg.name + ')"><i class="bi bi-download"></i> 下载</button><button class="btn btn-sm btn-outline-warning" onclick="event.stopPropagation();App.syncVerifyPkg(' + pkg.name + ')"><i class="bi bi-shield-check"></i> 验证</button><button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation();App.syncRestorePkg(' + pkg.name + ')"><i class="bi bi-arrow-counterclockwise"></i> 恢复</button>';
                 html += '      <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation();App.syncDeletePkg(\'' + pkg.name + '\')"><i class="bi bi-trash"></i> 删除</button>';
                 html += '    </div>';
                 html += '  </div>';
@@ -200,6 +200,24 @@ Object.assign(App, {
         } catch(e) {
             this.showToast('导出失败: ' + e.message, 'error');
         }
+    },
+
+    async syncVerifyPkg(name) {
+        var res = await App.fetchJSON('/api/sync/verify/' + encodeURIComponent(name));
+        if (!res) { App.showToast('验证请求失败', 'error'); return; }
+        if (!res.ok) { App.showToast('验证出错: ' + (res.error || '未知'), 'error'); return; }
+        if (res.valid) {
+            App.showToast('✅ 包完整性验证通过: ' + res.files_total + ' 个文件', 'success');
+        } else {
+            var errs = (res.errors || []).join('\n');
+            App.showToast('⚠️ 包损坏: ' + (res.errors ? res.errors.length : 1) + ' 个问题', 'error');
+            console.warn('PKG verify errors:', res.errors);
+        }
+    },
+
+
+    async syncDownloadPkg(name) {
+        window.open('/api/sync/download/' + encodeURIComponent(name), '_blank');
     },
 
     async syncRestorePkg(name) {
