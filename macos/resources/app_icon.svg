@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景圆角矩形 -->
+  <rect width="1024" height="1024" rx="225" fill="#6366f1"/>
+  
+  <!-- 高光 -->
+  <rect x="0" y="0" width="1024" height="512" rx="225" fill="#818cf8" opacity="0.5"/>
+  
+  <!-- M字母 -->
+  <text x="512" y="620" font-family="Helvetica, Arial, sans-serif" font-weight="700"
+        font-size="420" fill="white" text-anchor="middle" letter-spacing="-20">M</text>
+  
+  <!-- 装饰点 -->
+  <circle cx="750" cy="180" r="30" fill="#a5b4fc" opacity="0.6"/>
+  <circle cx="850" cy="300" r="18" fill="#a5b4fc" opacity="0.4"/>
+  
+  <!-- 底部标签 -->
+  <rect x="220" y="740" width="584" height="120" rx="60" fill="white" opacity="0.15"/>
+  <text x="512" y="822" font-family="Helvetica, Arial, sans-serif" font-weight="400"
+        font-size="60" fill="white" text-anchor="middle" letter-spacing="8">提示词</text>
+</svg>

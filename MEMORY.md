@@ -2,7 +2,7 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit)
-- 版本：v4.0.0-phase9.2-final (2026-06-12 会话关闭)
+- 版本：v4.0.0-phase9.3.1 (2026-06-14 会话关闭)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\start.bat` **推荐: `.\QUICK_START.bat`**
 - 默认端口：8080
@@ -253,6 +253,40 @@ prompt-tool-dev/
 - `api-tester` — API 测试
 - `log-analyzer` — 日志分析
 - `bug-fixer` — Bug 修复
+
+## 会话关闭备忘（2026-06-14 23:59）
+本次关闭前已完成以下操作：
+1. ✅ 数据库 WAL checkpoint 合并（WAL 已清除）
+2. ✅ Git 打标 v4.0.0-phase9.3.1
+3. ✅ MEMORY.md 更新 + 会话记忆归档
+4. ✅ EXE 重新封装 `dist/PromptKit/`
+
+## 本次会话成果总结（Phase 9.3.1 — 6项 Bugfix）
+
+### 数据封装修复
+- `seed_migrate` → 内联 `_migrate_v4()` 到 main.py，避免 PyInstaller 丢失模块
+- 修复启动顺序：Seedance V2 初始化必须在 v4 迁移之前，否则 `library_assets` 为 0
+
+### 新建项目报错修复
+- `database.py` CREATE TABLE `user_project` 缺 `bgm/sfx/dialogue/template_id` 4列 → 建表补全 + ALTER TABLE 幂等迁移
+- `user_project_scene` 缺 `duration/is_manual/is_locked` → 同补
+
+### 模块英文名修复
+- `app_editor.js` 侧边栏 `names` 映射缺 `composition: '分镜构图'` 键 → 补充
+- `app_core.js` 卡片徽章 `card.module` 直接显示原始 ID → 加 `_moduleDisplayName()` 统一翻译
+- `v3_composer.js` / `v4_cards.js` 同理修复
+- API 后端 `_module_name()` 补 `composition` 映射
+
+### EXE 打包优化
+- `sync.py` 路径从硬编码改为 `paths.py` 统一解析（开发/封装通用）
+- 移除 `backend.` 前缀导入
+- 主入口端口自兜底 8080→8089
+- 启动失败 pause 保留错误信息
+- 删除残留 `dist/PromptKit.exe` 单文件
+
+### Git 变更
+- `git tag v4.0.0-phase9.3.1`
+- 排除：data/ 目录（含 .pkb 备份、缩略图、原图、视频）
 
 ## 会话关闭备忘（2026-06-12 20:10）
 本次关闭前已完成以下操作：

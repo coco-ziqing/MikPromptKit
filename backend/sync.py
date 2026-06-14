@@ -3,6 +3,7 @@
 - 打包：DB + 缩略图 + 原图 + 视频 → 单一 .pkb ZIP 文件
 - 恢复：从 .pkb 还原全部数据
 - 管理：列表/删除/清理
+- 改进：智能压缩 / verify 端点 / 包列表快速扫描
 """
 import os
 import io
@@ -27,10 +28,13 @@ THUMB_DIR = os.path.join(DATA_DIR, "thumbnails")
 ORIG_DIR = os.path.join(DATA_DIR, "originals")
 VIDEO_DIR = os.path.join(DATA_DIR, "videos")
 
-# 保留包数量
-MAX_PACKAGES = 20
-
+# 保留包数量（20×800MB=16GB 太大，限5个）
+MAX_PACKAGES = 5
 PKG_EXT = ".pkb"
+
+# 已压缩格式后缀——ZIP_STORED 节省 CPU，ZIP_DEFLATED 只用于 DB
+_COMPRESSED_EXT = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp",
+                   ".mp4", ".webm", ".mov", ".avi", ".mkv")
 
 
 def _ensure_dirs():
@@ -42,9 +46,34 @@ def _ensure_dirs():
 
 
 def _make_pkg_name() -> str:
-    """生成包文件名：prompts_20260602_105500.pkb"""
+    """生成包文件名"""
     now = datetime.now()
     return f"prompts_{now.strftime('%Y%m%d_%H%M%S')}{PKG_EXT}"
+
+
+def _get_compress_mode(filename: str) -> int:
+    """智能压缩：已压缩媒体用 STORED，DB 用 DEFLATED"""
+    ext = os.path.splitext(filename)[1].lower()
+    if ext in _COMPRESSED_EXT:
+        return zipfile.ZIP_STORED
+    return zipfile.ZIP_DEFLATED
+
+
+def _add_file_to_zip(zf: zipfile.ZipFile, src: str, arcname: str):
+    """写入单个文件（自动选择压缩模式）"""
+    compress = _get_compress_mode(arcname)
+    zf.write(src, arcname, compress_type=compress)
+
+
+def _add_dir_to_zip(zf: zipfile.ZipFile, src_dir: str, arc_prefix: str):
+    """将目录添加到 ZIP"""
+    if not os.path.isdir(src_dir):
+        return
+    for fname in sorted(os.listdir(src_dir)):
+        fpath = os.path.join(src_dir, fname)
+        if os.path.isfile(fpath):
+            arcname = f"{arc_prefix}/{fname}"
+            _add_file_to_zip(zf, fpath, arcname)
 
 
 def _get_db_stats() -> dict:
@@ -81,24 +110,15 @@ def _get_media_stats() -> dict:
     return stats
 
 
-def _add_dir_to_zip(zf: zipfile.ZipFile, src_dir: str, arc_prefix: str):
-    """将目录添加到 ZIP（跳过空目录）"""
-    if not os.path.isdir(src_dir):
-        return
-    for fname in os.listdir(src_dir):
-        fpath = os.path.join(src_dir, fname)
-        if os.path.isfile(fpath):
-            arcname = f"{arc_prefix}/{fname}"
-            zf.write(fpath, arcname)
-
-
-def _safe_copy(src: str, dst: str):
-    """安全复制文件"""
+def _read_manifest_fast(pkg_path: str) -> dict:
+    """快速读取 .pkb 包的 manifest 摘要（只读 ZIP 目录，不解压全部）"""
     try:
-        shutil.copy2(src, dst)
-        return True
+        with zipfile.ZipFile(pkg_path, 'r') as zf:
+            if "manifest.json" in zf.namelist():
+                return json.loads(zf.read("manifest.json"))
     except Exception:
-        return False
+        pass
+    return {}
 
 
 # ============ 打包 ============
@@ -119,16 +139,15 @@ def export_package(name: Optional[str] = None, include_media: bool = True) -> di
     pkg_path = os.path.join(PACKAGES_DIR, pkg_name)
 
     try:
-        # 收集统计信息
         db_stats = _get_db_stats()
         media_stats = _get_media_stats()
+        start_t = time.time()
 
-        # 创建 ZIP
-        with zipfile.ZipFile(pkg_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            # 1. 写入 manifest.json
+        with zipfile.ZipFile(pkg_path, 'w', zipfile.ZIP_STORED) as zf:
             manifest = {
-                "version": "1.0",
+                "version": "1.1",
                 "created_at": datetime.now().isoformat(),
+                "elapsed_sec": 0,  # 填入
                 "app": "PromptKit",
                 "db": {
                     "file": "prompts.db",
@@ -142,11 +161,11 @@ def export_package(name: Optional[str] = None, include_media: bool = True) -> di
                 "files": []
             }
 
-            # 2. 写入数据库
-            zf.write(DB_PATH, "prompts.db")
+            # 写入 DB（压缩）
+            _add_file_to_zip(zf, DB_PATH, "prompts.db")
             manifest["files"].append("prompts.db")
 
-            # 3. 写入媒体文件
+            # 写入媒体文件（STORED，不浪费 CPU 压缩已压数据）
             if include_media:
                 _add_dir_to_zip(zf, THUMB_DIR, "thumbnails")
                 _add_dir_to_zip(zf, ORIG_DIR, "originals")
@@ -155,13 +174,15 @@ def export_package(name: Optional[str] = None, include_media: bool = True) -> di
                 manifest["files"].append("originals/")
                 manifest["files"].append("videos/")
 
-            # 4. 写入 manifest
+                # 预估总大小提示
+                estimate = media_stats.get("total_bytes", 0) + db_stats.get("db_size", 0)
+                manifest["media"]["estimate_bytes"] = estimate
+
+            manifest["elapsed_sec"] = round(time.time() - start_t, 1)
             zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
             manifest["files"].append("manifest.json")
 
         pkg_size = os.path.getsize(pkg_path)
-
-        # 清理旧包
         _cleanup_packages()
 
         return {
@@ -172,10 +193,72 @@ def export_package(name: Optional[str] = None, include_media: bool = True) -> di
             "stats": {
                 "db": db_stats,
                 "media": media_stats,
-                "total_size": pkg_size
+                "total_size": pkg_size,
+                "elapsed_sec": manifest["elapsed_sec"]
             }
         }
 
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ============ 包完整性验证 ============
+
+def verify_package(pkg_name: str) -> dict:
+    """
+    验证 .pkb 包完整性
+    检查：ZIP 结构 / manifest 完整性 / 所有文件 CRC
+    :return: {"ok": bool, "valid": bool, "files_total": int, "errors": list}
+    """
+    pkg_path = os.path.join(PACKAGES_DIR, pkg_name)
+    if not os.path.isfile(pkg_path):
+        return {"ok": False, "error": f"包文件不存在: {pkg_name}"}
+
+    errors = []
+    total = 0
+
+    try:
+        with zipfile.ZipFile(pkg_path, 'r') as zf:
+            namelist = zf.namelist()
+            total = len(namelist)
+
+            # 检查必需文件
+            for required in ["manifest.json", "prompts.db"]:
+                if required not in namelist:
+                    errors.append(f"缺少必需文件: {required}")
+
+            # CRC 校验每个文件
+            for name in namelist:
+                try:
+                    info = zf.getinfo(name)
+                    # 触发 CRC 校验
+                    data = zf.read(name)
+                    if info.file_size > 0 and len(data) != info.file_size:
+                        errors.append(f"文件大小不符: {name} (期望 {info.file_size}, 实际 {len(data)})")
+                except Exception as e:
+                    errors.append(f"CRC 校验失败: {name} → {e}")
+
+            # 解析 manifest 内容
+            if "manifest.json" in namelist:
+                try:
+                    m = json.loads(zf.read("manifest.json"))
+                    if m.get("version", "") not in ("1.0", "1.1"):
+                        errors.append(f"未知包版本: {m.get('version')}")
+                except Exception as e:
+                    errors.append(f"manifest.json 解析失败: {e}")
+
+        return {
+            "ok": True,
+            "name": pkg_name,
+            "size": os.path.getsize(pkg_path),
+            "size_str": _format_size(os.path.getsize(pkg_path)),
+            "valid": len(errors) == 0,
+            "files_total": total,
+            "errors": errors if errors else None
+        }
+
+    except zipfile.BadZipFile:
+        return {"ok": True, "valid": False, "files_total": 0, "errors": ["非法 ZIP 文件"]}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -210,27 +293,23 @@ def restore_package(pkg_name: str, backup_first: bool = True) -> dict:
         with zipfile.ZipFile(pkg_path, 'r') as zf:
             namelist = zf.namelist()
 
-            # 1. 检查 manifest
+            # 1. manifest
             if "manifest.json" in namelist:
                 manifest = json.loads(zf.read("manifest.json"))
                 restored.append("manifest.json")
 
-            # 2. 恢复数据库
+            # 2. 恢复 DB
             if "prompts.db" in namelist:
-                # 关闭当前连接，替换文件
                 try:
                     from database import close_db
                     close_db()
                 except Exception:
                     pass
-                # 写入
                 tmp_path = DB_PATH + ".restore_tmp"
                 with open(tmp_path, 'wb') as f:
                     f.write(zf.read("prompts.db"))
                 shutil.move(tmp_path, DB_PATH)
                 restored.append("prompts.db")
-
-                # 清理 WAL/SHM 遗留文件
                 for ext in [".db-wal", ".db-shm"]:
                     fpath = DB_PATH + ext
                     if os.path.exists(fpath):
@@ -239,37 +318,28 @@ def restore_package(pkg_name: str, backup_first: bool = True) -> dict:
                         except Exception:
                             pass
 
-            # 3. 恢复缩略图
-            for fname in namelist:
-                if fname.startswith("thumbnails/") and fname.count('/') == 1:
-                    out_path = os.path.join(THUMB_DIR, os.path.basename(fname))
+            # 3. 恢复媒体文件
+            media_dirs = {
+                "thumbnails": THUMB_DIR,
+                "originals": ORIG_DIR,
+                "videos": VIDEO_DIR,
+            }
+            for arcname in namelist:
+                parts = arcname.split("/")
+                if len(parts) == 2 and parts[0] in media_dirs:
+                    out_path = os.path.join(media_dirs[parts[0]], parts[1])
                     with open(out_path, 'wb') as f:
-                        f.write(zf.read(fname))
-                    restored.append(fname)
-                elif fname.startswith("originals/") and fname.count('/') == 1:
-                    out_path = os.path.join(ORIG_DIR, os.path.basename(fname))
-                    with open(out_path, 'wb') as f:
-                        f.write(zf.read(fname))
-                    restored.append(fname)
-                elif fname.startswith("videos/") and fname.count('/') == 1:
-                    out_path = os.path.join(VIDEO_DIR, os.path.basename(fname))
-                    with open(out_path, 'wb') as f:
-                        f.write(zf.read(fname))
-                    restored.append(fname)
+                        f.write(zf.read(arcname))
+                    restored.append(arcname)
 
-            # 4. 确保数据库重新初始化
+            # 4. 重新初始化
             try:
                 from database import init_db, get_db
                 init_db()
             except Exception:
                 pass
 
-        return {
-            "ok": True,
-            "restored": restored,
-            "count": len(restored),
-            "errors": errors if errors else None
-        }
+        return {"ok": True, "restored": restored, "count": len(restored), "errors": errors if errors else None}
 
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -278,15 +348,9 @@ def restore_package(pkg_name: str, backup_first: bool = True) -> dict:
 # ============ 上传导入 ============
 
 def import_package(data: bytes, filename: str) -> dict:
-    """
-    上传导入 .pkb 包（内存数据）
-    :param data: ZIP 二进制数据
-    :param filename: 原始文件名
-    :return: {"ok": bool, "saved_as": str, ...}
-    """
+    """上传导入 .pkb 包"""
     _ensure_dirs()
 
-    # 验证是否为合法 ZIP
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
             if "prompts.db" not in zf.namelist():
@@ -296,11 +360,8 @@ def import_package(data: bytes, filename: str) -> dict:
     except zipfile.BadZipFile:
         return {"ok": False, "error": "无效的 ZIP 文件"}
 
-    # 保存到 packages 目录
     save_name = os.path.basename(filename).rstrip(PKG_EXT) + PKG_EXT
     save_path = os.path.join(PACKAGES_DIR, save_name)
-
-    # 避免重名
     if os.path.exists(save_path):
         base, ext = os.path.splitext(save_name)
         i = 1
@@ -312,14 +373,8 @@ def import_package(data: bytes, filename: str) -> dict:
     try:
         with open(save_path, 'wb') as f:
             f.write(data)
-
         _cleanup_packages()
-
-        return {
-            "ok": True,
-            "saved_as": save_name,
-            "size": len(data)
-        }
+        return {"ok": True, "saved_as": save_name, "size": len(data)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -327,33 +382,36 @@ def import_package(data: bytes, filename: str) -> dict:
 # ============ 列表/管理 ============
 
 def list_packages() -> list:
-    """列出所有 .pkb 包"""
+    """列出所有 .pkb 包（只读 ZIP 目录快速扫描）"""
     _ensure_dirs()
-    packages = []
     if not os.path.isdir(PACKAGES_DIR):
-        return packages
+        return []
 
+    packages = []
     for fname in os.listdir(PACKAGES_DIR):
         if not fname.endswith(PKG_EXT):
             continue
         fpath = os.path.join(PACKAGES_DIR, fname)
         if not os.path.isfile(fpath):
             continue
+
         mtime = os.path.getmtime(fpath)
         size = os.path.getsize(fpath)
 
-        # 读取 manifest 摘要
-        manifest_summary = {}
+        # 快速读取 manifest（仅 ZIP 目录头部，无需解压全包）
+        summary = {}
         try:
             with zipfile.ZipFile(fpath, 'r') as zf:
                 if "manifest.json" in zf.namelist():
                     m = json.loads(zf.read("manifest.json"))
-                    manifest_summary = {
+                    media = m.get("media", {})
+                    summary = {
                         "version": m.get("version"),
                         "created_at": m.get("created_at"),
+                        "elapsed_sec": m.get("elapsed_sec"),
                         "prompts": m.get("db", {}).get("stats", {}).get("prompts", 0),
-                        "media_included": m.get("media", {}).get("included", False),
-                        "media_files": m.get("media", {}).get("stats", {})
+                        "media_included": media.get("included", False),
+                        "media_files": media.get("stats", {}),
                     }
         except Exception:
             pass
@@ -364,7 +422,7 @@ def list_packages() -> list:
             "size": size,
             "size_str": _format_size(size),
             "mtime": datetime.fromtimestamp(mtime).isoformat(),
-            "manifest": manifest_summary
+            "manifest": summary,
         })
 
     packages.sort(key=lambda x: x["mtime"], reverse=True)
@@ -384,23 +442,38 @@ def delete_package(pkg_name: str) -> dict:
 
 
 def _cleanup_packages():
-    """清理超出数量的旧包"""
+    """清理超出数量 + 超 24h 的旧包"""
     packages = list_packages()
-    if len(packages) <= MAX_PACKAGES:
+    if not packages:
         return 0
-    to_remove = packages[MAX_PACKAGES:]
+
+    now = time.time()
     removed = 0
-    for p in to_remove:
+    keep = []
+
+    for p in packages:
+        # 条件1：数量不超过 MAX_PACKAGES
+        if len(keep) < MAX_PACKAGES:
+            keep.append(p)
+            continue
+        # 条件2：超过 MAX_PACKAGES 的最后一个如果是 24h 内的，保留一个额外
+        if len(keep) == MAX_PACKAGES:
+            age_h = (now - os.path.getmtime(p["path"])) / 3600
+            if age_h < 24:
+                keep.append(p)
+                continue
+        # 超出则删除
         try:
             os.remove(p["path"])
             removed += 1
         except Exception:
             pass
+
     return removed
 
 
 def get_package_info(pkg_name: str) -> dict:
-    """获取单个包详细信息"""
+    """获取单个包详细信息（含完整文件清单）"""
     pkg_path = os.path.join(PACKAGES_DIR, pkg_name)
     if not os.path.isfile(pkg_path):
         return {"ok": False, "error": "包不存在"}
@@ -408,7 +481,6 @@ def get_package_info(pkg_name: str) -> dict:
     try:
         with zipfile.ZipFile(pkg_path, 'r') as zf:
             namelist = zf.namelist()
-            # 列出所有文件大小
             files = []
             for n in namelist:
                 info = zf.getinfo(n)
@@ -416,7 +488,8 @@ def get_package_info(pkg_name: str) -> dict:
                     "name": n,
                     "size": info.file_size,
                     "compress_size": info.compress_size,
-                    "ratio": round((1 - info.compress_size / info.file_size) * 100, 1) if info.file_size > 0 else 0
+                    "compress_method": "stored" if info.compress_type == 0 else "deflated",
+                    "ratio": round((1 - info.compress_size / info.file_size) * 100, 1) if info.file_size > 0 else 0,
                 })
 
             manifest = {}
@@ -430,7 +503,7 @@ def get_package_info(pkg_name: str) -> dict:
             "size_str": _format_size(os.path.getsize(pkg_path)),
             "files": files,
             "file_count": len(files),
-            "manifest": manifest
+            "manifest": manifest,
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}

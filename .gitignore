@@ -33,3 +33,18 @@ Thumbs.db
 dist/
 build/
 *.spec.bak
+# macOS build
+dist_macos/
+*.dmg
+macos/resources/app.icns
+macos/resources/app_icon.iconset/
+
+
+# Build artifacts
+*.db
+
+
+# Data (user-generated)
+!data/.gitkeep
+
+prompts.db-*

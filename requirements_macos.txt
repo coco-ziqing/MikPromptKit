@@ -1,0 +1,16 @@
+# macOS 依赖 — 咪卡MiK提示词助手
+# 安装: pip3 install -r requirements_macos.txt
+
+# 核心
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+
+# 图片处理
+Pillow>=10.0.0
+
+# 打包
+pyinstaller>=6.0.0
+
+# （可选）语义搜索 ML 依赖，不安装则自动跳过
+# sentence-transformers>=2.2.0
+# torch>=2.0.0

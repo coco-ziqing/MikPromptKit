@@ -46,7 +46,8 @@ from api.media import router as media_router
 from api.seedance_v2 import router as seedance_v2_router
 from sync import (
     export_package, restore_package, import_package,
-    list_packages, delete_package, get_package_info
+    list_packages, delete_package, get_package_info,
+    verify_package
 )
 
 
@@ -289,6 +290,13 @@ async def sync_delete(pkg_name: str):
     return result
 
 
+@app.get("/api/sync/verify/{pkg_name}")
+async def sync_verify(pkg_name: str):
+    """验证包完整性（CRC 校验所有文件）"""
+    result = verify_package(pkg_name)
+    return result
+
+
 # ============ 备份管理 API ============
 @app.get("/api/backup/info")
 async def backup_info():
@@ -447,9 +455,14 @@ if __name__ == "__main__":
                 print("[启动] ❌ 端口 %d~%d 均被占用" % (base_port, base_port + 9))
                 try:
                     _sys.stdout.flush()
-                    import msvcrt
                     print("[启动] 按任意键退出...")
+                    import msvcrt
                     msvcrt.getch()
+                except ImportError:
+                    try:
+                        input()
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 _sys.exit(1)
