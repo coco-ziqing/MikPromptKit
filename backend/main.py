@@ -8,38 +8,20 @@ from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from paths import get_base_dir, get_frontend_dir
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = get_base_dir()
+sys.path.insert(0, os.path.join(BASE_DIR, 'backend'))
+_dev_backend = os.path.dirname(os.path.abspath(__file__))
+if _dev_backend not in sys.path:
+    sys.path.insert(0, _dev_backend)
 
 from database import init_db, rebuild_fts, get_db, safe_commit
 from seed_data import SEED_PROMPTS, get_builtin_count
 from backup import start_auto_backup, stop_auto_backup, do_backup, get_backup_info
 
-# 启动时读取 git 版本号（优先 tag，否则 short hash）
-def _get_git_version():
-    try:
-        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        r = subprocess.run(
-            ["git", "describe", "--tags", "--abbrev=0"],
-            cwd=repo,
-            capture_output=True, text=True, timeout=3
-        )
-        tag = r.stdout.strip()
-        if tag:
-            return tag.lstrip("v")
-    except Exception:
-        pass
-    try:
-        r = subprocess.run(
-            ["git", "rev-parse", "--short=7", "HEAD"],
-            cwd=os.path.dirname(os.path.abspath(__file__)),
-            capture_output=True, text=True, timeout=3
-        )
-        return r.stdout.strip()[:7]
-    except Exception:
-        return "unknown"
-
-APP_VERSION = _get_git_version()
+# 启动时读取版本号
+APP_VERSION = '4.0.0-phase9.3'
 from api.prompts import router as prompts_router
 from api.v2 import router as v2_router
 from api.seedance import router as seedance_router
@@ -93,13 +75,17 @@ async def lifespan(app: FastAPI):
 
     # 异步重建语义搜索索引
     try:
-        from semantic import rebuild_all_embeddings
-        import threading
-        t = threading.Thread(target=rebuild_all_embeddings, daemon=True)
-        t.start()
-        print("[语义搜索] 索引重建已异步启动")
+        from semantic import _ML_OK
+        if _ML_OK:
+            from semantic import rebuild_all_embeddings
+            import threading
+            t = threading.Thread(target=rebuild_all_embeddings, daemon=True)
+            t.start()
+            print("[语义搜索] 索引重建已启动")
+        else:
+            print("[语义搜索] ML 依赖不可用，跳过")
     except Exception as e:
-        print("[语义搜索] 启动失败:", e)
+        print("[语义搜索] 初始化失败:", e)
 
     # 初始化 Seedance V2 种子数据
     try:
@@ -111,14 +97,16 @@ async def lifespan(app: FastAPI):
 
     try:
         total = db.execute("SELECT COUNT(*) as cnt FROM prompts").fetchone()["cnt"]
+        cards = db.execute("SELECT COUNT(*) as cnt FROM prompt_cards WHERE is_deleted=0").fetchone()["cnt"]
+        libs = db.execute("SELECT COUNT(*) as cnt FROM library_assets").fetchone()["cnt"]
     except Exception:
-        total = 0
+        total = cards = libs = 0
     print()
     print("=" * 50)
-    print("  [OK] 咪卡MiK提示词助手 v3.0 已启动")
+    print("  [OK] 咪卡MiK提示词助手 v4.0.0-phase9.3 已启动")
     print("  [本机] http://127.0.0.1:8080")
     print("  [局域网] http://%s:8080" % host_ip)
-    print("  [词库] %d 条" % total)
+    print("  [词库] %d 条 | 卡片 %d | 资产 %d" % (total, cards, libs))
     print("=" * 50)
     print()
     yield
@@ -129,7 +117,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="咪卡MiK提示词助手",
     description="AI创作提示词管理与组装 WebUI",
-    version="3.0.0.1",
+    version="4.0.0",
     lifespan=lifespan
 )
 
@@ -275,7 +263,7 @@ def get_status():
         return {"status": "degraded", "error": str(e), "version": "3.0.0"}
 
 
-FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
+FRONTEND_DIR = get_frontend_dir()
 STATIC_DIR = os.path.join(FRONTEND_DIR, "static")
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR, html=True), name="static")
@@ -368,4 +356,5 @@ def _get_local_ip() -> str:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     print("[启动] 服务启动中 (端口: %d)..." % port)
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False, log_level="info")
+    # PyInstaller 兼容：直接传 app 对象而非模块字符串 "main:app"
+    uvicorn.run(app, host="0.0.0.0", port=port, reload=False, log_level="info")
