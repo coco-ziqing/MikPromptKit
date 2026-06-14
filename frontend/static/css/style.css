@@ -1,4 +1,4 @@
-/* WebUI 提示词检索工具 v2.0 — 完整样式 */
+﻿/* WebUI 提示词检索工具 v2.0 — 完整样式 */
 :root {
     --sidebar-width: 220px;
     --nav-height: 60px;
@@ -146,6 +146,16 @@ body {
 .sidebar-toggle-btn:hover { background: var(--hover-bg); color: var(--primary); }
 .sidebar::-webkit-scrollbar { width: 4px; }
 .sidebar::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+/* 所有视图面板内容区滚动条统一 */
+.view-scroll::-webkit-scrollbar,
+.view-home-scroll::-webkit-scrollbar,
+.seedance-panel::-webkit-scrollbar { width: 6px; }
+.view-scroll::-webkit-scrollbar-thumb,
+.view-home-scroll::-webkit-scrollbar-thumb,
+.seedance-panel::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
+body.dark-theme .view-scroll::-webkit-scrollbar-thumb,
+body.dark-theme .view-home-scroll::-webkit-scrollbar-thumb,
+body.dark-theme .seedance-panel::-webkit-scrollbar-thumb { background: #475569; }
 .sidebar .module-item {
     display: flex; align-items: center;
     padding: 10px 20px; color: var(--text-sidebar);
@@ -1335,6 +1345,13 @@ body.dark-theme #vidViewerSeek {
     overflow-y: auto;
     min-height: 0;
 }
+/* 各视图面板内通用的滚动容器 */
+.view-scroll {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+}
 
 /* 新增 --hover-bg 变量 */
 :root {
@@ -1529,27 +1546,20 @@ body.dark-theme .s2-project-del:hover { background: rgba(239,68,68,0.15); }
 .s2-input:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 2px rgba(79,70,229,0.1); }
 .s2-input[type="number"] { width: 80px; }
 
-/* 可交互时间轴 — 粘性置顶 */
+/* ====== 时间轴 v9.3.9: JS测量分段真实像素后精确定位刻度 ====== */
 .s2-timeline-wrapper { position: sticky; top: 0; z-index: 10; background: var(--bg-main); padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); }
-.s2-timeline-bar { display: flex; height: 36px; background: var(--bg-main); border-radius: 8px; overflow: visible; border: 1px solid var(--border-color); gap: 2px; padding: 2px; cursor: pointer; }
-.s2-timeline-seg { display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; font-weight: 600; transition: all 0.2s; border-radius: 5px; position: relative; cursor: pointer; min-width: 24px; overflow: hidden; }
-.s2-timeline-seg:hover { filter: brightness(1.2); transform: scaleY(1.15); box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 2; }
+/* 刻度行（上）：独立一行 */
+.s2-timeline-ticks { position: relative; display: flex; height: 18px; border-left: 1px solid transparent; border-right: 1px solid transparent; z-index: 2; }
+.s2-timeline-ticks .s2-tick-cell { flex-shrink: 1; flex-grow: 1; flex-basis: 0%; min-width: 0; }
+/* 分段行（下）：position:relative使z-index生效，z-index:1低于刻度行 */
+.s2-timeline-bar { position: relative; z-index: 1; display: flex; height: 36px; border: 1px solid var(--border-color); background: var(--bg-card); cursor: pointer; border-radius: 8px; overflow: hidden; }
+/* 刻度标签（由JS追加到ticks行内，position:absolute在CSS规则中定义） */
+.s2-tick { position: absolute; top: 0; font-size: 10px; color: var(--text-main); font-weight: 600; transform: translateX(-50%); white-space: nowrap; pointer-events: none; z-index: 10; text-shadow: 0 0 3px var(--bg-main); }
+/* 分段 */
+.s2-timeline-seg { display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; font-weight: 600; border-radius: 0; cursor: pointer; overflow: hidden; min-width: 0; flex-shrink: 1; flex-grow: 1; flex-basis: 0%; transition: flex-grow 0.25s ease; }
+.s2-timeline-seg:hover { filter: brightness(1.15); box-shadow: inset 0 0 0 2px rgba(255,255,255,0.4); z-index: 5; }
 .s2-timeline-seg.active { box-shadow: 0 0 0 2.5px #fff, 0 0 0 4px var(--primary); z-index: 3; }
-.s2-timeline-seg.s2-seg-over { outline: 3px dashed #fff; outline-offset: -3px; filter: brightness(1.3); transform: scaleY(1.2); z-index: 2; }
-.s2-timeline-seg:nth-child(1) { background: #6366f1; }
-.s2-timeline-seg:nth-child(2) { background: #8b5cf6; }
-.s2-timeline-seg:nth-child(3) { background: #d946ef; }
-.s2-timeline-seg:nth-child(4) { background: #ec4899; }
-.s2-timeline-seg:nth-child(5) { background: #f43f5e; }
-.s2-timeline-seg:nth-child(6) { background: #f97316; }
-.s2-timeline-seg:nth-child(7) { background: #eab308; }
-.s2-timeline-seg:nth-child(8) { background: #22c55e; }
-.s2-timeline-seg:nth-child(9) { background: #14b8a6; }
-.s2-timeline-seg:nth-child(10) { background: #06b6d4; }
-.s2-timeline-seg:nth-child(n+11) { background: #6366f1; }
-.s2-timeline-seg span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 3px; font-size: 10px; }
-/* 时间轴刻度 */
-.s2-timeline-ticks { display: flex; justify-content: space-between; padding: 2px 2px 0; font-size: 10px; color: var(--text-muted); }
+.s2-timeline-seg.s2-seg-over { outline: 3px dashed #fff; outline-offset: -3px; filter: brightness(1.3); z-index: 5; }
 
 /* 输出预览区折叠 */
 .s2-output-section { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; margin-top: 12px; }
@@ -2141,8 +2151,14 @@ body.dark-theme #btnV3CardComposer:hover,
 }
 /* 时间线拖拽条 */
 .sr-timeline-bar { flex-shrink: 0; padding: 8px 24px 4px; border-bottom: 1px solid var(--border-color); }
-.sr-timeline-inner { display: flex; height: 28px; border-radius: 6px; overflow: hidden; background: var(--bg-main); position: relative; }
-.sr-timeline-seg { display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; cursor: pointer; transition: opacity 0.15s, transform 0.15s; flex-shrink: 0; user-select: none; border-right: 1px solid rgba(255,255,255,0.2); overflow: hidden; }
+.sr-timeline-inner { position: relative; }
+/* 审阅刻度行：独立flex，position:relative承载JS像素定位 */
+.sr-timeline-ticks { display: flex; height: 18px; border-left: 1px solid transparent; border-right: 1px solid transparent; }
+.sr-timeline-ticks .sr-tick-cell { flex-shrink: 1; flex-grow: 1; flex-basis: 0%; min-width: 0; }
+.sr-timeline-ticks .sr-tick { position: absolute; top: 0; font-size: 10px; color: var(--text-main); font-weight: 600; transform: translateX(-50%); white-space: nowrap; pointer-events: none; z-index: 10; text-shadow: 0 0 3px var(--bg-main); }
+/* 审阅分段行：独立flex */
+.sr-timeline-segs { display: flex; height: 28px; border-radius: 6px; overflow: hidden; background: var(--bg-main); }
+.sr-timeline-seg { display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; cursor: pointer; transition: opacity 0.15s, transform 0.15s; flex-shrink: 1; flex-grow: 1; flex-basis: 0%; user-select: none; border-right: 1px solid rgba(255,255,255,0.2); overflow: hidden; }
 .sr-timeline-seg:hover { transform: translateY(-2px); }
 .sr-timeline-seg.sr-timeline-active { border-bottom: 3px solid #fff; }
 .sr-timeline-seg.sr-drag-over { box-shadow: inset 0 0 0 2px #fff; }
