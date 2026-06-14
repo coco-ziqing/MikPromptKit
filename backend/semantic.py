@@ -4,39 +4,53 @@
 - 启动时加载模型 + 生成所有提示词向量
 - 新增/编辑提示词时更新向量
 - 余弦相似度搜索
+- 无 numpy/sentence-transformers 时优雅降级
 """
 import os
 import time
 import sqlite3
-import numpy as np
 import threading
 from database import get_db
 
-# 全局模型（惰性加载）
+
+# ---- ML 依赖检测，EXE 环境下优雅降级 ----
+try:
+    import numpy as np
+    _NUMPY_OK = True
+except ImportError:
+    _NUMPY_OK = False
+    np = None
+
+_ML_OK = False
+try:
+    from sentence_transformers import SentenceTransformer
+    _ML_OK = True
+except ImportError:
+    SentenceTransformer = None
+
+
+# ---- 全局状态 ----
 _model = None
 _model_lock = threading.Lock()
-_embedding_dim = 384  # all-MiniLM-L6-v2
-
-# 标记：是否正在索引
+_embedding_dim = 384
 _is_indexing = False
 
 
 def _get_model():
-    """惰性加载 sentence-transformers 模型"""
     global _model
+    if not _ML_OK:
+        return None
     if _model is None:
         with _model_lock:
             if _model is None:
                 print("[语义搜索] 加载模型 all-MiniLM-L6-v2...")
                 t0 = time.time()
-                from sentence_transformers import SentenceTransformer
                 _model = SentenceTransformer('all-MiniLM-L6-v2')
                 print("[语义搜索] 模型加载完成 (%.1fs)" % (time.time() - t0))
     return _model
 
 
 def _ensure_table():
-    """确保向量存储表存在"""
     db = get_db()
     try:
         db.execute("""
@@ -53,25 +67,29 @@ def _ensure_table():
 
 
 def _embedding_to_blob(embedding):
-    """numpy 向量 → SQLite BLOB"""
     return embedding.astype(np.float32).tobytes()
 
 
 def _blob_to_embedding(blob):
-    """SQLite BLOB → numpy 向量"""
     return np.frombuffer(blob, dtype=np.float32)
 
 
-def encode_text(text: str) -> np.ndarray:
-    """将文本编码为向量"""
+def encode_text(text: str):
+    """将文本编码为向量，ML不可用时返回None"""
+    if not _ML_OK or not _NUMPY_OK:
+        return None
     if not text or not text.strip():
         text = " "
     model = _get_model()
+    if model is None:
+        return None
     return model.encode(text, normalize_embeddings=True)
 
 
 def update_embedding(prompt_id: int, content: str = None):
     """更新单个提示词的向量"""
+    if not _ML_OK or not _NUMPY_OK:
+        return
     _ensure_table()
     db = get_db()
     if content is None:
@@ -81,6 +99,8 @@ def update_embedding(prompt_id: int, content: str = None):
         content = row["content"] or ""
     try:
         emb = encode_text(content)
+        if emb is None:
+            return
         blob = _embedding_to_blob(emb)
         db.execute("""
             INSERT OR REPLACE INTO prompt_embeddings (prompt_id, embedding, updated_at)
@@ -92,22 +112,26 @@ def update_embedding(prompt_id: int, content: str = None):
 
 
 def rebuild_all_embeddings(progress_callback=None):
-    """重建所有提示词的向量索引"""
+    """重建所有提示词的向量索引，ML不可用时跳过"""
     global _is_indexing
+    if not _ML_OK or not _NUMPY_OK:
+        print("[语义搜索] ML 依赖不可用，跳过索引重建")
+        _is_indexing = False
+        return {"total": 0, "success": 0, "elapsed": 0, "note": "ML dependencies unavailable"}
     _is_indexing = True
     _ensure_table()
-    _get_model()  # 确保模型已加载
-
+    _get_model()
     db = get_db()
     rows = db.execute("SELECT id, content FROM prompts WHERE deleted_at IS NULL ORDER BY id").fetchall()
     total = len(rows)
     print("[语义搜索] 开始重建索引: %d 条" % total)
-
     t0 = time.time()
     success = 0
     for i, row in enumerate(rows):
         try:
             emb = encode_text(row["content"] or "")
+            if emb is None:
+                continue
             blob = _embedding_to_blob(emb)
             db.execute("""
                 INSERT OR REPLACE INTO prompt_embeddings (prompt_id, embedding, updated_at)
@@ -118,7 +142,6 @@ def rebuild_all_embeddings(progress_callback=None):
                 progress_callback(i, total)
         except Exception as e:
             print("[语义搜索] 索引失败 (id=%d): %s" % (row["id"], e))
-
     db.commit()
     elapsed = time.time() - t0
     print("[语义搜索] 索引重建完成: %d/%d 条 (%.1fs)" % (success, total, elapsed))
@@ -127,17 +150,16 @@ def rebuild_all_embeddings(progress_callback=None):
 
 
 def search(query: str, top_k: int = 20) -> list:
-    """语义搜索：返回相似提示词列表"""
+    """语义搜索，ML不可用时返回空"""
+    if not _ML_OK or not _NUMPY_OK:
+        return []
     if not query or not query.strip():
         return []
-
     _ensure_table()
     t0 = time.time()
-
-    # 编码查询
     query_emb = encode_text(query)
-
-    # 读取所有向量
+    if query_emb is None:
+        return []
     db = get_db()
     rows = db.execute("""
         SELECT p.id, p.content, p.meaning, p.module, p.category, p.tags, e.embedding
@@ -145,15 +167,11 @@ def search(query: str, top_k: int = 20) -> list:
         JOIN prompt_embeddings e ON e.prompt_id = p.id
         WHERE p.deleted_at IS NULL
     """).fetchall()
-
     if not rows:
         return []
-
-    # 计算余弦相似度
     results = []
     for row in rows:
         emb = _blob_to_embedding(row["embedding"])
-        # 向量已经是归一化的，点积 = 余弦相似度
         score = float(np.dot(query_emb, emb))
         results.append({
             "id": row["id"],
@@ -164,18 +182,13 @@ def search(query: str, top_k: int = 20) -> list:
             "tags": row["tags"],
             "score": round(score, 4)
         })
-
-    # 按相似度排序
     results.sort(key=lambda x: x["score"], reverse=True)
-
     elapsed = time.time() - t0
     print("[语义搜索] 查询 \"%s\" 完成 (%.3fs, %d 结果)" % (query, elapsed, len(results)))
-
     return results[:top_k]
 
 
 def get_status() -> dict:
-    """获取语义搜索状态"""
     global _is_indexing
     db = get_db()
     indexed = 0
@@ -187,8 +200,9 @@ def get_status() -> dict:
         pass
     return {
         "ok": True,
-        "model_loaded": _model is not None,
-        "model_name": "all-MiniLM-L6-v2",
+        "ml_available": _ML_OK and _NUMPY_OK,
+        "model_loaded": _model is not None if _ML_OK else False,
+        "model_name": "all-MiniLM-L6-v2" if _ML_OK else "N/A",
         "embedding_dim": _embedding_dim,
         "indexed": indexed,
         "total_prompts": total,

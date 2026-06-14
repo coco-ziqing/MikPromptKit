@@ -5,21 +5,18 @@
 - 通过 /api/backup/info 和 /api/backup/now 对外暴露
 """
 import os
+import sys
 import shutil
 import time
 import json
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
+from paths import get_base_dir, get_data_dir, get_db_path
 
-BACKUP_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data", "backups"
-)
-DB_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data", "prompts.db"
-)
+BASE_DIR = get_base_dir()
+BACKUP_DIR = os.path.join(get_data_dir(), 'backups')
+DB_PATH = get_db_path()
 LOCK_FILE = os.path.join(BACKUP_DIR, ".backup.lock")
 
 # 保留天数

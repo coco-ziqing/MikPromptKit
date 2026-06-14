@@ -3,11 +3,13 @@
 """
 import sqlite3
 import os
+import sys
 import threading
 import time
+from paths import get_data_dir, get_db_path
 
-DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
-DB_PATH = os.path.join(DB_DIR, "prompts.db")
+DB_DIR = get_data_dir()
+DB_PATH = get_db_path()
 
 _local = threading.local()
 
