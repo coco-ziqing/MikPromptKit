@@ -376,6 +376,10 @@ def init_db():
                 global_style TEXT,
                 global_transition TEXT,
                 negative_prompt TEXT,
+                bgm TEXT DEFAULT '',
+                sfx TEXT DEFAULT '',
+                dialogue TEXT DEFAULT '',
+                template_id INTEGER DEFAULT NULL,
                 created_at TEXT DEFAULT (datetime('now','localtime')),
                 updated_at TEXT DEFAULT (datetime('now','localtime'))
             );
@@ -482,6 +486,21 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_library_assets_type ON library_assets(lib_type);
             CREATE INDEX IF NOT EXISTS idx_library_assets_builtin ON library_assets(is_builtin);
         """)
+
+        # === Seedance V2 缺列补丁（幂等 ALTER TABLE）===
+        for sql in [
+            "ALTER TABLE user_project ADD COLUMN bgm TEXT DEFAULT ''",
+            "ALTER TABLE user_project ADD COLUMN sfx TEXT DEFAULT ''",
+            "ALTER TABLE user_project ADD COLUMN dialogue TEXT DEFAULT ''",
+            "ALTER TABLE user_project ADD COLUMN template_id INTEGER DEFAULT NULL",
+            "ALTER TABLE user_project_scene ADD COLUMN duration REAL DEFAULT 3",
+            "ALTER TABLE user_project_scene ADD COLUMN is_manual INTEGER DEFAULT 0",
+            "ALTER TABLE user_project_scene ADD COLUMN is_locked INTEGER DEFAULT 0",
+        ]:
+            try:
+                conn.execute(sql)
+            except Exception:
+                pass  # 列已存在则跳过
 
         conn.commit()
     except sqlite3.Error as e:

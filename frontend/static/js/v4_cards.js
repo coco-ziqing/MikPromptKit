@@ -72,7 +72,7 @@
             // 基本信息
             h += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">';
             h += '<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:' + (card.card_type === 'video' ? '#8b5cf6' : '#10b981') + ';color:#fff;">' + (card.card_type === 'video' ? '🎬 视频' : '📷 图片') + '</span>';
-            h += '<span style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid var(--border-color);">' + App._escape(card.module) + '</span>';
+            h += '<span style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid var(--border-color);">' + App._escape(App._moduleDisplayName(card.module)) + '</span>';
             if (card.category) h += '<span style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid var(--border-color);">' + App._escape(card.category) + '</span>';
             h += '<span style="font-size:11px;color:#94a3b8;">使用 ' + (card.usage_count_total || 0) + ' 次</span>';
             h += '</div>';

@@ -13,11 +13,16 @@ import time
 from datetime import datetime
 from typing import Optional
 
-# 路径配置
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+# 路径配置（开发/封装通用）
+try:
+    from paths import get_data_dir, get_db_path
+    DATA_DIR = get_data_dir()
+    DB_PATH = get_db_path()
+except ImportError:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    DATA_DIR = os.path.join(BASE_DIR, "data")
+    DB_PATH = os.path.join(DATA_DIR, "prompts.db")
 PACKAGES_DIR = os.path.join(DATA_DIR, "packages")
-DB_PATH = os.path.join(DATA_DIR, "prompts.db")
 THUMB_DIR = os.path.join(DATA_DIR, "thumbnails")
 ORIG_DIR = os.path.join(DATA_DIR, "originals")
 VIDEO_DIR = os.path.join(DATA_DIR, "videos")
@@ -192,7 +197,7 @@ def restore_package(pkg_name: str, backup_first: bool = True) -> dict:
 
     # 备份当前数据
     if backup_first and os.path.exists(DB_PATH):
-        from backend.backup import do_backup as backup_db
+        from backup import do_backup as backup_db
         try:
             backup_db()
         except Exception:
@@ -214,7 +219,7 @@ def restore_package(pkg_name: str, backup_first: bool = True) -> dict:
             if "prompts.db" in namelist:
                 # 关闭当前连接，替换文件
                 try:
-                    from backend.database import close_db
+                    from database import close_db
                     close_db()
                 except Exception:
                     pass
@@ -254,7 +259,7 @@ def restore_package(pkg_name: str, backup_first: bool = True) -> dict:
 
             # 4. 确保数据库重新初始化
             try:
-                from backend.database import init_db, get_db
+                from database import init_db, get_db
                 init_db()
             except Exception:
                 pass

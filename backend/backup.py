@@ -122,8 +122,9 @@ def do_backup() -> dict:
         backup_name = _make_backup_name()
         backup_path = os.path.join(BACKUP_DIR, backup_name)
 
-        # copyfile 替代 shutil.copy2 确保跨设备兼容
-        shutil.copy2(DB_PATH, backup_path)
+        # copyfile 替代 shutil.copy2 确保跨设备/exFAT兼容（copy2拷贝元数据在移动盘上可能失败）
+        os.makedirs(BACKUP_DIR, exist_ok=True)  # 二次确保，防止线程race
+        shutil.copy(DB_PATH, backup_path)
 
         # 清理旧备份
         removed = _cleanup_old_backups()
@@ -229,6 +230,7 @@ def start_auto_backup():
 
     # 首次立即备份（异步）
     def first_backup():
+        os.makedirs(BACKUP_DIR, exist_ok=True)  # 线程抢跑确保
         result = do_backup()
         status = "OK" if result.get("ok") else "FAIL"
         print("[备份] 启动备份: " + str(result.get("file", result.get("error", "unknown"))))

@@ -1,4 +1,4 @@
-"""
+﻿"""
 API 路由 — 提示词 CRUD、搜索、统计（加固版）
 """
 import os
@@ -14,7 +14,8 @@ def _safe_int(val, default=0):
 
 def _module_name(module_id):
     names = {"emotion": "人物表情", "color": "场景色彩", "tone": "画面色调",
-             "storyboard": "分镜构图", "camera_move": "运镜模版", "seedance": "视频模版"}
+             "storyboard": "分镜构图", "composition": "分镜构图",
+             "camera_move": "运镜模版", "seedance": "视频模版"}
     return names.get(module_id, module_id)
 
 def _safe_tags(tags_str):
@@ -40,7 +41,7 @@ def list_modules():
             mid = r["module"]
             if mid not in seen:
                 seen[mid] = r["cnt"]
-                result.append({"id": mid, "name": _module_name(mid), "count": r["cnt"], "builtin": mid in ("emotion","color","tone","storyboard","camera_move","seedance")})
+                result.append({"id": mid, "name": _module_name(mid), "count": r["cnt"], "builtin": mid in ("emotion","color","tone","storyboard","composition","camera_move","seedance")})
         # 自定义模块（无词条的也显示，排除 custom）
         custom = db.execute("SELECT name, sort_order FROM custom_modules ORDER BY sort_order, id").fetchall()
         for c in custom:
@@ -299,7 +300,7 @@ def create_custom_module(data: dict):
     name = (data.get("name") or "").strip()
     if not name:
         raise HTTPException(400, "模块名称不能为空")
-    if name in ("emotion","color","tone","storyboard","camera_move","seedance"):
+    if name in ("emotion","color","tone","storyboard","composition","camera_move","seedance"):
         raise HTTPException(400, "模块名称与内置模块冲突")
     db = get_db()
     try:
@@ -313,7 +314,7 @@ def create_custom_module(data: dict):
 @router.delete("/modules/{module_name}")
 def delete_custom_module(module_name: str):
     """删除自定义模块（并不删除关联词条，仅移除模块记录）"""
-    if module_name in ("emotion","color","tone","storyboard","camera_move","seedance"):
+    if module_name in ("emotion","color","tone","storyboard","composition","camera_move","seedance"):
         raise HTTPException(400, "内置模块不可删除")
     db = get_db()
     db.execute("DELETE FROM custom_modules WHERE name=?", [module_name])
