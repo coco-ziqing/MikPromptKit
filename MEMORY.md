@@ -320,3 +320,231 @@ prompt-tool-dev/
 - 模块统计改为 prompt_cards 主表（不再双表重复计数）
 - PUT端点数据表统一（/api/v4/cards替代/api/prompts）
 - 创建项目时长上限15s→60s
+
+---
+
+## 📦 跨平台封装规则（2026-06-15 macOS 适配实战总结）
+
+> ⚠️ **每次版本更新重新封装时，必须逐条核对以下规则，避免重复踩坑！**
+
+### 一、源码分发 ZIP 打包（Windows → macOS/Linux）
+
+| # | 规则 | 原因 |
+|---|------|------|
+| 1 | **必须用 Python `zipfile` 打包**，禁止 Windows Compress-Archive | PowerShell 的 `Compress-Archive` 用反斜杠 `\` 做路径分隔符，macOS/Linux 解压后目录结构彻底损坏（`backend/main.py` 变 `backend\main.py` 扁平文件名） |
+| 2 | **路径分隔符强制正斜杠** `/` | `arcname = '/'.join(parts)` 或 `Path.as_posix()` |
+| 3 | **排除 `__pycache__/`** | 字节码缓存与 Python 版本绑定，跨平台不可用且增加体积 |
+| 4 | **排除 `data/` 目录** | 含用户媒体文件（GB 级），源码分发仅含代码+配置 |
+| 5 | **排除 `dist/` `.git/` `memory/` `node_modules/`** | 构建产物、版本控制、会话记忆均不随源码分发 |
+
+### 二、`requirements.txt` 版本约束
+
+| # | 规则 | 原因 |
+|---|------|------|
+| 1 | `numpy<2`（非 `numpy==2.x`） | NumPy 2.x 与旧 PyTorch（macOS Intel GPU → CPU fallback）二进制不兼容，报 `_ARRAY_API not found` |
+| 2 | `sentence-transformers` 不加 `==` 固定版本 | 让其自动匹配 PyTorch/transformers 兼容版本 |
+| 3 | 必须包含 `python-multipart` | FastAPI UploadFile/Form 依赖此包，缺失则 RuntimeError |
+| 4 | 必须包含 `torch` | macOS PyTorch 版本由 pip 根据架构自动选择（Intel x86 vs Apple Silicon） |
+| 5 | 必须包含 `aiofiles` | 异步文件操作依赖，缺失则媒体上传失败 |
+
+### 三、跨平台代码兼容
+
+| # | 规则 | 原因 |
+|---|------|------|
+| 1 | **所有平台专有 API 必须 `except Exception` 兜底**（非仅 `except ImportError`） | macOS 上 PyTorch/transformers 加载失败可能是 `NameError`、`RuntimeError`、`UserWarning` 等，`except ImportError` 兜不住 |
+| 2 | `msvcrt` 仅 Windows 有 → `try: import msvcrt except ImportError: input()` | macOS/Linux 无此模块 |
+| 3 | `paths.py` 统一路径解析，禁止硬编码 `\\` 或盘符 `C:\` | `os.path.join()` / `pathlib.Path` 自动适配分隔符 |
+| 4 | 语义搜索（ML）模块必须优雅降级 | 2013年 iMac 无 GPU，`sentence-transformers` 加载失败不应阻止核心提示词检索功能 |
+
+### 四、macOS 部署特有
+
+| # | 规则 | 原因 |
+|---|------|------|
+| 1 | `.command` 文件分发后需 `chmod +x` | macOS 从外部来源复制的脚本默认剥夺执行权限 |
+| 2 | `.command` 文件需 `xattr -cr` 清除隔离标记 | macOS Gatekeeper 对下载文件打 `com.apple.quarantine` 标记，Finder 右键打开不够 |
+| 3 | 启动器使用 `#!/bin/bash`（非 `#!/bin/zsh`） | bash 兼容性好，Catalina 默认 bash |
+| 4 | 启动器必须自动探测 Python 版本（`python3.12 python3 python` 依次尝试） | 用户可能自装不同版本 |
+| 5 | 首选 `venv` 虚拟环境安装依赖 | 避免污染系统 Python |
+| 6 | 启动器检测 `ffmpeg` 缺失时不崩溃，仅警告 | 视频上传非核心功能，不应阻断启动 |
+
+### 五、Windows EXE 封装（PyInstaller）
+
+> ⚠️ **以下规则来自 v4.0.0-phase9.3.1 实战踩坑总结（2026-06-14），每条背后都是实际崩溃！**
+
+| # | 规则 | 原因 |
+|---|------|------|
+| 1 | `seed_migrate.py` 等独立模块 → **内联到 `main.py`** | PyInstaller 静态分析不一定发现动态 import 引用模块，打包后 `ModuleNotFoundError` |
+| 2 | Spec 文件 `hiddenimports` 必须补全 | `uvicorn.logging`, `uvicorn.loops.auto`, `uvicorn.protocols.http.auto`, `fastapi`, `aiohttp`, `PIL._imaging`, `sentence_transformers`, `numpy`, `aiofiles`, `sqlite3` 等 |
+| 3 | **启动顺序不可颠倒**：Seedance V2 种子数据初始化 → v4 迁移 `_migrate_v4()` → 路由挂载 | 先初始化种子数据再迁移，否则 `library_assets` 为空（0 条），迁移后所有模块无数据 |
+| 4 | `database.py` 建表必须幂等 | `CREATE TABLE IF NOT EXISTS` + `ALTER TABLE` 补缺失列（旧数据库可能缺列如 `bgm/sfx/dialogue/template_id` 4列、`duration/is_manual/is_locked` 3列） |
+| 5 | 端口自兜底 `8080~8089` | 避免 EXE 双击即崩溃，占用时自动探测下一个可用端口 |
+| 6 | 打包后 `__main__` 中不应有 `msvcrt.getch()` 裸调用 | 需 `try: msvcrt.getch() except ImportError: input()` 包裹 |
+| 7 | `sync.py` / 所有模块路径必须走 `paths.py` 统一解析 | 禁止硬编码 `backend\` 前缀或盘符，PyInstaller 打包后 sys.path 结构变化 |
+| 8 | 移除所有 `backend.` 前缀导入 | PyInstaller onedir 模式根目录即含 backend，前缀会导致双重路径查找失败 |
+| 9 | onedir 模式优先（非 `--onefile`） | onedir 启动快、依赖可见、升级替换单文件即可；onefile 解压慢且易触发杀毒误报 |
+| 10 | 启动失败必须 pause 保留错误信息 | 打包 EXE 双击启动，窗口一闪而过无法看到错误，`input()` 保持窗口不关 |
+| 11 | `build.spec` 中 `excludes` 排除不必要大型库 | `tkinter`, `PyQt5`, `PySide6`, `wx`, `matplotlib`, `scipy`, `pandas`, `torch`, `tensorflow` 等不用的库可缩减几十 MB |
+| 12 | 前端 `card.module` 显示必须经 `_moduleDisplayName()` 翻译 | 新增模块（如 `composition`）须同步更新后端 `_module_name()` 和前端所有出现位置的映射表 |
+
+#### 5.1 PyInstaller Spec 模板关键段
+
+```python
+# hiddenimports 必须补全（否则启动时报 ImportError）
+hiddenimports=[
+    'uvicorn.logging',
+    'uvicorn.loops.auto',
+    'uvicorn.protocols.http.auto',
+    'fastapi',
+    'aiohttp',
+    'PIL._imaging',
+    'sentence_transformers',
+    'numpy',
+    'aiofiles',
+    'sqlite3',
+    'asyncio',
+],
+
+# excludes 缩减体积（Pytorch/tensorflow 不打包，ML用轻量模型）
+excludes=[
+    'tkinter', 'PyQt5', 'PySide6', 'wx',
+    'matplotlib', 'scipy', 'pandas',
+    'torch', 'tensorflow',
+],
+
+# 启动入口：backend/main.py（非直接 main.py）
+Analysis(['backend/main.py'], ...)
+```
+
+#### 5.2 启动顺序伪代码
+
+```python
+# 正确的初始化顺序（错一步全空）
+init_db()                          # 1. 建表（幂等）
+seed_data.init_seedance_v2(db)     # 2. Seedance V2 种子（写入 library_assets）
+_migrate_v4(db)                    # 3. v4 迁移（依赖上一步的数据）
+safe_commit(db)
+# 4. 最后挂载路由（此时数据已就绪）
+app.include_router(...)
+```
+
+#### 5.3 Windows EXE 打包命令
+
+```bash
+# onedir 模式（推荐）
+pyinstaller build.spec --clean --noconfirm
+
+# 输出在 dist/PromptKit/，含 启动.bat
+```
+
+### 六、打包脚本标准模板（Python zipfile）
+
+```python
+import zipfile
+from pathlib import Path
+
+root = Path('项目根目录')
+dest = Path('输出.zip')
+
+# 白名单模式，只打包明确需要的目录/文件
+include_dirs = {'backend', 'frontend', 'browser-extension'}
+include_files = {'start.command', 'INSTALL_MACOS.md', 'requirements.txt', ...}
+
+with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for f in sorted(root.iterdir()):
+        if f.is_dir() and f.name in include_dirs:
+            for sf in f.rglob('*'):
+                if sf.is_file() and '__pycache__' not in sf.parts:
+                    arcname = '/'.join(sf.relative_to(root).parts)  # 正斜杠!
+                    zf.write(sf, arcname)
+        elif f.is_file() and f.name in include_files:
+            zf.write(f, f.name)
+```
+
+### 七、交付前检查清单
+
+- [ ] ZIP 包在 Windows 解压验证：文件夹结构正常
+- [ ] ZIP 包在 macOS 解压验证：`ls backend/main.py` 能列出文件（非 `backend\main.py`）
+- [ ] `start.command` 有执行权限（`chmod +x`）
+- [ ] `requirements.txt` 含全部依赖（含 `python-multipart`, `aiofiles`, `torch`）
+- [ ] `numpy<2` 约束已设置
+- [ ] `semantic.py` 捕获 `Exception`（非仅 `ImportError`）
+- [ ] 无 Windows 专有 API 裸调用（`msvcrt` 等）
+- [ ] `.gitignore` 排除 `dist/`, `data/`, `__pycache__/`, `venv/`, `*.pyc`
+- [ ] bundle内 `INSTALL_MACOS.md` 已同步更新
+
+---
+
+## 🎨 深色/亮色模式校验规则（2026-06-15 全模块排查总结）
+
+> ⚠️ **每次新增 UI 组件或模块后，必须逐条核对以下规则，避免"切到亮色模式后背景仍是深色"类 bug！**
+
+### 一、CSS 变量架构铁律
+
+| # | 规则 | 原因 |
+|---|------|------|
+| 1 | **`:root` 必须是亮色默认值**，禁止在 `:root` 中硬编码深色值 | 亮色/深色切换依靠 CSS 变量覆盖，`:root` 值=亮色，`body.dark-theme` 值=深色；若 `:root` 写了深色，切亮色无效 |
+| 2 | **每个 CSS 变量必须在 `:root` 和 `body.dark-theme` 两处同时定义** | 缺一则模式切换时该变量不跟随变化 |
+| 3 | **新增颜色必须优先用 CSS 变量** | 禁止在组件样式中硬编码 `#ffffff` / `#1e293b` 等固定色值 |
+| 4 | **所有 `--*-bg` / `--*-text` / `--*-border` 语义变量也必须双处定义** | 例如 `--card-bg` `--tag-bg` `--danger-bg` `--hover-bg` 等 |
+
+### 二、禁止模式（会直接导致 bug）
+
+| # | 禁止写什么 | 为什么 | 正确写法 |
+|---|-----------|--------|---------|
+| 1 | `background: #ffffff` | 永远白色，深色模式不跟随 | `background: var(--bg-card)` |
+| 2 | `background: #f1f5f9` | 永远浅灰 | `background: var(--hover-bg)` |
+| 3 | `background: #eef2ff` | 永远浅蓝 | `background: rgba(79,70,229,0.12)`（主题色叠加，通用） |
+| 4 | `color: #64748b` | 永远中灰，深色背景下不可读 | `color: var(--text-muted)` |
+| 5 | `border-color: #e2e8f0` | 永远浅灰边框 | `border-color: var(--border-color)` |
+| 6 | `border-top: 1px solid #f1f5f9` | 永远浅灰 | `border-top: 1px solid var(--border-color)` |
+| 7 | `<span class="badge bg-light text-dark">` | Bootstrap 固定类，不随主题变 | CSS 新增 `body.dark-theme #headerStats { ... }` 覆盖 |
+
+### 三、必须覆盖的核心选择器清单
+
+新增任何前端模块后，检查以下选择器是否有 `body.dark-theme` 适配：
+
+| 区域 | 必须覆盖的选择器示例 |
+|------|---------------------|
+| 顶部导航 | `.navbar-tool`, `.header-btn`, `.header-btn:hover`, `.header-btn.active`, `.search-box input`, `.search-box .search-icon` |
+| 侧边栏 | `.sidebar`, `.module-item`, `.module-item:hover`, `.module-item.active`, `.count-badge` |
+| 卡片 | `.prompt-card`, `.prompt-card .card-content`, `.prompt-card .card-scene`, `.prompt-card .card-badge`, `.prompt-card.selected`, `.prompt-card.copy-flash` |
+| 分类标签 | `.cat-tab`, `.cat-tab:hover`, `.cat-tab.active` |
+| 弹窗 | `.modal-content`, `.modal-input`, `.confirm-modal`, `.collect-popover` |
+| 推荐面板 | `.recommend-panel`, `.rec-item`, `.rec-empty` |
+| 收藏/词包 | `.collection-card`, `.card-action-btn`, `.coll-add-btn` |
+| 查看器 | `.viewer-right`, `.viewer-btn-collect` |
+| 种子舞 | `.s2-project-item`, `.s2-editor-header`, `.s2-section`, `.s2-search-box`, `.s2-output-section`, `.s2-picker-card` |
+| 类型徽章 | `.card-type-image`, `.card-type-video` |
+| 状态指示 | `.empty-state`, `.loading-spinner`, `.page-header .count-info` |
+
+### 四、JS/HTML 内联样式校验
+
+| # | 规则 | 原因 |
+|---|------|------|
+| 1 | JS 动态生成 DOM 时，内联 `style="background:..."` 必须写 `var(--bg-card,#fff)` 带 fallback | 双保险：有 CSS 变量用变量，没有就回退白色 |
+| 2 | `color:#fff` 的白色文字可保留（纯装饰性，深浅都可见） | 前提是承载它的背景一定是深色/亮色都有足够对比度 |
+| 3 | 绿色/红色等语义色（如删除、成功）无需跟随主题变换 | 但需在深色下调整饱和度（如 `#ef4444`→`#f87171`）避免刺眼 |
+
+### 五、新增 UI 组件的检查清单
+
+每新增一个带背景色的 UI 区域，检查：
+
+- [ ] 背景色用了 `var(--*)` 还是硬编码？
+- [ ] 如果是硬编码，是否已在 `body.dark-theme` 中添加覆盖？
+- [ ] 文字颜色对比度在两种模式下是否都 ≥ 4.5:1？
+- [ ] 边框色是否用了 `var(--border-color)`？
+- [ ] hover/active 状态两种模式下是否都有适配？
+- [ ] 如果是 JS 动态生成 DOM，是否有 fallback 值？
+
+### 六、本次修复实际数据
+
+> 2026-06-15 全模块排查：共修复 **44 处** 深色/亮色模式不匹配问题
+
+| 类别 | 数量 |
+|------|------|
+| 新增缺失 CSS 变量 | 4（`--card-bg` `--tag-bg` `--danger-bg` `--danger`） |
+| `:root` 变量浅色化修正 | 3（`--bg-sidebar` `--text-sidebar` `--text-sidebar-active`） |
+| `body.dark-theme` 变量补充 | 4（同上 + 新增 4 个） |
+| 硬编码→CSS 变量转换 | 12 处 |
+| 新增 `body.dark-theme` 选择器 | 28 处 |
+| HTML 内联类覆盖 | 1 处（`#headerStats`） |

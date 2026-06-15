@@ -456,13 +456,11 @@ if __name__ == "__main__":
                 try:
                     _sys.stdout.flush()
                     print("[启动] 按任意键退出...")
-                    import msvcrt
-                    msvcrt.getch()
-                except ImportError:
                     try:
-                        input()
-                    except Exception:
-                        pass
+                        import msvcrt  # Windows only
+                        msvcrt.getch()
+                    except ImportError:
+                        input()  # macOS/Linux fallback
                 except Exception:
                     pass
                 _sys.exit(1)

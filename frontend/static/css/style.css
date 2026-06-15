@@ -6,12 +6,16 @@
     --primary-light: #6366f1;
     --bg-main: #f8fafc;
     --bg-card: #ffffff;
-    --bg-sidebar: #1e293b;
+    --bg-sidebar: #f8fafc;
     --text-main: #1e293b;
     --text-muted: #64748b;
-    --text-sidebar: #94a3b8;
-    --text-sidebar-active: #ffffff;
+    --text-sidebar: #475569;
+    --text-sidebar-active: #1e293b;
     --border-color: #e2e8f0;
+    --card-bg: #ffffff;
+    --tag-bg: #eef2ff;
+    --danger-bg: #fef2f2;
+    --danger: #ef4444;
     --card-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
     --card-hover-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
     --radius: 10px;
@@ -25,9 +29,18 @@ body.dark-theme {
     --text-main: #e2e8f0;
     --text-muted: #94a3b8;
     --border-color: #334155;
+    --bg-sidebar: #1e293b;
+    --text-sidebar: #94a3b8;
+    --text-sidebar-active: #ffffff;
+    --card-bg: #1e293b;
+    --tag-bg: #1e293b;
+    --danger-bg: rgba(239,68,68,0.12);
+    --danger: #f87171;
     --card-shadow: 0 1px 3px rgba(0,0,0,0.3);
     --card-hover-shadow: 0 10px 15px -3px rgba(0,0,0,0.4);
 }
+body.dark-theme .header-btn:hover { background: #334155; color: var(--primary); }
+body.dark-theme .header-btn.active { background: rgba(79,70,229,0.2); color: #a5b4fc; }
 body.dark-theme .navbar-tool { background: #1e293b; border-color: #334155; }
 body.dark-theme .navbar-tool .brand small { color: #64748b; }
 body.dark-theme .stat-card { background: var(--bg-card); }
@@ -49,7 +62,38 @@ body.dark-theme .collection-card { background: var(--bg-card); border-color: #33
 body.dark-theme .collection-card { border-color: #334155; }
 body.dark-theme .batch-bar { background: #1e293b; border-color: #334155; }
 body.dark-theme .header-actions .badge { background: #334155 !important; color: #e2e8f0 !important; }
+body.dark-theme #headerStats { background: #334155 !important; color: #e2e8f0 !important; }
 body.dark-theme .recommend-panel { background: #1e293b; border-color: #334155; }
+body.dark-theme .search-box .search-icon { color: #64748b; }
+body.dark-theme .search-mode-btn { color: #64748b; }
+body.dark-theme .category-tabs .cat-tab:hover { background: #334155; }
+body.dark-theme .prompt-card .card-badge { background: #1e293b; }
+body.dark-theme .prompt-card .card-scene { color: #64748b; }
+body.dark-theme .prompt-card.selected { background: rgba(79,70,229,0.12); }
+body.dark-theme .card-type-image { background: rgba(5,150,105,0.15); color: #6ee7b7; }
+body.dark-theme .card-type-video { background: rgba(124,58,237,0.15); color: #c4b5fd; }
+body.dark-theme .card-action-btn:hover { background: #334155; border-color: #475569; }
+body.dark-theme .coll-add-btn:hover { background: rgba(79,70,229,0.15); }
+body.dark-theme .rec-empty { color: #64748b; }
+body.dark-theme .empty-state { color: #64748b; }
+body.dark-theme .loading-spinner { color: #64748b; }
+body.dark-theme .icon-select-wrap { border-top-color: #475569; }
+body.dark-theme .s2-lock-btn { background: #334155; }
+body.dark-theme .s2-lock-btn:hover { background: #475569; }
+body.dark-theme .s2-project-item { background: var(--bg-card); }
+body.dark-theme .s2-project-item:hover { background: #334155; }
+body.dark-theme .s2-picker-card:hover { background: rgba(79,70,229,0.08); }
+body.dark-theme .s2-right-panel { background: #1e293b; }
+body.dark-theme .s2-right-panel .s2-panel-toolbar button { background: #334155; border-color: #475569; }
+body.dark-theme .s2-editor-header { background: #1e293b; }
+body.dark-theme .s2-section { background: #1e293b; }
+body.dark-theme .s2-search-box { background: #1e293b; }
+body.dark-theme .s2-output-section { background: #1e293b; }
+body.dark-theme .s2-global-del-popover { background: #1e293b; }
+body.dark-theme .s2-global-del-popover .s2-del-popover-no:hover { background: #334155; }
+body.dark-theme .s2-picker-custom:hover { background: rgba(79,70,229,0.08); }
+body.dark-theme .s2-add-scene:hover { background: rgba(79,70,229,0.08); }
+body.dark-theme .s2-scene-actions .btn-xs.btn-danger:hover { background: rgba(239,68,68,0.15); border-color: #f87171; color: #fca5a5; }
 
 /* ============ 全局 ============ */
 * { box-sizing: border-box; }
@@ -104,12 +148,12 @@ body {
 .header-actions { display: flex; align-items: center; gap: 6px; margin-left: 12px; }
 .header-btn {
     width: 34px; height: 34px; border: none; border-radius: 8px;
-    background: transparent; color: #64748b; cursor: pointer;
+    background: transparent; color: var(--text-muted); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     font-size: 18px; position: relative; transition: all 0.2s;
 }
-.header-btn:hover { background: #f1f5f9; color: var(--primary); }
-.header-btn.active { background: #eef2ff; color: var(--primary); }
+.header-btn:hover { background: var(--hover-bg); color: var(--primary); }
+.header-btn.active { background: rgba(79,70,229,0.12); color: var(--primary); }
 .header-divider { width: 1px; height: 24px; background: var(--border-color); margin: 0 4px; }
 .nav-badge {
     position: absolute; top: 0; right: 0;
@@ -156,20 +200,23 @@ body {
 body.dark-theme .view-scroll::-webkit-scrollbar-thumb,
 body.dark-theme .view-home-scroll::-webkit-scrollbar-thumb,
 body.dark-theme .seedance-panel::-webkit-scrollbar-thumb { background: #475569; }
+body.dark-theme .sidebar .module-item:hover { background: #334155; color: #e2e8f0; }
+body.dark-theme .sidebar .module-item.active { background: rgba(79,70,229,0.25); }
+body.dark-theme .sidebar .module-item .count-badge { background: rgba(255,255,255,0.1); }
 .sidebar .module-item {
     display: flex; align-items: center;
     padding: 10px 20px; color: var(--text-sidebar);
     cursor: pointer; transition: all 0.2s;
     border-left: 3px solid transparent; gap: 10px; font-size: 13px;
 }
-.sidebar .module-item:hover { background: #1e293b; color: #e2e8f0; }
+.sidebar .module-item:hover { background: #e2e8f0; color: var(--primary); }
 .sidebar .module-item.active {
     background: rgba(79,70,229,0.15); color: var(--text-sidebar-active);
     border-left-color: var(--primary); font-weight: 600;
 }
 .sidebar .module-item .icon { font-size: 16px; width: 22px; text-align: center; }
 .sidebar .module-item .count-badge {
-    margin-left: auto; background: rgba(255,255,255,0.1);
+    margin-left: auto; background: rgba(0,0,0,0.08);
     padding: 1px 8px; border-radius: 10px; font-size: 10px;
 }
 
@@ -257,7 +304,7 @@ body.sidebar-collapsed .main-content {
 .prompt-card .card-scene { font-size: 11px; color: #94a3b8; margin-bottom: 6px; flex-shrink: 0; }
 .prompt-card .card-actions {
     display: flex; gap: 4px; justify-content: flex-end;
-    border-top: 1px solid #f1f5f9; padding-top: 8px; align-items: center;
+    border-top: 1px solid var(--border-color); padding-top: 8px; align-items: center;
     margin-top: auto;
     flex-wrap: wrap;
 }
@@ -273,7 +320,7 @@ body.sidebar-collapsed .main-content {
 .prompt-card.batch-mode .card-checkbox,
 .prompt-card.edit-mode .card-checkbox { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; }
 .prompt-card .card-checkbox input { width: 16px; height: 16px; cursor: pointer; }
-.prompt-card.selected { border-color: var(--primary); background: #eef2ff; }
+.prompt-card.selected { border-color: var(--primary); background: var(--hover-bg); }
 
 /* ============ 批量操作栏 ============ */
 .batch-bar {
@@ -408,7 +455,7 @@ body.dark-theme .card-action-btn[title="复制分组"]:hover { background: rgba(
 /* ============ 智能推荐面板 ============ */
 .recommend-panel {
     position: fixed; top: var(--nav-height); right: 0; bottom: 0;
-    width: var(--rec-width); background: #ffffff;
+    width: var(--rec-width); background: var(--bg-card);
     border-left: 1px solid var(--border-color);
     z-index: 98; transform: translateX(100%); transition: transform 0.3s;
     overflow-y: auto; display: flex; flex-direction: column;
@@ -458,7 +505,7 @@ body.dark-theme .card-action-btn[title="复制分组"]:hover { background: rgba(
     display: flex; align-items: center; justify-content: center;
 }
 .modal-content {
-    background: #fff; border-radius: 12px;
+    background: var(--bg-card); border-radius: 12px;
     width: 90%; max-width: 480px; max-height: 80vh;
     overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
 }
@@ -865,7 +912,7 @@ body.dark-theme .coll-add-btn:hover { border-color: var(--primary); background: 
 
 /* ============ 收藏弹出菜单 ============ */
 .collect-popover {
-    background: #fff;
+    background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: 10px;
     box-shadow: 0 8px 25px rgba(0,0,0,0.15);
@@ -1061,7 +1108,7 @@ body.dark-theme .collect-select {
 }
 
 /* ============ 复制的闪烁反馈 ============ */
-.prompt-card.copy-flash { border-color: var(--primary); background: #eef2ff; transition: all 0.1s; }
+.prompt-card.copy-flash { border-color: var(--primary); background: var(--hover-bg); transition: all 0.1s; }
 
 /* ============ 词包详情操作按钮 ============ */
 .wp-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }

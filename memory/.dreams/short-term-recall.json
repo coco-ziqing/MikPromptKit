@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-11T02:26:31.852Z",
+  "updatedAt": "2026-06-15T03:17:39.563Z",
   "entries": {
     "memory:memory/2026-05-29.md:88:118": {
       "key": "memory:memory/2026-05-29.md:88:118",
@@ -148,18 +148,20 @@
       "endLine": 86,
       "source": "memory",
       "snippet": "5. **批次模式 PNG 导出命名** — `batchExport('png')` 也走命名弹窗，与 .pt 一致 6. **`_doExportPreview()` 统一命名** — 预览导出也使用 `_makeExportFilename` 7. **`doExport()` PNG 命名修复** — 单条 PNG 导出使用 `_makeExportFilename`，批量引用命名弹窗 ### 取消的方案 - 曾尝试用 `showDirectoryPicker()` 获取 `_exportDirHandle` 并直接写入 → ✅ 已实现 - 旧方案用 `prompt()` 输入文本作为标识 → ❌ 已替换为真实目录选择 ### 当前状态 - 未解决：Firefox/Safari 不支持 `showDirectoryPicker()`，降级为浏览器下载 - 已解决：`_pickExportPath` 函数内重复/多余的大括号（line 1220 `},`）已清理 - 需要后续关注：Chrome 在混用 `showDirectoryPicker` 和 `createObjectURL` 时，大文件可能触发 QuotaExceededError（目前 ZIP 包 < 50MB 无问题） ### 待办 - [ ] v3.0.0.3 release: database auto-backup, console.log cleanup - [ ] 测试 Firefox/Safari 降级下载路径 - [ ] 考虑 `showSaveFi",
-      "recallCount": 1,
+      "recallCount": 2,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 1,
+      "totalScore": 2,
       "maxScore": 1,
       "firstRecalledAt": "2026-05-31T10:31:36.449Z",
-      "lastRecalledAt": "2026-05-31T10:31:36.449Z",
+      "lastRecalledAt": "2026-06-15T03:12:52.916Z",
       "queryHashes": [
-        "451b2b60fd5f"
+        "451b2b60fd5f",
+        "e8bfb7b9de6c"
       ],
       "recallDays": [
-        "2026-05-31"
+        "2026-05-31",
+        "2026-06-15"
       ],
       "conceptTags": [
         "backup",
@@ -534,18 +536,20 @@
       "endLine": 73,
       "source": "memory",
       "snippet": "2. **导出命名弹窗** (`modalExportName`) - 新增 HTML 弹窗，`.pt` 和批量 PNG（ZIP包）导出前弹出 - 包含：文件名输入框 + 导出位置虚线框（单击选目录） + 确认/取消按钮 - `_showExportNameDialog(ids, fmt)` — 显示弹窗，默认文件名取自 `_makeExportFilename` - `_confirmBatchExport()` — 写入所选目录或降级浏览器下载 3. **真实目录选择** — `window.showDirectoryPicker()`（File System Access API） - `_pickExportPath()` — 弹出 Windows 系统目录选择器，选中的目录作为导出目标 - `_writeBlobToExportDir(blob, filename)` — 通过 FileSystemFileHandle 将 blob 直接写入选定目录 - 若浏览器不支持则降级为 `<a>` 下载 4. **导出色界面调整** - 去掉\"导出路径输入框 + 独立浏览按钮\"的重复控件 - 改为单个虚线框，单击触发目录选择器 - 选中后显示 `📁 文件夹名` - 默认未选择时提示 `🖱 点击此处选择保存目录` 5. **批次模式 PNG 导出命名** — `batchExport('png')` 也走命名弹窗，与 .pt 一致 6. **`_doExportP",
-      "recallCount": 1,
+      "recallCount": 2,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 1,
+      "totalScore": 2,
       "maxScore": 1,
       "firstRecalledAt": "2026-06-06T04:16:58.935Z",
-      "lastRecalledAt": "2026-06-06T04:16:58.935Z",
+      "lastRecalledAt": "2026-06-15T03:17:39.563Z",
       "queryHashes": [
-        "99688f0cb941"
+        "99688f0cb941",
+        "e44e1dc1ad22"
       ],
       "recallDays": [
-        "2026-06-06"
+        "2026-06-06",
+        "2026-06-15"
       ],
       "conceptTags": [
         "确认/取消按钮",
@@ -621,6 +625,99 @@
         "v4.0.0-phase4",
         "04-16",
         "image/video"
+      ]
+    },
+    "memory:memory/2026-06-14.md:1:23": {
+      "key": "memory:memory/2026-06-14.md:1:23",
+      "path": "memory/2026-06-14.md",
+      "startLine": 1,
+      "endLine": 23,
+      "source": "memory",
+      "snippet": "# 会话记忆 — 2026-06-14 (Phase 9.3.1) ## 本次目标 - 修复封装版 EXE 数据封装：种子数据（151 prompts + 233 library_assets）在首次启动时自动写入 - 修复新建项目报错（`user_project` 缺列） - Composition 模块中文名显示 - 端口自兜底 - 跨机迁移方案 ## 关键发现 1. **依赖注入时机**：`_migrate_v4` 必须在 Seedance V2 数据初始化之后执行，否则 `library_assets` 为空 2. **PyInstaller 模块丢失**：`seed_migrate.py` 未自动打包 → 改为内联到 `main.py` 3. **CREATE TABLE 不幂等**：使用 `CREATE TABLE IF NOT EXISTS` 后，旧表中缺失的列需通过 `ALTER TABLE` 补丁 4. **前端模块名翻译**：4 处直接显示 `card.module` 原始 ID，需加 `_moduleDisplayName()` 翻译 ## 修复清单 | 文件 | 修改内容 | |------|---------| | `backend/main.py` | `_migrate_v4()` 内联 + 执行顺序修复 + 端口自兜底 + 启动失败 pause | | `backend/database.py` | `user_project` 补 4 列 + `user_project_scene` 补 3 列 + ALTER TABLE 迁移 | |",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-15T03:12:52.916Z",
+      "lastRecalledAt": "2026-06-15T03:12:52.916Z",
+      "queryHashes": [
+        "e8bfb7b9de6c"
+      ],
+      "recallDays": [
+        "2026-06-15"
+      ],
+      "conceptTags": [
+        "9.3.1",
+        "library-assets",
+        "user-project",
+        "migrate-v4",
+        "seed-migrate.py",
+        "main.py",
+        "card.module",
+        "backend/main.py"
+      ]
+    },
+    "memory:memory/2026-06-14.md:20:41": {
+      "key": "memory:memory/2026-06-14.md:20:41",
+      "path": "memory/2026-06-14.md",
+      "startLine": 20,
+      "endLine": 41,
+      "source": "memory",
+      "snippet": "| `backend/database.py` | `user_project` 补 4 列 + `user_project_scene` 补 3 列 + ALTER TABLE 迁移 | | `backend/sync.py` | 路径改为 `paths.py` 统一解析 + 移除 `backend.` 前缀导入 | | `backend/api/prompts.py` | `_module_name()` 补 `composition` + `builtin` 判断补 `composition` | | `frontend/static/js/app_core.js` | 加 `_moduleDisplayName()` + 卡片徽章翻译 | | `frontend/static/js/app_editor.js` | 侧边栏 `names` 映射补 `composition: '分镜构图'` | | `frontend/static/js/v3_composer.js` | `card.module` 翻译 | | `frontend/static/js/v4_cards.js` | `card.module` 翻译 | | `frontend/static/js/app.js` | `names` 映射补 `composition`（废弃文件，一致处理） | | `build.spec` | `hiddenimports` 补 `seed_migrate`、`paths` | ## Git Tag - `v4.0.0-phase9.3.1` (377ea65) ##",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-15T03:12:52.916Z",
+      "lastRecalledAt": "2026-06-15T03:12:52.916Z",
+      "queryHashes": [
+        "e8bfb7b9de6c"
+      ],
+      "recallDays": [
+        "2026-06-15"
+      ],
+      "conceptTags": [
+        "backend/database.py",
+        "user-project",
+        "user-project-scene",
+        "backend/sync.py",
+        "paths.py",
+        "backend/api/prompts.py",
+        "module-name",
+        "frontend/static/js/app-core.js"
+      ]
+    },
+    "memory:memory/2026-06-15.md:1:29": {
+      "key": "memory:memory/2026-06-15.md:1:29",
+      "path": "memory/2026-06-15.md",
+      "startLine": 1,
+      "endLine": 29,
+      "source": "memory",
+      "snippet": "# 会话记忆 — 2026-06-15 (macOS 适配 + 跨平台封装规则制定) ## 背景 用户需要 PromptKit 在 macOS Catalina (10.15.8, Intel iMac 2013) 上纯本地运行，不要开发环境，只需双击启动、浏览器操作。 ## 会话目标 1. 将 Windows 项目封装为 macOS 可运行的交付件 2. 修正在 macOS 上暴露的所有跨平台兼容性 bug 3. 总结 Windows ↔ macOS 封装规则，写入长期记忆 ## 遇到的 6 个关键问题及修复 ### 1. ZIP 路径分隔符问题 → 目录结构全毁 - **现象**：Windows 用 PowerShell `Compress-Archive` 打包 → 反斜杠 `\\` → macOS 解压后 `backend\\main.py` 变成扁平文件名，非文件夹 - **修复**：改用 Python `zipfile` + `as_posix()` 正斜杠路径 - **规则**：跨平台 ZIP 必须用 Python zipfile ### 2. macOS 隔离标记 + 执行权限 - **现象**：双击 `.command` 报 \"没有正确的访问权限\" - **原因**：① `chmod` 未加执行权限 ② macOS Gatekeeper `com.apple.quarantine` 标记 - **修复**：`chmod +x` + `xattr -cr` 两步 ### 3. `requirements.txt` 缺包 - **现象**：`Runtime",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-15T03:17:39.563Z",
+      "lastRecalledAt": "2026-06-15T03:17:39.563Z",
+      "queryHashes": [
+        "e44e1dc1ad22"
+      ],
+      "recallDays": [
+        "2026-06-15"
+      ],
+      "conceptTags": [
+        "10.15.8",
+        "compress-archive",
+        "main.py",
+        "as-posix",
+        "com.apple.quarantine",
+        "requirements.txt",
+        "会话",
+        "记忆"
       ]
     }
   }

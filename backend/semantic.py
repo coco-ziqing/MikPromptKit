@@ -17,7 +17,7 @@ from database import get_db
 try:
     import numpy as np
     _NUMPY_OK = True
-except ImportError:
+except Exception:
     _NUMPY_OK = False
     np = None
 
@@ -25,7 +25,7 @@ _ML_OK = False
 try:
     from sentence_transformers import SentenceTransformer
     _ML_OK = True
-except ImportError:
+except Exception:
     SentenceTransformer = None
 
 

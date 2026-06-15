@@ -149,10 +149,9 @@ Object.assign(App, {
             '<span class="count-badge">' + (this.state.stats.total_prompts || '') + '</span>' +
             '</div>';
         for (const m of this.state.modules) {
+            if (m.id === 'seedance') continue; // 视频模版仅通过顶部按钮进入，侧边栏不显示
             const active = m.id === this.state.currentModule ? 'active' : '';
-            const clickHandler = m.id === 'seedance'
-                ? `App.switchView('seedance')`
-                : `App.switchModule('${m.id}')`;
+            const clickHandler = `App.switchModule('${m.id}')`;
             var deleteBtn = '';
             if (!m.builtin && this.state.editMode) {
                 deleteBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.deleteCustomModule(\'' + m.id + '\')" title="删除分组" style="font-size:11px;color:#ef4444;padding:0 4px;opacity:0.6;">✕</button>';
@@ -795,6 +794,8 @@ Object.assign(App, {
         var self = this;
         fetch('/api/status').then(function(r){return r.json();}).then(function(d){
             var v = d.version || '4.0.0';
+            // 仅保留主版本号 (如 v4.0.0-phase9.3 → v4.0.0)
+            v = v.split('-')[0];
             var brand = document.querySelector('.brand small');
             if (brand) brand.textContent = 'v' + v;
         }).catch(function(){});
