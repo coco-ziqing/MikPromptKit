@@ -776,10 +776,10 @@ Object.assign(App, {
         const btn = document.getElementById('btnTheme');
         if (theme === 'dark') {
             document.body.classList.add('dark-theme');
-            if (btn) btn.innerHTML = '<i class="bi bi-sun"></i>';
+            if (btn) { btn.innerHTML = '<i class="bi bi-sun"></i>'; btn.title = '切换亮色模式'; }
         } else {
             document.body.classList.remove('dark-theme');
-            if (btn) btn.innerHTML = '<i class="bi bi-moon-stars"></i>';
+            if (btn) { btn.innerHTML = '<i class="bi bi-moon-stars"></i>'; btn.title = '切换深色模式'; }
         }
     },
 

@@ -1,4 +1,13 @@
-# WebUI 提示词检索工具 - Python 依赖
-# 安装：pip install -r requirements.txt
+# PromptKit v4.0.0 — 完整依赖（Windows + macOS 通用）
+# 安装：pip3 install -r requirements.txt
 fastapi==0.115.0
 uvicorn==0.30.0
+aiohttp==3.13.5
+httpx==0.28.1
+httpx-sse==0.4.3
+pillow==12.2.0
+numpy<2
+sentence-transformers
+aiofiles==24.1.0
+python-multipart==0.0.9
+torch

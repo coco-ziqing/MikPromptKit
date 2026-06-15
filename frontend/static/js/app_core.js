@@ -43,7 +43,7 @@ const App = {
         currentWordpack: null,
         // 推荐
         currentPromptId: null,
-        theme: 'light',
+        theme: 'dark',
         columns: 3,  // 卡片列数
         // Seedance
         seedanceView: 'templates',
@@ -59,7 +59,7 @@ const App = {
     // ============ 初始化 ============
     async init() {
         // 恢复主题
-        const savedTheme = ((typeof localStorage !== 'undefined' && localStorage.getItem) ? localStorage.getItem('promptkit_theme') : 'light') || 'light';
+        const savedTheme = ((typeof localStorage !== 'undefined' && localStorage.getItem) ? localStorage.getItem('promptkit_theme') : 'dark') || 'dark';
         this.applyTheme(savedTheme);
 
         // 恢复列数设置
@@ -193,52 +193,52 @@ const App = {
         if (view === 'home') {
             document.getElementById('viewHome').classList.add('active-view');
             document.getElementById(navMap[view]).classList.add('active');
-            document.getElementById('globalSearchBox').style.display = 'flex';
+            document.getElementById('globalSearchBox').style.visibility = 'visible';
+            this._expandSidebar();
             this.renderSidebar();
             this.loadPrompts();
             this._updatePageTitle();
         } else if (view === 'collections') {
             document.getElementById('viewCollections').classList.add('active-view');
             document.getElementById(navMap[view]).classList.add('active');
-            document.getElementById('globalSearchBox').style.display = 'none';
+            this._hideSearchBox();
             this.renderCollections();
         } else if (view === 'wordpacks') {
             document.getElementById('viewWordpacks').classList.add('active-view');
             document.getElementById(navMap[view]).classList.add('active');
-            document.getElementById('globalSearchBox').style.display = 'none';
+            this._hideSearchBox();
             this.renderWordpacks();
         } else if (view === 'history') {
             document.getElementById('viewHistory').classList.add('active-view');
             document.getElementById(navMap[view]).classList.add('active');
-            document.getElementById('globalSearchBox').style.display = 'none';
+            this._hideSearchBox();
             this.loadHistory();
         } else if (view === 'trash') {
             document.getElementById('viewTrash').classList.add('active-view');
             document.getElementById(navMap[view]).classList.add('active');
-            document.getElementById('globalSearchBox').style.display = 'none';
+            this._hideSearchBox();
             this.loadTrash();
         } else if (view === 'v4library') {
             var el = document.getElementById('viewV4library');
             if (el) el.classList.add('active-view');
             var navEl = document.getElementById('navV4Library');
             if (navEl) navEl.classList.add('active');
-            var sb = document.getElementById('globalSearchBox');
-            if (sb) sb.style.display = 'none';
+            this._hideSearchBox();
             this.loadV4Library();
                 } else if (view === 'v4media') {
             var el = document.getElementById('viewV4media');
             if (el) el.classList.add('active-view');
             var navEl = document.getElementById('navV4Media');
             if (navEl) navEl.classList.add('active');
-            var sb = document.getElementById('globalSearchBox');
-            if (sb) sb.style.display = 'none';
+            this._hideSearchBox();
             this.loadV4Media();
                 } else if (view === 'seedance') {
             this.state.currentModule = 'seedance';
             this.renderSidebar();
-            this._closeMobileMenu();  // 移动端关闭侧边栏
+            this._closeMobileMenu();
             document.getElementById('viewSeedance').classList.add('active-view');
-            document.getElementById('globalSearchBox').style.display = 'none';
+            this._hideSearchBox();
+            this._collapseSidebar();  // 组装器不需要功能模块侧边栏，自动折叠
             this.loadSeedanceCategories();
             this.loadSeedanceTemplates();
         }
@@ -249,6 +249,34 @@ const App = {
         if (this.state.editMode && view !== 'home') {
             this.state.editMode = false;
             try { localStorage.removeItem('promptkit_editmode'); } catch(e) {}
+        }
+    },
+
+    // 辅助：隐藏搜索框但保留占位空间（避免顶部按钮位移）
+    _hideSearchBox() {
+        var sb = document.getElementById('globalSearchBox');
+        if (sb) sb.style.visibility = 'hidden';
+    },
+
+    // 辅助：自动折叠侧边栏（切换到无关视图时调用）
+    _collapseSidebar() {
+        var sidebar = document.getElementById('sidebar');
+        var btn = document.getElementById('sidebarToggleBtn');
+        if (sidebar && !sidebar.classList.contains('collapsed')) {
+            sidebar.classList.add('collapsed');
+            document.body.classList.add('sidebar-collapsed');
+            if (btn) { btn.innerHTML = '\u25B6'; btn.title = '展开模块列表'; }
+        }
+    },
+
+    // 辅助：自动展开侧边栏（回到首页时调用）
+    _expandSidebar() {
+        var sidebar = document.getElementById('sidebar');
+        var btn = document.getElementById('sidebarToggleBtn');
+        if (sidebar && sidebar.classList.contains('collapsed')) {
+            sidebar.classList.remove('collapsed');
+            document.body.classList.remove('sidebar-collapsed');
+            if (btn) { btn.innerHTML = '\u25C0'; btn.title = '折叠模块列表'; }
         }
     },
 
