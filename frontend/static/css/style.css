@@ -2126,6 +2126,49 @@ body.dark-theme .s2-char-selector { background: rgba(139,92,246,0.08); border-co
 body.dark-theme .hc-item:hover { background: rgba(255,255,255,0.03) !important; }
 body.dark-theme .hc-modal { box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
 
+/* ====== v4.0.0-phase11.1: Signal Lights ====== */
+.sl-bar { font-family: 'Segoe UI', system-ui, sans-serif !important; letter-spacing: 0.3px; }
+.sl-item { display: inline-flex; align-items: center; gap: 4px; transition: color 0.3s; }
+.sl-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    transition: all 0.4s ease;
+}
+.sl-dot-on {
+    background: #10b981;
+    box-shadow: 0 0 6px 2px rgba(16,185,129,0.5);
+    animation: sl-pulse 2s ease-in-out infinite;
+}
+.sl-dot-err {
+    background: #ef4444;
+    box-shadow: 0 0 6px 2px rgba(239,68,68,0.5);
+    animation: sl-blink 0.8s ease-in-out infinite;
+}
+.sl-dot-off {
+    background: #94a3b8;
+    box-shadow: none;
+}
+.sl-dot-unknown {
+    background: #cbd5e1;
+    box-shadow: none;
+}
+.sl-ms { font-size: 8px; opacity: 0.5; min-width: 30px; }
+@keyframes sl-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.65; }
+}
+@keyframes sl-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+/* dark theme */
+body.dark-theme .sl-dot-unknown { background: #475569; }
+body.dark-theme .sl-dot-off { background: #64748b; }
+body.dark-theme .sl-dot-on { box-shadow: 0 0 6px 2px rgba(16,185,129,0.7); }
+body.dark-theme .sl-dot-err { box-shadow: 0 0 6px 2px rgba(239,68,68,0.7); }
+
+
 
 
 .s2-ext-tags { display: inline-flex; gap: 4px; flex-wrap: wrap; margin-left: 4px; }

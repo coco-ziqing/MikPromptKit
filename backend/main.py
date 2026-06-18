@@ -220,10 +220,22 @@ async def lifespan(app: FastAPI):
         # 使用当前运行中的 event loop
         loop = _asyncio.get_running_loop()
         loop.create_task(_do_startup_check())
+        # v4.0.0-phase11.1: 启动后台持续监听（信号灯）
+        try:
+            from health import start_watcher
+            start_watcher()
+        except Exception as e:
+            print("[监听] 启动失败:", e)
     except Exception as e:
         print("[自检] 启动检查失败:", e)
     yield
     print("[关闭] 服务停止")
+    # 停止监听器
+    try:
+        from health import stop_watcher
+        stop_watcher()
+    except Exception:
+        pass
     stop_auto_backup()
 
 
