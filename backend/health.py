@@ -8,6 +8,15 @@ from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/api/health", tags=["health"])
 
+# ========== v4.0.0-phase11.1: 后台持续监听 ==========
+_watch_status = {
+    "ollama": {"ok": None, "url": "", "error": "未检测", "latency_ms": 0, "updated_at": ""},
+    "comfyui": {"ok": None, "url": "", "error": "未检测", "latency_ms": 0, "updated_at": ""},
+    "running": False,
+    "interval_sec": 30,
+}
+_watch_task = None
+
 # ---------- 常量 ----------
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_COMFY_URL = "http://127.0.0.1:8188"
@@ -421,4 +430,102 @@ def get_health_config():
         ],
         "default_timeout": 5,
         "auto_check_on_startup": True
+    }
+
+
+# ====================== v4.0.0-phase11.1: 后台持续监听 ======================
+
+async def _ping_ollama() -> dict:
+    """轻量 ping Ollama（只测连通性 + 延迟）"""
+    cfg = _get_ollama_cfg()
+    url = (cfg.get("server_url") or DEFAULT_OLLAMA_URL).rstrip("/")
+    import httpx, time as _time
+    t0 = _time.time()
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{url}/api/tags")
+            ok = resp.status_code == 200
+            return {"ok": ok, "url": url, "error": "" if ok else f"HTTP {resp.status_code}",
+                    "latency_ms": round((_time.time() - t0) * 1000)}
+    except Exception as e:
+        return {"ok": False, "url": url, "error": str(e)[:80], "latency_ms": round((_time.time() - t0) * 1000)}
+
+
+async def _ping_comfyui() -> dict:
+    """轻量 ping ComfyUI"""
+    try:
+        cfg = _get_comfy_cfg()
+    except Exception:
+        cfg = {}
+    if not cfg.get("enabled", True):
+        return {"ok": True, "skipped": True, "url": "", "error": "已禁用", "latency_ms": 0}
+    url = (cfg.get("server_url") or DEFAULT_COMFY_URL).rstrip("/")
+    import httpx, time as _time
+    t0 = _time.time()
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{url}/")
+            ok = resp.status_code == 200
+            return {"ok": ok, "url": url, "error": "" if ok else f"HTTP {resp.status_code}",
+                    "latency_ms": round((_time.time() - t0) * 1000)}
+    except Exception as e:
+        return {"ok": False, "url": url, "error": str(e)[:80], "latency_ms": round((_time.time() - t0) * 1000)}
+
+
+async def _watch_loop():
+    """后台循环: 每 interval_sec 秒 ping Ollama + ComfyUI"""
+    interval = _watch_status["interval_sec"]
+    while _watch_status["running"]:
+        try:
+            r = await _ping_ollama()
+            _watch_status["ollama"] = {**r, "updated_at": _now_iso()}
+        except Exception:
+            pass
+        try:
+            r = await _ping_comfyui()
+            _watch_status["comfyui"] = {**r, "updated_at": _now_iso()}
+        except Exception:
+            pass
+        for _ in range(interval):
+            if not _watch_status["running"]:
+                break
+            await asyncio.sleep(1)
+
+
+def _now_iso():
+    import datetime
+    return datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def start_watcher():
+    """启动后台监听器"""
+    if _watch_status["running"]:
+        return False
+    _watch_status["running"] = True
+    try:
+        loop = asyncio.get_running_loop()
+        global _watch_task
+        _watch_task = loop.create_task(_watch_loop())
+        print(f"[监听] 后台监听已启动（每{_watch_status['interval_sec']}s ping Ollama + ComfyUI）")
+        return True
+    except RuntimeError:
+        print("[监听] 非异步上下文，延后启动")
+        return False
+
+
+def stop_watcher():
+    """停止后台监听器"""
+    _watch_status["running"] = False
+    if _watch_task:
+        _watch_task.cancel()
+
+
+@router.get("/status")
+def get_watch_status():
+    """获取外部依赖实时状态（信号灯用）"""
+    return {
+        "ollama": {k: v for k, v in _watch_status["ollama"].items()},
+        "comfyui": {k: v for k, v in _watch_status["comfyui"].items()},
+        "running": _watch_status["running"],
+        "interval_sec": _watch_status["interval_sec"],
     }

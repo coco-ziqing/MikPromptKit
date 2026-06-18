@@ -103,6 +103,9 @@ const App = {
                 if (App.healthCheck && typeof App.healthCheck.autoCheck === 'function') {
                     App.healthCheck.autoCheck();
                 }
+                if (App.signalLights && typeof App.signalLights.init === 'function') {
+                    App.signalLights.init();
+                }
             }, 1200);
 
             if (savedView === 'seedance') {
