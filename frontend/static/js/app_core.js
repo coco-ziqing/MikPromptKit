@@ -97,6 +97,14 @@ const App = {
             ]);
 
             // 恢复上次的视图状态（savedView/savedModule 已在 init 顶部读取）
+
+            // v4.0.0-phase11: 启动自检（延迟给UI先渲染）
+            setTimeout(function() {
+                if (App.healthCheck && typeof App.healthCheck.autoCheck === 'function') {
+                    App.healthCheck.autoCheck();
+                }
+            }, 1200);
+
             if (savedView === 'seedance') {
                 this.switchView('seedance');
                 var savedSeedanceTab = localStorage.getItem('promptkit_seedance_tab');

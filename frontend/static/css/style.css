@@ -2120,6 +2120,13 @@ body.dark-theme .s2-audio-switch { color: var(--text-muted); }
 .char-profile-modal { box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
 body.dark-theme .s2-char-selector { background: rgba(139,92,246,0.08); border-color: rgba(139,92,246,0.3); }
 
+/* ====== v4.0.0-phase11: Health Check ====== */
+.hc-modal { box-shadow: 0 20px 60px rgba(0,0,0,0.35); }
+.hc-item:hover { background: var(--hover-bg, rgba(0,0,0,0.02)) !important; }
+body.dark-theme .hc-item:hover { background: rgba(255,255,255,0.03) !important; }
+body.dark-theme .hc-modal { box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+
+
 
 .s2-ext-tags { display: inline-flex; gap: 4px; flex-wrap: wrap; margin-left: 4px; }
 .s2-ext-tag {
