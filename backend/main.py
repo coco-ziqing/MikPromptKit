@@ -45,6 +45,7 @@ from api.translate import router as translate_router
 from api.media import router as media_router
 from api.seedance_v2 import router as seedance_v2_router
 from api.characters import router as characters_router
+from health import router as health_router
 from sync import (
     export_package, restore_package, import_package,
     list_packages, delete_package, get_package_info,
@@ -167,12 +168,60 @@ async def lifespan(app: FastAPI):
         total = cards = libs = 0
     print()
     print("=" * 50)
-    print("  [OK] 咪卡MiK提示词助手 v4.0.0-phase9.3 已启动")
+    print("  [OK] 咪卡MiK提示词助手 v4.0.0-phase11 已启动")
     print("  [本机] http://127.0.0.1:%s" % ACTUAL_PORT)
     print("  [局域网] http://%s:%s" % (host_ip, ACTUAL_PORT))
     print("  [词库] %d 条 | 卡片 %d | 资产 %d" % (total, cards, libs))
     print("=" * 50)
     print()
+
+    # v4.0.0-phase11: 启动后台自检（不阻塞启动）
+    try:
+        import asyncio as _asyncio
+        async def _do_startup_check():
+            from health import _check_ollama, _check_comfyui, _check_semantic, _check_ffmpeg
+            from health import _check_pillow, _check_database, _check_disk, _check_port, _check_playground_llm
+            print("[自检] 启动健康检查...")
+            checks = [
+                ("DB", lambda: _check_database()),
+                ("Pillow", lambda: _check_pillow()),
+                ("Port", lambda: _check_port()),
+                ("Disk", lambda: _check_disk()),
+                ("FFmpeg", lambda: _check_ffmpeg()),
+                ("Semantic", lambda: _check_semantic()),
+            ]
+            for name, fn in checks:
+                try:
+                    r = fn()
+                    status = "OK" if r.get("ok") else ("SKIP" if r.get("skipped") else "WARN")
+                    print(f"  [{status}] {name}: {r.get('hint') or r.get('error') or '通过'}")
+                except Exception as e:
+                    print(f"  [ERR] {name}: {e}")
+            # Async checks
+            try:
+                r = await _check_ollama(3.0)
+                st = "OK" if r.get("ok") else "WARN"
+                print(f"  [{st}] Ollama: {r.get('hint') or r.get('error') or f'{r.get("model_count",0)} models'}")
+            except Exception as e:
+                print(f"  [WARN] Ollama: {e}")
+            try:
+                r = await _check_comfyui(3.0)
+                st = "OK" if r.get("ok") else ("SKIP" if r.get("skipped") else "WARN")
+                print(f"  [{st}] ComfyUI: {r.get('hint') or r.get('error') or '通过'}")
+            except Exception as e:
+                print(f"  [SKIP] ComfyUI: {e}")
+            try:
+                r = _check_playground_llm()
+                st = "OK" if r.get("ok") else ("SKIP" if r.get("skipped") else "WARN")
+                print(f"  [{st}] Playground: {r.get('hint') or r.get('error') or '通过'}")
+            except Exception as e:
+                print(f"  [SKIP] Playground: {e}")
+            print("[自检] 完成 — 浏览器访问 /api/health/check 查看详情\n")
+        # 使用当前运行中的 event loop
+        loop = _asyncio.get_running_loop()
+        loop.create_task(_do_startup_check())
+    except Exception as e:
+        print("[自检] 启动检查失败:", e)
     yield
     print("[关闭] 服务停止")
     stop_auto_backup()
@@ -213,6 +262,7 @@ app.include_router(translate_router)
 app.include_router(media_router)
 app.include_router(seedance_v2_router)
 app.include_router(characters_router)
+app.include_router(health_router)
 
 
 # ============ 数据同步 API (.pkb 包系统) ============
