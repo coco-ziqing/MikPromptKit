@@ -6,7 +6,7 @@
     'use strict';
 
     App.seedanceV2 = {
-        _F:{'camera_move':'运镜','subject':'主体','scene_desc':'场景','composition':'构图','lighting':'光影','action':'动作','focal_length':'焦段','texture':'质感','speed':'速率','emotion':'情绪','color_grade':'调色','weather':'天气','particles':'粒子','perspective':'视角','depth_of_field':'景深','filter':'滤镜','natural_force':'外力','environment_detail':'环境','film_flaw':'瑕疵','fantasy_physics':'奇幻'},
+        _F:{'camera_move':'运镜','subject':'主体','scene_desc':'场景','composition':'构图','lighting':'光影','action':'动作','focal_length':'焦段','texture':'质感','speed':'速率','emotion':'情绪','color_grade':'调色','weather':'天气','particles':'粒子','perspective':'视角','depth_of_field':'景深','filter':'滤镜','natural_force':'外力','environment_detail':'环境','film_flaw':'瑕疵','fantasy_physics':'奇幻','character_voice':'角色旁白','bgm':'BGM','sfx':'音效'},
         _EF:['action','focal_length','texture','speed','emotion','color_grade','weather','particles','perspective','depth_of_field','filter','natural_force','environment_detail','film_flaw','fantasy_physics'],
         projects: [], currentProjectId: null, currentProject: null,
         scenes: [], libraries: [], cardCache: {}, cardPages: {},
@@ -54,6 +54,8 @@
         }
 
         this._initPromise = (async function() {
+            // v4.0.0-phase10.1: 预加载角色列表（供镜头卡角色名显示）
+            try { App.characterLib.loadList(); } catch(e) {}
             await self.loadLibraries(); self.preloadAllCardCaches(); await self.loadProjects(); self.renderProjectList();
             try{var savedPid=localStorage.getItem('promptkit_seedance_project');if(savedPid){var found=false;for(var i=0;i<self.projects.length;i++){if(self.projects[i].id==parseInt(savedPid)){found=true;break;}}if(found)self.openProject(parseInt(savedPid));}}catch(e){}
             setTimeout(function() { self._restoreSidebar(); }, 200);
@@ -163,7 +165,7 @@
     App.seedanceV2.saveProject = async function(){
         if(!this.currentProjectId)return;
         var d={};
-        var fields=['name','total_duration','aspect_ratio','resolution','global_style','global_transition','negative_prompt'];
+        var fields=['name','total_duration','aspect_ratio','resolution','global_style','global_transition','negative_prompt','audio_enabled'];
         for(var i=0;i<fields.length;i++){
             var f=fields[i];
             var e=document.getElementById('s2_'+f);
@@ -530,7 +532,7 @@
         h+='<div class="s2-global-row" style="margin-bottom:6px;">';
         h+=ms('s2_format','输出格式',[['seedance','Seedance'],['kling','Kling'],['minimax','MiniMax'],['comfyui','ComfyUI'],['raw','纯镜头Raw']],'seedance');
         h+=ms('s2_density','详细度',[['compact','简洁 compact'],['standard','标准 standard'],['detailed','详细 detailed']],'standard');
-        h+='<div class="s2-field"><label>音频 <input type="checkbox" id="s2_audio_enabled" onchange="App.seedanceV2._toggleAudioSection();App.seedanceV2._debouncedCompose()"></label></div>';
+        h+='<div class="s2-field"><label>音频 <input type="checkbox" id="s2_audio_enabled" '+(p.audio_enabled?'checked':'')+' onchange="App.seedanceV2._toggleAudioSection();App.seedanceV2._debouncedCompose()"></label></div>';
         h+='</div>';
         // 音频子面板（默认隐藏）
         h+='<div id="s2_audio_section" style="display:none;margin-bottom:6px;padding:8px;background:var(--hover-bg);border-radius:6px;">';
@@ -612,7 +614,8 @@
                 var fields = ['camera_move','subject','scene_desc','composition','lighting',
                     'action','focal_length','texture','speed','emotion','color_grade',
                     'weather','particles','perspective','depth_of_field','filter',
-                    'natural_force','environment_detail','film_flaw','fantasy_physics'];
+                    'natural_force','environment_detail','film_flaw','fantasy_physics',
+                    'character_voice','bgm','sfx'];
                 var clip = {};
                 for (var fi = 0; fi < fields.length; fi++) {
                     if (src[fields[fi]]) clip[fields[fi]] = src[fields[fi]];
@@ -857,6 +860,37 @@
         h+='<div class="s2-scene-fields"><div class="s2-field-group"><span class="s2-field-label">基础</span>';
         ['camera_move','subject','scene_desc','composition','lighting'].forEach(function(f){var v=s[f]||'',n=F[f]||f;h+='<span class="s2-field-chip '+(v?'s2-filled':'s2-empty')+'" data-scene-id="'+s.id+'" data-field="'+f+'"><span class="s2-chip-label">'+n+'</span><span class="s2-chip-val">'+(v.length>10?v.substring(0,10)+'..':(v||'+'))+'</span></span>';});
         h+='</div>';
+        // == v4.0.0-phase10.1: 出演角色选择器 ==
+        // 获取已分配的 character_id，查找角色名称
+        var charName = '';
+        if (s.character_id && App.characterLib) {
+            for (var ci = 0; ci < (App.characterLib._cache||[]).length; ci++) {
+                if (App.characterLib._cache[ci].id == s.character_id) { charName = App.characterLib._cache[ci].name; break; }
+            }
+        }
+        h+='<div class="s2-field-group s2-char-group">';
+        h+='<span class="s2-field-label" style="color:#8b5cf6;">角色</span>';
+        h+='<span class="s2-char-selector" onclick="App.characterLib.openScenePicker('+s.id+')" title="选择/更换出演角色" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px dashed '+(charName?'#8b5cf6':'var(--border-color)')+';border-radius:6px;cursor:pointer;font-size:11px;color:'+(charName?'#8b5cf6':'var(--text-muted)')+';background:'+(charName?'rgba(139,92,246,0.06)':'')+';transition:0.12s;min-width:60px;">';
+        h+='<span>'+(charName?'🎭 '+App._escape(charName.substring(0,14)):'🎭 选择角色')+'</span>';
+        h+='<span style="font-size:9px;">▾</span></span>';
+        h+='</div>';
+        // == v4.0.0-phase10: 音频四要素区 ==
+        h+='<div class="s2-field-group s2-audio-group">';
+        h+='<span class="s2-field-label">音频</span>';
+        h+='<label class="s2-audio-switch" title="启用此镜头音频描述"><input type="checkbox" '+(s.audio_enabled?'checked':'')+' data-scene-id="'+s.id+'" onchange="App.seedanceV2._toggleSceneAudio('+s.id+',this.checked)"><span>音频</span></label>';
+        h+='<div class="s2-audio-fields">';
+        var audioFields = [
+            {f:'character_voice',n:'角色旁白',icon:'🎤'},
+            {f:'bgm',n:'BGM',icon:'🎵'},
+            {f:'sfx',n:'音效',icon:'🔊'}
+        ];
+        for (var ai = 0; ai < audioFields.length; ai++) {
+            var af = audioFields[ai];
+            var av = s[af.f] || '';
+            var filled = av && av.trim();
+            h+='<span class="s2-field-chip s2-chip-audio '+(filled?'s2-filled':'s2-empty')+'" data-scene-id="'+s.id+'" data-field="'+af.f+'" style="opacity:'+(s.audio_enabled?'1':'0.4')+';"><span class="s2-chip-label">'+af.icon+' '+af.n+'</span><span class="s2-chip-val">'+(filled?(av.length>12?av.substring(0,12)+'..':av):'+')+'</span></span>';
+        }
+        h+='</div></div>';
                 // == 拓展区：功能单元(Ext-Unit)系统 ==
         h+='<div class="s2-field-group s2-ext-group">';
         h+='<span class="s2-field-label">拓展</span>';
@@ -871,7 +905,7 @@
 
     // 折叠后纯文本行（无分组标签，仅字段值拼接）
     App.seedanceV2._scenePlainText = function(s) {
-        var fields = ['camera_move','subject','action','scene_desc','composition','lighting','focal_length','texture','speed','emotion','color_grade','weather','particles','perspective','depth_of_field','filter','natural_force','environment_detail','film_flaw','fantasy_physics'];
+        var fields = ['camera_move','subject','action','scene_desc','composition','lighting','focal_length','texture','speed','emotion','color_grade','weather','particles','perspective','depth_of_field','filter','natural_force','environment_detail','film_flaw','fantasy_physics','character_voice','bgm','sfx'];
         var parts = [];
         for (var i = 0; i < fields.length; i++) {
             var v = s[fields[i]];
@@ -881,6 +915,19 @@
     };
 
     // 镜头操作
+    App.seedanceV2._toggleSceneAudio = function(sid, enabled) {
+        var s = null;
+        for (var i = 0; i < this.scenes.length; i++) {
+            if (this.scenes[i].id === sid) { s = this.scenes[i]; break; }
+        }
+        if (!s) return;
+        s.audio_enabled = enabled ? 1 : 0;
+        App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sid, {
+            method:'PUT', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({audio_enabled: enabled ? 1 : 0})
+        }).then(function() { App.seedanceV2.compose(); });
+        this.renderScenes();
+    };
     
     
     
@@ -948,7 +995,7 @@
             if (this.scenes[i].id === sid) { scene = this.scenes[i]; idx = i; break; }
         }
         if (!scene) { App.showToast('镜头未找到', 'error'); return; }
-        var fields = ['camera_move','subject','scene_desc','composition','lighting','action','focal_length','texture','speed','emotion','color_grade','weather','particles','perspective','depth_of_field','filter','natural_force','environment_detail','film_flaw','fantasy_physics'];
+        var fields = ['camera_move','subject','scene_desc','composition','lighting','action','focal_length','texture','speed','emotion','color_grade','weather','particles','perspective','depth_of_field','filter','natural_force','environment_detail','film_flaw','fantasy_physics','character_voice','bgm','sfx'];
         var data = { version: '1.0', type: 'promptkit_scene', exported_at: new Date().toISOString(), scene_name: '镜头'+(idx+1), duration: scene.duration, fields: {} };
         for (var fi = 0; fi < fields.length; fi++) {
             if (scene[fields[fi]]) data.fields[fields[fi]] = scene[fields[fi]];
@@ -1014,7 +1061,7 @@
         };
         input.click();
     };
-    App.seedanceV2.duplicateScene=async function(sid){var src=null;for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){src=this.scenes[i];break;}}if(!src)return;var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_order:this.scenes.length+1,duration:src.duration||3,camera_move:src.camera_move,subject:src.subject,scene_desc:src.scene_desc,composition:src.composition,lighting:src.lighting,action:src.action,focal_length:src.focal_length,texture:src.texture,speed:src.speed,emotion:src.emotion,color_grade:src.color_grade,weather:src.weather,particles:src.particles,perspective:src.perspective,depth_of_field:src.depth_of_field,filter:src.filter,natural_force:src.natural_force,environment_detail:src.environment_detail,film_flaw:src.film_flaw,fantasy_physics:src.fantasy_physics})});if(d&&d.ok)await this.openProject(this.currentProjectId);else console.warn("deleteScene failed");};
+    App.seedanceV2.duplicateScene=async function(sid){var src=null;for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){src=this.scenes[i];break;}}if(!src)return;var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_order:this.scenes.length+1,duration:src.duration||3,camera_move:src.camera_move,subject:src.subject,scene_desc:src.scene_desc,composition:src.composition,lighting:src.lighting,action:src.action,focal_length:src.focal_length,texture:src.texture,speed:src.speed,emotion:src.emotion,color_grade:src.color_grade,weather:src.weather,particles:src.particles,perspective:src.perspective,depth_of_field:src.depth_of_field,filter:src.filter,natural_force:src.natural_force,environment_detail:src.environment_detail,film_flaw:src.film_flaw,fantasy_physics:src.fantasy_physics,character_voice:src.character_voice,bgm:src.bgm,sfx:src.sfx,audio_enabled:src.audio_enabled})});if(d&&d.ok)await this.openProject(this.currentProjectId);else console.warn("deleteScene failed");};
     App.seedanceV2.insertScene=async function(sid,pos){if(!this.currentProjectId)return;var ref=null;for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){ref=this.scenes[i];break;}}if(!ref)return;var o=(pos==='before')?ref.scene_order:ref.scene_order+1;var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_order:o})});if(d&&d.ok){await this.openProject(this.currentProjectId);App.showToast('已插入新镜头','success');}};
     App.seedanceV2.reorderScenes=async function(src,tgt){if(!this.currentProjectId)return;var ids=[];for(var i=0;i<this.scenes.length;i++)ids.push(this.scenes[i].id);var si=ids.indexOf(src),ti=ids.indexOf(tgt);if(si<0||ti<0)return;ids.splice(si,1);var newTi=ids.indexOf(tgt);if(si<ti)ids.splice(newTi+1,0,src);else ids.splice(newTi,0,src);var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_ids:ids})});if(d&&d.ok){await this.openProject(this.currentProjectId);App.showToast('镜头已重新排序','success');}};
     App.seedanceV2.updateSceneField=async function(sid,f,v){var d={};d[f]=v;await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});};
@@ -1084,9 +1131,9 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
     App.seedanceV2._getSceneOrder=function(sid){for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid)return this.scenes[i].scene_order;}return'?';};
     App.seedanceV2._getCurrentScene=function(){if(!this.activeSceneId)return null;for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===this.activeSceneId)return this.scenes[i];}return null;};
     App.seedanceV2._textMatches=function(fieldVal,cardText){var fv=(fieldVal||'').toLowerCase(),ct=(cardText||'').toLowerCase();return fv.length>0&&(fv.indexOf(ct)>=0||ct.indexOf(fv)>=0);};
-    App.seedanceV2._sceneFieldKeys=['camera_move','subject','scene_desc','composition','lighting','focal_length','texture','speed','perspective','particles','weather','color_grade','emotion','natural_force','depth_of_field','filter','film_flaw','fantasy_physics','environment_detail','action'];
+    App.seedanceV2._sceneFieldKeys=['camera_move','subject','scene_desc','composition','lighting','focal_length','texture','speed','perspective','particles','weather','color_grade','emotion','natural_force','depth_of_field','filter','film_flaw','fantasy_physics','environment_detail','action','character_voice','bgm','sfx'];
     // 词库dimension_key → 镜头表字段名 映射（不一致的需在此声明）
-    App.seedanceV2._dimToField={'scene':'scene_desc','env_detail':'environment_detail'};App.seedanceV2._fieldToDim={'scene_desc':'scene','environment_detail':'env_detail'};
+    App.seedanceV2._dimToField={'scene':'scene_desc','env_detail':'environment_detail','audio_char_narr':'character_voice','audio_bgm':'bgm','audio_sfx':'sfx'};App.seedanceV2._fieldToDim={'scene_desc':'scene','environment_detail':'env_detail','character_voice':'audio_char_narr','bgm':'audio_bgm','sfx':'audio_sfx'};
     App.seedanceV2._dimToFieldKey=function(dimKey){return this._dimToField[dimKey]||dimKey;};
     App.seedanceV2.renderPickerLibTabs=function(libId){var c=document.getElementById('s2PickerLibTabs');if(!c)return;var scene=this._getCurrentScene();var basic=[],more=[],custom=[];var self=this;for(var i=0;i<this.libraries.length;i++){var lib=this.libraries[i];lib._sn=lib.dimension_name.replace('词库','').replace('描述','').substring(0,6);var fk=self._dimToFieldKey(lib.dimension_key);lib._filled=scene&&scene[fk]&&scene[fk].trim().length>0;if(lib.category==='basic')basic.push(lib);else if(lib.category==='custom'){lib._sn_custom=lib.dimension_name.substring(0,6);custom.push(lib);}else more.push(lib);}var tabHtml=function(libs,isSm){var h='';for(var j=0;j<libs.length;j++){var lib=libs[j];var a=lib.id===libId?' sp-lib-active':'';var dot=lib._filled?'<span class="sp-lib-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;margin-left:3px;vertical-align:middle;" title="已填充"></span>':'';var cls='sp-lib-tab'+(isSm?' sp-lib-tab-sm':'')+a+(lib._filled?' sp-lib-tab-filled':'');h+='<button class="'+cls+'" onclick="App.seedanceV2.switchPickerLib('+lib.id+')" title="'+App._escape(lib.dimension_name)+(lib._filled?' (已填充)':'')+'">'+App._escape(lib._sn)+dot+'</button>';}return h;};var h='<div class="sp-lib-primary">'+tabHtml(basic,false)+'</div><div class="sp-lib-secondary"><button class="sp-lib-more-btn" onclick="App.seedanceV2.toggleMoreLibs()"><span class="sp-more-icon">'+(this.moreLibsOpen?'\u25BC':'\u25B6')+'</span> '+(this.moreLibsOpen?'收起扩展词库':'更多词库')+'</button>';if(this.moreLibsOpen){h+='<div class="sp-lib-more-grid">'+tabHtml(more,true)+'</div>';}h+='</div>';// 自定义分组
         if(custom.length){h+='<div class="sp-lib-custom"><div class="sp-lib-custom-header"><span class="sp-lib-custom-label">\ud83d\udce1 自定义</span><button class="sp-lib-custom-manage" onclick="App.seedanceV2.openGroupManagerFromPicker()" title="管理自定义分组">⚙</button><button class="sp-lib-custom-manage" onclick="App.seedanceV2._openGroupCreator()" title="新建分组" style="margin-left:4px;">+📁</button></div><div class="sp-lib-custom-grid">'+tabHtml(custom,true)+'</div></div>';}c.innerHTML=h;};
@@ -1708,13 +1755,7 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
         var fmt=document.getElementById('s2_format')?.value||'seedance';
         var density=document.getElementById('s2_density')?.value||'standard';
         var includeAudio=document.getElementById('s2_audio_enabled')?.checked||false;
-        var body={format:fmt,density:density};
-        if(includeAudio){
-            body.include_audio=true;
-            var bgm=document.getElementById('s2_bgm');if(bgm&&bgm.value.trim())body.bgm=bgm.value.trim();
-            var sfx=document.getElementById('s2_sfx');if(sfx&&sfx.value.trim())body.sfx=sfx.value.trim();
-            var dialogue=document.getElementById('s2_dialogue');if(dialogue&&dialogue.value.trim())body.dialogue=dialogue.value.trim();
-        }
+        var body={format:fmt,density:density,include_audio:includeAudio};
         // 调用后端引擎
         var self=this;
         var o=document.getElementById('s2Output');if(o)o.value='正在合成…';

@@ -44,6 +44,7 @@ from api.composer_v3 import router as composer_v3_router
 from api.translate import router as translate_router
 from api.media import router as media_router
 from api.seedance_v2 import router as seedance_v2_router
+from api.characters import router as characters_router
 from sync import (
     export_package, restore_package, import_package,
     list_packages, delete_package, get_package_info,
@@ -211,6 +212,7 @@ app.include_router(composer_v3_router)
 app.include_router(translate_router)
 app.include_router(media_router)
 app.include_router(seedance_v2_router)
+app.include_router(characters_router)
 
 
 # ============ 数据同步 API (.pkb 包系统) ============

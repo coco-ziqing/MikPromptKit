@@ -2,7 +2,7 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit)
-- 版本：v4.0.0-phase9.3.1 (2026-06-14 会话关闭)
+- 版本：v4.0.0-phase9.4 (2026-06-15 会话关闭)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\start.bat` **推荐: `.\QUICK_START.bat`**
 - 默认端口：8080
