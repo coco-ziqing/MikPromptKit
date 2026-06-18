@@ -634,7 +634,7 @@ def update_project(project_id: int, data: dict = Body(...)):
         raise HTTPException(404, "项目不存在")
 
     fields = {}
-    for key in ["name", "total_duration", "aspect_ratio", "resolution", "global_style", "global_transition", "negative_prompt"]:
+    for key in ["name", "total_duration", "aspect_ratio", "resolution", "global_style", "global_transition", "negative_prompt", "audio_enabled"]:
         if key in data:
             fields[key] = data[key]
 
@@ -783,7 +783,9 @@ def create_scene(project_id: int, data: dict = Body(...)):
     extra_fields = ["camera_move", "subject", "scene_desc", "composition", "lighting",
                    "focal_length", "texture", "speed", "perspective", "particles", "weather",
                    "color_grade", "emotion", "natural_force", "depth_of_field", "filter",
-                   "film_flaw", "fantasy_physics", "environment_detail", "action", "details"]
+                   "film_flaw", "fantasy_physics", "environment_detail", "action", "details",
+                   # v4.0.0-phase10: audio
+                   "character_voice", "narration", "bgm", "sfx", "audio_enabled"]
     extra_keys = []
     extra_vals = []
     for f in extra_fields:
@@ -831,7 +833,9 @@ def update_scene(project_id: int, scene_id: int, data: dict = Body(...)):
         "camera_move", "subject", "scene_desc", "composition", "lighting",
         "focal_length", "texture", "speed", "perspective", "particles", "weather",
         "color_grade", "emotion", "natural_force", "depth_of_field", "filter",
-        "film_flaw", "fantasy_physics", "environment_detail", "action", "details"
+        "film_flaw", "fantasy_physics", "environment_detail", "action", "details",
+        # v4.0.0-phase10: audio 4-elements
+        "character_voice", "narration", "bgm", "sfx", "audio_enabled"
     ]
 
     has_recalc = "duration" in data or "scene_order" in data
@@ -1193,6 +1197,9 @@ def compose_project(project_id: int, data: dict = Body({})):
     fmt = data.get("format", "seedance")
     density = data.get("density", "standard")
     include_audio = data.get("include_audio", False)
+    # v4.0.0-phase10: 也接受项目级 audio_enabled
+    if not include_audio and proj.get("audio_enabled"):
+        include_audio = bool(int(proj["audio_enabled"]))
 
     # ---- 全局头部 ----
     ar = proj["aspect_ratio"] or "16:9"
@@ -1214,6 +1221,48 @@ def compose_project(project_id: int, data: dict = Body({})):
         # 拼接镜头描述
         scene_desc = _make_structured_description(scd, density)
 
+        # v4.0.0-phase10: 音频四要素融入镜头描述
+        if include_audio and scd.get("audio_enabled"):
+            audio_parts = []
+
+            # v4.0.0-phase10.1: 角色库自动注入
+            char_id = scd.get("character_id")
+            char_info = None
+            if char_id:
+                char_info = db.execute(
+                    "SELECT name, voice_type, voice_detail, narration_style, personality FROM character_profiles WHERE id=?",
+                    [char_id]
+                ).fetchone()
+
+            if char_info:
+                # 角色名称 + 声线来自角色档案
+                char_name = char_info["name"] or ""
+                voice_text = char_info["voice_type"] or ""
+                if char_info["voice_detail"]:
+                    voice_text += "，" + char_info["voice_detail"]
+                if char_name and voice_text:
+                    audio_parts.append(f"[角色:{char_name}({voice_text})]")
+                elif char_name:
+                    audio_parts.append(f"[角色:{char_name}]")
+                # 旁白来自角色档案
+                narr = char_info["narration_style"] or ""
+                if narr:
+                    audio_parts.append(f"[旁白:{narr}]")
+            else:
+                # 回退：无角色关联时使用镜头手动填写的字段
+                cv = scd.get("character_voice") or scd.get("narration") or ""
+                if cv:
+                    audio_parts.append(f"[角色旁白:{cv}]")
+
+            bm = scd.get("bgm") or ""
+            sf = scd.get("sfx") or ""
+            if bm:
+                audio_parts.append(f"[BGM:{bm}]")
+            if sf:
+                audio_parts.append(f"[音效:{sf}]")
+            if audio_parts:
+                scene_desc = scene_desc + " (" + ", ".join(audio_parts) + ")" if scene_desc else ", ".join(audio_parts)
+
         # 镜头负词
         shot_neg = scd.get("details") or ""
         if shot_neg and shot_neg.startswith("--neg"):
@@ -1233,6 +1282,15 @@ def compose_project(project_id: int, data: dict = Body({})):
             "duration": round(et - st, 1),
             "text": scene_desc,
             "negative": shot_neg,
+            # v4.0.0-phase10: per-shot audio
+            "audio": {
+                "character_voice": scd.get("character_voice") or scd.get("narration") or "",
+                "bgm": scd.get("bgm") or "",
+                "sfx": scd.get("sfx") or "",
+                "enabled": bool(scd.get("audio_enabled")),
+                "character_id": scd.get("character_id"),
+                "character_name": char_info["name"] if char_info else None,
+            } if include_audio else None,
             "fields": {
                 "camera_move": scd.get("camera_move") or "",
                 "subject": scd.get("subject") or "",
@@ -1263,9 +1321,10 @@ def compose_project(project_id: int, data: dict = Body({})):
     all_neg.extend(all_negatives)
     neg_line = "，".join(all_neg) if all_neg else ""
 
-    # ---- 音频（可选）----
+    # ---- 音频（全局+镜头级）----
     audio_text = ""
     if include_audio:
+        # 全局项级（向后兼容）
         bgm = data.get("bgm", "") or proj["bgm"] or ""
         sfx = data.get("sfx", "") or proj["sfx"] or ""
         dialogue = data.get("dialogue", "") or proj["dialogue"] or ""
@@ -1275,6 +1334,22 @@ def compose_project(project_id: int, data: dict = Body({})):
             audio_text += f"音效: {sfx}\n"
         if dialogue:
             audio_text += f"对白: {dialogue}\n"
+        # v4.0.0-phase10: 收集镜头级音频摘要
+        audio_shots = []
+        for sc in scenes:
+            scd = dict(sc)
+            if scd.get("audio_enabled"):
+                shot_audio = []
+                cv = scd.get("character_voice") or scd.get("narration") or ""
+                bm = scd.get("bgm") or ""
+                sf = scd.get("sfx") or ""
+                if cv: shot_audio.append(f"角色旁白:{cv}")
+                if bm: shot_audio.append(f"BGM:{bm}")
+                if sf: shot_audio.append(f"SFX:{sf}")
+                if shot_audio:
+                    audio_shots.append(f"镜头{scd['scene_order']}: " + ", ".join(shot_audio))
+        if audio_shots:
+            audio_text += "---\n" + "\n".join(audio_shots) + "\n"
 
     # ---- 完整提示词 ----
     full_lines = []
@@ -1313,6 +1388,10 @@ def compose_project(project_id: int, data: dict = Body({})):
             "bgm": data.get("bgm", "") or proj["bgm"] or "",
             "sfx": data.get("sfx", "") or proj["sfx"] or "",
             "dialogue": data.get("dialogue", "") or proj["dialogue"] or "",
+            "shot_audio": [
+                {"shot": s["scene_order"], "character_voice": s.get("character_voice") or s.get("narration") or "", "bgm": s.get("bgm") or "", "sfx": s.get("sfx") or "", "enabled": bool(s.get("audio_enabled"))}
+                for s in scenes
+            ]
         } if include_audio else None,
         "shots": json_scenes,
         "full_text": full_text
@@ -1862,5 +1941,9 @@ def _scene_field_to_db_column(field_key):
         "fantasy_physics": "fantasy_physics",
         "env_detail": "environment_detail",
         "shot_scale": "shot_scale",
+        # v4.0.0-phase10: audio
+        "character_voice": "character_voice",
+        "audio_bgm": "bgm",
+        "audio_sfx": "sfx",
     }
     return mapping.get(field_key)

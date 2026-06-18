@@ -2098,6 +2098,28 @@ body.dark-theme .s2-drag-handle:hover { background: #334155; }
 .s2-ext-manage-link { cursor: pointer; font-size: 12px; margin-left: 2px; opacity: 0.6; }
 .s2-ext-manage-link:hover { opacity: 1; }
 
+/* ====== v4.0.0-phase10: 音频四要素 ====== */
+.s2-audio-group { padding: 6px 8px; border-radius: 6px; background: var(--hover-bg, rgba(0,0,0,0.03)); border: 1px solid var(--border-color); }
+.s2-audio-switch { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer; margin-right: 6px; color: var(--text-muted); }
+.s2-audio-switch input { margin: 0; cursor: pointer; }
+.s2-audio-fields { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.s2-chip-audio { min-width: 52px !important; max-width: 100px !important; font-size: 10px !important; }
+.s2-chip-audio.s2-filled { background: rgba(139,92,246,0.08) !important; border-color: rgba(139,92,246,0.3) !important; }
+.s2-chip-audio .s2-chip-label { color: #7c3aed; }
+
+/* 深色主题适配 */
+body.dark-theme .s2-audio-group { background: rgba(139,92,246,0.06); border-color: var(--border-color); }
+body.dark-theme .s2-chip-audio.s2-filled { background: rgba(139,92,246,0.15) !important; border-color: rgba(139,92,246,0.35) !important; }
+body.dark-theme .s2-chip-audio .s2-chip-label { color: #a78bfa; }
+body.dark-theme .s2-audio-switch { color: var(--text-muted); }
+
+/* ====== v4.0.0-phase10.1: 角色库 ====== */
+.s2-char-group { padding: 4px 0; }
+.s2-char-selector:hover { border-color: #8b5cf6 !important; background: rgba(139,92,246,0.08) !important; }
+.char-lib-modal { box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.char-profile-modal { box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+body.dark-theme .s2-char-selector { background: rgba(139,92,246,0.08); border-color: rgba(139,92,246,0.3); }
+
 
 .s2-ext-tags { display: inline-flex; gap: 4px; flex-wrap: wrap; margin-left: 4px; }
 .s2-ext-tag {
