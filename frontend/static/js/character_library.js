@@ -1,5 +1,6 @@
 // ============================================================
 // v4.0.0-phase10.1: Character Library JS Module
+// v4.0.0-phase10.2: Image crop before upload
 // 角色库管理 + 镜头角色选择器
 // ============================================================
 
@@ -244,12 +245,12 @@ App.characterLib._openEditor = async function(charId) {
     h += '<div>';
     h += '<label style="font-size:11px;color:var(--text-muted);">头像</label>';
     if (c?.avatar) h += '<div style="margin-bottom:4px;"><img src="/api/characters/images/'+c.avatar+'" style="width:48px;height:48px;border-radius:50%;object-fit:cover;"></div>';
-    h += '<input type="file" id="charAvatarInput" accept="image/*" style="font-size:11px;max-width:160px;" onchange="App.characterLib._uploadCharImage('+(c?.id||0)+',\'avatar\')">';
+    h += '<input type="file" id="charAvatarInput" accept="image/*" style="font-size:11px;max-width:160px;" onchange="App.characterLib._onFileSelect(event,'+(c?.id||0)+',' +"'avatar'"+ ')">';
     h += '</div>';
     h += '<div>';
     h += '<label style="font-size:11px;color:var(--text-muted);">角色设定预览图（多角度图）</label>';
     if (c?.preview_image) h += '<div style="margin-bottom:4px;"><img src="/api/characters/images/'+c.preview_image+'" style="max-width:120px;max-height:80px;border-radius:6px;object-fit:cover;"></div>';
-    h += '<input type="file" id="charPreviewInput" accept="image/*" style="font-size:11px;max-width:160px;" onchange="App.characterLib._uploadCharImage('+(c?.id||0)+',\'preview\')">';
+    h += '<input type="file" id="charPreviewInput" accept="image/*" style="font-size:11px;max-width:160px;" onchange="App.characterLib._onFileSelect(event,'+(c?.id||0)+',' +"'preview'"+ ')">';
     h += '</div>';
     h += '</div>';
 
@@ -308,12 +309,168 @@ App.characterLib._deleteChar = async function(charId) {
     }
 };
 
-App.characterLib._uploadCharImage = async function(charId, imageType) {
-    var inputId = imageType === 'avatar' ? 'charAvatarInput' : 'charPreviewInput';
-    var input = document.getElementById(inputId);
-    if (!input || !input.files || !input.files.length) return;
+// ========== 3.5 图片裁剪上传 ==========
+App.characterLib._cropState = null; // { charId, imageType, file, dataUrl }
 
-    // If new character, save first to get an ID
+App.characterLib._onFileSelect = function(e, charId, imageType) {
+    var file = (e.target.files || [])[0];
+    if (!file) return;
+    e.target.value = ''; // reset so same file re-triggers
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+        App.characterLib._cropState = { charId: charId, imageType: imageType, file: file, dataUrl: ev.target.result };
+        App.characterLib._showCropModal();
+    };
+    reader.readAsDataURL(file);
+};
+
+App.characterLib._showCropModal = function() {
+    var st = this._cropState;
+    if (!st) return;
+    var old = document.getElementById('charCropModal');
+    if (old) old.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'charCropModal';
+    overlay.className = 'modal-overlay';
+    overlay.style.cssText = 'display:flex;z-index:700;';
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+    var label = st.imageType === 'avatar' ? '裁剪头像' : '裁剪预览图';
+    var ratioHint = st.imageType === 'avatar' ? '1:1（正方形头像）' : '3:2（横版预览）';
+    var arW = st.imageType === 'avatar' ? 1 : 3;
+    var arH = st.imageType === 'avatar' ? 1 : 2;
+
+    overlay.innerHTML = '<div class="modal-content" style="max-width:620px;width:95%;border-radius:14px;padding:20px;">'
+        + '<h5 style="margin:0 0 4px;">✂️ ' + label + '</h5>'
+        + '<p style="font-size:11px;color:var(--text-muted);margin:0 0 12px;">拖动选框调整裁剪区域 · ' + ratioHint + '</p>'
+        + '<div id="charCropStage" style="position:relative;overflow:hidden;background:#0f172a;border-radius:8px;width:100%;max-height:420px;user-select:none;">'
+        + '<img id="charCropImg" src="' + st.dataUrl + '" style="display:block;max-width:100%;">'
+        + '<div id="charCropBox" style="position:absolute;border:2px dashed #fff;box-shadow:0 0 0 9999px rgba(0,0,0,0.55);cursor:move;"></div>'
+        + '</div>'
+        + '<div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end;">'
+        + '<button class="btn btn-sm btn-outline" onclick="document.getElementById(\'charCropModal\').remove()">取消</button>'
+        + '<button class="btn btn-sm btn-primary" onclick="App.characterLib._doCropAndUpload()">✂️ 裁剪并上传</button>'
+        + '</div></div>';
+    document.body.appendChild(overlay);
+
+    var self = this;
+    var img = document.getElementById('charCropImg');
+    img.onload = function() { self._initCropBox(arW, arH); };
+    // already loaded (from dataUrl)
+    if (img.complete) self._initCropBox(arW, arH);
+};
+
+App.characterLib._initCropBox = function(arW, arH) {
+    var img = document.getElementById('charCropImg');
+    var box = document.getElementById('charCropBox');
+    var stage = document.getElementById('charCropStage');
+    if (!img || !box || !stage) return;
+
+    var imgW = img.naturalWidth;
+    var imgH = img.naturalHeight;
+    var stageW = stage.clientWidth;
+    var displayH = stageW * (imgH / imgW);
+    stage.style.height = displayH + 'px';
+
+    // initial crop box: 80% of min dimension, centered, maintaining AR
+    var boxW, boxH;
+    if (stageW / displayH >= arW / arH) {
+        // stage is wider → constrain by height
+        boxH = displayH * 0.8;
+        boxW = boxH * (arW / arH);
+    } else {
+        // stage is taller → constrain by width
+        boxW = stageW * 0.8;
+        boxH = boxW * (arH / arW);
+    }
+    var boxX = (stageW - boxW) / 2;
+    var boxY = (displayH - boxH) / 2;
+
+    box.style.left = boxX + 'px';
+    box.style.top = boxY + 'px';
+    box.style.width = boxW + 'px';
+    box.style.height = boxH + 'px';
+
+    this._bindCropDrag(arW, arH);
+};
+
+App.characterLib._bindCropDrag = function(arW, arH) {
+    var box = document.getElementById('charCropBox');
+    var stage = document.getElementById('charCropStage');
+    if (!box || !stage) return;
+
+    var dragging = false, startX, startY, startLeft, startTop;
+    var self = this;
+
+    var onDown = function(e) {
+        e.preventDefault();
+        dragging = true;
+        var pt = e.touches ? e.touches[0] : e;
+        startX = pt.clientX;
+        startY = pt.clientY;
+        startLeft = parseFloat(box.style.left);
+        startTop = parseFloat(box.style.top);
+    };
+
+    var onMove = function(e) {
+        if (!dragging) return;
+        var pt = e.touches ? e.touches[0] : e;
+        var dx = pt.clientX - startX;
+        var dy = pt.clientY - startY;
+        var newLeft = Math.max(0, Math.min(stage.clientWidth - box.offsetWidth, startLeft + dx));
+        var newTop = Math.max(0, Math.min(stage.clientHeight - box.offsetHeight, startTop + dy));
+        box.style.left = newLeft + 'px';
+        box.style.top = newTop + 'px';
+    };
+
+    var onUp = function() { dragging = false; };
+
+    box.addEventListener('mousedown', onDown);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    box.addEventListener('touchstart', onDown, {passive:false});
+    document.addEventListener('touchmove', onMove, {passive:false});
+    document.addEventListener('touchend', onUp);
+};
+
+App.characterLib._doCropAndUpload = async function() {
+    var st = this._cropState;
+    if (!st) return;
+
+    var img = document.getElementById('charCropImg');
+    var box = document.getElementById('charCropBox');
+    var stage = document.getElementById('charCropStage');
+    if (!img || !box || !stage) return;
+
+    // Map display coords → original image coords
+    var scaleX = img.naturalWidth / img.clientWidth;
+    var scaleY = img.naturalHeight / img.clientHeight;
+    var sx = parseFloat(box.style.left) * scaleX;
+    var sy = parseFloat(box.style.top) * scaleY;
+    var sw = box.offsetWidth * scaleX;
+    var sh = box.offsetHeight * scaleY;
+
+    // Canvas crop
+    var canvas = document.createElement('canvas');
+    // Set output size: avatar=256x256, preview=480x320
+    if (st.imageType === 'avatar') {
+        canvas.width = 256; canvas.height = 256;
+    } else {
+        canvas.width = 480; canvas.height = 320;
+    }
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+
+    // Convert to blob
+    var blob = await new Promise(function(resolve) {
+        canvas.toBlob(resolve, 'image/jpeg', 0.85);
+    });
+
+    document.getElementById('charCropModal')?.remove();
+
+    // Ensure charId exists
+    var charId = st.charId;
     if (!charId) {
         var data = {};
         var fn = document.getElementById('charField_name');
@@ -322,7 +479,6 @@ App.characterLib._uploadCharImage = async function(charId, imageType) {
         var d = await App.fetchJSON('/api/characters', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
         if (d && d.ok) {
             charId = d.id;
-            // Update form state
             document.getElementById('charEditorModal')?.remove();
             App.showToast('角色已创建，正在上传图片...','info');
         } else {
@@ -330,15 +486,15 @@ App.characterLib._uploadCharImage = async function(charId, imageType) {
         }
     }
 
+    // Upload
     var fd = new FormData();
-    fd.append('file', input.files[0]);
-    var url = '/api/characters/' + charId + '/images?image_type=' + imageType;
+    fd.append('file', blob, 'crop_' + st.imageType + '.jpg');
+    var url = '/api/characters/' + charId + '/images?image_type=' + st.imageType;
     try {
         var r = await fetch(url, {method:'POST', body:fd});
         var d = await r.json();
         if (d && d.ok) {
-            App.showToast(imageType==='avatar'?'头像已上传':'预览图已上传', 'success');
-            // Refresh editor with images
+            App.showToast(st.imageType==='avatar'?'头像已裁剪上传':'预览图已裁剪上传', 'success');
             App.characterLib._openEditor(charId);
         } else {
             App.showToast('上传失败','error');
@@ -346,6 +502,7 @@ App.characterLib._uploadCharImage = async function(charId, imageType) {
     } catch(e) {
         App.showToast('上传异常: '+e.message,'error');
     }
+    this._cropState = null;
 };
 
 // ========== 4. 镜头角色选择器（快捷分配） ==========
