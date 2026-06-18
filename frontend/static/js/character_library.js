@@ -309,13 +309,13 @@ App.characterLib._deleteChar = async function(charId) {
     }
 };
 
-// ========== 3.5 图片裁剪上传 ==========
+// ========== 3.5 图片裁剪上传 (v10.3: zoom+pan+box-drag) ==========
 App.characterLib._cropState = null; // { charId, imageType, file, dataUrl }
 
 App.characterLib._onFileSelect = function(e, charId, imageType) {
     var file = (e.target.files || [])[0];
     if (!file) return;
-    e.target.value = ''; // reset so same file re-triggers
+    e.target.value = '';
     var reader = new FileReader();
     reader.onload = function(ev) {
         App.characterLib._cropState = { charId: charId, imageType: imageType, file: file, dataUrl: ev.target.result };
@@ -323,6 +323,15 @@ App.characterLib._onFileSelect = function(e, charId, imageType) {
     };
     reader.readAsDataURL(file);
 };
+
+// live zoom/pan state persisted on modal element
+App.characterLib._cropZoom = 1;
+App.characterLib._cropPanX = 0;
+App.characterLib._cropPanY = 0;
+App.characterLib._cropBoxX = 0;
+App.characterLib._cropBoxY = 0;
+App.characterLib._cropBoxW = 0;
+App.characterLib._cropBoxH = 0;
 
 App.characterLib._showCropModal = function() {
     var st = this._cropState;
@@ -337,18 +346,31 @@ App.characterLib._showCropModal = function() {
     overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
 
     var label = st.imageType === 'avatar' ? '裁剪头像' : '裁剪预览图';
-    var ratioHint = st.imageType === 'avatar' ? '1:1（正方形头像）' : '3:2（横版预览）';
+    var ratioHint = st.imageType === 'avatar' ? '1:1' : '3:2';
     var arW = st.imageType === 'avatar' ? 1 : 3;
     var arH = st.imageType === 'avatar' ? 1 : 2;
+    var isAvatar = st.imageType === 'avatar';
 
-    overlay.innerHTML = '<div class="modal-content" style="max-width:620px;width:95%;border-radius:14px;padding:20px;">'
-        + '<h5 style="margin:0 0 4px;">✂️ ' + label + '</h5>'
-        + '<p style="font-size:11px;color:var(--text-muted);margin:0 0 12px;">拖动选框调整裁剪区域 · ' + ratioHint + '</p>'
-        + '<div id="charCropStage" style="position:relative;overflow:hidden;background:#0f172a;border-radius:8px;width:100%;max-height:420px;user-select:none;">'
-        + '<img id="charCropImg" src="' + st.dataUrl + '" style="display:block;max-width:100%;">'
-        + '<div id="charCropBox" style="position:absolute;border:2px dashed #fff;box-shadow:0 0 0 9999px rgba(0,0,0,0.55);cursor:move;"></div>'
+    overlay.innerHTML =
+        '<div class="modal-content" style="max-width:720px;width:95%;border-radius:14px;padding:20px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+        + '<h5 style="margin:0;">✂️ ' + label + '</h5>'
+        + '<span style="font-size:11px;color:var(--text-muted);">拖拽图片 · 滚轮缩放 · 拖动选框 · ' + ratioHint + '</span>'
         + '</div>'
-        + '<div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end;">'
+        + '<p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">🖱️ 滚轮缩放 | 拖拽原图移动位置 | 拖动白框选定裁剪区域</p>'
+        + '<div id="charCropStage" style="position:relative;overflow:hidden;background:#0f172a;border-radius:8px;width:100%;height:'+(isAvatar?'440px':'400px')+';user-select:none;cursor:grab;"'
+        + ' onmousedown="App.characterLib._onStageMouseDown(event)"'
+        + ' onwheel="App.characterLib._onStageWheel(event)">'
+        + '<div id="charCropImgWrap" style="position:absolute;left:0;top:0;transform-origin:0 0;">'
+        + '<img id="charCropImg" src="' + st.dataUrl + '" style="display:block;pointer-events:none;" draggable="false">'
+        + '</div>'
+        + '<div id="charCropBox" style="position:absolute;border:2px dashed #fff;cursor:move;pointer-events:auto;"'
+        + ' onmousedown="App.characterLib._onBoxMouseDown(event)"></div>'
+        + '</div>'
+        + '<div style="margin-top:8px;display:flex;gap:8px;align-items:center;">'
+        + '<span id="charZoomLabel" style="font-size:11px;color:var(--text-muted);min-width:50px;">100%</span>'
+        + '<button class="btn btn-xs btn-outline" style="font-size:10px;padding:2px 8px;" onclick="App.characterLib._resetCropView()">↺ 重置</button>'
+        + '<span style="flex:1;"></span>'
         + '<button class="btn btn-sm btn-outline" onclick="document.getElementById(\'charCropModal\').remove()">取消</button>'
         + '<button class="btn btn-sm btn-primary" onclick="App.characterLib._doCropAndUpload()">✂️ 裁剪并上传</button>'
         + '</div></div>';
@@ -356,117 +378,180 @@ App.characterLib._showCropModal = function() {
 
     var self = this;
     var img = document.getElementById('charCropImg');
-    img.onload = function() { self._initCropBox(arW, arH); };
-    // already loaded (from dataUrl)
-    if (img.complete) self._initCropBox(arW, arH);
+    function init() {
+        self._fitImageToStage(arW, arH);
+        self._updateZoomLabel();
+    }
+    if (img.complete) init(); else img.onload = init;
 };
 
-App.characterLib._initCropBox = function(arW, arH) {
+// ------ 等比适配 + 选框初始化 ------
+App.characterLib._fitImageToStage = function(arW, arH) {
     var img = document.getElementById('charCropImg');
-    var box = document.getElementById('charCropBox');
     var stage = document.getElementById('charCropStage');
-    if (!img || !box || !stage) return;
+    var box = document.getElementById('charCropBox');
+    var wrap = document.getElementById('charCropImgWrap');
+    if (!img || !stage || !box || !wrap) return;
 
-    var imgW = img.naturalWidth;
-    var imgH = img.naturalHeight;
-    var stageW = stage.clientWidth;
-    var displayH = stageW * (imgH / imgW);
-    stage.style.height = displayH + 'px';
+    var iw = img.naturalWidth, ih = img.naturalHeight;
+    var sw = stage.clientWidth, sh = stage.clientHeight;
 
-    // initial crop box: 80% of min dimension, centered, maintaining AR
+    // fit image to stage (cover-like: make sure it fills)
+    var scale = Math.max(sw / iw, sh / ih);
+    var dw = iw * scale, dh = ih * scale;
+    var dx = (sw - dw) / 2, dy = (sh - dh) / 2;
+
+    this._cropZoom = scale;
+    this._cropPanX = dx;
+    this._cropPanY = dy;
+    wrap.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + scale + ')';
+    wrap.style.width = iw + 'px';
+    wrap.style.height = ih + 'px';
+
+    // init crop box: 80% of visible area, centered
     var boxW, boxH;
-    if (stageW / displayH >= arW / arH) {
-        // stage is wider → constrain by height
-        boxH = displayH * 0.8;
-        boxW = boxH * (arW / arH);
-    } else {
-        // stage is taller → constrain by width
-        boxW = stageW * 0.8;
-        boxH = boxW * (arH / arW);
-    }
-    var boxX = (stageW - boxW) / 2;
-    var boxY = (displayH - boxH) / 2;
-
-    box.style.left = boxX + 'px';
-    box.style.top = boxY + 'px';
+    if (sw / sh >= arW / arH) { boxH = sh * 0.8; boxW = boxH * arW / arH; }
+    else { boxW = sw * 0.8; boxH = boxW * arH / arW; }
+    this._cropBoxW = boxW;
+    this._cropBoxH = boxH;
+    this._cropBoxX = (sw - boxW) / 2;
+    this._cropBoxY = (sh - boxH) / 2;
+    box.style.left = this._cropBoxX + 'px';
+    box.style.top = this._cropBoxY + 'px';
     box.style.width = boxW + 'px';
     box.style.height = boxH + 'px';
-
-    this._bindCropDrag(arW, arH);
 };
 
-App.characterLib._bindCropDrag = function(arW, arH) {
-    var box = document.getElementById('charCropBox');
+// ------ 滚轮缩放（以光标为中心）------
+App.characterLib._onStageWheel = function(e) {
+    e.preventDefault();
     var stage = document.getElementById('charCropStage');
-    if (!box || !stage) return;
+    var box = document.getElementById('charCropBox');
+    var wrap = document.getElementById('charCropImgWrap');
+    if (!stage || !box) return;
 
-    var dragging = false, startX, startY, startLeft, startTop;
-    var self = this;
+    var rect = stage.getBoundingClientRect();
+    var mx = e.clientX - rect.left;  // cursor X relative to stage
+    var my = e.clientY - rect.top;   // cursor Y relative to stage
 
-    var onDown = function(e) {
-        e.preventDefault();
-        dragging = true;
-        var pt = e.touches ? e.touches[0] : e;
-        startX = pt.clientX;
-        startY = pt.clientY;
-        startLeft = parseFloat(box.style.left);
-        startTop = parseFloat(box.style.top);
+    var self = App.characterLib;
+    var oldScale = self._cropZoom;
+    var delta = e.deltaY > 0 ? 0.9 : 1.1;  // scroll down=zoom out, up=zoom in
+    var newScale = Math.max(0.3, Math.min(5, oldScale * delta));
+
+    // zoom centered on cursor: adjust pan so cursor point stays fixed
+    var ratio = newScale / oldScale;
+    self._cropPanX = mx - ratio * (mx - self._cropPanX);
+    self._cropPanY = my - ratio * (my - self._cropPanY);
+    self._cropZoom = newScale;
+
+    wrap.style.transform = 'translate(' + self._cropPanX + 'px,' + self._cropPanY + 'px) scale(' + newScale + ')';
+    self._updateZoomLabel();
+};
+
+// ------ 原图拖拽平移 ------
+App.characterLib._onStageMouseDown = function(e) {
+    if (e.target.closest('#charCropBox')) return; // box handles its own drag
+    e.preventDefault();
+    var self = App.characterLib;
+    var stage = document.getElementById('charCropStage');
+    var wrap = document.getElementById('charCropImgWrap');
+    if (!stage || !wrap) return;
+
+    var sx = e.clientX, sy = e.clientY;
+    var px = self._cropPanX, py = self._cropPanY;
+    stage.style.cursor = 'grabbing';
+
+    var onMove = function(ev) {
+        var dx = ev.clientX - sx, dy = ev.clientY - sy;
+        self._cropPanX = px + dx;
+        self._cropPanY = py + dy;
+        wrap.style.transform = 'translate(' + self._cropPanX + 'px,' + self._cropPanY + 'px) scale(' + self._cropZoom + ')';
     };
-
-    var onMove = function(e) {
-        if (!dragging) return;
-        var pt = e.touches ? e.touches[0] : e;
-        var dx = pt.clientX - startX;
-        var dy = pt.clientY - startY;
-        var newLeft = Math.max(0, Math.min(stage.clientWidth - box.offsetWidth, startLeft + dx));
-        var newTop = Math.max(0, Math.min(stage.clientHeight - box.offsetHeight, startTop + dy));
-        box.style.left = newLeft + 'px';
-        box.style.top = newTop + 'px';
+    var onUp = function() {
+        stage.style.cursor = 'grab';
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
     };
-
-    var onUp = function() { dragging = false; };
-
-    box.addEventListener('mousedown', onDown);
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
-    box.addEventListener('touchstart', onDown, {passive:false});
-    document.addEventListener('touchmove', onMove, {passive:false});
-    document.addEventListener('touchend', onUp);
 };
 
+// ------ 选框拖动 ------
+App.characterLib._onBoxMouseDown = function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var self = App.characterLib;
+    var stage = document.getElementById('charCropStage');
+    var box = document.getElementById('charCropBox');
+    if (!stage || !box) return;
+
+    var sx = e.clientX, sy = e.clientY;
+    var bx = self._cropBoxX, by = self._cropBoxY;
+
+    var onMove = function(ev) {
+        var dx = ev.clientX - sx, dy = ev.clientY - sy;
+        var maxX = stage.clientWidth - self._cropBoxW;
+        var maxY = stage.clientHeight - self._cropBoxH;
+        self._cropBoxX = Math.max(0, Math.min(maxX, bx + dx));
+        self._cropBoxY = Math.max(0, Math.min(maxY, by + dy));
+        box.style.left = self._cropBoxX + 'px';
+        box.style.top = self._cropBoxY + 'px';
+    };
+    var onUp = function() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+};
+
+App.characterLib._resetCropView = function() {
+    var st = this._cropState;
+    if (!st) return;
+    var arW = st.imageType === 'avatar' ? 1 : 3;
+    var arH = st.imageType === 'avatar' ? 1 : 2;
+    this._fitImageToStage(arW, arH);
+    this._updateZoomLabel();
+};
+
+App.characterLib._updateZoomLabel = function() {
+    var el = document.getElementById('charZoomLabel');
+    if (!el) return;
+    el.textContent = Math.round(this._cropZoom * 100) + '%';
+    el.style.color = this._cropZoom > 1.5 ? '#ef4444' : this._cropZoom < 0.8 ? '#f59e0b' : 'var(--text-muted)';
+};
+
+// ------ 裁剪 + 上传 ------
 App.characterLib._doCropAndUpload = async function() {
     var st = this._cropState;
     if (!st) return;
 
     var img = document.getElementById('charCropImg');
     var box = document.getElementById('charCropBox');
-    var stage = document.getElementById('charCropStage');
-    if (!img || !box || !stage) return;
+    if (!img || !box) return;
 
-    // Map display coords → original image coords
-    var scaleX = img.naturalWidth / img.clientWidth;
-    var scaleY = img.naturalHeight / img.clientHeight;
-    var sx = parseFloat(box.style.left) * scaleX;
-    var sy = parseFloat(box.style.top) * scaleY;
-    var sw = box.offsetWidth * scaleX;
-    var sh = box.offsetHeight * scaleY;
+    // Inverse-transform: screen crop-box coords → original image coords
+    var z = this._cropZoom;
+    var sx = (this._cropBoxX - this._cropPanX) / z;
+    var sy = (this._cropBoxY - this._cropPanY) / z;
+    var sw = this._cropBoxW / z;
+    var sh = this._cropBoxH / z;
+
+    // Clamp to image bounds
+    sx = Math.max(0, Math.min(img.naturalWidth - 1, sx));
+    sy = Math.max(0, Math.min(img.naturalHeight - 1, sy));
+    sw = Math.min(sw, img.naturalWidth - sx);
+    sh = Math.min(sh, img.naturalHeight - sy);
 
     // Canvas crop
     var canvas = document.createElement('canvas');
-    // Set output size: avatar=256x256, preview=480x320
-    if (st.imageType === 'avatar') {
-        canvas.width = 256; canvas.height = 256;
-    } else {
-        canvas.width = 480; canvas.height = 320;
-    }
+    if (st.imageType === 'avatar') { canvas.width = 256; canvas.height = 256; }
+    else { canvas.width = 480; canvas.height = 320; }
     var ctx = canvas.getContext('2d');
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
 
-    // Convert to blob
-    var blob = await new Promise(function(resolve) {
-        canvas.toBlob(resolve, 'image/jpeg', 0.85);
-    });
-
+    var blob = await new Promise(function(resolve) { canvas.toBlob(resolve, 'image/jpeg', 0.88); });
     document.getElementById('charCropModal')?.remove();
 
     // Ensure charId exists
