@@ -96,7 +96,7 @@ const App = {
                 var v = d.version;
                 // 美化显示
                 var displayVersion = v.replace('v', '').replace('-phase', '.');
-                document.title = '咪卡MiK提示词助手 ' + v;
+                document.title = '咪卡MiK提示词助手';
                 var bv = document.getElementById('brandVersion');
                 if (bv) bv.textContent = v;
                 // 同时更新 headerStats
