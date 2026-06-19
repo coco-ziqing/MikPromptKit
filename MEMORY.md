@@ -19,6 +19,11 @@
 | P13.3 | i18n模块 + en.json词典(105 key) + 语言切换按钮 | 3个文件, +214行 |
 | P13.4 | 组装器快捷键(Ctrl+S/↑↓/Esc/撤销) + 脏标记渲染 + 撤销栈 + 高级搜索API | 2个文件, +186行 |
 
+**Hotfix（打tag后）：**
+- 补充 `App.applyTheme()` 函数定义（app_core.js init() 调用了但未定义，导致初始化中断）
+- 统一主题 localStorage key 为 `promptkit_theme`
+- 移除 app_theme.js 的 DOMContentLoaded 自初始化（与 app_core.js 重复）
+
 **Git分支说明：**
 - `phase13-p131-bridge` / `phase13-p132-refactor` / `phase13-p133-i18n` / `phase13-p134-ux`
 - 已全部合并到 `master`，tag: `v4.1.0-phase13-complete`
