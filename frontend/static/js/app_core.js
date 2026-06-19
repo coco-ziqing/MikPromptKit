@@ -57,6 +57,24 @@ const App = {
     },
 
     // ============ 初始化 ============
+    // ============ 版本号同步(单一声源: 后端 /api/status) ============
+    _syncVersion() {
+        var self = this;
+        this.fetchJSON('/api/status').then(function(d) {
+            if (d && d.version) {
+                var v = d.version;
+                // 美化显示
+                var displayVersion = v.replace('v', '').replace('-phase', '.');
+                document.title = '咪卡MiK提示词助手 ' + v;
+                var bv = document.getElementById('brandVersion');
+                if (bv) bv.textContent = v;
+                // 同时更新 headerStats
+                var hs = document.getElementById('headerStats');
+                if (hs) hs.textContent = v + ' | 词库 ' + (d.total_prompts||0) + ' 条 | 使用 ' + (d.total_usage||0) + ' 次';
+            }
+        }).catch(function(){});
+    },
+
     async init() {
         // 恢复主题
         const savedTheme = ((typeof localStorage !== 'undefined' && localStorage.getItem) ? localStorage.getItem('promptkit_theme') : 'dark') || 'dark';
