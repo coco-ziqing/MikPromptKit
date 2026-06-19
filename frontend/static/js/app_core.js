@@ -56,6 +56,37 @@ const App = {
         gallery: []
     },
 
+    // ============ Phase13.2: 骨架屏 + 安全请求 ============
+
+    showSkeleton(count) {
+        var n = count || 6;
+        var html = '<div class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
+        for (var i = 0; i < n; i++) {
+            html += '<div class="skeleton-card"><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-text"></div><div class="skeleton-line skeleton-text"></div><div class="skeleton-line skeleton-text-short"></div></div>';
+        }
+        html += '</div>';
+        var pl = document.getElementById('promptList');
+        if (pl) pl.innerHTML = html;
+    },
+
+    _safeFetch: async function(url, options) {
+        try {
+            var resp = await fetch(url, options);
+            if (!resp.ok) {
+                var text = '';
+                try { text = await resp.text(); } catch(e) {}
+                var errMsg = '请求失败: ' + resp.status;
+                try { var j = JSON.parse(text); if (j.detail) errMsg = j.detail; } catch(e) {}
+                this.showToast(errMsg, 'error');
+                return null;
+            }
+            return await resp.json();
+        } catch (e) {
+            this.showToast('网络连接失败: ' + e.message, 'error');
+            return null;
+        }
+    },
+
     // ============ 初始化 ============
     // ============ 版本号同步(单一声源: 后端 /api/status) ============
     _syncVersion() {
