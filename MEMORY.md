@@ -2,11 +2,26 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit)
-- 版本：v4.0.0-phase12 (2026-06-19)
+- 版本：v4.1.0-phase13-complete (2026-06-19)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
-- 默认端口：8080
-- 局域网地址：http://192.168.0.101:8080
+- 默认端口：8080 (当前可用: 8081)
+- 局域网地址：http://192.168.0.101:8081
+- 前一个tag: `v4.1.0-phase13-current` (Phase13 开始前快照)
+- 当前tag: `v4.1.0-phase13-complete` (Phase13 短期迭代完成)
+
+## Phase13 短期迭代完成（2026-06-19）
+
+| 分支 | 内容 | 文件变更 |
+|------|------|---------|
+| P13.1 | bridge加固(custom_前缀、等待机制、双保险映射) + 词卡导入导出CSV/JSON + 拖拽移动sort_order | 2个文件 |
+| P13.2 | CSS硬编码修复6处 + 骨架屏 + app_search.js/app_theme.js拆分 + _safeFetch错误边界 | 5个文件, +387行 |
+| P13.3 | i18n模块 + en.json词典(105 key) + 语言切换按钮 | 3个文件, +214行 |
+| P13.4 | 组装器快捷键(Ctrl+S/↑↓/Esc/撤销) + 脏标记渲染 + 撤销栈 + 高级搜索API | 2个文件, +186行 |
+
+**Git分支说明：**
+- `phase13-p131-bridge` / `phase13-p132-refactor` / `phase13-p133-i18n` / `phase13-p134-ux`
+- 已全部合并到 `master`，tag: `v4.1.0-phase13-complete`
 
 ## 技术栈
 - Python 3.14 / FastAPI / Uvicorn / SQLite (WAL + FTS5)
