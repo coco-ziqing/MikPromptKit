@@ -132,54 +132,73 @@ Object.assign(App, {
     // ============ 渲染:侧边栏 ============
     renderSidebar() {
         var sidebar = document.getElementById('sidebar');
-        if (!sidebar || !this.state.modules) return;
-        const icons = { emotion: '😊', color: '🎨', tone: '💡', storyboard: '📋', camera_move: '🎥', seedance: '🎬' };
-        const names = { emotion: '人物表情', color: '场景色彩', tone: '画面色调', storyboard: '分镜构图', composition: '分镜构图', camera_move: '运镜模版', seedance: '视频模版' };
+        if (!sidebar) return;
+
+        // 尝试从 word_card_group 获取模块数据，失败则用旧 state.modules
+        var modules = [];
+        var fromCardGroups = false;
+        if (App.cardModel && App.cardModel._cache && App.cardModel._cache.groups && App.cardModel._cache.groups.length > 0) {
+            modules = App.cardModel._cache.groups.filter(function(g) {
+                return g.group_type === 'builtin' || g.group_type === 'custom';
+            }).map(function(g) {
+                return {
+                    id: g.group_key || g.name,
+                    name: g.name,
+                    count: g.card_count || 0,
+                    builtin: g.group_type === 'builtin',
+                    icon: g.icon || '',
+                    group_id: g.id
+                };
+            });
+            fromCardGroups = true;
+        }
+        if (modules.length === 0 && this.state.modules) {
+            modules = this.state.modules;
+        }
+        if (modules.length === 0) return;
+
         var editClass = this.state.editMode ? '' : 'style="display:none;"';
-        let html = '<div style="padding:8px 20px 10px;color:#64748b;font-size:11px;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;">' +
+        var html = '<div style="padding:8px 20px 10px;color:#64748b;font-size:11px;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;">' +
             '<span>功能模块</span>' +
             '<div ' + editClass + ' style="display:flex;gap:4px;">' +
-            '<button class="header-btn-sm" onclick="App.showCreateModuleModal()" title="新建分组" style="font-size:13px;padding:2px 6px;">➕</button>' +
+            ((fromCardGroups && App.cardModel) ?
+            '<button class="header-btn-sm" onclick="App.wordEditor.openCreate(null,\'cards\')" title="新建词卡" style="font-size:13px;padding:2px 6px;">➕</button>' :
+            '<button class="header-btn-sm" onclick="App.showCreateModuleModal()" title="新建分组" style="font-size:13px;padding:2px 6px;">➕</button>') +
             '</div></div>';
+
         // 全部选项
         var allActive = this.state.currentModule === null ? 'active' : '';
+        var totalCount = modules.reduce(function(s, m) { return s + (m.count || 0); }, 0);
         html += '<div class="module-item ' + allActive + '" onclick="App.switchAllModules()">' +
             '<span class="icon">📚</span>' +
             '<span>全部词库</span>' +
-            '<span class="count-badge">' + (this.state.stats.total_prompts || '') + '</span>' +
+            '<span class="count-badge">' + totalCount + '</span>' +
             '</div>';
-        for (const m of this.state.modules) {
-            if (m.id === 'seedance') continue; // 视频模版仅通过顶部按钮进入，侧边栏不显示
-            const active = m.id === this.state.currentModule ? 'active' : '';
-            const clickHandler = `App.switchModule('${m.id}')`;
-            var deleteBtn = '';
-            if (!m.builtin && this.state.editMode) {
-                deleteBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.deleteCustomModule(\'' + m.id + '\')" title="删除分组" style="font-size:11px;color:#ef4444;padding:0 4px;opacity:0.6;">✕</button>';
-            }
-            html += `
-                <div class="module-item ${active}" onclick="${clickHandler}">
-                    <span class="icon">${icons[m.id] || '📋'}</span>
-                    <span>${names[m.id] || m.id}</span>
-                    <span class="count-badge">${m.count}</span>
-                    ${deleteBtn}
-                </div>
-            `;
-        }
-        sidebar.innerHTML = html;
 
-        // 注入折叠按钮到侧边栏
+        for (var i = 0; i < modules.length; i++) {
+            var m = modules[i];
+            if (m.id === 'seedance' || m.id === 'Seedance') continue;
+            var active = m.id === this.state.currentModule ? 'active' : '';
+            var clickHandler = fromCardGroups
+                ? "App.switchModule('" + m.id + "')"
+                : "App.switchModule('" + m.id + "')";
+            var icon = m.icon || '📂';
+            html += '<div class="module-item ' + active + '" onclick="' + clickHandler + '">' +
+                '<span class="icon">' + icon + '</span>' +
+                '<span>' + (m.name || m.id) + '</span>' +
+                '<span class="count-badge">' + (m.count || 0) + '</span>' +
+                '</div>';
+        }
+
+        sidebar.innerHTML = html;
         App._injectSidebarToggle(sidebar);
 
-        sidebar.innerHTML += `
-            <div ${editClass} style="margin-top:auto;padding:12px;border-top:1px solid #334155;display:flex;gap:6px;flex-wrap:wrap;">
-                <button onclick="App.showImportModal()" style="flex:1;padding:6px 8px;background:transparent;border:1px solid #475569;border-radius:6px;color:#94a3b8;cursor:pointer;font-size:11px;transition:all 0.15s;" onmouseenter="this.style.borderColor='#6366f1';this.style.color='#a5b4fc'" onmouseleave="this.style.borderColor='#475569';this.style.color='#94a3b8'">
-                    <i class="bi bi-upload"></i> 导入
-                </button>
-                <button onclick="App.showExportModal()" style="flex:1;padding:6px 8px;background:transparent;border:1px solid #475569;border-radius:6px;color:#94a3b8;cursor:pointer;font-size:11px;transition:all 0.15s;" onmouseenter="this.style.borderColor='#6366f1';this.style.color='#a5b4fc'" onmouseleave="this.style.borderColor='#475569';this.style.color='#94a3b8'">
-                    <i class="bi bi-download"></i> 导出
-                </button>
-            </div>
-        `;
+        // 编辑模式下显示导入导出按钮（仅限旧modules模式）
+        if (!fromCardGroups && this.state.editMode) {
+            sidebar.innerHTML += '<div style="margin-top:auto;padding:12px;border-top:1px solid #334155;display:flex;gap:6px;flex-wrap:wrap;">' +
+                '<button onclick="App.showImportModal()" style="flex:1;padding:6px 8px;background:transparent;border:1px solid #475569;border-radius:6px;color:#94a3b8;cursor:pointer;font-size:11px;"><i class="bi bi-upload"></i> 导入</button>' +
+                '<button onclick="App.showExportModal()" style="flex:1;padding:6px 8px;background:transparent;border:1px solid #475569;border-radius:6px;color:#94a3b8;cursor:pointer;font-size:11px;"><i class="bi bi-download"></i> 导出</button></div>';
+        }
     },
 
     // ============ 自定义模块管理 ============
