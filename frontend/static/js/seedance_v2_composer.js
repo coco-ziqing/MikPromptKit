@@ -17,7 +17,6 @@
         _undoStack: [], _undoMax: 20,
         _dirtySceneIds: null, _renderTimer: null
     };
-    };
 
     App.seedanceV2.init = async function() {
         // 防重入: 多个调用者共享同一个初始化 Promise
