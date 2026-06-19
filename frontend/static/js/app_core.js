@@ -253,6 +253,7 @@ const App = {
             document.getElementById('viewHome').classList.add('active-view');
             document.getElementById(navMap[view]).classList.add('active');
             document.getElementById('globalSearchBox').style.visibility = 'visible';
+            this._showSidebar();
             this._expandSidebar();
             this.renderSidebar();
             this.loadPrompts();
@@ -290,6 +291,7 @@ const App = {
             this._closeMobileMenu();
             document.getElementById('viewSeedance').classList.add('active-view');
             this._hideSearchBox();
+            this._showSidebar();
             this._collapseSidebar();  // 组装器不需要功能模块侧边栏，自动折叠
             this.loadSeedanceCategories();
             this.loadSeedanceTemplates();
@@ -306,7 +308,7 @@ const App = {
             var nw = document.getElementById('navWCManager');
             if (nw) nw.classList.add('active');
             this._hideSearchBox();
-            this._collapseSidebar();
+            this._hideSidebar();
             if (App.wordCards && App.wordCards.load) App.wordCards.load();
         }
 
@@ -334,6 +336,25 @@ const App = {
             document.body.classList.add('sidebar-collapsed');
             if (btn) { btn.innerHTML = '\u25B6'; btn.title = '展开模块列表'; }
         }
+    },
+
+    // 辅助：完全隐藏侧边栏+按钮（词卡管理等独立视图用）
+    _hideSidebar() {
+        var sidebar = document.getElementById('sidebar');
+        var btn = document.getElementById('sidebarToggleBtn');
+        if (sidebar) { sidebar.style.display = 'none'; }
+        if (btn) { btn.style.display = 'none'; }
+        document.body.classList.remove('sidebar-collapsed');
+    },
+
+    // 辅助：恢复侧边栏显示
+    _showSidebar() {
+        var sidebar = document.getElementById('sidebar');
+        var btn = document.getElementById('sidebarToggleBtn');
+        if (sidebar) { sidebar.style.display = ''; }
+        if (btn) { btn.style.display = ''; }
+        // 恢复折叠状态
+        this._restoreSidebarState();
     },
 
     // 辅助：自动展开侧边栏（回到首页时调用）
