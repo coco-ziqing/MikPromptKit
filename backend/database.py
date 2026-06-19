@@ -487,6 +487,96 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_library_assets_builtin ON library_assets(is_builtin);
         """)
 
+        # ========== v4.1.0: 统一词卡表 — 所有词卡模块的单一数据源 ==========
+        conn.executescript("""
+            -- 词卡组（替代 prompt_library 维库分组）
+            CREATE TABLE IF NOT EXISTS word_card_group (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                name            TEXT NOT NULL DEFAULT '',
+                group_key       TEXT NOT NULL DEFAULT '',
+                icon            TEXT DEFAULT '',
+                description     TEXT DEFAULT '',
+                group_type      TEXT DEFAULT 'builtin',
+                parent_group_id INTEGER DEFAULT NULL,
+                sort_order      INTEGER DEFAULT 0,
+                is_active       INTEGER DEFAULT 1,
+                created_at      TEXT DEFAULT (datetime('now','localtime')),
+                updated_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_wcg_type ON word_card_group(group_type);
+            CREATE INDEX IF NOT EXISTS idx_wcg_parent ON word_card_group(parent_group_id);
+
+            -- 统一词卡表（唯一数据源）
+            CREATE TABLE IF NOT EXISTS word_card (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id        INTEGER DEFAULT NULL,
+                name            TEXT NOT NULL DEFAULT '',
+                content         TEXT NOT NULL DEFAULT '',
+                meaning         TEXT DEFAULT '',
+                scene           TEXT DEFAULT '',
+                module          TEXT DEFAULT 'custom',
+                category        TEXT DEFAULT '',
+                tags            TEXT DEFAULT '[]',
+                icon            TEXT DEFAULT '',
+                thumbnail       TEXT DEFAULT '',
+                preview_media   TEXT DEFAULT '',
+                media_type      TEXT DEFAULT '',
+                structured      TEXT DEFAULT '{}',
+                version         INTEGER DEFAULT 1,
+                sort_order      INTEGER DEFAULT 0,
+                usage_count     INTEGER DEFAULT 0,
+                heat_weight     REAL DEFAULT 0,
+                is_builtin      INTEGER DEFAULT 0,
+                is_deleted      INTEGER DEFAULT 0,
+                deleted_at      TEXT DEFAULT NULL,
+                source          TEXT DEFAULT '',
+                source_id       INTEGER DEFAULT NULL,
+                created_at      TEXT DEFAULT (datetime('now','localtime')),
+                updated_at      TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (group_id) REFERENCES word_card_group(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_wc_group ON word_card(group_id);
+            CREATE INDEX IF NOT EXISTS idx_wc_module ON word_card(module);
+            CREATE INDEX IF NOT EXISTS idx_wc_deleted ON word_card(is_deleted);
+            CREATE INDEX IF NOT EXISTS idx_wc_builtin ON word_card(is_builtin);
+            CREATE INDEX IF NOT EXISTS idx_wc_source ON word_card(source, source_id);
+
+            -- FTS5 全文索引
+            CREATE VIRTUAL TABLE IF NOT EXISTS word_card_fts USING fts5(
+                content, meaning, name, tags,
+                content='word_card', content_rowid='id'
+            );
+
+            -- 触发器：自动同步 FTS
+            CREATE TRIGGER IF NOT EXISTS wc_fts_ai AFTER INSERT ON word_card BEGIN
+                INSERT INTO word_card_fts(rowid, content, meaning, name, tags)
+                VALUES (new.id, new.content, new.meaning, new.name, new.tags);
+            END;
+            CREATE TRIGGER IF NOT EXISTS wc_fts_ad AFTER DELETE ON word_card BEGIN
+                INSERT INTO word_card_fts(word_card_fts, rowid, content, meaning, name, tags)
+                VALUES ('delete', old.id, old.content, old.meaning, old.name, old.tags);
+            END;
+            CREATE TRIGGER IF NOT EXISTS wc_fts_au AFTER UPDATE ON word_card BEGIN
+                INSERT INTO word_card_fts(word_card_fts, rowid, content, meaning, name, tags)
+                VALUES ('delete', old.id, old.content, old.meaning, old.name, old.tags);
+                INSERT INTO word_card_fts(rowid, content, meaning, name, tags)
+                VALUES (new.id, new.content, new.meaning, new.name, new.tags);
+            END;
+
+            -- 词卡→场景引用表（替代 user_scene_prompt）
+            CREATE TABLE IF NOT EXISTS scene_card_ref (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                scene_id    INTEGER NOT NULL,
+                card_id     INTEGER NOT NULL,
+                card_content TEXT DEFAULT '',
+                created_at  TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (card_id) REFERENCES word_card(id),
+                UNIQUE(scene_id, card_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_scr_scene ON scene_card_ref(scene_id);
+            CREATE INDEX IF NOT EXISTS idx_scr_card ON scene_card_ref(card_id);
+        """)
+
         # === Seedance V2 缺列补丁（幂等 ALTER TABLE）===
         for sql in [
             "ALTER TABLE user_project ADD COLUMN bgm TEXT DEFAULT ''",

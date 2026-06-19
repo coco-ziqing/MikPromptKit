@@ -252,6 +252,20 @@ const App = {
             this._collapseSidebar();  // 组装器不需要功能模块侧边栏，自动折叠
             this.loadSeedanceCategories();
             this.loadSeedanceTemplates();
+        } else if (view === 'wcmanager') {
+            // v4.1.0: 统一词卡管理面板
+            var wp = document.getElementById('viewWCManager');
+            if (!wp) {
+                wp = document.createElement('div');
+                wp.id = 'viewWCManager';
+                wp.className = 'view-panel';
+                document.getElementById('mainContent').appendChild(wp);
+            }
+            wp.classList.add('active-view');
+            var nw = document.getElementById('navWCManager');
+            if (nw) nw.classList.add('active');
+            this._hideSearchBox();
+            if (App.wordCards && App.wordCards.load) App.wordCards.load();
         }
 
         // 关闭推荐面板

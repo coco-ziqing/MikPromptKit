@@ -49,6 +49,7 @@ from api.monitor import router as monitor_router
 from api.optimizer import router as optimizer_router
 from api.auto_tag import router as auto_tag_router
 from api.ai_thumbnail import router as ai_thumbnail_router
+from api.word_cards import router as word_card_router
 from health import router as health_router
 from sync import (
     export_package, restore_package, import_package,
@@ -299,6 +300,7 @@ app.include_router(monitor_router)
 app.include_router(optimizer_router)
 app.include_router(auto_tag_router)
 app.include_router(ai_thumbnail_router)
+app.include_router(word_card_router)
 app.include_router(health_router)
 
 
