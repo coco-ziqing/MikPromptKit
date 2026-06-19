@@ -246,8 +246,7 @@ const App = {
             collections: 'navCollections',
             wordpacks: 'navWordpacks',
             history: 'navHistory',
-            trash: 'navTrash',
-            v4library: 'navV4Library'
+            trash: 'navTrash'
         };
 
         if (view === 'home') {
@@ -278,14 +277,7 @@ const App = {
             document.getElementById(navMap[view]).classList.add('active');
             this._hideSearchBox();
             this.loadTrash();
-        } else if (view === 'v4library') {
-            var el = document.getElementById('viewV4library');
-            if (el) el.classList.add('active-view');
-            var navEl = document.getElementById('navV4Library');
-            if (navEl) navEl.classList.add('active');
-            this._hideSearchBox();
-            this.loadV4Library();
-                } else if (view === 'v4media') {
+        } else if (view === 'v4media') {
             var el = document.getElementById('viewV4media');
             if (el) el.classList.add('active-view');
             var navEl = document.getElementById('navV4Media');
