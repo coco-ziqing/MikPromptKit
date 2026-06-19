@@ -103,7 +103,7 @@ App.wordEditor._ensureModal = function() {
     '<div style="flex:1;">' +
     '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">分类</label>' +
     '<input id="wcEditCategory" class="modal-input" placeholder="二级分类" style="font-size:12px;">' +
-    '</div></div> +
+    '</div></div>' +
 
     // 标签 + AI按钮
     '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">标签</label>' +
