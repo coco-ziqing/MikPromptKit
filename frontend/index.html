@@ -21,8 +21,7 @@
             <button class="header-btn" onclick="App.switchView('history')" id="navHistory" title="最近使用"><i class="bi bi-clock-history"></i></button>
             <button onclick="App.switchView('trash')" id="navTrash" title="回收站"><i class="bi bi-trash"></i></button>
             <button class="header-btn" onclick="App.switchView('seedance')" id="navSeedance" title="提示词组装器" style="color:#8b5cf6;"><i class="bi bi-tools"></i></button>
-            <button class="header-btn" onclick="App.switchView('wcmanager')" id="navWCManager" title="词卡管理"><i class="bi bi-database-gear"></i></button>
-            <button class="header-btn" onclick="App.switchView('wcmanager')" id="navWCManager" title="统一词卡管理"><i class="bi bi-grid-3x3-gap-fill"></i></button>
+            <button class="header-btn" onclick="App.switchView('wcmanager')" id="navWCManager" title="词卡管理"><i class="bi bi-grid-3x3-gap-fill"></i></button>
             <button class="header-btn" onclick="App.switchView('v4media')" id="navV4Media" title="媒体资产"><i class="bi bi-images"></i></button>
             <div class="column-slider-wrap" title="调整卡片列数">
                 <button class="header-btn" onclick="App.decColumn()" style="font-size:16px;width:26px;height:26px;">-</button>
@@ -127,7 +126,7 @@
         </div>
         <div id="viewWCManager" class="view-panel">
             <div class="page-header" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-                <h3 style="margin:0;"><i class="bi bi-grid-3x3-gap-fill"></i> 统一词卡管理</h3>
+                <h3 style="margin:0;"><i class="bi bi-grid-3x3-gap-fill"></i> 词卡管理</h3>
                 <span id="wcStats" style="font-size:11px;color:var(--text-muted);">加载中...</span>
                 <div style="flex:1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                     <input id="wcSearch" class="modal-input" placeholder="🔍 搜索..." style="width:160px;font-size:12px;padding:5px 8px;" onkeydown="if(event.key==='Enter')App.wordCards.search()">
@@ -939,7 +938,7 @@
         </div>
         <div id="viewWCManager" class="view-panel">
             <div class="page-header" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-                <h3 style="margin:0;"><i class="bi bi-grid-3x3-gap-fill"></i> 统一词卡管理</h3>
+                <h3 style="margin:0;"><i class="bi bi-grid-3x3-gap-fill"></i> 词卡管理</h3>
                 <span id="wcStats" style="font-size:11px;color:var(--text-muted);">加载中...</span>
                 <div style="flex:1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                     <input id="wcSearch" class="modal-input" placeholder="🔍 搜索..." style="width:160px;font-size:12px;padding:5px 8px;" onkeydown="if(event.key==='Enter')App.wordCards.search()">
