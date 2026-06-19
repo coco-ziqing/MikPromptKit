@@ -2518,3 +2518,63 @@ body.dark-theme .ai-opt-modal {
     gap: 4px;
 }
 
+/* ============ v4.1.0: Word Card Picker ============ */
+.wc-picker-panel {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    animation: panelSlideIn 0.2s ease;
+}
+@keyframes panelSlideIn {
+    from { transform: translateX(40px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+.wc-picker-search {
+    font-family: inherit;
+}
+.wc-picker-search:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: -1px;
+}
+.wc-group-tab {
+    transition: all 0.15s;
+}
+.wc-group-tab:hover {
+    border-color: var(--primary) !important;
+    color: var(--primary) !important;
+}
+.wc-picker-card:hover {
+    border-color: var(--primary) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.wc-picker-card:hover .wc-pick-arrow {
+    opacity: 0.6 !important;
+}
+
+/* ============ v4.1.0: Word Card Manager ============ */
+.wc-chip {
+    transition: all 0.15s;
+    font-family: system-ui;
+}
+.wc-chip:hover, .wc-chip.active {
+    border-color: var(--primary) !important;
+    color: var(--primary) !important;
+    background: rgba(79,70,229,0.08) !important;
+}
+.wc-card {
+    transition: all 0.15s;
+}
+.wc-card:hover {
+    border-color: var(--primary) !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+#viewWordCards { padding: 12px 16px; }
+
+/* ============ v4.1.0: Word Card Editor ============ */
+#modalWordEdit .modal-input { font-family: 'Segoe UI', system-ui, sans-serif; }
+#modalWordEdit select { cursor: pointer; }
+#modalWordEdit select:focus, #modalWordEdit input:focus, #modalWordEdit textarea:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: -1px;
+}
+#wcEditDeleteBtn { transition: all 0.15s; }
+#wcEditDeleteBtn:hover { opacity: 0.85; }
+

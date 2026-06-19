@@ -2,33 +2,39 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit)
-- 版本：v4.0.0-phase9.4 (2026-06-15 会话关闭)
+- 版本：v4.0.0-phase12 (2026-06-19)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
-- 启动方式：`python backend/main.py` 或 `.\start.bat` **推荐: `.\QUICK_START.bat`**
+- 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
 - 默认端口：8080
 - 局域网地址：http://192.168.0.101:8080
 
 ## 技术栈
-- Python 3.10+ / FastAPI / Uvicorn / SQLite (WAL + FTS5)
-- 前端：Bootstrap 5 CDN + Vanilla JS SPA (已拆分为6模块)
-- 图片处理：Pillow（自动 3:2 裁剪）
+- Python 3.14 / FastAPI / Uvicorn / SQLite (WAL + FTS5)
+- 前端：Bootstrap 5 CDN + Vanilla JS SPA (拆分为15模块)
+- 图片处理：Pillow（自动 3:2 裁剪 + AI渐变渲染）
 - 视频处理：ffmpeg（封面提取 + 裁剪压缩）
-- 语义搜索：sentence-transformers + all-MiniLM-L6-v2
+- 语义搜索：sentence-transformers + all-MiniLM-L6-v2 + LLM Rerank
+- AI引擎：Ollama 本地大模型池(16模型) — 翻译/优化/标签/搜索重排/缩略图
 - 版本管理：Git + Git tag
 
-## 项目规模（2026-06-12 更新）
-- 后端 API 端点：165 个 (v4: 17 / Seedance: 35)
-- 前端 JS 源码：app_core.js(658行) + 5模块 + seedance_v2_composer(1250行) ≈ 8,500 行
-- CSS: 2,100 行
-- 数据库表：30 张
+## 项目规模（2026-06-19 Phase12 关闭）
+- 后端 API 模块：25 个 (api/ 25个模块 + ollama_client + llm_rerank + health)
+- 后端 API 端点：200+ (Phase12新增22个AI端点)
+- 前端 JS 源码：15 模块 ≈ 12,000 行
+- CSS: 2,500+ 行
+- 数据库表：30+ 张
 - 种子词条：165 条（5 模块）
-- 实际词条：213 条
 - library_assets 词库：302 条（10 类）
-- 媒体资产：缩略图 287 / 原图 236 / 视频 23
-- 收藏分组：2 / 词包：1
+- Ollama 模型池：16 个（分级路由: ultra/high/medium/fast）
 
 ## Git Tag 节点（最近 10 个）
-- `v4.0.0-phase9.2-final` — 本次关闭: 组装器v2+审阅+预览+项目管理+深色UI (2026-06-12)
+- `v4.0.0-phase12` — Phase12: AI全栈升级 — 翻译/优化器/标签/Playground/搜索/AI缩略图 + 监测仪表盘 + 前端AI交互 (2026-06-19)
+- `v4.0.0-phase11.1` — 实时信号灯: 30s后台ping Ollama+ComfyUI，底部状态栏绿/红/灰点 (2026-06-18)
+- `v4.0.0-phase11` — 启动自检: 9项自动检测，跳过配置，前端弹窗自动运行 (2026-06-18)
+- `v4.0.0-phase10.3` — 裁剪UX: 滚轮缩放(光标中心)/拖拽平移/独立裁剪框/缩放%指示/重置 (2026-06-18)
+- `v4.0.0-phase10.2` — 角色头像裁剪: 拖拽选框+宽高比锁(1:1头像/3:2预览) (2026-06-17)
+- `v4.0.0-phase10.1` — 角色库系统: 8种子角色+CRUD+viewer+场景嵌入 (2026-06-17)
+- `v4.0.0-phase9.4` — 深色模式全面适配: 44处修复 (2026-06-15)
 - `v4.0.0-phase9.1-ui` — 组装器前端对接: 5格式/3密度/音频面板+4K-8K (2026-06-12)
 - `v4.0.0-phase9-assembler` — 组装器v2引擎: 5格式+像素分辨率+音频+3档密度 (2026-06-12)
 - `v4.0.0-phase8.6-split` — 前端拆分: app.js→6模块(264方法零丢失) (2026-06-12)
