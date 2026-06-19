@@ -98,7 +98,7 @@ const App = {
                 var displayVersion = v.replace('v', '').replace('-phase', '.');
                 document.title = '咪卡MiK提示词助手';
                 var bv = document.getElementById('brandVersion');
-                if (bv) bv.textContent = v;
+                if (bv) bv.textContent = v.startsWith('v') ? v : 'v' + v;
                 // 同时更新 headerStats
                 var hs = document.getElementById('headerStats');
                 if (hs) hs.textContent = v + ' | 词库 ' + (d.total_prompts||0) + ' 条 | 使用 ' + (d.total_usage||0) + ' 次';
