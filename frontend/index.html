@@ -34,6 +34,7 @@
             <button class="header-btn" onclick="App.openPlayground()" id="btnPlayground" title="LLM Playground 测试提示词"><i class="bi bi-cpu"></i></button>
             <button class="header-btn" onclick="App.showBackupInfo()" id="btnBackup" title="数据库备份"><i class="bi bi-database"></i></button>
             <button class="header-btn" onclick="App.showSyncPanel()" id="btnSync" title="数据同步 .pkb 包"><i class="bi bi-arrow-left-right"></i></button>
+            <button class="header-btn" onclick="App.monitor.open()" id="btnMonitor" title="服务监测仪表盘"><i class="bi bi-speedometer2"></i></button>
             <button class="header-btn" onclick="App.showDashboard()" id="btnDashboard" title="统计仪表盘"><i class="bi bi-bar-chart"></i></button>
             <button class="header-btn" onclick="App.openScreenshotImport()" id="btnOCR" title="截图导入提示词 — 自动识别图+文"><i class="bi bi-camera"></i></button>
             <button class="header-btn" onclick="App.openComfyConfig()" id="btnWorkflow" title="ComfyUI 集成配置 + 模块预设"><i class="bi bi-link-45deg"></i></button>
@@ -852,6 +853,8 @@
 
     <div id="toastContainer" class="toast-container"></div>
     <script src="/static/js/health_check.js?v=1"></script>
+    <script src="/static/js/monitor_dashboard.js?v=1"></script>
+    <script src="/static/js/ai_tools.js?v=1"></script>
     <script src="/static/js/signal_lights.js?v=1"></script>
     <script src="/static/js/app_core.js?v=8.5"></script>
     <script src="/static/js/app_sync.js?v=8.5"></script>

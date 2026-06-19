@@ -20,7 +20,7 @@ _watch_task = None
 # ---------- 常量 ----------
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_COMFY_URL = "http://127.0.0.1:8188"
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 
 def _get_config(key: str) -> Optional[str]:
