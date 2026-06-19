@@ -294,7 +294,7 @@ const App = {
             this.loadSeedanceCategories();
             this.loadSeedanceTemplates();
         } else if (view === 'wcmanager') {
-            // v4.1.0: 统一词卡管理面板
+            // v4.1.0: 词卡管理面板
             var wp = document.getElementById('viewWCManager');
             if (!wp) {
                 wp = document.createElement('div');
@@ -306,6 +306,7 @@ const App = {
             var nw = document.getElementById('navWCManager');
             if (nw) nw.classList.add('active');
             this._hideSearchBox();
+            this._collapseSidebar();
             if (App.wordCards && App.wordCards.load) App.wordCards.load();
         }
 
