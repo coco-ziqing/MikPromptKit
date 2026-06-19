@@ -50,8 +50,8 @@ def list_modules():
                 cnt = db.execute("SELECT COUNT(*) FROM prompts WHERE module=? AND deleted_at IS NULL", [mid]).fetchone()[0]
                 result.append({"id": mid, "name": mid, "count": cnt, "builtin": False})
                 seen[mid] = True
-        # 过滤掉 custom（内部默认模块）
-        result = [x for x in result if x["id"] != "custom"]
+        # 过滤掉 custom（内部默认模块）和 count=0 的虚拟模块
+        result = [x for x in result if x["id"] != "custom" and x["count"] > 0]
         return {"modules": result}
     except Exception:
         traceback.print_exc()

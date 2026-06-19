@@ -499,12 +499,7 @@ const App = {
 
     async loadModules() {
         const data = await this.fetchJSON('/api/modules');
-        if (data) { this.state.modules = data.modules; }
-        // 预加载统一词卡分组，供侧边栏使用
-        if (App.cardModel) {
-            try { await App.cardModel.getGroups(true); } catch(e) {}
-        }
-        this.renderSidebar();
+        if (data) { this.state.modules = data.modules; this.renderSidebar(); }
     },
 
     async loadCategories(module) {
