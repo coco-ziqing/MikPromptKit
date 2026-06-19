@@ -143,7 +143,7 @@ Object.assign(App, {
             '</div></div>';
         var allActive = this.state.currentModule === null ? 'active' : '';
         html += '<div class="module-item ' + allActive + '" onclick="App.switchAllModules()">' +
-            '<span class="icon">??</span>' +
+            '<span class="icon">📚</span>' +
             '<span>全部词库</span>' +
             '<span class="count-badge">' + (this.state.stats.total_prompts || '') + '</span>' +
             '</div>';
