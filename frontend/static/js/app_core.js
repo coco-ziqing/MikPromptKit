@@ -339,11 +339,14 @@ const App = {
     },
 
     // 辅助：完全隐藏侧边栏+按钮（词卡管理等独立视图用）
+    // 辅助：完全隐藏侧边栏+按钮（词卡管理等独立视图用）
     _hideSidebar() {
         var sidebar = document.getElementById('sidebar');
         var btn = document.getElementById('sidebarToggleBtn');
+        var mc = document.querySelector('.main-content');
         if (sidebar) { sidebar.style.display = 'none'; }
         if (btn) { btn.style.display = 'none'; }
+        if (mc) { mc.style.marginLeft = '0'; }
         document.body.classList.remove('sidebar-collapsed');
     },
 
@@ -351,8 +354,10 @@ const App = {
     _showSidebar() {
         var sidebar = document.getElementById('sidebar');
         var btn = document.getElementById('sidebarToggleBtn');
+        var mc = document.querySelector('.main-content');
         if (sidebar) { sidebar.style.display = ''; }
         if (btn) { btn.style.display = ''; }
+        if (mc) { mc.style.marginLeft = ''; }
         // 恢复折叠状态
         this._restoreSidebarState();
     },
