@@ -24,7 +24,7 @@ from seed_data import SEED_PROMPTS, get_builtin_count
 from backup import start_auto_backup, stop_auto_backup, do_backup, get_backup_info
 
 # 启动时读取版本号
-APP_VERSION = '4.0.0-phase12'
+APP_VERSION = 'v4.1.0-phase13'
 from api.prompts import router as prompts_router
 from api.v2 import router as v2_router
 from api.seedance import router as seedance_router
@@ -173,7 +173,7 @@ async def lifespan(app: FastAPI):
         total = cards = libs = 0
     print()
     print("=" * 50)
-    print("  [OK] 咪卡MiK提示词助手 v4.0.0-phase11 已启动")
+    print("  [OK] 咪卡MiK提示词助手 %s 已启动" % APP_VERSION)
     print("  [本机] http://127.0.0.1:%s" % ACTUAL_PORT)
     print("  [局域网] http://%s:%s" % (host_ip, ACTUAL_PORT))
     print("  [词库] %d 条 | 卡片 %d | 资产 %d" % (total, cards, libs))
