@@ -147,7 +147,7 @@ Object.assign(App, {
             '<span>全部词库</span>' +
             '<span class="count-badge">' + (this.state.stats.total_prompts || '') + '</span>' +
             '</div>';
-        var icons = { emotion: '??', color: '??', tone: '??', storyboard: '??', camera_move: '??', seedance: '??' };
+        var icons = { emotion: '😊', color: '🎨', tone: '💡', storyboard: '📋', camera_move: '🎥', seedance: '🎬' };
         var names = { emotion: '人物表情', color: '场景色彩', tone: '画面色调', storyboard: '分镜构图', composition: '分镜构图', camera_move: '运镜模版', seedance: '视频模版' };
         for (var i = 0; i < modules.length; i++) {
             var m = modules[i];
@@ -159,7 +159,7 @@ Object.assign(App, {
                 deleteBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.deleteCustomModule(\'' + m.id + '\')" title="删除分组" style="font-size:11px;color:#ef4444;padding:0 4px;opacity:0.6;">x</button>';
             }
             html += '<div class="module-item ' + active + '" onclick="' + clickHandler + '">' +
-                '<span class="icon">' + (icons[m.id] || '??') + '</span>' +
+                '<span class="icon">' + (icons[m.id] || '📄') + '</span>' +
                 '<span>' + (names[m.id] || m.id) + '</span>' +
                 '<span class="count-badge">' + (m.count || 0) + '</span>' +
                 deleteBtn +
