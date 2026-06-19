@@ -4,7 +4,8 @@ v4.1.0: 统一词卡 API
 单一路由前缀，所有模块共享同一数据源
 """
 import json, re, hashlib, os
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, UploadFile, File
+from fastapi.responses import Response
 from database import get_db, safe_commit
 
 router = APIRouter(prefix="/api/v4/word-cards", tags=["word-cards"])
@@ -124,7 +125,10 @@ def batch_operation(data: dict):
     if not ids: raise HTTPException(400,"请提供词卡ID列表")
     db = get_db(); ph = ",".join("?" for _ in ids)
     if action == "move":
-        db.execute(f"UPDATE word_card SET group_id=?,updated_at=datetime('now','localtime') WHERE id IN ({ph})", [data.get("group_id")]+ids)
+        tg = data.get("group_id")
+        max_sort = db.execute("SELECT COALESCE(MAX(sort_order),0) FROM word_card WHERE group_id=?", [tg]).fetchone()[0]
+        for idx, cid in enumerate(ids):
+            db.execute("UPDATE word_card SET group_id=?,sort_order=?,updated_at=datetime('now','localtime') WHERE id=?", [tg, max_sort+1+idx, cid])
     elif action == "delete":
         db.execute(f"UPDATE word_card SET is_deleted=1,deleted_at=datetime('now','localtime') WHERE id IN ({ph}) AND is_builtin=1", ids)
         db.execute(f"DELETE FROM word_card WHERE id IN ({ph}) AND is_builtin=0", ids)
@@ -229,6 +233,108 @@ def create_card(data: dict):
     try: from semantic import update_embedding; update_embedding(cid, content)
     except: pass
     return {"ok":True,"id":cid}
+
+# ==================== 导出/导入 (Phase13.1) ====================
+
+@router.post("/export")
+def export_cards(data: dict):
+    """导出词卡为 CSV/JSON 格式"""
+    fmt = data.get("format", "json")
+    ids = data.get("ids", [])
+    group_id = data.get("group_id")
+    db = get_db()
+    where = ["wc.is_deleted=0"]
+    params = []
+    if ids:
+        ph = ",".join("?" * len(ids))
+        where.append(f"wc.id IN ({ph})")
+        params.extend(ids)
+    if group_id:
+        where.append("wc.group_id=?")
+        params.append(group_id)
+    w = " AND ".join(where)
+    rows = db.execute(f"SELECT wc.*,wg.name as group_name,wg.group_key FROM word_card wc LEFT JOIN word_card_group wg ON wg.id=wc.group_id WHERE {w} ORDER BY wc.group_id,wc.sort_order", params).fetchall()
+    items = []
+    for r in rows:
+        it = dict(r)
+        try: it["tags"] = json.loads(it["tags"]) if isinstance(it["tags"], str) else (it["tags"] or [])
+        except: it["tags"] = []
+        items.append(it)
+    if fmt == "csv":
+        import csv, io
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["id","group_id","group_name","name","content","meaning","tags","module"])
+        for it in items:
+            writer.writerow([it["id"],it["group_id"],it.get("group_name",""),it["name"],it["content"],it["meaning"],json.dumps(it.get("tags",[]),ensure_ascii=False),it["module"]])
+        return Response(output.getvalue(), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": "attachment; filename=word_cards.csv"})
+    return {"ok": True, "items": items, "total": len(items)}
+
+
+@router.post("/import")
+async def import_cards(file: UploadFile = File(...)):
+    """从 CSV/JSON 文件导入词卡"""
+    content = await file.read()
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    db = get_db()
+    count = 0
+    errors = []
+    if ext == ".json":
+        try:
+            data = json.loads(content)
+            items = data if isinstance(data, list) else data.get("items", [])
+        except Exception as e:
+            raise HTTPException(400, f"JSON 解析失败: {e}")
+        for it in items:
+            try:
+                gid = it.get("group_id")
+                if not gid:
+                    errors.append(f"第{count+1}条缺少group_id，跳过")
+                    continue
+                max_sort = db.execute("SELECT COALESCE(MAX(sort_order),0) FROM word_card WHERE group_id=?", [gid]).fetchone()[0]
+                db.execute("INSERT INTO word_card (group_id,name,content,meaning,tags,module,is_builtin,sort_order) VALUES (?,?,?,?,?,?,0,?)",
+                          [gid, (it.get("name") or it.get("content",""))[:60], it.get("content",""), it.get("meaning",""),
+                           json.dumps(it.get("tags",[]), ensure_ascii=False), it.get("module","custom"), max_sort+1])
+                count += 1
+            except Exception as e:
+                errors.append(f"第{count+1}条导入失败: {e}")
+    elif ext == ".csv":
+        import csv, io
+        try:
+            reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+            for row in reader:
+                try:
+                    gid = int(row.get("group_id", 0))
+                    if not gid:
+                        errors.append(f"第{count+1}行缺少group_id，跳过")
+                        continue
+                    max_sort = db.execute("SELECT COALESCE(MAX(sort_order),0) FROM word_card WHERE group_id=?", [gid]).fetchone()[0]
+                    db.execute("INSERT INTO word_card (group_id,name,content,meaning,tags,module,is_builtin,sort_order) VALUES (?,?,?,?,?,?,0,?)",
+                              [gid, (row.get("name") or row.get("content",""))[:60], row.get("content",""), row.get("meaning",""),
+                               row.get("tags","[]"), row.get("module","custom"), max_sort+1])
+                    count += 1
+                except Exception as e:
+                    errors.append(f"第{count+1}行导入失败: {e}")
+        except Exception as e:
+            raise HTTPException(400, f"CSV 解析失败: {e}")
+    else:
+        raise HTTPException(400, "仅支持 .json 和 .csv 格式")
+    safe_commit()
+    return {"ok": True, "imported": count, "errors": errors[:20], "total_errors": len(errors)}
+
+
+@router.put("/reorder")
+def reorder_cards(data: dict):
+    """批量重排词卡顺序"""
+    order = data.get("order", [])
+    if not order: raise HTTPException(400, "缺少 order 列表")
+    db = get_db()
+    for idx, cid in enumerate(order):
+        db.execute("UPDATE word_card SET sort_order=?,updated_at=datetime('now','localtime') WHERE id=?", [idx, cid])
+    safe_commit()
+    return {"ok": True, "updated": len(order)}
+
 
 # ==================== 辅助 ====================
 
