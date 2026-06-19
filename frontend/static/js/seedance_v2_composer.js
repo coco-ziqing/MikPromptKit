@@ -12,7 +12,11 @@
         scenes: [], libraries: [], cardCache: {}, cardPages: {},
         activeField: null, activeSceneId: null, activePickerLibId: null,
         moreLibsOpen: false, dirty: false, outputText: '', outputJson: null,
-        _composeTimer: null, _composeDebounceMs: 300
+        _composeTimer: null, _composeDebounceMs: 300,
+        // Phase13.4: 撤销栈 + 脏标记渲染
+        _undoStack: [], _undoMax: 20,
+        _dirtySceneIds: null, _renderTimer: null
+    };
     };
 
     App.seedanceV2.init = async function() {
@@ -25,8 +29,43 @@
             this._eventsBound = true;
             // ESC 键关闭词库弹窗
             document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape' && document.getElementById('s2CardPicker').style.display !== 'none') {
-                    self.closePicker();
+                if (e.key === 'Escape') {
+                    var picker = document.getElementById('s2CardPicker');
+                    if (picker && picker.style.display !== 'none') { self.closePicker(); return; }
+                    var remaining = document.getElementById('s2RemainingModal');
+                    if (remaining && remaining.style.display !== 'none') { remaining.style.display = 'none'; return; }
+                    var delPop = document.getElementById('s2GlobalDelPop');
+                    if (delPop && delPop.style.display !== 'none') { delPop.style.display = 'none'; return; }
+                    var rightPanel = document.getElementById('s2RightPanel');
+                    if (rightPanel && !rightPanel.classList.contains('collapsed')) { self.toggleRightPanel(); return; }
+                }
+                // Ctrl+S 保存项目
+                if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                    e.preventDefault();
+                    if (self.currentProjectId) self.saveProject();
+                    return;
+                }
+                // Ctrl+Z 撤销
+                if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                    if (self.currentProjectId && self._undoStack && self._undoStack.length > 0) {
+                        e.preventDefault();
+                        self._undoLastChange();
+                    }
+                    return;
+                }
+                // ↑↓ 在镜头间切换
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    var cards = document.querySelectorAll('.s2-scene-card');
+                    if (!cards.length || !self.currentProjectId) return;
+                    var focused = document.activeElement ? document.activeElement.closest('.s2-scene-card') : null;
+                    var idx = focused ? Array.from(cards).indexOf(focused) : -1;
+                    var next = e.key === 'ArrowDown' ? Math.min(idx + 1, cards.length - 1) : Math.max(idx - 1, 0);
+                    if (next >= 0 && next < cards.length && next !== idx) {
+                        e.preventDefault();
+                        cards[next].scrollIntoView({behavior:'smooth',block:'center'});
+                        cards[next].style.boxShadow = '0 0 0 2px var(--primary)';
+                        setTimeout(function(){cards[next].style.boxShadow='';},1500);
+                    }
                 }
             });
             setTimeout(function() {
@@ -1065,6 +1104,60 @@
     App.seedanceV2.insertScene=async function(sid,pos){if(!this.currentProjectId)return;var ref=null;for(var i=0;i<this.scenes.length;i++){if(this.scenes[i].id===sid){ref=this.scenes[i];break;}}if(!ref)return;var o=(pos==='before')?ref.scene_order:ref.scene_order+1;var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_order:o})});if(d&&d.ok){await this.openProject(this.currentProjectId);App.showToast('已插入新镜头','success');}};
     App.seedanceV2.reorderScenes=async function(src,tgt){if(!this.currentProjectId)return;var ids=[];for(var i=0;i<this.scenes.length;i++)ids.push(this.scenes[i].id);var si=ids.indexOf(src),ti=ids.indexOf(tgt);if(si<0||ti<0)return;ids.splice(si,1);var newTi=ids.indexOf(tgt);if(si<ti)ids.splice(newTi+1,0,src);else ids.splice(newTi,0,src);var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_ids:ids})});if(d&&d.ok){await this.openProject(this.currentProjectId);App.showToast('镜头已重新排序','success');}};
     App.seedanceV2.updateSceneField=async function(sid,f,v){var d={};d[f]=v;await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});};
+
+    // ========== Phase13.4: 撤销栈 ==========
+    App.seedanceV2._pushUndo = function() {
+        var snapshot = JSON.parse(JSON.stringify(this.scenes));
+        this._undoStack.push(snapshot);
+        if (this._undoStack.length > this._undoMax) this._undoStack.shift();
+    };
+    App.seedanceV2._undoLastChange = function() {
+        if (this._undoStack.length === 0) return;
+        var prev = this._undoStack.pop();
+        this.scenes = prev;
+        this.renderScenes();
+        this.compose();
+        App.showToast('已撤销', 'info');
+    };
+    // 在关键修改前自动压栈
+    App.seedanceV2._pushUndoBefore = function() {
+        if (this.scenes && this.scenes.length > 0) this._pushUndo();
+    };
+
+    // ========== Phase13.4: 脏标记渲染优化 ==========
+    App.seedanceV2._dirtySceneIds = new Set();
+    App.seedanceV2._renderTimer = null;
+    App.seedanceV2._markSceneDirty = function(sceneId) {
+        if (!sceneId) return;
+        this._dirtySceneIds.add(sceneId);
+        if (!this._renderTimer) {
+            var self = this;
+            this._renderTimer = setTimeout(function() {
+                self._flushDirtyRender();
+            }, 80);
+        }
+    };
+    App.seedanceV2._flushDirtyRender = function() {
+        this._renderTimer = null;
+        if (this._dirtySceneIds.size === 0) return;
+        var ids = Array.from(this._dirtySceneIds);
+        this._dirtySceneIds.clear();
+        for (var i = 0; i < ids.length; i++) {
+            var sid = ids[i];
+            var scene = null;
+            for (var j = 0; j < this.scenes.length; j++) {
+                if (this.scenes[j].id === sid) { scene = this.scenes[j]; break; }
+            }
+            if (!scene) continue;
+            var card = document.querySelector('.s2-scene-card[data-scene-id="' + sid + '"]');
+            if (card) {
+                var idx = scene.scene_order - 1;
+                var newHTML = this.renderSceneCard(scene, idx);
+                card.outerHTML = newHTML;
+            }
+        }
+        this._refreshTimeline();
+    };
 
     // 时长设定
     App.seedanceV2.applyDurPreset=function(el){var v=parseFloat(el.value);if(isNaN(v))return;var inp=document.querySelector('.s2-scene-dur[data-scene-id="'+el.dataset.targetScene+'"]');if(inp){inp.value=v;inp.dispatchEvent(new Event('change',{bubbles:true}));}el.value='';};
