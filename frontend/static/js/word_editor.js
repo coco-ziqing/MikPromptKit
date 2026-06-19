@@ -112,7 +112,11 @@ App.wordEditor._ensureModal = function() {
     '<button class="btn btn-xs ai-inline-btn" onclick="App.wordEditor._aiAnalyze()" style="flex-shrink:0;font-size:10px;padding:4px 8px;">🤖 AI分析</button>' +
     '</div>' +
 
-    // 排序 + 图标
+    // 场景 (Phase13.5: 统一词卡要素)
+    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">适用场景</label>' +
+    '<input id="wcEditScene" class="modal-input" placeholder="如: 特写镜头 / 广角风光 / 室内人像" style="font-size:12px;margin-bottom:10px;">' +
+
+    // 排序 + 图标 + 热度
     '<div style="display:flex;gap:8px;margin-bottom:12px;">' +
     '<div style="flex:1;">' +
     '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">排序权重</label>' +
@@ -121,7 +125,25 @@ App.wordEditor._ensureModal = function() {
     '<div style="flex:1;">' +
     '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">图标</label>' +
     '<input id="wcEditIcon" class="modal-input" placeholder="emoji 图标" style="font-size:12px;max-width:80px;">' +
+    '</div>' +
+    '<div style="flex:1;">' +
+    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">热度 <span style="font-size:9px;">(0~1)</span></label>' +
+    '<input id="wcEditHeat" type="range" min="0" max="1" step="0.1" value="0.5" style="width:100%;vertical-align:middle;" oninput="document.getElementById(\'wcEditHeatLabel\').textContent=this.value">' +
+    '<span id="wcEditHeatLabel" style="font-size:10px;color:var(--text-muted);margin-left:4px;">0.5</span>' +
     '</div></div>' +
+
+    // 缩略图预览 (Phase13.5)
+    '<div id="wcEditThumbRow" style="display:none;margin-bottom:10px;gap:8px;align-items:center;">' +
+    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">缩略图</label>' +
+    '<div style="display:flex;gap:8px;align-items:center;">' +
+    '<img id="wcEditThumbPreview" src="" style="width:60px;height:40px;border-radius:6px;object-fit:cover;border:1px solid var(--border-color);display:none;">' +
+    '<span id="wcEditThumbName" style="font-size:10px;color:var(--text-muted);"></span>' +
+    '</div></div>' +
+
+    // 内置/自定义标记 (Phase13.5)
+    '<div id="wcEditBuiltinRow" style="display:none;margin-bottom:10px;">' +
+    '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--tag-bg);color:var(--primary);">🔒 内置词条 (部分字段不可编辑)</span>' +
+    '</div>' +
 
     '</div>' +
     // Footer
@@ -309,8 +331,33 @@ App.wordEditor._loadCard = async function() {
         document.getElementById('wcEditMeaning').value = c.meaning || '';
         document.getElementById('wcEditModule').value = c.module || 'custom';
         document.getElementById('wcEditCategory').value = c.category || '';
+        document.getElementById('wcEditScene').value = c.scene || '';
         document.getElementById('wcEditSort').value = c.sort_order || 0;
         document.getElementById('wcEditIcon').value = c.icon || '';
+        var heat = c.heat_weight || 0.5;
+        var heatEl = document.getElementById('wcEditHeat');
+        if (heatEl) { heatEl.value = heat; }
+        var heatLabel = document.getElementById('wcEditHeatLabel');
+        if (heatLabel) heatLabel.textContent = heat;
+
+        // 缩略图预览
+        var thumbRow = document.getElementById('wcEditThumbRow');
+        var thumbImg = document.getElementById('wcEditThumbPreview');
+        var thumbName = document.getElementById('wcEditThumbName');
+        if (c.thumbnail && thumbRow && thumbImg && thumbName) {
+            thumbRow.style.display = 'flex';
+            thumbImg.src = '/api/seedance/v2/thumbnails/' + c.thumbnail;
+            thumbImg.style.display = 'inline-block';
+            thumbName.textContent = c.thumbnail;
+        } else if (c.preview_media && thumbRow && thumbImg && thumbName) {
+            thumbRow.style.display = 'flex';
+            thumbImg.style.display = 'none';
+            thumbName.textContent = '🎬 ' + c.preview_media;
+        }
+
+        // 内置标记
+        var builtinRow = document.getElementById('wcEditBuiltinRow');
+        if (builtinRow) builtinRow.style.display = c.is_builtin ? 'block' : 'none';
 
         // 标签
         var tags = c.tags || [];
@@ -346,8 +393,17 @@ App.wordEditor._resetForm = function() {
     document.getElementById('wcEditMeaning').value = '';
     document.getElementById('wcEditModule').value = 'custom';
     document.getElementById('wcEditCategory').value = '';
+    document.getElementById('wcEditScene').value = '';
     document.getElementById('wcEditSort').value = '0';
     document.getElementById('wcEditIcon').value = '';
+    var heatEl = document.getElementById('wcEditHeat');
+    if (heatEl) heatEl.value = '0.5';
+    var heatLabel = document.getElementById('wcEditHeatLabel');
+    if (heatLabel) heatLabel.textContent = '0.5';
+    var thumbRow = document.getElementById('wcEditThumbRow');
+    if (thumbRow) thumbRow.style.display = 'none';
+    var builtinRow = document.getElementById('wcEditBuiltinRow');
+    if (builtinRow) builtinRow.style.display = 'none';
     document.getElementById('wcEditTags').value = '';
     var delBtn = document.getElementById('wcEditDeleteBtn');
     if (delBtn) delBtn.style.display = 'none';
@@ -365,11 +421,13 @@ App.wordEditor._save = async function() {
         name: document.getElementById('wcEditName').value.trim(),
         content: content,
         meaning: document.getElementById('wcEditMeaning').value.trim(),
+        scene: document.getElementById('wcEditScene').value.trim(),
         module: document.getElementById('wcEditModule').value,
         category: document.getElementById('wcEditCategory').value.trim(),
         sort_order: parseInt(document.getElementById('wcEditSort').value) || 0,
         icon: document.getElementById('wcEditIcon').value.trim(),
         group_id: parseInt(document.getElementById('wcEditGroup').value) || null,
+        heat_weight: parseFloat(document.getElementById('wcEditHeat').value) || 0.5,
     };
 
     // 自动同步: 选择了模块 → 映射到对应的group_id
@@ -410,11 +468,18 @@ App.wordEditor._save = async function() {
     }
 
     try {
-        var result = await App.fetchJSON(url, {
-            method: method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
+        var result;
+        if (App.cardModel) {
+            result = this._cardId
+                ? await App.cardModel.update(this._cardId, data)
+                : await App.cardModel.create(data);
+        } else {
+            result = await App.fetchJSON(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+        }
 
         if (result && result.ok) {
             var newId = result.id || this._cardId;
@@ -446,7 +511,9 @@ App.wordEditor._delete = async function() {
     if (!confirm('确认删除此词卡？内置词卡将软删除，自定义词卡将永久删除。')) return;
 
     try {
-        var result = await App.fetchJSON('/api/v4/word-cards/' + this._cardId, { method: 'DELETE' });
+        var result = App.cardModel
+            ? await App.cardModel.delete(this._cardId)
+            : await App.fetchJSON('/api/v4/word-cards/' + this._cardId, { method: 'DELETE' });
         if (result && result.ok) {
             App.showToast('词卡已删除', 'success');
             this.close();
