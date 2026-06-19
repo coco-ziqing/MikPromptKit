@@ -5,7 +5,7 @@
     if (!App._themeBound) {
         App._themeBound = true;
 
-        var THEME_KEY = 'promptkit_dark_theme';
+        var THEME_KEY = 'promptkit_theme';
 
         App.getTheme = function() {
             try { return localStorage.getItem(THEME_KEY); } catch(e) { return null; }
@@ -20,6 +20,18 @@
 
         App.isDarkTheme = function() {
             return document.body.classList.contains('dark-theme');
+        };
+
+        // applyTheme: 被 app_core.js init() 调用（同步直接切换）
+        App.applyTheme = function(dark) {
+            var isDark = dark === true || dark === '1' || dark === 'dark';
+            document.body.classList.toggle('dark-theme', isDark);
+            App.setTheme(isDark);
+            var btn = document.getElementById('btnTheme');
+            if (btn) {
+                btn.innerHTML = isDark ? '<i class="bi bi-sun"></i>' : '<i class="bi bi-moon-stars"></i>';
+                btn.title = isDark ? '切换为浅色模式' : '切换为深色模式';
+            }
         };
 
         App.toggleTheme = function() {
@@ -67,12 +79,8 @@
                 });
         };
 
-        // 初始化主题
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', App.initTheme);
-        } else {
-            App.initTheme();
-        }
+        // 不自初始化（由 app_core.js init() 调用 applyTheme 完成）
+        // initTheme 保留为公共方法供手动调用
 
         console.log('[Theme Module] loaded');
     }
