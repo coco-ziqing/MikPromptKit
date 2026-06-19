@@ -892,6 +892,9 @@
     <script src="/static/js/character_library.js?v=1"></script>
 
 <div class="modal-overlay" id="sceneReviewModal" style="display:none;z-index:700;align-items:center;justify-content:center;" onclick="if(event.target===this)App.seedanceV2.closeSceneReview()">
+  <!-- Phase13.2: 拆分模块 -->
+  <script src="/static/js/app_search.js?v=1"></script>
+  <script src="/static/js/app_theme.js?v=1"></script>
   <div class="scene-review-panel" onclick="event.stopPropagation()">
     <div class="sr-timeline-bar" id="srTimelineBar"></div>
     <div class="scene-review-header">
