@@ -184,7 +184,7 @@ Object.assign(App, {
     async createCustomModule() {
         var name = document.getElementById('inputModuleName').value.trim();
         if (!name) { App.showToast('请输入分组名称', 'error'); return; }
-        var key = 'custom_' + name.replace(/[^a-z0-9_\\u4e00-\\u9fff]/gi, '_').substring(0, 30);
+        var key = 'custom_' + name.replace(/[^a-z0-9_\u4e00-\u9fff]/gi, '_').substring(0, 30);
         try {
             var resp = await fetch('/api/v4/word-cards/groups', {
                 method: 'POST',
@@ -194,21 +194,7 @@ Object.assign(App, {
             if (resp.ok) {
                 document.getElementById('modalCreateModule').style.display = 'none';
                 App.showToast('分组「' + name + '」已创建', 'success');
-                // 刷新侧边栏
-                setTimeout(function() {
-                    fetch('/api/v4/word-cards/groups?include_empty=true').then(function(r){return r.json()}).then(function(d){
-                        if (d && d.groups) {
-                            var modules = [];
-                            for (var i = 0; i < d.groups.length; i++) {
-                                var g = d.groups[i];
-                                if (g.group_type !== 'builtin' && g.group_type !== 'custom') continue;
-                                modules.push({id: g.group_key, name: g.name, count: g.card_count, builtin: g.group_type === 'builtin', _group_id: g.id});
-                            }
-                            App.state.modules = modules;
-                            if (App.renderSidebar) App.renderSidebar();
-                        }
-                    }).catch(function(){});
-                }, 100);
+                App.loadModules();
             } else {
                 var detail = '';
                 try { var ej = await resp.json(); detail = ej.detail || ej.error || JSON.stringify(ej); } catch(e) {}
