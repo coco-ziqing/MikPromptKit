@@ -11,7 +11,7 @@ var _origLoadModules = App.loadModules;
 App.loadModules = async function() {
     // 优先从 word_card_group 加载
     try {
-        var d = await this.fetchJSON('/api/v4/word-cards/groups');
+        var d = await this.fetchJSON('/api/v4/word-cards/groups?include_empty=true');
         if (d && d.groups) {
             var modules = [];
             var seen = {};

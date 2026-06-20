@@ -496,9 +496,14 @@ App.wordEditor._save = async function() {
             // 通知选取器刷新
             if (App.wordPicker && App.wordPicker._load) App.wordPicker._load();
 
+            // 刷新侧边栏模块计数（新建的模块从0→1）
+            await App.loadModules();
+
             // 如果是从主界面编辑，刷新列表
             if (this._source === 'cards' && App.loadPrompts) {
                 App.loadPrompts();
+            } else if (App.wordCards && App.wordCards.load) {
+                App.wordCards.load();
             }
         } else {
             App.showToast('保存失败: ' + (result ? result.error || '未知错误' : '网络错误'), 'error');
