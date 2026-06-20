@@ -1,14 +1,36 @@
 # PromptKit — 提示词检索工具
 
 ## 项目标识
-- 项目：提示词检索工具 (PromptKit)
-- 版本：v4.1.0-phase13-complete (2026-06-19)
+- 项目：提示词检索工具 (PromptKit) / 咪卡Mik词库
+- 版本：v4.1.0-phase13.1-hotfix (2026-06-20)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
-- 默认端口：8080 (当前可用: 8081)
-- 局域网地址：http://192.168.0.101:8081
-- 前一个tag: `v4.1.0-phase13-current` (Phase13 开始前快照)
-- 当前tag: `v4.1.0-phase13-complete` (Phase13 短期迭代完成)
+- 默认端口：8080
+- 局域网地址：http://192.168.0.101:8080
+- 前一个tag: `v4.1.0-phase13-complete`
+- 当前tag: `v4.1.0-phase13.1-hotfix` (UTF-8双重编码乱码根因修复)
+
+## Phase13.1 热修复 — UTF-8编码修复（2026-06-20）
+
+### 根因
+`index.html` 被写入时发生 UTF-8 双重编码（mojibake）：正确的 UTF-8 中文被当成 Latin-1 再次编码为 UTF-8，导致所有中文变成乱码（如 `咪卡`→`鍜崱`）。commit `9123a56` 引入了损坏，所有后续 commit 继承。
+
+### 修复清单（共 10 项）
+
+| # | 问题 | 修复方案 | 文件 |
+|---|------|---------|------|
+| 1 | 版本号显示 `vv4.1.0` | `v.replace('v','')` → `v.replace(/^v+/i, '')` | app_core.js |
+| 2 | 品牌名未统一 | 统一为「咪卡Mik词库」 | index.html + app_core.js |
+| 3 | 词卡管理页侧边栏消失 | `_hideSidebar()` → `_showSidebar()+_collapseSidebar()` | app_core.js |
+| 4 | 媒体资产视图空白 | 恢复被误删的 viewV4media + v4_library.js | index.html |
+| 5 | 每次F5都跑自检 | sessionStorage `_pk_health_checked` 标记 | app_core.js |
+| 6 | 中英文切换失效 | 重写 i18n 引擎（data-i18n + _applyI18n）+ 按钮 | app_i18n.js + index.html |
+| 7 | 编辑模式新建分组走旧API | `POST /api/v4/word-cards/groups`（原生fetch） | app_editor.js |
+| 8 | 新建空分组侧边栏不显示 | `?include_empty=true` 参数 | wc_bridge.js |
+| 9 | 保存后侧边栏不刷新计数 | save/create 后 `await App.loadModules()` | word_editor.js + app_editor.js |
+| 10 | **index.html UTF-8双重编码乱码** | 从干净 commit `06c47ca` 恢复 + 25项版本号升级 | index.html |
+
+**版本号全面升级：** style.css→v11.0 / app_core.js→v11.1 / app_editor.js→v11.3 / wc_bridge.js→v7 + 其余21项
 
 ## Phase13 短期迭代完成（2026-06-19）
 
@@ -19,14 +41,9 @@
 | P13.3 | i18n模块 + en.json词典(105 key) + 语言切换按钮 | 3个文件, +214行 |
 | P13.4 | 组装器快捷键(Ctrl+S/↑↓/Esc/撤销) + 脏标记渲染 + 撤销栈 + 高级搜索API | 2个文件, +186行 |
 
-**Hotfix（打tag后）：**
-- 补充 `App.applyTheme()` 函数定义（app_core.js init() 调用了但未定义，导致初始化中断）
-- 统一主题 localStorage key 为 `promptkit_theme`
-- 移除 app_theme.js 的 DOMContentLoaded 自初始化（与 app_core.js 重复）
-
 **Git分支说明：**
 - `phase13-p131-bridge` / `phase13-p132-refactor` / `phase13-p133-i18n` / `phase13-p134-ux`
-- 已全部合并到 `master`，tag: `v4.1.0-phase13-complete`
+- 已全部合并到 `master`
 
 ## 技术栈
 - Python 3.14 / FastAPI / Uvicorn / SQLite (WAL + FTS5)
@@ -37,21 +54,23 @@
 - AI引擎：Ollama 本地大模型池(16模型) — 翻译/优化/标签/搜索重排/缩略图
 - 版本管理：Git + Git tag
 
-## 项目规模（2026-06-19 Phase12 关闭）
+## 项目规模（2026-06-20 Phase13.1 热修复后）
 - 后端 API 模块：25 个 (api/ 25个模块 + ollama_client + llm_rerank + health)
-- 后端 API 端点：200+ (Phase12新增22个AI端点)
-- 前端 JS 源码：15 模块 ≈ 12,000 行
+- 后端 API 端点：200+
+- 前端 JS 源码：22 模块 ≈ 14,000 行
 - CSS: 2,500+ 行
 - 数据库表：30+ 张
-- 种子词条：165 条（5 模块）
-- library_assets 词库：302 条（10 类）
-- Ollama 模型池：16 个（分级路由: ultra/high/medium/fast）
+- 词卡（word_cards）：694 条（48 分组）
+- 旧卡（v4/cards）：151 条
+- library_assets 词库：233 条
 
-## Git Tag 节点（最近 10 个）
-- `v4.0.0-phase12` — Phase12: AI全栈升级 — 翻译/优化器/标签/Playground/搜索/AI缩略图 + 监测仪表盘 + 前端AI交互 (2026-06-19)
-- `v4.0.0-phase11.1` — 实时信号灯: 30s后台ping Ollama+ComfyUI，底部状态栏绿/红/灰点 (2026-06-18)
-- `v4.0.0-phase11` — 启动自检: 9项自动检测，跳过配置，前端弹窗自动运行 (2026-06-18)
-- `v4.0.0-phase10.3` — 裁剪UX: 滚轮缩放(光标中心)/拖拽平移/独立裁剪框/缩放%指示/重置 (2026-06-18)
+## Git Tag 节点（最近 6 个）
+- `v4.1.0-phase13.1-hotfix` — UTF-8双重编码乱码根因修复 + 10项bug修复 + 25项版本号升级 (2026-06-20)
+- `v4.1.0-phase13-complete` — Phase13短期迭代完成 (2026-06-19)
+- `v4.1.0-phase13-current` — Phase13开始前快照
+- `v4.1.0-phase13` — Phase13 打标
+- `v4.0.0-phase12` — Phase12: AI全栈升级 (2026-06-19)
+- `v4.0.0-phase11.1` — 实时信号灯 (2026-06-18)
 - `v4.0.0-phase10.2` — 角色头像裁剪: 拖拽选框+宽高比锁(1:1头像/3:2预览) (2026-06-17)
 - `v4.0.0-phase10.1` — 角色库系统: 8种子角色+CRUD+viewer+场景嵌入 (2026-06-17)
 - `v4.0.0-phase9.4` — 深色模式全面适配: 44处修复 (2026-06-15)
