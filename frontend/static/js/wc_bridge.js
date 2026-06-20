@@ -45,10 +45,9 @@ App.switchGroup = async function(groupId, groupName) {
     if (si) si.value = '';
     try { localStorage.setItem('promptkit_group_id', String(groupId)); } catch(e) {}
     
-    this.renderSidebar();
     this._closeMobileMenu();
-    this.switchView('home');  // switchView 内部会调用 loadPrompts → _wcLoadPrompts
-    this._updatePageTitle();
+    // switchView('home') 内部会调用 renderSidebar + loadPrompts → _wcLoadPrompts
+    this.switchView('home');
 };
 
 // 全部词库
@@ -60,9 +59,9 @@ App.switchAllGroups = function() {
     var si = document.getElementById('searchInput');
     if (si) si.value = '';
     try { localStorage.removeItem('promptkit_group_id'); } catch(e) {}
-    this.renderSidebar();
     this._closeMobileMenu();
-    this.switchView('home');  // switchView → loadPrompts → _wcLoadPrompts → _showShowcase
+    // switchView('home') 内部会调用 renderSidebar + loadPrompts → _wcLoadPrompts → _showShowcase
+    this.switchView('home');
 };
 
 // ============================================================
@@ -309,7 +308,9 @@ App._toggleTreeNode = function(nodeId, groupId) {
     var node = document.getElementById(nodeId);
     var arrow = node ? node.querySelector('.tree-arrow') : null;
     
-    if (children.style.display === 'none') {
+    var isCurrentlyExpanded = children.style.display !== 'none';
+    
+    if (!isCurrentlyExpanded) {
         // 展开
         children.style.display = 'block';
         if (arrow) arrow.textContent = '▼';
@@ -321,6 +322,20 @@ App._toggleTreeNode = function(nodeId, groupId) {
         children.style.display = 'none';
         if (arrow) arrow.textContent = '▶';
     }
+    
+    // 持久化到树数据，确保 re-render 后状态不丢失
+    var self = this;
+    function setExpanded(nodes, targetId) {
+        for (var i = 0; i < nodes.length; i++) {
+            if (nodes[i].id === targetId) {
+                nodes[i]._expanded = !isCurrentlyExpanded;
+                return true;
+            }
+            if (nodes[i].children && setExpanded(nodes[i].children, targetId)) return true;
+        }
+        return false;
+    }
+    setExpanded(this.state.groupTree, groupId);
 };
 
 // 懒加载树节点子元素

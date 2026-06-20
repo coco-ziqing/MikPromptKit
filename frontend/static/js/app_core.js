@@ -149,8 +149,11 @@ const App = {
         // 应用国际化（必须在首次渲染后执行）
         setTimeout(function() { App._applyI18n(); }, 100);
         
-        // 初始默认显示 home 视图（防止 JS 错误时白屏）
-        this.switchView('home', true);  // true = 静默模式，不写 localStorage
+        // 初始默认显示 home 视图（延迟到树加载完成后渲染）
+        // 先不调用 switchView，等 tree 加载完再渲染
+        document.getElementById('viewHome').classList.add('active-view');
+        if (document.getElementById('navHome')) document.getElementById('navHome').classList.add('active');
+        document.getElementById('globalSearchBox').style.visibility = 'visible';
         
         try {
             await Promise.all([
@@ -160,6 +163,7 @@ const App = {
                     try { savedGroupId = localStorage.getItem('promptkit_group_id'); } catch(e) {}
                     if (savedGroupId && parseInt(savedGroupId)) {
                         App.state.currentGroupId = parseInt(savedGroupId);
+                        App.state.currentGroupName = '';
                     }
                 }),
                 this.loadStats(),
