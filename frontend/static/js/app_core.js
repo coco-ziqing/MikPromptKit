@@ -96,7 +96,7 @@ const App = {
                 var v = d.version;
                 // 美化显示
                 var displayVersion = v.replace(/^v+/i, '').replace('-phase', '.');
-                document.title = '咪卡MiK提示词助手';
+                document.title = '咪卡Mik词库';
                 var bv = document.getElementById('brandVersion');
                 if (bv) bv.textContent = v.replace(/^v+/i, '');  // 去除所有前导v前缀，只显示数字
                 // 同时更新 headerStats
@@ -308,7 +308,8 @@ const App = {
             var nw = document.getElementById('navWCManager');
             if (nw) nw.classList.add('active');
             this._hideSearchBox();
-            this._hideSidebar();
+            this._showSidebar();
+            this._collapseSidebar();
             if (App.wordCards && App.wordCards.load) App.wordCards.load();
         }
 
