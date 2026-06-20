@@ -2,13 +2,48 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit) / 咪卡Mik词库
-- 版本：v4.1.0-phase13.1-hotfix (2026-06-20)
+- 版本：v4.2.0-phase14-arch (2026-06-20)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
 - 默认端口：8080
 - 局域网地址：http://192.168.0.101:8080
-- 前一个tag: `v4.1.0-phase13-complete`
-- 当前tag: `v4.1.0-phase13.1-hotfix` (UTF-8双重编码乱码根因修复)
+- 前一个tag: `v4.1.0-phase13.1-hotfix`
+- 当前tag: `v4.2.0-phase14-arch` (分类架构重构)
+
+## Phase14 分类架构重构（2026-06-20 23:00）
+
+### 架构变更
+```
+📷 图像描述词库 (root_image)
+├── 👤 人物表现 → emotion(26) + 神态情绪(8) + 服饰道具(7)
+├── 🎨 画面调性 → color(31) + tone(23) + 光影(10) + 质感(8) + 配色(8) + 滤镜(6)
+├── 🖼️ 构图与画质 → composition(52) + 画风(8) + 画质(6) + 虚实(5) + 胶片(5) + 构图(8)
+├── 🌍 时空风格 → 年代(7) + 地域(6) + 人文环境(6)
+├── ⚠️ 负面提示词 → negative(9)
+└── 🗂️ 自定义收纳 → 12个自定义分组
+
+🎬 视频描述词库 (root_video)
+├── 🎥 运镜与构图 → 运镜(13) + 构图(8) + 焦段(8) + 视角(7) + 拍摄运镜(2)
+├── 🔮 主体与场景 → 主体(8) + 场景(10) + 天气(8) + 特效(8) + 外力(7)
+├── 🎞️ 动态特效 → 动作(8) + 速率(7) + 物理(6) + 转场(7)
+├── 🔊 音频设计 → BGM(25) + 音效(30) + 旁白(35) + 环境音(7)
+└── 📹 视频模板 → seedance(19)
+```
+
+### 变更清单
+| 层级 | 文件 | 内容 |
+|------|------|------|
+| DB | migrate_phase14.py | 插入2根+11子类 + 50组分配parent_id + 清理空组 |
+| 后端 | api/word_cards.py | 新增 `/groups/tree` 树形接口 + create支持parent_id + update放开权限 |
+| 前端 | wc_bridge.js | **完全重写**: 树形侧边栏+陈列架+分组CRUD |
+| 前端 | app_core.js | init适配Phase14(loadGroupTree+恢复分组选择) |
+| 前端 | style.css | 新增 .showcase-card / .tree-node / .tree-arrow |
+| 前端 | index.html | 版本号: wc_bridge v8 / app_core v12 / style v12 |
+
+### 版本号
+- wc_bridge.js: v7 → v8
+- app_core.js: v11.1 → v12.0
+- style.css: v11.0 → v12.0
 
 ## Phase13.1 热修复 — UTF-8编码修复（2026-06-20）
 
@@ -54,17 +89,19 @@
 - AI引擎：Ollama 本地大模型池(16模型) — 翻译/优化/标签/搜索重排/缩略图
 - 版本管理：Git + Git tag
 
-## 项目规模（2026-06-20 Phase13.1 热修复后）
-- 后端 API 模块：25 个 (api/ 25个模块 + ollama_client + llm_rerank + health)
+## 项目规模（2026-06-20 Phase14 架构重构后）
+- 后端 API 模块：25 个
 - 后端 API 端点：200+
-- 前端 JS 源码：22 模块 ≈ 14,000 行
-- CSS: 2,500+ 行
+- 前端 JS 源码：22 模块 ≈ 15,000 行
+- CSS: 2,600+ 行
 - 数据库表：30+ 张
-- 词卡（word_cards）：694 条（48 分组）
+- 词卡（word_cards）：694 条
+- 分组：62 个（2 根 + 11 子类 + 34 叶子 + 15 自定义）
 - 旧卡（v4/cards）：151 条
 - library_assets 词库：233 条
 
-## Git Tag 节点（最近 6 个）
+## Git Tag 节点（最近 7 个）
+- `v4.2.0-phase14-arch` — 分类架构重构: 双总类嵌套树+陈列架+分组CRUD (2026-06-20)
 - `v4.1.0-phase13.1-hotfix` — UTF-8双重编码乱码根因修复 + 10项bug修复 + 25项版本号升级 (2026-06-20)
 - `v4.1.0-phase13-complete` — Phase13短期迭代完成 (2026-06-19)
 - `v4.1.0-phase13-current` — Phase13开始前快照
