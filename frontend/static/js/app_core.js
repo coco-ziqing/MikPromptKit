@@ -148,14 +148,23 @@ const App = {
             // 恢复上次的视图状态（savedView/savedModule 已在 init 顶部读取）
 
             // v4.0.0-phase11: 启动自检（延迟给UI先渲染）
-            setTimeout(function() {
-                if (App.healthCheck && typeof App.healthCheck.autoCheck === 'function') {
-                    App.healthCheck.autoCheck();
+            // v4.1.0-hotfix: 仅服务重启后首次加载执行自检，普通刷新跳过（sessionStorage 标记）
+            try {
+                if (!sessionStorage.getItem('_pk_health_checked')) {
+                    sessionStorage.setItem('_pk_health_checked', '1');
+                    setTimeout(function() {
+                        if (App.healthCheck && typeof App.healthCheck.autoCheck === 'function') {
+                            App.healthCheck.autoCheck();
+                        }
+                    }, 1200);
                 }
+            } catch(e) {}
+            // 自检之后始终启动信号灯
+            setTimeout(function() {
                 if (App.signalLights && typeof App.signalLights.init === 'function') {
                     App.signalLights.init();
                 }
-            }, 1200);
+            }, 1500);
 
             if (savedView === 'seedance') {
                 this.switchView('seedance');
