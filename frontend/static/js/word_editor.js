@@ -299,6 +299,8 @@ App.wordEditor._createModule = async function() {
         if (d && d.ok) {
             // 重新加载分组和模块列表
             await this._loadGroups();
+            // 同步刷新功能模块侧边栏
+            await App.loadModules();
 
             // 自动选中新模块
             var modSel = document.getElementById('wcEditModule');
