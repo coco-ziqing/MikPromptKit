@@ -154,7 +154,14 @@ const App = {
         
         try {
             await Promise.all([
-                this.loadModules(),
+                this.loadGroupTree().then(function() {
+                    // Phase14: 加载树后恢复分组选择
+                    var savedGroupId = null;
+                    try { savedGroupId = localStorage.getItem('promptkit_group_id'); } catch(e) {}
+                    if (savedGroupId && parseInt(savedGroupId)) {
+                        App.state.currentGroupId = parseInt(savedGroupId);
+                    }
+                }),
                 this.loadStats(),
                 this.loadCollections(),
                 this.loadWordpacks()
@@ -194,10 +201,12 @@ const App = {
                 this.switchView(savedView);
             } else if (savedModule && this.state.modules && this.state.modules.find(function(m) { return m.id === savedModule; })) {
                 this.switchModule(savedModule);
-            } else if (this.state.modules && this.state.modules.length > 0) {
-                this.switchModule(this.state.modules[0].id);
+            } else if (this.state.currentGroupId) {
+                // Phase14: 有保存的分组 → 加载该分组词卡
+                this.switchGroup(this.state.currentGroupId, this.state.currentGroupName || '');
             } else {
-                this.loadPrompts();
+                // Phase14: 无分组 → 显示陈列架
+                this._showShowcase();
             }
 
             // 编辑模式恢复后同步 UI（需在数据加载完成后）

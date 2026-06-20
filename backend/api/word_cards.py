@@ -22,26 +22,58 @@ def list_groups(group_type: str = Query(None), include_empty: bool = Query(False
     rows = db.execute(f"SELECT wg.*, COUNT(wc.id) as card_count FROM word_card_group wg LEFT JOIN word_card wc ON wc.group_id=wg.id AND wc.is_deleted=0 WHERE {' AND '.join(where)} GROUP BY wg.id ORDER BY wg.sort_order", params).fetchall()
     return {"ok": True, "groups": [dict(r) for r in rows if include_empty or r["card_count"] > 0], "total": len(rows)}
 
+@router.get("/groups/tree")
+def groups_tree():
+    """返回完整的嵌套分类树（三级：root→sub→leaf）"""
+    db = get_db()
+    rows = db.execute("""
+        SELECT wg.*,
+               (SELECT COUNT(*) FROM word_card wc WHERE wc.group_id=wg.id AND wc.is_deleted=0) as card_count,
+               (SELECT COUNT(*) FROM word_card_group child WHERE child.parent_group_id=wg.id AND child.is_active=1) as child_count
+        FROM word_card_group wg
+        WHERE wg.is_active=1 AND wg.group_type IN ('root','sub','builtin','seedance','custom')
+        ORDER BY wg.group_type, wg.parent_group_id, wg.sort_order
+    """).fetchall()
+
+    def build_tree(items, parent_id=None):
+        tree = []
+        for r in items:
+            if r["parent_group_id"] == parent_id:
+                node = dict(r)
+                node["children"] = build_tree(items, r["id"])
+                tree.append(node)
+        return tree
+
+    return {"ok": True, "tree": build_tree(rows)}
+
 @router.post("/groups")
 def create_group(data: dict):
     name = (data.get("name") or "").strip()
     if not name: raise HTTPException(400, "分组名称不能为空")
     key = data.get("group_key") or "custom_" + hashlib.md5(name.encode()).hexdigest()[:8]
+    parent_id = data.get("parent_group_id")  # Phase14: 支持嵌套
+    icon = data.get("icon", "📂")
+    desc = data.get("description", "")
     db = get_db()
     if db.execute("SELECT id FROM word_card_group WHERE group_key=?", [key]).fetchone():
         raise HTTPException(409, "分组已存在")
-    db.execute("INSERT INTO word_card_group (name,group_key,icon,description,group_type,sort_order) VALUES (?,?,?,?,'custom',(SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card_group))",
-               [name, key, data.get("icon", "📂"), data.get("description", "")])
+    # sort_order = 同级最大+1
+    sort_sql = "SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card_group WHERE parent_group_id " + ("= ?" if parent_id else "IS NULL")
+    sort_params = [parent_id] if parent_id else []
+    new_sort = db.execute(sort_sql, sort_params).fetchone()[0]
+    db.execute("INSERT INTO word_card_group (name,group_key,icon,description,group_type,parent_group_id,sort_order) VALUES (?,?,?,?,'custom',?,?)",
+               [name, key, icon, desc, parent_id, new_sort])
     safe_commit()
     return {"ok": True, "id": db.execute("SELECT last_insert_rowid()").fetchone()[0], "name": name, "group_key": key}
 
 @router.put("/groups/{group_id}")
 def update_group(group_id: int, data: dict):
     db = get_db()
-    if not db.execute("SELECT id FROM word_card_group WHERE id=? AND group_type='custom'", [group_id]).fetchone():
-        raise HTTPException(404, "分组不存在或不可编辑")
+    g = db.execute("SELECT id,group_type FROM word_card_group WHERE id=? AND is_active=1", [group_id]).fetchone()
+    if not g: raise HTTPException(404, "分组不存在")
+    if g["group_type"] in ("root","builtin"): raise HTTPException(403, "内置分组不可编辑")
     fields = []; params = []
-    for k in ["name","icon","description"]:
+    for k in ["name","icon","description","parent_group_id","sort_order"]:
         if data.get(k) is not None: fields.append(f"{k}=?"); params.append(data[k])
     if fields:
         params.append(group_id)
