@@ -183,19 +183,31 @@ Object.assign(App, {
 
     async createCustomModule() {
         var name = document.getElementById('inputModuleName').value.trim();
-        if (!name) { this.showToast('请输入分组名称', 'error'); return; }
-        var key = 'custom_' + name.replace(/[^a-z0-9_\u4e00-\u9fff]/gi, '_').substring(0, 30);
-        var data = await this.fetchJSON('/api/v4/word-cards/groups', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name, group_key: key, icon: '📂', description: '自定义模块: ' + name })
-        });
-        if (data && data.ok) {
-            document.getElementById('modalCreateModule').style.display = 'none';
-            this.showToast('分组「' + name + '」已创建', 'success');
-            await this.loadModules();
-        } else {
-            this.showToast('创建失败: ' + (data ? data.detail || data.error || '' : '网络错误'), 'error');
+        if (!name) { App.showToast('请输入分组名称', 'error'); return; }
+        var key = 'custom_' + name.replace(/[^a-z0-9_\\u4e00-\\u9fff]/gi, '_').substring(0, 30);
+        try {
+            var resp = await fetch('/api/v4/word-cards/groups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, group_key: key, icon: '📂', description: '自定义模块: ' + name })
+            });
+            if (resp.ok) {
+                var json = await resp.json();
+                document.getElementById('modalCreateModule').style.display = 'none';
+                App.showToast('分组「' + name + '」已创建', 'success');
+                if (App.loadModules) await App.loadModules();
+            } else {
+                var detail = '';
+                try { var ej = await resp.json(); detail = ej.detail || ej.error || JSON.stringify(ej); } catch(e) {}
+                if (resp.status === 409) {
+                    App.showToast('分组名称已存在，请换一个', 'warning');
+                } else {
+                    App.showToast('创建失败: ' + (detail || 'HTTP ' + resp.status), 'error');
+                }
+            }
+        } catch(e) {
+            console.error('[createCustomModule]', e);
+            App.showToast('创建出错: ' + e.message, 'error');
         }
     },
 
