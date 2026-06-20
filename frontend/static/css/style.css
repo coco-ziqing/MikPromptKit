@@ -2605,3 +2605,41 @@ body.dark-theme .skeleton-line {
     50% { opacity: 0.4; }
 }
 
+/* ============ Phase14: 陈列架 ============ */
+.showcase-card {
+    transition: all 0.2s ease;
+}
+.showcase-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    border-color: var(--primary) !important;
+}
+
+/* ============ Phase14: 树形侧边栏 ============ */
+.tree-node {
+    transition: background 0.15s;
+    border-radius: 6px;
+    margin: 0 4px;
+}
+.tree-node:hover {
+    background: var(--hover-bg);
+}
+.tree-arrow {
+    text-align: center;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+}
+.tree-node:hover .tree-arrow {
+    color: var(--primary);
+}
+.tree-children {
+    transition: all 0.2s;
+}
+
+body.dark-theme .showcase-card:hover {
+    box-shadow: 0 4px 20px rgba(79,70,229,0.3);
+}
+body.dark-theme .tree-node:hover {
+    background: rgba(255,255,255,0.05);
+}
+
