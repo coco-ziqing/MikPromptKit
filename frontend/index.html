@@ -1,138 +1,138 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>咪卡Mik词库</title>
+    <title>鍜崱Mik璇嶅簱</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <link href="/static/css/style.css?v=10.0" rel="stylesheet">
 </head>
 <body>
     <header class="navbar-tool">
-        <button class="header-btn" id="btnMenu" onclick="App.toggleMobileMenu()" style="display:none;" title="菜单"><i class="bi bi-list"></i></button>
-        <div class="brand" onclick="App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> <span data-i18n="nav.brand" data-i18n-zh="咪卡Mik词库">咪卡Mik词库</span> <small id="brandVersion">4.1.0</small></div>
-        <div class="search-box" id="globalSearchBox"><input type="text" id="searchInput" placeholder="搜索提示词，Ctrl+F 快速定位" autocomplete="off" data-i18n-placeholder="search.placeholder" data-i18n-placeholder-zh="搜索提示词，Ctrl+F 快速定位"><i class="bi bi-search search-icon"></i><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()" title="切换搜索模式">🔤</button></div>
+        <button class="header-btn" id="btnMenu" onclick="App.toggleMobileMenu()" style="display:none;" title="鑿滃崟"><i class="bi bi-list"></i></button>
+        <div class="brand" onclick="App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> <span data-i18n="nav.brand" data-i18n-zh="鍜崱Mik璇嶅簱">鍜崱Mik璇嶅簱</span> <small id="brandVersion">4.1.0</small></div>
+        <div class="search-box" id="globalSearchBox"><input type="text" id="searchInput" placeholder="鎼滅储鎻愮ず璇嶏紝Ctrl+F 蹇€熷畾浣? autocomplete="off" data-i18n-placeholder="search.placeholder" data-i18n-placeholder-zh="鎼滅储鎻愮ず璇嶏紝Ctrl+F 蹇€熷畾浣?><i class="bi bi-search search-icon"></i><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()" title="鍒囨崲鎼滅储妯″紡">馃敜</button></div>
         <div class="header-actions">
-            <button class="header-btn" onclick="App.switchView('home')" id="navHome" title="首页词库"><i class="bi bi-house-door"></i></button>
-            <button class="header-btn" onclick="App.toggleEditMode()" id="btnEditMode" title="编辑模式" style="color:#94a3b8;"><i class="bi bi-pencil"></i></button>
-            <button class="header-btn" onclick="App.switchView('collections')" id="navCollections" title="收藏夹"><i class="bi bi-bookmark-star"></i><span class="nav-badge" id="collectionBadge" style="display:none;">0</span></button>
-            <button class="header-btn" onclick="App.switchView('wordpacks')" id="navWordpacks" title="自定义词包"><i class="bi bi-folder"></i><span class="nav-badge" id="wordpackBadge" style="display:none;">0</span></button>
-            <button class="header-btn" onclick="App.switchView('history')" id="navHistory" title="最近使用"><i class="bi bi-clock-history"></i></button>
-            <button onclick="App.switchView('trash')" id="navTrash" title="回收站"><i class="bi bi-trash"></i></button>
-            <button class="header-btn" onclick="App.switchView('seedance')" id="navSeedance" title="提示词组装器" style="color:#8b5cf6;"><i class="bi bi-tools"></i></button>
-            <button class="header-btn" onclick="App.switchView('wcmanager')" id="navWCManager" title="词卡管理"><i class="bi bi-grid-3x3-gap-fill"></i></button>
-            <button class="header-btn" onclick="App.switchView('v4media')" id="navV4Media" title="媒体资产"><i class="bi bi-images"></i></button>
-            <div class="column-slider-wrap" title="调整卡片列数">
+            <button class="header-btn" onclick="App.switchView('home')" id="navHome" title="棣栭〉璇嶅簱"><i class="bi bi-house-door"></i></button>
+            <button class="header-btn" onclick="App.toggleEditMode()" id="btnEditMode" title="缂栬緫妯″紡" style="color:#94a3b8;"><i class="bi bi-pencil"></i></button>
+            <button class="header-btn" onclick="App.switchView('collections')" id="navCollections" title="鏀惰棌澶?><i class="bi bi-bookmark-star"></i><span class="nav-badge" id="collectionBadge" style="display:none;">0</span></button>
+            <button class="header-btn" onclick="App.switchView('wordpacks')" id="navWordpacks" title="鑷畾涔夎瘝鍖?><i class="bi bi-folder"></i><span class="nav-badge" id="wordpackBadge" style="display:none;">0</span></button>
+            <button class="header-btn" onclick="App.switchView('history')" id="navHistory" title="鏈€杩戜娇鐢?><i class="bi bi-clock-history"></i></button>
+            <button onclick="App.switchView('trash')" id="navTrash" title="鍥炴敹绔?><i class="bi bi-trash"></i></button>
+            <button class="header-btn" onclick="App.switchView('seedance')" id="navSeedance" title="鎻愮ず璇嶇粍瑁呭櫒" style="color:#8b5cf6;"><i class="bi bi-tools"></i></button>
+            <button class="header-btn" onclick="App.switchView('wcmanager')" id="navWCManager" title="璇嶅崱绠＄悊"><i class="bi bi-grid-3x3-gap-fill"></i></button>
+            <button class="header-btn" onclick="App.switchView('v4media')" id="navV4Media" title="濯掍綋璧勪骇"><i class="bi bi-images"></i></button>
+            <div class="column-slider-wrap" title="璋冩暣鍗＄墖鍒楁暟">
                 <button class="header-btn" onclick="App.decColumn()" style="font-size:16px;width:26px;height:26px;">-</button>
                 <input type="range" id="columnSlider" min="1" max="6" value="3" class="column-slider" oninput="App.onColumnSlider(this.value)">
                 <button class="header-btn" onclick="App.incColumn()" style="font-size:16px;width:26px;height:26px;">+</button>
-                <span id="columnLabel" class="column-label">3列</span>
+                <span id="columnLabel" class="column-label">3鍒?/span>
             </div>
             <span class="header-divider"></span>
-            <button class="header-btn" id="btnLang" title="Switch Language" data-i18n-title="lang.switch" data-i18n-title-zh="切换语言" style="font-size:13px;font-weight:bold;min-width:32px;">中</button>
-            <button class="header-btn" onclick="App.toggleTheme()" id="btnTheme" title="切换深色模式" data-i18n-title="theme.toggle" data-i18n-title-zh="切换深色模式"><i class="bi bi-moon-stars"></i></button>
-            <button class="header-btn" onclick="App.openPlayground()" id="btnPlayground" title="LLM Playground 测试提示词"><i class="bi bi-cpu"></i></button>
-            <button class="header-btn" onclick="App.showBackupInfo()" id="btnBackup" title="数据库备份"><i class="bi bi-database"></i></button>
-            <button class="header-btn" onclick="App.showSyncPanel()" id="btnSync" title="数据同步 .pkb 包"><i class="bi bi-arrow-left-right"></i></button>
-            <button class="header-btn" onclick="App.monitor.open()" id="btnMonitor" title="服务监测仪表盘"><i class="bi bi-speedometer2"></i></button>
-            <button class="header-btn" onclick="App.showDashboard()" id="btnDashboard" title="统计仪表盘"><i class="bi bi-bar-chart"></i></button>
-            <button class="header-btn" onclick="App.openScreenshotImport()" id="btnOCR" title="截图导入提示词 — 自动识别图+文"><i class="bi bi-camera"></i></button>
-            <button class="header-btn" onclick="App.openComfyConfig()" id="btnWorkflow" title="ComfyUI 集成配置 + 模块预设"><i class="bi bi-link-45deg"></i></button>
+            <button class="header-btn" id="btnLang" title="Switch Language" data-i18n-title="lang.switch" data-i18n-title-zh="鍒囨崲璇█" style="font-size:13px;font-weight:bold;min-width:32px;">涓?/button>
+            <button class="header-btn" onclick="App.toggleTheme()" id="btnTheme" title="鍒囨崲娣辫壊妯″紡" data-i18n-title="theme.toggle" data-i18n-title-zh="鍒囨崲娣辫壊妯″紡"><i class="bi bi-moon-stars"></i></button>
+            <button class="header-btn" onclick="App.openPlayground()" id="btnPlayground" title="LLM Playground 娴嬭瘯鎻愮ず璇?><i class="bi bi-cpu"></i></button>
+            <button class="header-btn" onclick="App.showBackupInfo()" id="btnBackup" title="鏁版嵁搴撳浠?><i class="bi bi-database"></i></button>
+            <button class="header-btn" onclick="App.showSyncPanel()" id="btnSync" title="鏁版嵁鍚屾 .pkb 鍖?><i class="bi bi-arrow-left-right"></i></button>
+            <button class="header-btn" onclick="App.monitor.open()" id="btnMonitor" title="鏈嶅姟鐩戞祴浠〃鐩?><i class="bi bi-speedometer2"></i></button>
+            <button class="header-btn" onclick="App.showDashboard()" id="btnDashboard" title="缁熻浠〃鐩?><i class="bi bi-bar-chart"></i></button>
+            <button class="header-btn" onclick="App.openScreenshotImport()" id="btnOCR" title="鎴浘瀵煎叆鎻愮ず璇?鈥?鑷姩璇嗗埆鍥?鏂?><i class="bi bi-camera"></i></button>
+            <button class="header-btn" onclick="App.openComfyConfig()" id="btnWorkflow" title="ComfyUI 闆嗘垚閰嶇疆 + 妯″潡棰勮"><i class="bi bi-link-45deg"></i></button>
             <span class="header-divider"></span>
-            <span id="headerStats" class="badge bg-light text-dark" style="font-size:12px;">加载中...</span>
+            <span id="headerStats" class="badge bg-light text-dark" style="font-size:12px;">鍔犺浇涓?..</span>
         </div>
     </header>
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="App.toggleMobileMenu()"></div>
     <nav class="sidebar" id="sidebar"></nav>
-    <aside class="recommend-panel" id="recommendPanel"><div class="rec-header"><span><i class="bi bi-stars"></i> 智能推荐</span><button class="header-btn-sm" onclick="App.closeRecommend()">&times;</button></div><div id="recommendList" class="rec-list"><div class="rec-empty">点击提示词查看推荐</div></div></aside>
+    <aside class="recommend-panel" id="recommendPanel"><div class="rec-header"><span><i class="bi bi-stars"></i> 鏅鸿兘鎺ㄨ崘</span><button class="header-btn-sm" onclick="App.closeRecommend()">&times;</button></div><div id="recommendList" class="rec-list"><div class="rec-empty">鐐瑰嚮鎻愮ず璇嶆煡鐪嬫帹鑽?/div></div></aside>
     <main class="main-content" id="mainContent">
         <div id="viewHome" class="view-panel">
             <div id="viewHomeTop" class="view-home-top">
                 <div id="categoryTabs"></div>
-                <div class="page-header"><h3 id="pageTitle">提示词列表</h3><span class="count-info" id="countInfo">加载中...</span></div>
+                <div class="page-header"><h3 id="pageTitle">鎻愮ず璇嶅垪琛?/h3><span class="count-info" id="countInfo">鍔犺浇涓?..</span></div>
                 <div id="batchBar" class="batch-bar" style="display:none;">
-                    <span id="batchCount">已选 0 项</span>
-                    <button class="btn-batch" onclick="App.selectAllPrompts()" id="btnSelectAllPrompts"><i class="bi bi-check-all"></i> 全选</button>
-                    <button class="btn-batch" onclick="App.batchCopy()"><i class="bi bi-files"></i> 批量复制</button>
+                    <span id="batchCount">宸查€?0 椤?/span>
+                    <button class="btn-batch" onclick="App.selectAllPrompts()" id="btnSelectAllPrompts"><i class="bi bi-check-all"></i> 鍏ㄩ€?/button>
+                    <button class="btn-batch" onclick="App.batchCopy()"><i class="bi bi-files"></i> 鎵归噺澶嶅埗</button>
                     <button class="btn-batch" onclick="App.batchExport('png')" style="border-color:#059669;color:#059669;"><i class="bi bi-card-image"></i> PNG</button>
                     <button class="btn-batch" onclick="App.batchExport('txt')"><i class="bi bi-download"></i> TXT</button>
                     <button class="btn-batch" onclick="App.batchExport('md')" style="border-color:#10b981;color:#10b981;"><i class="bi bi-markdown"></i> MD</button>
                     <button class="btn-batch" onclick="App.batchExport('json')" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-file-code"></i> JSON</button>
                     <button class="btn-batch" onclick="App.batchExport('pt')" style="border-color:#06b6d4;color:#06b6d4;"><i class="bi bi-box"></i> .pt</button>
-                    <button class="btn-batch" onclick="App.batchAddToWordpack()"><i class="bi bi-folder-plus"></i> 添加到词包</button>
-                    <button class="btn-batch" onclick="App.batchGenerateThumbnails()" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-magic"></i> AI 批量生成缩略图</button>
-                    <button class="btn-batch" onclick="App.openAddPromptModal()" style="border-color:#22c55e;color:#22c55e;"><i class="bi bi-plus-lg"></i> 新建词条</button>
-                    <button class="btn-batch" onclick="App.batchTrash()" style="border-color:#ef4444;color:#ef4444;"><i class="bi bi-trash"></i> 删除</button>
-                </div><!-- 编辑模式增强筛选栏（仅在编辑模式下显示） -->
+                    <button class="btn-batch" onclick="App.batchAddToWordpack()"><i class="bi bi-folder-plus"></i> 娣诲姞鍒拌瘝鍖?/button>
+                    <button class="btn-batch" onclick="App.batchGenerateThumbnails()" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-magic"></i> AI 鎵归噺鐢熸垚缂╃暐鍥?/button>
+                    <button class="btn-batch" onclick="App.openAddPromptModal()" style="border-color:#22c55e;color:#22c55e;"><i class="bi bi-plus-lg"></i> 鏂板缓璇嶆潯</button>
+                    <button class="btn-batch" onclick="App.batchTrash()" style="border-color:#ef4444;color:#ef4444;"><i class="bi bi-trash"></i> 鍒犻櫎</button>
+                </div><!-- 缂栬緫妯″紡澧炲己绛涢€夋爮锛堜粎鍦ㄧ紪杈戞ā寮忎笅鏄剧ず锛?-->
                 <div id="editFilterBar" class="edit-filter-bar" style="display:none;margin-bottom:8px;" data-edit-only="1">
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                         <div style="position:relative;flex:1;min-width:160px;">
-                            <input type="text" id="editFilterInput" class="modal-input" placeholder="🔍 快速筛选当前页（回车确认）" style="padding:6px 10px 6px 30px;font-size:12px;" onkeydown="if(event.key==='Enter')App._applyEditFilter()">
-                            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--text-muted);">🔍</span>
+                            <input type="text" id="editFilterInput" class="modal-input" placeholder="馃攳 蹇€熺瓫閫夊綋鍓嶉〉锛堝洖杞︾‘璁わ級" style="padding:6px 10px 6px 30px;font-size:12px;" onkeydown="if(event.key==='Enter')App._applyEditFilter()">
+                            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--text-muted);">馃攳</span>
                         </div>
                         <select id="editFilterModule" class="modal-input" style="width:auto;min-width:80px;font-size:12px;padding:6px 8px;" onchange="App._applyEditFilter()">
-                            <option value="">全部模块</option>
+                            <option value="">鍏ㄩ儴妯″潡</option>
                         </select>
                         <select id="editFilterCollected" class="modal-input" style="width:auto;min-width:80px;font-size:12px;padding:6px 8px;" onchange="App._applyEditFilter()">
-                            <option value="">所有词条</option>
-                            <option value="collected">已收藏</option>
-                            <option value="uncollected">未收藏</option>
+                            <option value="">鎵€鏈夎瘝鏉?/option>
+                            <option value="collected">宸叉敹钘?/option>
+                            <option value="uncollected">鏈敹钘?/option>
                         </select>
                         <span id="editFilterCount" style="font-size:11px;color:var(--text-muted);white-space:nowrap;"></span>
-                        <button class="btn-batch btn-batch-cancel" onclick="App._resetEditFilter()" style="font-size:11px;padding:4px 10px;">重置</button>
+                        <button class="btn-batch btn-batch-cancel" onclick="App._resetEditFilter()" style="font-size:11px;padding:4px 10px;">閲嶇疆</button>
                     </div>
                 </div>
             </div>
-            <!-- 下方可滚动列表区 -->
+            <!-- 涓嬫柟鍙粴鍔ㄥ垪琛ㄥ尯 -->
             <div id="viewHomeScroll" class="view-home-scroll">
-                <!-- 文件拖拽导入区域 -->
+                <!-- 鏂囦欢鎷栨嫿瀵煎叆鍖哄煙 -->
                 <div id="dropOverlay" class="drop-overlay" style="display:none;">
                     <div class="drop-overlay-inner">
-                        <div class="drop-icon">📂</div>
-                        <div class="drop-text">释放鼠标导入提示词</div>
-                        <div class="drop-sub">支持 JSON / .pt / PNG 文件</div>
+                        <div class="drop-icon">馃搨</div>
+                        <div class="drop-text">閲婃斁榧犳爣瀵煎叆鎻愮ず璇?/div>
+                        <div class="drop-sub">鏀寔 JSON / .pt / PNG 鏂囦欢</div>
                     </div>
                 </div>
-                <div id="promptList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">正在加载提示词库...</p></div></div>
+                <div id="promptList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">鍔犺浇涓?..</span></div><p style="margin-top:12px;color:#94a3b8;">姝ｅ湪鍔犺浇鎻愮ず璇嶅簱...</p></div></div>
                 <div id="paginationBar" class="pagination-bar"></div>
             </div>
         </div>
         <div id="viewCollections" class="view-panel">
-            <div class="page-header"><h3><i class="bi bi-bookmark-star"></i> 收藏夹</h3><button class="btn btn-primary btn-sm" onclick="App.showCreateCollectionModal()"><i class="bi bi-plus-lg"></i> 新建分组</button></div>
+            <div class="page-header"><h3><i class="bi bi-bookmark-star"></i> 鏀惰棌澶?/h3><button class="btn btn-primary btn-sm" onclick="App.showCreateCollectionModal()"><i class="bi bi-plus-lg"></i> 鏂板缓鍒嗙粍</button></div>
             <div class="view-scroll">
             <div id="collectionGroups" class="collection-grid"></div>
-            <div id="collectionItems" style="display:none;"><button class="btn btn-outline-secondary btn-sm mb-3" onclick="App.backToCollections()"><i class="bi bi-arrow-left"></i> 返回分组列表</button><div id="collectionItemList"></div><div id="collectionPagination" class="pagination-bar"></div></div>
+            <div id="collectionItems" style="display:none;"><button class="btn btn-outline-secondary btn-sm mb-3" onclick="App.backToCollections()"><i class="bi bi-arrow-left"></i> 杩斿洖鍒嗙粍鍒楄〃</button><div id="collectionItemList"></div><div id="collectionPagination" class="pagination-bar"></div></div>
             </div>
         </div>
         <div id="viewWordpacks" class="view-panel">
-            <div class="page-header"><h3><i class="bi bi-folder"></i> 自定义词包</h3><button class="btn btn-primary btn-sm" onclick="App.showCreateWordpackModal()"><i class="bi bi-plus-lg"></i> 新建词包</button></div>
+            <div class="page-header"><h3><i class="bi bi-folder"></i> 鑷畾涔夎瘝鍖?/h3><button class="btn btn-primary btn-sm" onclick="App.showCreateWordpackModal()"><i class="bi bi-plus-lg"></i> 鏂板缓璇嶅寘</button></div>
             <div class="view-scroll">
             <div id="wordpackList" class="collection-grid"></div>
-            <div id="wordpackDetail" style="display:none;"><button class="btn btn-outline-secondary btn-sm mb-3" onclick="App.backToWordpacks()"><i class="bi bi-arrow-left"></i> 返回词包列表</button><div id="wordpackDetailHeader" class="mb-3"></div><div id="wordpackItemList"></div></div>
+            <div id="wordpackDetail" style="display:none;"><button class="btn btn-outline-secondary btn-sm mb-3" onclick="App.backToWordpacks()"><i class="bi bi-arrow-left"></i> 杩斿洖璇嶅寘鍒楄〃</button><div id="wordpackDetailHeader" class="mb-3"></div><div id="wordpackItemList"></div></div>
             </div>
         </div>
         <div id="viewHistory" class="view-panel">
-            <div class="page-header"><h3><i class="bi bi-clock-history"></i> 最近使用</h3><button class="btn btn-outline-danger btn-sm" onclick="App.clearHistory()" title="清空历史"><i class="bi bi-trash"></i> 清空</button></div><div class="view-scroll"><div id="historyList"></div></div>
+            <div class="page-header"><h3><i class="bi bi-clock-history"></i> 鏈€杩戜娇鐢?/h3><button class="btn btn-outline-danger btn-sm" onclick="App.clearHistory()" title="娓呯┖鍘嗗彶"><i class="bi bi-trash"></i> 娓呯┖</button></div><div class="view-scroll"><div id="historyList"></div></div>
         </div>
         <div id="viewTrash" class="view-panel">
-            <div class="page-header"><h3><i class="bi bi-trash"></i> 回收站</h3>
+            <div class="page-header"><h3><i class="bi bi-trash"></i> 鍥炴敹绔?/h3>
                 <div style="display:flex;gap:8px;">
-                    <button class="btn btn-sm btn-outline-primary" onclick="App.restoreAllTrash()" id="btnRestoreAllTrash" style="display:none;"><i class="bi bi-arrow-counterclockwise"></i> 全部恢复</button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="App.emptyTrash()" id="btnEmptyTrash" style="display:none;"><i class="bi bi-trash3"></i> 清空回收站</button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="App.restoreAllTrash()" id="btnRestoreAllTrash" style="display:none;"><i class="bi bi-arrow-counterclockwise"></i> 鍏ㄩ儴鎭㈠</button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="App.emptyTrash()" id="btnEmptyTrash" style="display:none;"><i class="bi bi-trash3"></i> 娓呯┖鍥炴敹绔?/button>
                 </div>
             </div>
-            <div class="view-scroll"><div id="trashList"><div class="empty-state"><div class="icon">🗑️</div><p>回收站为空</p></div></div>
+            <div class="view-scroll"><div id="trashList"><div class="empty-state"><div class="icon">馃棏锔?/div><p>鍥炴敹绔欎负绌?/p></div></div>
             <div id="trashPagination" class="pagination-bar" style="margin-top:12px;"></div></div>
         </div>
         <div id="viewV4media" class="view-panel">
-            <div class="page-header"><h3><i class="bi bi-images"></i> 媒体资产</h3>
+            <div class="page-header"><h3><i class="bi bi-images"></i> 濯掍綋璧勪骇</h3>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <select id="v4mediaTypeFilter" class="modal-input" style="width:auto;font-size:12px;" onchange="App.loadV4Media()">
-                        <option value="">全部类型</option>
-                        <option value="image">📷 图片</option>
-                        <option value="video">🎬 视频</option>
-                        <option value="audio">🎵 音频</option>
+                        <option value="">鍏ㄩ儴绫诲瀷</option>
+                        <option value="image">馃摲 鍥剧墖</option>
+                        <option value="video">馃幀 瑙嗛</option>
+                        <option value="audio">馃幍 闊抽</option>
                     </select>
                     <span id="v4mediaCount" style="font-size:12px;color:var(--text-muted);align-self:center;"></span>
                 </div>
@@ -146,72 +146,72 @@
         </div>
         <div id="viewWCManager" class="view-panel">
             <div class="page-header" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-                <h3 style="margin:0;"><i class="bi bi-grid-3x3-gap-fill"></i> 词卡管理</h3>
-                <span id="wcStats" style="font-size:11px;color:var(--text-muted);">加载中...</span>
+                <h3 style="margin:0;"><i class="bi bi-grid-3x3-gap-fill"></i> 璇嶅崱绠＄悊</h3>
+                <span id="wcStats" style="font-size:11px;color:var(--text-muted);">鍔犺浇涓?..</span>
                 <div style="flex:1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                    <input id="wcSearch" class="modal-input" placeholder="🔍 搜索..." style="width:160px;font-size:12px;padding:5px 8px;" onkeydown="if(event.key==='Enter')App.wordCards.search()">
-                    <select id="wcGroupFilter" class="modal-input" style="width:auto;font-size:11px;padding:5px 8px;" onchange="App.wordCards.filterGroup()"><option value="">全部</option></select>
-                    <button class="btn btn-sm btn-primary" onclick="App.wordEditor.openCreate()" style="font-size:11px;padding:4px 10px;">➕ 新建</button>
+                    <input id="wcSearch" class="modal-input" placeholder="馃攳 鎼滅储..." style="width:160px;font-size:12px;padding:5px 8px;" onkeydown="if(event.key==='Enter')App.wordCards.search()">
+                    <select id="wcGroupFilter" class="modal-input" style="width:auto;font-size:11px;padding:5px 8px;" onchange="App.wordCards.filterGroup()"><option value="">鍏ㄩ儴</option></select>
+                    <button class="btn btn-sm btn-primary" onclick="App.wordEditor.openCreate()" style="font-size:11px;padding:4px 10px;">鉃?鏂板缓</button>
                 </div>
             </div>
             <div id="wcGroupBar" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border-color);"></div>
             <div id="wcGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;">
-                <div style="text-align:center;padding:40px;grid-column:1/-1;color:var(--text-muted);">点击 ▦ 按钮加载词卡</div>
+                <div style="text-align:center;padding:40px;grid-column:1/-1;color:var(--text-muted);">鐐瑰嚮 鈻?鎸夐挳鍔犺浇璇嶅崱</div>
             </div>
             <div id="wcPagination" style="margin-top:12px;display:flex;justify-content:center;gap:4px;"></div>
         </div>
         <div id="viewSeedance" class="view-panel">
             <div class="seedance-tabs mb-3">
-                <button class="seedance-tab active" onclick="App.switchSeedanceTab('templates')" id="seedanceTabTemplates"><i class="bi bi-collection"></i> 场景模板</button>
-                <button class="seedance-tab" onclick="App.switchSeedanceTab('composer')" id="seedanceTabComposer"><i class="bi bi-tools"></i> 提示词组装器</button>
-                <button class="seedance-tab" onclick="App.switchSeedanceTab('gallery')" id="seedanceTabGallery"><i class="bi bi-images"></i> 精选画廊</button>
-                <button class="seedance-tab" onclick="App.switchSeedanceTab('glossary')" id="seedanceTabGlossary"><i class="bi bi-book"></i> 镜头语言速查</button>
+                <button class="seedance-tab active" onclick="App.switchSeedanceTab('templates')" id="seedanceTabTemplates"><i class="bi bi-collection"></i> 鍦烘櫙妯℃澘</button>
+                <button class="seedance-tab" onclick="App.switchSeedanceTab('composer')" id="seedanceTabComposer"><i class="bi bi-tools"></i> 鎻愮ず璇嶇粍瑁呭櫒</button>
+                <button class="seedance-tab" onclick="App.switchSeedanceTab('gallery')" id="seedanceTabGallery"><i class="bi bi-images"></i> 绮鹃€夌敾寤?/button>
+                <button class="seedance-tab" onclick="App.switchSeedanceTab('glossary')" id="seedanceTabGlossary"><i class="bi bi-book"></i> 闀滃ご璇█閫熸煡</button>
             </div>
-            <div id="seedanceTemplates" class="seedance-panel"><div id="seedanceCategoryTabs" class="category-tabs mb-3"></div><div id="seedanceTemplateList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载 Seedance 模板库...</p></div></div><div id="seedancePagination" class="pagination-bar"></div></div>
+            <div id="seedanceTemplates" class="seedance-panel"><div id="seedanceCategoryTabs" class="category-tabs mb-3"></div><div id="seedanceTemplateList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">鍔犺浇涓?..</span></div><p style="margin-top:12px;color:#94a3b8;">鍔犺浇 Seedance 妯℃澘搴?..</p></div></div><div id="seedancePagination" class="pagination-bar"></div></div>
             <div id="seedanceComposer" class="seedance-panel" style="display:none;">
-                <!-- Seedance V2 多镜头结构化组装器 三栏布局 -->
+                <!-- Seedance V2 澶氶暅澶寸粨鏋勫寲缁勮鍣?涓夋爮甯冨眬 -->
                 <div class="s2-layout">
-                    <!-- 左栏: 项目列表 + 全局搜索 -->
+                    <!-- 宸︽爮: 椤圭洰鍒楄〃 + 鍏ㄥ眬鎼滅储 -->
                     <div class="s2-sidebar">
                         <div class="s2-search-box">
-                            <input id="s2GlobalSearch" class="s2-input" placeholder="🔍 全局搜索词库..." onkeydown="if(event.key==='Enter')App.seedanceV2.globalSearch()">
+                            <input id="s2GlobalSearch" class="s2-input" placeholder="馃攳 鍏ㄥ眬鎼滅储璇嶅簱..." onkeydown="if(event.key==='Enter')App.seedanceV2.globalSearch()">
                             <div id="s2GlobalResults"></div>
                         </div>
                         <div id="s2ProjectList"></div>
                     </div>
-                    <!-- 中栏: 项目编辑器 -->
+                    <!-- 涓爮: 椤圭洰缂栬緫鍣?-->
                     <div class="s2-editor" id="s2Editor">
                         <div class="s2-empty-state">
-                            <div class="s2-empty-icon">🎬</div>
-                            <h4>选择或创建项目开始编辑</h4>
-                            <p>从左栏选择一个已有项目，或点击「新建」创建新分镜方案</p>
+                            <div class="s2-empty-icon">馃幀</div>
+                            <h4>閫夋嫨鎴栧垱寤洪」鐩紑濮嬬紪杈?/h4>
+                            <p>浠庡乏鏍忛€夋嫨涓€涓凡鏈夐」鐩紝鎴栫偣鍑汇€屾柊寤恒€嶅垱寤烘柊鍒嗛暅鏂规</p>
                         </div>
                     </div>
                 </div>
             </div>
-            <div id="seedanceGallery" class="seedance-panel" style="display:none;"><div id="galleryList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载精选模板...</p></div></div></div>
-            <div id="seedanceGlossary" class="seedance-panel" style="display:none;"><div class="page-header"><h3><i class="bi bi-book"></i> 镜头语言速查表</h3><span class="count-info">共 20 种镜头技法</span></div><div id="glossaryTable"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载中...</p></div></div><div class="page-header mt-4"><h3><i class="bi bi-link-45deg"></i> 多模态引用语法</h3></div><div id="refSyntaxTable"></div></div>
+            <div id="seedanceGallery" class="seedance-panel" style="display:none;"><div id="galleryList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">鍔犺浇涓?..</span></div><p style="margin-top:12px;color:#94a3b8;">鍔犺浇绮鹃€夋ā鏉?..</p></div></div></div>
+            <div id="seedanceGlossary" class="seedance-panel" style="display:none;"><div class="page-header"><h3><i class="bi bi-book"></i> 闀滃ご璇█閫熸煡琛?/h3><span class="count-info">鍏?20 绉嶉暅澶存妧娉?/span></div><div id="glossaryTable"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">鍔犺浇涓?..</span></div><p style="margin-top:12px;color:#94a3b8;">鍔犺浇涓?..</p></div></div><div class="page-header mt-4"><h3><i class="bi bi-link-45deg"></i> 澶氭ā鎬佸紩鐢ㄨ娉?/h3></div><div id="refSyntaxTable"></div></div>
         </div>
     </main>
-    <div class="modal-overlay" id="modalCreateCollection" style="display:none;z-index:400;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5>新建收藏分组</h5><button class="header-btn-sm" onclick="document.getElementById('modalCreateCollection').style.display='none'">&times;</button></div><div class="modal-body"><label>分组名称</label><input type="text" id="inputCollectionName" class="modal-input" placeholder="如：人像精选题"><label>图标</label><select id="inputCollectionIcon" class="modal-input icon-select"><option value="⭐">⭐ 星星</option><option value="📸">📸 相机</option><option value="🌄">🌄 风景</option><option value="❤️">❤️ 红心</option><option value="🔥">🔥 火焰</option><option value="🎯">🎯 靶心</option><option value="🌟">🌟 闪光</option><option value="💎">💎 钻石</option><option value="🏆">🏆 奖杯</option><option value="🎨">🎨 调色盘</option><option value="📷">📷 拍照</option><option value="🎬">🎬 场记板</option><option value="📁">📁 文件夹</option></select></div><div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalCreateCollection').style.display='none'">取消</button><button class="btn btn-primary btn-sm" onclick="App.createCollection()">创建</button></div></div></div>
-    <div class="modal-overlay" id="modalCreateWordpack" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5>新建自定义词包</h5><button class="header-btn-sm" onclick="document.getElementById('modalCreateWordpack').style.display='none'">&times;</button></div><div class="modal-body"><label>词包名称</label><input type="text" id="inputWordpackName" class="modal-input" placeholder="如：人像AI模板"><label>描述（选填）</label><textarea id="inputWordpackDesc" class="modal-input" rows="2" placeholder="词包用途说明"></textarea></div><div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalCreateWordpack').style.display='none'">取消</button><button class="btn btn-primary btn-sm" onclick="App.createWordpack()">创建</button></div></div></div>
-    <div class="modal-overlay" id="modalCreateModule" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5>新建提示词分组</h5><button class="header-btn-sm" onclick="document.getElementById('modalCreateModule').style.display='none'">&times;</button></div><div class="modal-body"><label>分组名称</label><input type="text" id="inputModuleName" class="modal-input" placeholder="如：AI绘图模板"></div><div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalCreateModule').style.display='none'">取消</button><button class="btn btn-primary btn-sm" onclick="App.createCustomModule()">创建</button></div></div></div>
-    <div class="modal-overlay" id="modalAddToWordpack" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5 id="modalAddToTitle">添加到词包</h5><button class="header-btn-sm" onclick="document.getElementById('modalAddToWordpack').style.display='none'">&times;</button></div><div class="modal-body" id="wordpackSelectList"><div style="color:#94a3b8;text-align:center;padding:20px;">加载中...</div></div></div></div>
-    <div class="modal-overlay" id="modalBatchResult" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content modal-wide" onclick="event.stopPropagation()"><div class="modal-header"><h5>批量复制结果</h5><button class="header-btn-sm" onclick="document.getElementById('modalBatchResult').style.display='none'">&times;</button></div><div class="modal-body"><textarea id="batchResultText" class="modal-input" rows="10" readonly></textarea></div><div class="modal-footer"><button class="btn btn-primary btn-sm" onclick="App.copyBatchResult()"><i class="bi bi-clipboard"></i> 复制全部</button><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalBatchResult').style.display='none'">关闭</button></div></div></div>
-    <div class="modal-overlay" id="modalThumbnail" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content modal-wide" onclick="event.stopPropagation()"><div class="modal-header"><h5>设置缩略图</h5><button class="header-btn-sm" onclick="document.getElementById('modalThumbnail').style.display='none'">&times;</button></div><div class="modal-body"><div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-        <button class="btn btn-primary btn-sm" id="btnThumbUpload" style="display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:6px;padding:8px 16px;background:#10b981;color:#fff;border:1px solid #059669;transition:all 0.2s;" onmousedown="this.style.background='#059668';this.style.transform='scale(0.98)';" onmouseup="this.style.background='#10b981';this.style.transform='scale(1)';" onmouseleave="this.style.background='#10b981';this.style.transform='scale(1)';" onclick="document.getElementById('thumbUploadInput').click()"><i class="bi bi-cloud-upload"></i> 上传图片...</button>
-        <button class="btn btn-primary btn-sm" id="btnVideoUpload" style="display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:6px;padding:8px 16px;background:#8b5cf6;color:#fff;border:1px solid #7c3aed;transition:all 0.2s;" onmousedown="this.style.background='#7c3aed';this.style.transform='scale(0.98)';" onmouseup="this.style.background='#8b5cf6';this.style.transform='scale(1)';" onmouseleave="this.style.background='#8b5cf6';this.style.transform='scale(1)';" onclick="document.getElementById('videoUploadInput').click()"><i class="bi bi-film"></i> 上传视频...</button>
-        <button class="btn btn-sm" id="btnEditMode" onclick="App.toggleThumbEditMode()" style="display:inline-flex;align-items:center;gap:4px;padding:6px 14px;border:1px solid #64748b;border-radius:6px;background:transparent;color:#94a3b8;cursor:pointer;font-size:12px;"><i class="bi bi-pencil"></i> 编辑</button>
+    <div class="modal-overlay" id="modalCreateCollection" style="display:none;z-index:400;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5>鏂板缓鏀惰棌鍒嗙粍</h5><button class="header-btn-sm" onclick="document.getElementById('modalCreateCollection').style.display='none'">&times;</button></div><div class="modal-body"><label>鍒嗙粍鍚嶇О</label><input type="text" id="inputCollectionName" class="modal-input" placeholder="濡傦細浜哄儚绮鹃€夐"><label>鍥炬爣</label><select id="inputCollectionIcon" class="modal-input icon-select"><option value="猸?>猸?鏄熸槦</option><option value="馃摳">馃摳 鐩告満</option><option value="馃寗">馃寗 椋庢櫙</option><option value="鉂わ笍">鉂わ笍 绾㈠績</option><option value="馃敟">馃敟 鐏劙</option><option value="馃幆">馃幆 闈跺績</option><option value="馃専">馃専 闂厜</option><option value="馃拵">馃拵 閽荤煶</option><option value="馃弳">馃弳 濂栨澂</option><option value="馃帹">馃帹 璋冭壊鐩?/option><option value="馃摲">馃摲 鎷嶇収</option><option value="馃幀">馃幀 鍦鸿鏉?/option><option value="馃搧">馃搧 鏂囦欢澶?/option></select></div><div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalCreateCollection').style.display='none'">鍙栨秷</button><button class="btn btn-primary btn-sm" onclick="App.createCollection()">鍒涘缓</button></div></div></div>
+    <div class="modal-overlay" id="modalCreateWordpack" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5>鏂板缓鑷畾涔夎瘝鍖?/h5><button class="header-btn-sm" onclick="document.getElementById('modalCreateWordpack').style.display='none'">&times;</button></div><div class="modal-body"><label>璇嶅寘鍚嶇О</label><input type="text" id="inputWordpackName" class="modal-input" placeholder="濡傦細浜哄儚AI妯℃澘"><label>鎻忚堪锛堥€夊～锛?/label><textarea id="inputWordpackDesc" class="modal-input" rows="2" placeholder="璇嶅寘鐢ㄩ€旇鏄?></textarea></div><div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalCreateWordpack').style.display='none'">鍙栨秷</button><button class="btn btn-primary btn-sm" onclick="App.createWordpack()">鍒涘缓</button></div></div></div>
+    <div class="modal-overlay" id="modalCreateModule" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5>鏂板缓鎻愮ず璇嶅垎缁?/h5><button class="header-btn-sm" onclick="document.getElementById('modalCreateModule').style.display='none'">&times;</button></div><div class="modal-body"><label>鍒嗙粍鍚嶇О</label><input type="text" id="inputModuleName" class="modal-input" placeholder="濡傦細AI缁樺浘妯℃澘"></div><div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalCreateModule').style.display='none'">鍙栨秷</button><button class="btn btn-primary btn-sm" onclick="App.createCustomModule()">鍒涘缓</button></div></div></div>
+    <div class="modal-overlay" id="modalAddToWordpack" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5 id="modalAddToTitle">娣诲姞鍒拌瘝鍖?/h5><button class="header-btn-sm" onclick="document.getElementById('modalAddToWordpack').style.display='none'">&times;</button></div><div class="modal-body" id="wordpackSelectList"><div style="color:#94a3b8;text-align:center;padding:20px;">鍔犺浇涓?..</div></div></div></div>
+    <div class="modal-overlay" id="modalBatchResult" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content modal-wide" onclick="event.stopPropagation()"><div class="modal-header"><h5>鎵归噺澶嶅埗缁撴灉</h5><button class="header-btn-sm" onclick="document.getElementById('modalBatchResult').style.display='none'">&times;</button></div><div class="modal-body"><textarea id="batchResultText" class="modal-input" rows="10" readonly></textarea></div><div class="modal-footer"><button class="btn btn-primary btn-sm" onclick="App.copyBatchResult()"><i class="bi bi-clipboard"></i> 澶嶅埗鍏ㄩ儴</button><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalBatchResult').style.display='none'">鍏抽棴</button></div></div></div>
+    <div class="modal-overlay" id="modalThumbnail" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content modal-wide" onclick="event.stopPropagation()"><div class="modal-header"><h5>璁剧疆缂╃暐鍥?/h5><button class="header-btn-sm" onclick="document.getElementById('modalThumbnail').style.display='none'">&times;</button></div><div class="modal-body"><div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" id="btnThumbUpload" style="display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:6px;padding:8px 16px;background:#10b981;color:#fff;border:1px solid #059669;transition:all 0.2s;" onmousedown="this.style.background='#059668';this.style.transform='scale(0.98)';" onmouseup="this.style.background='#10b981';this.style.transform='scale(1)';" onmouseleave="this.style.background='#10b981';this.style.transform='scale(1)';" onclick="document.getElementById('thumbUploadInput').click()"><i class="bi bi-cloud-upload"></i> 涓婁紶鍥剧墖...</button>
+        <button class="btn btn-primary btn-sm" id="btnVideoUpload" style="display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:6px;padding:8px 16px;background:#8b5cf6;color:#fff;border:1px solid #7c3aed;transition:all 0.2s;" onmousedown="this.style.background='#7c3aed';this.style.transform='scale(0.98)';" onmouseup="this.style.background='#8b5cf6';this.style.transform='scale(1)';" onmouseleave="this.style.background='#8b5cf6';this.style.transform='scale(1)';" onclick="document.getElementById('videoUploadInput').click()"><i class="bi bi-film"></i> 涓婁紶瑙嗛...</button>
+        <button class="btn btn-sm" id="btnEditMode" onclick="App.toggleThumbEditMode()" style="display:inline-flex;align-items:center;gap:4px;padding:6px 14px;border:1px solid #64748b;border-radius:6px;background:transparent;color:#94a3b8;cursor:pointer;font-size:12px;"><i class="bi bi-pencil"></i> 缂栬緫</button>
     </div>
     <input type="file" id="thumbUploadInput" accept="image/*" multiple style="display:none" onchange="App.uploadThumbnail(event)">
     <input type="file" id="videoUploadInput" accept="video/*" multiple style="display:none" onchange="App.uploadVideo(event)">
-    <!-- Tab: 图片库 / 视频库 -->
+    <!-- Tab: 鍥剧墖搴?/ 瑙嗛搴?-->
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
-        <button class="seedance-tab active" id="thumbTabImages" onclick="App.switchThumbTab('images')"><i class="bi bi-images"></i> 图片库</button>
-        <button class="seedance-tab" id="thumbTabVideos" onclick="App.switchThumbTab('videos')"><i class="bi bi-film"></i> 视频库</button>
+        <button class="seedance-tab active" id="thumbTabImages" onclick="App.switchThumbTab('images')"><i class="bi bi-images"></i> 鍥剧墖搴?/button>
+        <button class="seedance-tab" id="thumbTabVideos" onclick="App.switchThumbTab('videos')"><i class="bi bi-film"></i> 瑙嗛搴?/button>
         <span style="flex:1;"></span>
-        <button class="btn btn-sm btn-outline-danger" id="btnBatchDelete" onclick="App.batchDeleteThumbItems()" style="display:none;align-items:center;gap:4px;padding:4px 10px;font-size:12px;"><i class="bi bi-trash"></i> 批量删除</button>
-        <button class="btn btn-sm" id="btnSelectAll" onclick="App.toggleSelectAllThumb()" style="display:none;align-items:center;gap:4px;padding:4px 10px;border:1px solid #64748b;border-radius:6px;background:transparent;color:#94a3b8;cursor:pointer;font-size:12px;"><i class="bi bi-check-all"></i> 全选</button>
+        <button class="btn btn-sm btn-outline-danger" id="btnBatchDelete" onclick="App.batchDeleteThumbItems()" style="display:none;align-items:center;gap:4px;padding:4px 10px;font-size:12px;"><i class="bi bi-trash"></i> 鎵归噺鍒犻櫎</button>
+        <button class="btn btn-sm" id="btnSelectAll" onclick="App.toggleSelectAllThumb()" style="display:none;align-items:center;gap:4px;padding:4px 10px;border:1px solid #64748b;border-radius:6px;background:transparent;color:#94a3b8;cursor:pointer;font-size:12px;"><i class="bi bi-check-all"></i> 鍏ㄩ€?/button>
     </div>
     <div id="thumbLibraryGrid" class="thumb-grid"></div>
     <div id="videoLibraryGrid" class="thumb-grid" style="display:none;"></div>
@@ -224,11 +224,11 @@
                 <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px 10px 0 10px;">
                     <div id="vidStage" style="width:100%;flex:1;display:flex;align-items:center;justify-content:center;background:#000;border-radius:10px 10px 0 0;overflow:hidden;"><video id="vidViewerPlayer" style="width:100%;height:100%;object-fit:contain;display:block;" playsinline></video></div>
                 </div>
-                <!-- 时间轴滑块：单独一行，宽度与视频一致 -->
+                <!-- 鏃堕棿杞存粦鍧楋細鍗曠嫭涓€琛岋紝瀹藉害涓庤棰戜竴鑷?-->
                 <div id="vidSeekRow" style="padding:0 10px;background:#000;">
                     <input type="range" id="vidViewerSeek" min="0" max="1000" value="0" style="width:100%;height:8px;cursor:pointer;accent-color:#6366f1;margin:0;padding:0;display:block;">
                 </div>
-                <!-- 时间显示 + 控制按钮 -->
+                <!-- 鏃堕棿鏄剧ず + 鎺у埗鎸夐挳 -->
                 <div style="background:#000;padding:6px 10px 12px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                         <span id="vidViewerTime" style="color:#94a3b8;font-size:11px;font-family:monospace;">00:00.0</span>
@@ -248,7 +248,7 @@
             </div>
             <div class="viewer-right" id="vidViewerRight">
                 <div class="viewer-right-header">
-                    <span style="font-weight:600;">提示词详情</span>
+                    <span style="font-weight:600;">鎻愮ず璇嶈鎯?/span>
                     <button class="header-btn-sm" onclick="App.closeVideoViewer()" style="color:#fff;font-size:24px;">&times;</button>
                 </div>
                 <div class="viewer-right-body">
@@ -258,8 +258,8 @@
                     <div class="viewer-tags" id="vidViewerTags"></div>
                     <div class="viewer-collections" id="vidViewerCollections"></div>
                     <div class="viewer-actions">
-                        <button class="viewer-btn viewer-btn-copy" onclick="App.copyVidViewerContent()"><i class="bi bi-clipboard"></i> 复制提示词</button>
-                        <button class="viewer-btn viewer-btn-collect" id="vidViewerCollectBtn" onclick="event.stopPropagation();App.collectVidViewerPrompt()"><i class="bi bi-bookmark"></i> 收藏</button>
+                        <button class="viewer-btn viewer-btn-copy" onclick="App.copyVidViewerContent()"><i class="bi bi-clipboard"></i> 澶嶅埗鎻愮ず璇?/button>
+                        <button class="viewer-btn viewer-btn-collect" id="vidViewerCollectBtn" onclick="event.stopPropagation();App.collectVidViewerPrompt()"><i class="bi bi-bookmark"></i> 鏀惰棌</button>
                     </div>
                 </div>
             </div>
@@ -275,7 +275,7 @@
             </div>
             <div class="viewer-right" id="imgViewerRight">
                 <div class="viewer-right-header">
-                    <span style="font-weight:600;">提示词详情</span>
+                    <span style="font-weight:600;">鎻愮ず璇嶈鎯?/span>
                     <button class="header-btn-sm" onclick="App.closeImageViewer()" style="color:#fff;font-size:24px;">&times;</button>
                 </div>
                 <div class="viewer-right-body">
@@ -285,8 +285,8 @@
                     <div class="viewer-tags" id="imgViewerTags"></div>
                     <div class="viewer-collections" id="imgViewerCollections"></div>
                     <div class="viewer-actions">
-                        <button class="viewer-btn viewer-btn-copy" onclick="App.copyImgViewerContent()"><i class="bi bi-clipboard"></i> 复制提示词</button>
-                        <button class="viewer-btn viewer-btn-collect" id="imgViewerCollectBtn" onclick="event.stopPropagation();App.collectImgViewerPrompt()"><i class="bi bi-bookmark"></i> 收藏</button>
+                        <button class="viewer-btn viewer-btn-copy" onclick="App.copyImgViewerContent()"><i class="bi bi-clipboard"></i> 澶嶅埗鎻愮ず璇?/button>
+                        <button class="viewer-btn viewer-btn-collect" id="imgViewerCollectBtn" onclick="event.stopPropagation();App.collectImgViewerPrompt()"><i class="bi bi-bookmark"></i> 鏀惰棌</button>
                     </div>
                 </div>
             </div>
@@ -296,11 +296,11 @@
             <div class="modal-overlay" id="modalVideoTrim" style="display:none;z-index:250;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:920px;">
             <div class="modal-header">
-                <h5>视频裁剪与压缩</h5>
+                <h5>瑙嗛瑁佸壀涓庡帇缂?/h5>
                 <button class="header-btn-sm" onclick="document.getElementById('modalVideoTrim').style.display='none';">&times;</button>
             </div>
             <div class="modal-body" style="padding:10px 16px;">
-                <!-- 视频播放区域 -->
+                <!-- 瑙嗛鎾斁鍖哄煙 -->
                 <div style="background:#000;border-radius:8px;overflow:hidden;position:relative;">
                     <video id="trimVideoPlayer" style="width:100%;max-height:280px;display:block;" playsinline></video>
                     <div id="trimPlayOverlay" onmouseenter="App._showTrimPlayIcon()" onmouseleave="App._hideTrimPlayIcon()" onclick="App.toggleTrimPlay()" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;cursor:pointer;">
@@ -308,7 +308,7 @@
                     </div>
                 </div>
                 </div>
-                <!-- 播放进度条 + 时间显示 -->
+                <!-- 鎾斁杩涘害鏉?+ 鏃堕棿鏄剧ず -->
                 <div style="padding:4px 0 2px;">
                     <div style="display:flex;align-items:center;gap:8px;">
                         <span id="trimViewerTime" style="font-size:11px;color:#94a3b8;font-family:monospace;white-space:nowrap;">00:00.0</span>
@@ -318,299 +318,299 @@
                         <span id="trimViewerDuration" style="font-size:11px;color:#64748b;font-family:monospace;white-space:nowrap;">00:00.0</span>
                     </div>
                 </div>
-                <!-- 裁切滑块：上下排列 -->
+                <!-- 瑁佸垏婊戝潡锛氫笂涓嬫帓鍒?-->
                 <div style="margin-top:6px;">
                     <div style="margin-bottom:4px;">
                         <label style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:1px;">
-                            <span>▶ 起始位置</span>
+                            <span>鈻?璧峰浣嶇疆</span>
                             <span id="trimStartLabel" style="font-weight:600;">00:00.0</span>
                         </label>
                         <input type="range" id="trimStartSlider" min="0" max="100" value="0" class="column-slider" style="width:100%;height:10px;cursor:pointer;accent-color:#10b981;margin:0;" oninput="App.onTrimSlider('start')">
                     </div>
                     <div>
                         <label style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:1px;">
-                            <span>■ 结束位置</span>
+                            <span>鈻?缁撴潫浣嶇疆</span>
                             <span id="trimEndLabel" style="font-weight:600;">00:00.0</span>
                         </label>
                         <input type="range" id="trimEndSlider" min="0" max="100" value="100" class="column-slider" style="width:100%;height:10px;cursor:pointer;accent-color:#ef4444;margin:0;" oninput="App.onTrimSlider('end')">
                     </div>
                 </div>
-                <!-- 信息行：截取时长 + 预估大小 + 压缩选项 + 上传按钮 -->
+                <!-- 淇℃伅琛岋細鎴彇鏃堕暱 + 棰勪及澶у皬 + 鍘嬬缉閫夐」 + 涓婁紶鎸夐挳 -->
                 <div style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:8px;align-items:center;margin-top:8px;">
-                    <span style="font-size:12px;color:var(--text-muted);white-space:nowrap;">截取: <strong id="trimDurationLabel">0.0秒</strong></span>
-                    <span style="font-size:12px;color:var(--text-muted);">预估: <strong id="trimSizeLabel">-</strong></span>
-                    <label style="font-size:12px;color:var(--text-muted);white-space:nowrap;">压缩品质:</label>
+                    <span style="font-size:12px;color:var(--text-muted);white-space:nowrap;">鎴彇: <strong id="trimDurationLabel">0.0绉?/strong></span>
+                    <span style="font-size:12px;color:var(--text-muted);">棰勪及: <strong id="trimSizeLabel">-</strong></span>
+                    <label style="font-size:12px;color:var(--text-muted);white-space:nowrap;">鍘嬬缉鍝佽川:</label>
                     <select id="trimQuality" onchange="App.onTrimQualityChange()" style="padding:3px 8px;font-size:12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);cursor:pointer;outline:none;">
-                        <option value="1">最低 (文件最小)</option>
-                        <option value="2">较低</option>
-                        <option value="3" selected>适中</option>
-                        <option value="4">较好</option>
-                        <option value="5">最高 (文件最大)</option>
+                        <option value="1">鏈€浣?(鏂囦欢鏈€灏?</option>
+                        <option value="2">杈冧綆</option>
+                        <option value="3" selected>閫備腑</option>
+                        <option value="4">杈冨ソ</option>
+                        <option value="5">鏈€楂?(鏂囦欢鏈€澶?</option>
                     </select>
                     <span style="font-size:10px;color:#94a3b8;text-align:right;" id="trimOrigInfo">-</span>
                 </div>
                 <div style="display:flex;justify-content:flex-end;margin-top:6px;">
                     <button class="btn btn-primary btn-sm" onclick="App.processTrimmedVideo()" id="btnTrimProcess" style="padding:6px 20px;font-size:13px;white-space:nowrap;">
-                        <i class="bi bi-scissors"></i> 裁剪并上传
+                        <i class="bi bi-scissors"></i> 瑁佸壀骞朵笂浼?
                     </button>
                 </div>
                 <div id="trimProgress" style="display:none;text-align:center;padding:8px;color:var(--text-muted);">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status"><span class="visually-hidden">处理中...</span></div>
-                    正在处理视频，请稍候...
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"><span class="visually-hidden">澶勭悊涓?..</span></div>
+                    姝ｅ湪澶勭悊瑙嗛锛岃绋嶅€?..
                 </div>
             </div>
         </div>
     
     
-<div class="modal-overlay" id="modalImportExport" style="display:none;z-index:210;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:540px;"><div class="modal-header"><h5 id="modalIETitle">导入/导出提示词</h5><button class="header-btn-sm" onclick="document.getElementById('modalImportExport').style.display='none'">&times;</button></div><div class="modal-body">
+<div class="modal-overlay" id="modalImportExport" style="display:none;z-index:210;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:540px;"><div class="modal-header"><h5 id="modalIETitle">瀵煎叆/瀵煎嚭鎻愮ず璇?/h5><button class="header-btn-sm" onclick="document.getElementById('modalImportExport').style.display='none'">&times;</button></div><div class="modal-body">
         <div style="display:flex;gap:8px;margin-bottom:12px;">
-            <button class="seedance-tab active" id="ieTabImport" onclick="App.switchIETab('import')"><i class="bi bi-upload"></i> 导入</button>
-            <button class="seedance-tab" id="ieTabExport" onclick="App.switchIETab('export')"><i class="bi bi-download"></i> 导出</button>
+            <button class="seedance-tab active" id="ieTabImport" onclick="App.switchIETab('import')"><i class="bi bi-upload"></i> 瀵煎叆</button>
+            <button class="seedance-tab" id="ieTabExport" onclick="App.switchIETab('export')"><i class="bi bi-download"></i> 瀵煎嚭</button>
         </div>
         
-        <!-- 导入面板 -->
+        <!-- 瀵煎叆闈㈡澘 -->
         <div id="ieImportPanel" style="display:block;">
             <div style="margin-bottom:10px;">
-                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">选择文件（支持 PNG 提示词卡片、ZIP 批量包、JSON）</label>
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">閫夋嫨鏂囦欢锛堟敮鎸?PNG 鎻愮ず璇嶅崱鐗囥€乑IP 鎵归噺鍖呫€丣SON锛?/label>
                 <input type="file" id="ieFileInput" accept=".png,.zip,.json,.pt" multiple style="width:100%;padding:6px;border:1px dashed var(--border-color);border-radius:6px;background:transparent;cursor:pointer;">
             </div>
             <div style="margin-bottom:10px;">
-                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">冲突处理</label>
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">鍐茬獊澶勭悊</label>
                 <select id="ieConflictSelect" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);font-size:13px;">
-                    <option value="skip">跳过重复</option>
-                    <option value="rename" selected>重命名新增</option>
-                    <option value="overwrite">覆盖替换</option>
+                    <option value="skip">璺宠繃閲嶅</option>
+                    <option value="rename" selected>閲嶅懡鍚嶆柊澧?/option>
+                    <option value="overwrite">瑕嗙洊鏇挎崲</option>
                 </select>
             </div>
             <div id="iePreviewArea" style="display:none;max-height:150px;overflow-y:auto;border:1px solid var(--border-color);border-radius:6px;padding:8px;margin-bottom:10px;font-size:12px;color:var(--text-muted);"></div>
-            <button class="btn btn-primary btn-sm" onclick="App.doImport()" id="btnDoImport" style="width:100%;padding:8px;font-size:13px;"><i class="bi bi-upload"></i> 开始导入</button>
+            <button class="btn btn-primary btn-sm" onclick="App.doImport()" id="btnDoImport" style="width:100%;padding:8px;font-size:13px;"><i class="bi bi-upload"></i> 寮€濮嬪鍏?/button>
             <div id="ieImportResult" style="margin-top:8px;display:none;padding:8px;border-radius:6px;font-size:12px;text-align:center;"></div>
         </div>
         
-        <!-- 导出面板 -->
+        <!-- 瀵煎嚭闈㈡澘 -->
         <div id="ieExportPanel" style="display:none;">
             <div style="margin-bottom:10px;">
-                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">导出范围</label>
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">瀵煎嚭鑼冨洿</label>
                 <select id="ieExportScope" onchange="App._updateExportBtn()" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);font-size:13px;">
-                    <option value="selected">已选择的词条</option>
-                    <option value="all">全部词条</option>
-                    <option value="collection-item">当前收藏分组</option>
-                    <option value="module">按模块导出</option>
+                    <option value="selected">宸查€夋嫨鐨勮瘝鏉?/option>
+                    <option value="all">鍏ㄩ儴璇嶆潯</option>
+                    <option value="collection-item">褰撳墠鏀惰棌鍒嗙粍</option>
+                    <option value="module">鎸夋ā鍧楀鍑?/option>
                 </select>
                 <div id="ieModuleSelectArea" style="display:none;margin-top:8px;">
-                    <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">选择要导出的模块</label>
+                    <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">閫夋嫨瑕佸鍑虹殑妯″潡</label>
                     <div id="ieModuleCheckboxes" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
                 </div>
             </div>
             <div style="margin-bottom:10px;">
-                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">导出格式</label>
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">瀵煎嚭鏍煎紡</label>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="exportFmt" value="png" checked> PNG 卡片</label>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="exportFmt" value="png" checked> PNG 鍗＄墖</label>
                     <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="exportFmt" value="json"> JSON</label>
                     <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="exportFmt" value="txt"> TXT</label>
                 </div>
             </div>
-            <button class="btn btn-primary btn-sm" onclick="App.doExport()" id="btnDoExport" style="width:100%;padding:8px;font-size:13px;"><i class="bi bi-download"></i> 导出</button>
+            <button class="btn btn-primary btn-sm" onclick="App.doExport()" id="btnDoExport" style="width:100%;padding:8px;font-size:13px;"><i class="bi bi-download"></i> 瀵煎嚭</button>
             <div id="ieExportResult" style="margin-top:8px;display:none;padding:8px;border-radius:6px;font-size:12px;text-align:center;"></div>
         </div>
     </div></div></div>
     
 <div class="modal-overlay" id="modalEditPrompt" style="display:none;z-index:400;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:600px;">
-            <div class="modal-header"><h5 id="editPromptTitle">编辑提示词</h5><button class="header-btn-sm" onclick="App.closeEditModal()">&times;</button></div>
+            <div class="modal-header"><h5 id="editPromptTitle">缂栬緫鎻愮ず璇?/h5><button class="header-btn-sm" onclick="App.closeEditModal()">&times;</button></div>
             <div class="modal-body">
                 <div id="editThumbArea" style="display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:10px;background:var(--card-bg);border-radius:8px;border:1px solid var(--border-color);">
                     <div id="editThumbPreview" style="width:120px;height:80px;border-radius:6px;overflow:hidden;background:#f1f5f9;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px;color:#cbd5e1;">
-                        <span>🖼</span>
+                        <span>馃柤</span>
                     </div>
                     <div style="flex:1;">
-                        <div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">缩略图 / 视频封面</div>
-                        <div id="editThumbName" style="font-size:11px;color:#64748b;word-break:break-all;">未设置</div>
+                        <div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">缂╃暐鍥?/ 瑙嗛灏侀潰</div>
+                        <div id="editThumbName" style="font-size:11px;color:#64748b;word-break:break-all;">鏈缃?/div>
                     </div>
                     <div style="display:flex;gap:4px;">
-                        <button class="btn btn-sm" style="border:1px solid #6366f1;color:#6366f1;background:transparent;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="App.openEditThumbnailPicker()">图片</button>
-                        <button class="btn btn-sm" style="border:1px solid #8b5cf6;color:#8b5cf6;background:transparent;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="App.openEditVideoPicker()">视频</button>
-                        <button class="btn btn-sm" style="border:1px solid #ef4444;color:#ef4444;background:transparent;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" id="editClearThumbBtn" onclick="App.clearEditThumbnail()">清除</button>
-                        <button class="btn btn-sm" style="border:1px solid #8b5cf6;color:#8b5cf6;background:transparent;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="App.generateComfyThumbnail()" title="用 ComfyUI 生成缩略图"><i class="bi bi-magic"></i> AI 生成</button>
+                        <button class="btn btn-sm" style="border:1px solid #6366f1;color:#6366f1;background:transparent;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="App.openEditThumbnailPicker()">鍥剧墖</button>
+                        <button class="btn btn-sm" style="border:1px solid #8b5cf6;color:#8b5cf6;background:transparent;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="App.openEditVideoPicker()">瑙嗛</button>
+                        <button class="btn btn-sm" style="border:1px solid #ef4444;color:#ef4444;background:transparent;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" id="editClearThumbBtn" onclick="App.clearEditThumbnail()">娓呴櫎</button>
+                        <button class="btn btn-sm" style="border:1px solid #8b5cf6;color:#8b5cf6;background:transparent;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="App.generateComfyThumbnail()" title="鐢?ComfyUI 鐢熸垚缂╃暐鍥?><i class="bi bi-magic"></i> AI 鐢熸垚</button>
                     </div>
                 </div>
-                <label>内容</label>
-                <textarea id="editContent" class="modal-input" rows="3" placeholder="提示词内容"></textarea>
-                <label>释义</label>
-                <input type="text" id="editMeaning" class="modal-input" placeholder="中文释义">
-                <label>适用场景</label>
-                <input type="text" id="editScene" class="modal-input" placeholder="如：人像写真/日常拍摄">
-                <label>模块</label>
+                <label>鍐呭</label>
+                <textarea id="editContent" class="modal-input" rows="3" placeholder="鎻愮ず璇嶅唴瀹?></textarea>
+                <label>閲婁箟</label>
+                <input type="text" id="editMeaning" class="modal-input" placeholder="涓枃閲婁箟">
+                <label>閫傜敤鍦烘櫙</label>
+                <input type="text" id="editScene" class="modal-input" placeholder="濡傦細浜哄儚鍐欑湡/鏃ュ父鎷嶆憚">
+                <label>妯″潡</label>
                 <select id="editModule" class="modal-input">
-                    <option value="emotion">人物表情</option>
-                    <option value="color">场景色彩</option>
-                    <option value="tone">画面色调</option>
-                    <option value="storyboard">分镜构图</option>
-                    <option value="camera_move">运镜模版</option>
-                    <option value="seedance">视频模版</option>
-                    <option value="custom">自定义</option>
+                    <option value="emotion">浜虹墿琛ㄦ儏</option>
+                    <option value="color">鍦烘櫙鑹插僵</option>
+                    <option value="tone">鐢婚潰鑹茶皟</option>
+                    <option value="storyboard">鍒嗛暅鏋勫浘</option>
+                    <option value="camera_move">杩愰暅妯＄増</option>
+                    <option value="seedance">瑙嗛妯＄増</option>
+                    <option value="custom">鑷畾涔?/option>
                 </select>
-                <label>分类</label>
-                <input type="text" id="editCategory" class="modal-input" placeholder="二级分类名">
-                <label>标签（JSON数组）</label>
+                <label>鍒嗙被</label>
+                <input type="text" id="editCategory" class="modal-input" placeholder="浜岀骇鍒嗙被鍚?>
+                <label>鏍囩锛圝SON鏁扮粍锛?/label>
                 <div style="position:relative;">
-                    <input type="text" id="editTags" class="modal-input" placeholder='["自然","温暖"]' autocomplete="off">
+                    <input type="text" id="editTags" class="modal-input" placeholder='["鑷劧","娓╂殩"]' autocomplete="off">
                     <div id="tagSuggestions" class="tag-suggestions" style="display:none;"></div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-danger btn-sm" onclick="App.deleteEditPrompt()" id="editDeleteBtn" style="margin-right:auto;">删除</button>
-                <button class="btn btn-sm" style="border:1px solid #6366f1;color:#6366f1;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="App.showVersionHistory(App._editingPromptId)">📋 历史版本</button>
-                <button class="btn btn-secondary btn-sm" onclick="App.closeEditModal()">取消</button>
-                <button class="btn btn-primary btn-sm" onclick="App.saveEditPrompt()">保存</button>
+                <button class="btn btn-danger btn-sm" onclick="App.deleteEditPrompt()" id="editDeleteBtn" style="margin-right:auto;">鍒犻櫎</button>
+                <button class="btn btn-sm" style="border:1px solid #6366f1;color:#6366f1;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="App.showVersionHistory(App._editingPromptId)">馃搵 鍘嗗彶鐗堟湰</button>
+                <button class="btn btn-secondary btn-sm" onclick="App.closeEditModal()">鍙栨秷</button>
+                <button class="btn btn-primary btn-sm" onclick="App.saveEditPrompt()">淇濆瓨</button>
             </div>
         </div>
     </div>
 
-    <!-- 备份信息弹窗 -->
+    <!-- 澶囦唤淇℃伅寮圭獥 -->
     <div class="modal-overlay" id="modalBackup" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:500px;">
             <div class="modal-header">
-                <h5><i class="bi bi-database"></i> 数据库备份</h5>
+                <h5><i class="bi bi-database"></i> 鏁版嵁搴撳浠?/h5>
                 <button class="header-btn-sm" onclick="document.getElementById('modalBackup').style.display='none'">&times;</button>
             </div>
             <div class="modal-body" id="backupInfoBody">
                 <div style="text-align:center;padding:20px;">
                     <div class="spinner-border text-primary" role="status"></div>
-                    <p style="margin-top:12px;color:var(--text-muted);">正在获取备份状态...</p>
+                    <p style="margin-top:12px;color:var(--text-muted);">姝ｅ湪鑾峰彇澶囦唤鐘舵€?..</p>
                 </div>
             </div>
             <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;">
                 <span id="backupStatusText" style="font-size:11px;color:var(--text-muted);"></span>
                 <div style="display:flex;gap:8px;">
-                    <button class="btn btn-primary btn-sm" onclick="App.doBackupNow()"><i class="bi bi-cloud-arrow-up"></i> 立即备份</button>
-                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalBackup').style.display='none'">关闭</button>
+                    <button class="btn btn-primary btn-sm" onclick="App.doBackupNow()"><i class="bi bi-cloud-arrow-up"></i> 绔嬪嵆澶囦唤</button>
+                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalBackup').style.display='none'">鍏抽棴</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 数据同步弹窗 -->
+    <!-- 鏁版嵁鍚屾寮圭獥 -->
     <div class="modal-overlay" id="modalSync" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:640px;">
             <div class="modal-header">
-                <h5><i class="bi bi-arrow-left-right"></i> 数据同步 <span style="font-size:12px;color:var(--text-muted);font-weight:normal;">.pkb 包</span></h5>
+                <h5><i class="bi bi-arrow-left-right"></i> 鏁版嵁鍚屾 <span style="font-size:12px;color:var(--text-muted);font-weight:normal;">.pkb 鍖?/span></h5>
                 <button class="header-btn-sm" onclick="document.getElementById('modalSync').style.display='none'">&times;</button>
             </div>
             <div class="modal-body" id="syncBody">
                 <div style="text-align:center;padding:20px;">
                     <div class="spinner-border text-primary" role="status"></div>
-                    <p style="margin-top:12px;color:var(--text-muted);">正在加载...</p>
+                    <p style="margin-top:12px;color:var(--text-muted);">姝ｅ湪鍔犺浇...</p>
                 </div>
             </div>
             <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-size:11px;color:var(--text-muted);">.pkb = 数据库 + 缩略图 + 原图 + 视频</span>
+                <span style="font-size:11px;color:var(--text-muted);">.pkb = 鏁版嵁搴?+ 缂╃暐鍥?+ 鍘熷浘 + 瑙嗛</span>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button class="btn btn-outline-primary btn-sm" onclick="App.syncUploadPkg()"><i class="bi bi-upload"></i> 导入</button>
-                    <button class="btn btn-primary btn-sm" onclick="App.syncExportPkg()"><i class="bi bi-download"></i> 导出完整包</button>
-                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalSync').style.display='none'">关闭</button>
+                    <button class="btn btn-outline-primary btn-sm" onclick="App.syncUploadPkg()"><i class="bi bi-upload"></i> 瀵煎叆</button>
+                    <button class="btn btn-primary btn-sm" onclick="App.syncExportPkg()"><i class="bi bi-download"></i> 瀵煎嚭瀹屾暣鍖?/button>
+                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalSync').style.display='none'">鍏抽棴</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 导出命名弹窗 -->
+    <!-- 瀵煎嚭鍛藉悕寮圭獥 -->
     <div class="modal-overlay" id="modalExportName" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:400px;">
             <div class="modal-header">
-                <h5><i class="bi bi-pencil"></i> <span id="exportNameTitle">导出设置</span></h5>
+                <h5><i class="bi bi-pencil"></i> <span id="exportNameTitle">瀵煎嚭璁剧疆</span></h5>
                 <button class="header-btn-sm" onclick="document.getElementById('modalExportName').style.display='none'">&times;</button>
             </div>
             <div class="modal-body">
-                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">文件名</label>
-                <input type="text" id="exportNameInput" class="modal-input" placeholder="输入文件名（不含扩展名）" style="margin-bottom:12px;">
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">鏂囦欢鍚?/label>
+                <input type="text" id="exportNameInput" class="modal-input" placeholder="杈撳叆鏂囦欢鍚嶏紙涓嶅惈鎵╁睍鍚嶏級" style="margin-bottom:12px;">
                 <div id="exportNameCount" style="font-size:11px;color:var(--text-muted);margin-bottom:8px;"></div>
-                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">导出位置</label>
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">瀵煎嚭浣嶇疆</label>
                 <div style="display:flex;gap:6px;align-items:stretch;">
-                    <input type="text" id="exportPathInput" class="modal-input" style="width:100%;font-size:11px;color:var(--text-main);font-family:monospace;background:var(--bg-card,#fff);border:1px solid var(--border-color,#cbd5e1);border-radius:6px;padding:6px 8px;cursor:text;" placeholder='C:\Users\ASUS\Desktop\PromptKit导出' onclick='App._pickExportPath()' title='点击使用目录选择器，或直接输入完整路径'>
+                    <input type="text" id="exportPathInput" class="modal-input" style="width:100%;font-size:11px;color:var(--text-main);font-family:monospace;background:var(--bg-card,#fff);border:1px solid var(--border-color,#cbd5e1);border-radius:6px;padding:6px 8px;cursor:text;" placeholder='C:\Users\ASUS\Desktop\PromptKit瀵煎嚭' onclick='App._pickExportPath()' title='鐐瑰嚮浣跨敤鐩綍閫夋嫨鍣紝鎴栫洿鎺ヨ緭鍏ュ畬鏁磋矾寰?>
                 </div>
                 <div id="exportPathStatus" style="margin-top:6px;font-size:11px;color:var(--text-muted);min-height:18px;"></div>
                 <div style="margin-top:10px;padding:8px;background:var(--hover-bg,#f1f5f9);border-radius:6px;font-size:11px;color:var(--text-muted);">
-                    <span id="exportPathPreview">📄 将保存为: <strong>文件名.格式</strong></span>
+                    <span id="exportPathPreview">馃搫 灏嗕繚瀛樹负: <strong>鏂囦欢鍚?鏍煎紡</strong></span>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalExportName').style.display='none'">取消</button>
-                <button class="btn btn-primary btn-sm" onclick="App._confirmBatchExport()" id="btnConfirmExportName"><i class="bi bi-download"></i> 确认导出</button>
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalExportName').style.display='none'">鍙栨秷</button>
+                <button class="btn btn-primary btn-sm" onclick="App._confirmBatchExport()" id="btnConfirmExportName"><i class="bi bi-download"></i> 纭瀵煎嚭</button>
             </div>
         </div>
     </div>
 
-    <!-- 版本历史弹窗 -->
+    <!-- 鐗堟湰鍘嗗彶寮圭獥 -->
     <div class="modal-overlay" id="modalVersions" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:650px;max-height:80vh;display:flex;flex-direction:column;">
             <div class="modal-header">
-                <h5><i class="bi bi-clock-history"></i> <span id="versionTitle">版本历史</span></h5>
+                <h5><i class="bi bi-clock-history"></i> <span id="versionTitle">鐗堟湰鍘嗗彶</span></h5>
                 <button class="header-btn-sm" onclick="document.getElementById('modalVersions').style.display='none'">&times;</button>
             </div>
             <div id="versionBody" class="modal-body" style="flex:1;overflow-y:auto;">
                 <div style="text-align:center;padding:20px;">
                     <div class="spinner-border text-primary" role="status"></div>
-                    <p style="margin-top:12px;color:var(--text-muted);">加载版本历史...</p>
+                    <p style="margin-top:12px;color:var(--text-muted);">鍔犺浇鐗堟湰鍘嗗彶...</p>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalVersions').style.display='none'">关闭</button>
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalVersions').style.display='none'">鍏抽棴</button>
             </div>
         </div>
     </div>
 
-    <!-- 版本对比弹窗 -->
+    <!-- 鐗堟湰瀵规瘮寮圭獥 -->
     <div class="modal-overlay" id="modalVersionDiff" style="display:none;z-index:510;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:700px;max-height:80vh;display:flex;flex-direction:column;">
             <div class="modal-header">
-                <h5><i class="bi bi-file-diff"></i> <span id="diffTitle">版本对比</span></h5>
+                <h5><i class="bi bi-file-diff"></i> <span id="diffTitle">鐗堟湰瀵规瘮</span></h5>
                 <button class="header-btn-sm" onclick="document.getElementById('modalVersionDiff').style.display='none'">&times;</button>
             </div>
             <div id="diffBody" class="modal-body" style="flex:1;overflow-y:auto;font-family:monospace;font-size:12px;white-space:pre-wrap;"></div>
             <div class="modal-footer">
-                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalVersionDiff').style.display='none'">关闭</button>
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalVersionDiff').style.display='none'">鍏抽棴</button>
             </div>
         </div>
     </div>
 
-    <!-- ComfyUI 配置弹窗 -->
+    <!-- ComfyUI 閰嶇疆寮圭獥 -->
     <div class="modal-overlay" id="modalComfyUI" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:600px;max-height:80vh;display:flex;flex-direction:column;">
             <div class="modal-header">
-                <h5><i class="bi bi-magic"></i> ComfyUI 集成配置</h5>
+                <h5><i class="bi bi-magic"></i> ComfyUI 闆嗘垚閰嶇疆</h5>
                 <button class="header-btn-sm" onclick="document.getElementById('modalComfyUI').style.display='none'">&times;</button>
             </div>
             <div class="modal-body" style="flex:1;overflow-y:auto;">
                 <div id="comfyUIConfigBody">
-                    <div style="text-align:center;padding:20px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">加载配置...</p></div>
+                    <div style="text-align:center;padding:20px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">鍔犺浇閰嶇疆...</p></div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-primary btn-sm" onclick="App._saveComfyConfig()"><i class="bi bi-check"></i> 保存配置</button>
-                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalComfyUI').style.display='none'">关闭</button>
+                <button class="btn btn-primary btn-sm" onclick="App._saveComfyConfig()"><i class="bi bi-check"></i> 淇濆瓨閰嶇疆</button>
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalComfyUI').style.display='none'">鍏抽棴</button>
             </div>
         </div>
     </div>
 
-    <!-- 统计仪表盘弹窗 -->
+    <!-- 缁熻浠〃鐩樺脊绐?-->
     <div class="modal-overlay" id="modalDashboard" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:640px;max-height:80vh;display:flex;flex-direction:column;">
             <div class="modal-header">
-                <h5><i class="bi bi-bar-chart"></i> 统计仪表盘</h5>
+                <h5><i class="bi bi-bar-chart"></i> 缁熻浠〃鐩?/h5>
                 <button class="header-btn-sm" onclick="document.getElementById('modalDashboard').style.display='none'">&times;</button>
             </div>
             <div id="dashboardBody" class="modal-body" style="flex:1;overflow-y:auto;">
-                <div style="text-align:center;padding:30px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">加载统计数据...</p></div>
+                <div style="text-align:center;padding:30px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">鍔犺浇缁熻鏁版嵁...</p></div>
             </div>
         </div>
     </div>
 
-    <!-- 模板变量填充弹窗 -->
+    <!-- 妯℃澘鍙橀噺濉厖寮圭獥 -->
     <div class="modal-overlay" id="modalTemplateVars" style="display:none;z-index:510;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:480px;">
             <div class="modal-header">
-                <h5><i class="bi bi-pencil-square"></i> 填写模板变量</h5>
+                <h5><i class="bi bi-pencil-square"></i> 濉啓妯℃澘鍙橀噺</h5>
                 <button class="header-btn-sm" onclick="document.getElementById('modalTemplateVars').style.display='none'">&times;</button>
             </div>
             <div class="modal-body">
@@ -618,13 +618,13 @@
                 <div id="tmplFields"></div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalTemplateVars').style.display='none'">取消</button>
-                <button class="btn btn-primary btn-sm" onclick="App._tmplCopy()"><i class="bi bi-copy"></i> 复制并填充</button>
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalTemplateVars').style.display='none'">鍙栨秷</button>
+                <button class="btn btn-primary btn-sm" onclick="App._tmplCopy()"><i class="bi bi-copy"></i> 澶嶅埗骞跺～鍏?/button>
             </div>
         </div>
     </div>
 
-    <!-- LLM Playground 弹窗 -->
+    <!-- LLM Playground 寮圭獥 -->
     <div class="modal-overlay" id="modalPlayground" style="display:none;z-index:510;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:720px;max-height:85vh;display:flex;flex-direction:column;">
             <div class="modal-header">
@@ -632,187 +632,187 @@
                 <button class="header-btn-sm" onclick="document.getElementById('modalPlayground').style.display='none'">&times;</button>
             </div>
             <div class="modal-body" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
-                <!-- 配置栏 -->
+                <!-- 閰嶇疆鏍?-->
                 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px;background:var(--hover-bg,#f1f5f9);border-radius:8px;flex-shrink:0;">
                     <select id="pgProvider" class="modal-input" style="width:auto;font-size:12px;padding:4px 8px;" onchange="App._pgToggleProvider()">
-                        <option value="ollama">🦙 Ollama (本地)</option>
-                        <option value="openai">☁️ OpenAI 兼容</option>
+                        <option value="ollama">馃 Ollama (鏈湴)</option>
+                        <option value="openai">鈽侊笍 OpenAI 鍏煎</option>
                     </select>
-                    <input type="text" id="pgModel" class="modal-input" placeholder="模型名" style="width:130px;font-size:12px;padding:4px 8px;">
-                    <input type="text" id="pgUrl" class="modal-input" placeholder="API 地址" style="flex:1;min-width:120px;font-size:12px;padding:4px 8px;">
+                    <input type="text" id="pgModel" class="modal-input" placeholder="妯″瀷鍚? style="width:130px;font-size:12px;padding:4px 8px;">
+                    <input type="text" id="pgUrl" class="modal-input" placeholder="API 鍦板潃" style="flex:1;min-width:120px;font-size:12px;padding:4px 8px;">
                     <input type="password" id="pgKey" class="modal-input" placeholder="API Key (OpenAI)" style="width:150px;font-size:12px;padding:4px 8px;display:none;" id="pgKeyField">
-                    <label style="font-size:11px;color:var(--text-muted);white-space:nowrap;">🌡️ <input type="number" id="pgTemp" value="0.7" step="0.1" min="0" max="2" style="width:50px;font-size:12px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-main);"></label>
+                    <label style="font-size:11px;color:var(--text-muted);white-space:nowrap;">馃尅锔?<input type="number" id="pgTemp" value="0.7" step="0.1" min="0" max="2" style="width:50px;font-size:12px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-main);"></label>
                 </div>
-                <!-- 系统提示词 -->
-                <textarea id="pgSystem" class="modal-input" placeholder="系统提示词（可选）" rows="1" style="font-size:12px;padding:6px 8px;flex-shrink:0;"></textarea>
-                <!-- 用户提示词 -->
-                <textarea id="pgPrompt" class="modal-input" placeholder="输入提示词内容..." rows="4" style="font-size:13px;padding:8px 10px;flex:1;min-height:80px;font-family:var(--font-mono,monospace);"></textarea>
-                <!-- 操作按钮 -->
+                <!-- 绯荤粺鎻愮ず璇?-->
+                <textarea id="pgSystem" class="modal-input" placeholder="绯荤粺鎻愮ず璇嶏紙鍙€夛級" rows="1" style="font-size:12px;padding:6px 8px;flex-shrink:0;"></textarea>
+                <!-- 鐢ㄦ埛鎻愮ず璇?-->
+                <textarea id="pgPrompt" class="modal-input" placeholder="杈撳叆鎻愮ず璇嶅唴瀹?.." rows="4" style="font-size:13px;padding:8px 10px;flex:1;min-height:80px;font-family:var(--font-mono,monospace);"></textarea>
+                <!-- 鎿嶄綔鎸夐挳 -->
                 <div style="display:flex;gap:8px;flex-shrink:0;">
-                    <button class="btn btn-primary btn-sm" onclick="App._pgRun()" id="btnPgRun" style="flex:1;"><i class="bi bi-play-fill"></i> 运行</button>
-                    <button class="btn btn-secondary btn-sm" onclick="App._pgClear()">清空</button>
-                    <button class="btn btn-sm" style="border:1px solid var(--border-color);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;" onclick="App._pgSettings()">⚙️</button>
+                    <button class="btn btn-primary btn-sm" onclick="App._pgRun()" id="btnPgRun" style="flex:1;"><i class="bi bi-play-fill"></i> 杩愯</button>
+                    <button class="btn btn-secondary btn-sm" onclick="App._pgClear()">娓呯┖</button>
+                    <button class="btn btn-sm" style="border:1px solid var(--border-color);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;" onclick="App._pgSettings()">鈿欙笍</button>
                 </div>
-                <!-- 结果区 -->
+                <!-- 缁撴灉鍖?-->
                 <div id="pgResult" style="display:none;padding:10px 12px;background:#0f172a;color:#e2e8f0;border-radius:8px;font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto;font-family:monospace;"></div>
                 <div id="pgStatus" style="font-size:11px;color:var(--text-muted);text-align:center;flex-shrink:0;"></div>
             </div>
         </div>
     </div>
 
-    <!-- 拖拽导入预览弹窗 -->
+    <!-- 鎷栨嫿瀵煎叆棰勮寮圭獥 -->
     <div class="modal-overlay" id="modalDropImport" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:620px;max-height:80vh;display:flex;flex-direction:column;">
             <div class="modal-header">
-                <h5><i class="bi bi-upload"></i> 拖拽导入提示词</h5>
+                <h5><i class="bi bi-upload"></i> 鎷栨嫿瀵煎叆鎻愮ず璇?/h5>
                 <button class="header-btn-sm" onclick="document.getElementById('modalDropImport').style.display='none'">&times;</button>
             </div>
             <div class="modal-body" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
-                <!-- 文件信息 -->
+                <!-- 鏂囦欢淇℃伅 -->
                 <div id="diFileInfo" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 12px;background:var(--hover-bg,#f1f5f9);border-radius:8px;flex-shrink:0;">
-                    <span style="font-size:20px;">📄</span>
+                    <span style="font-size:20px;">馃搫</span>
                     <div style="flex:1;">
                         <div id="diFileName" style="font-size:13px;font-weight:600;"></div>
                         <div id="diFileSize" style="font-size:11px;color:var(--text-muted);"></div>
                     </div>
                 </div>
-                <!-- 冲突处理 -->
+                <!-- 鍐茬獊澶勭悊 -->
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-shrink:0;">
-                    <label style="font-size:12px;color:var(--text-muted);white-space:nowrap;">重复处理：</label>
+                    <label style="font-size:12px;color:var(--text-muted);white-space:nowrap;">閲嶅澶勭悊锛?/label>
                     <select id="diConflictSelect" class="modal-input" style="flex:1;font-size:12px;padding:5px 8px;">
-                        <option value="skip">跳过重复</option>
-                        <option value="rename" selected>重命名新增</option>
-                        <option value="overwrite">覆盖替换</option>
+                        <option value="skip">璺宠繃閲嶅</option>
+                        <option value="rename" selected>閲嶅懡鍚嶆柊澧?/option>
+                        <option value="overwrite">瑕嗙洊鏇挎崲</option>
                     </select>
                 </div>
-                <!-- 预览列表 -->
+                <!-- 棰勮鍒楄〃 -->
                 <div style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                    <span id="diCount" style="font-size:13px;color:var(--text-muted);">解析中...</span>
+                    <span id="diCount" style="font-size:13px;color:var(--text-muted);">瑙ｆ瀽涓?..</span>
                     <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;">
-                        <input type="checkbox" id="diSelectAll" checked onchange="App._toggleDiSelectAll()"> 全选
+                        <input type="checkbox" id="diSelectAll" checked onchange="App._toggleDiSelectAll()"> 鍏ㄩ€?
                     </label>
                 </div>
                 <div id="diItemList" style="flex:1;overflow-y:auto;border:1px solid var(--border-color);border-radius:6px;padding:6px;margin-bottom:8px;font-size:12px;">
-                    <div style="color:var(--text-muted);text-align:center;padding:20px 0;">解析文件中...</div>
+                    <div style="color:var(--text-muted);text-align:center;padding:20px 0;">瑙ｆ瀽鏂囦欢涓?..</div>
                 </div>
-                <!-- 导入结果 -->
+                <!-- 瀵煎叆缁撴灉 -->
                 <div id="diResult" style="display:none;padding:8px;border-radius:6px;font-size:12px;text-align:center;flex-shrink:0;margin-bottom:6px;"></div>
             </div>
             <div class="modal-footer" style="flex-shrink:0;">
-                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalDropImport').style.display='none'">取消</button>
-                <button class="btn btn-primary btn-sm" onclick="App._confirmDropImport()" id="btnDiImport"><i class="bi bi-check-lg"></i> 确认导入</button>
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalDropImport').style.display='none'">鍙栨秷</button>
+                <button class="btn btn-primary btn-sm" onclick="App._confirmDropImport()" id="btnDiImport"><i class="bi bi-check-lg"></i> 纭瀵煎叆</button>
             </div>
         </div>
     </div>
 
-    <!-- 截图导入弹窗 -->
+    <!-- 鎴浘瀵煎叆寮圭獥 -->
     <div class="modal-overlay" id="modalScreenshotImport" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:720px;max-height:85vh;display:flex;flex-direction:column;">
             <div class="modal-header">
-                <h5><i class="bi bi-camera"></i> 截图导入提示词</h5>
+                <h5><i class="bi bi-camera"></i> 鎴浘瀵煎叆鎻愮ず璇?/h5>
                 <button class="header-btn-sm" onclick="document.getElementById('modalScreenshotImport').style.display='none'">&times;</button>
             </div>
             <div class="modal-body" style="flex:1;overflow-y:auto;">
-                <!-- 上传区 -->
-                <div id="ssUploadArea" style="border:2px dashed var(--border-color);border-radius:10px;padding:30px;text-align:center;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('ssFileInput').click()" ondragover="event.preventDefault();this.style.borderColor='#4f46e5';this.style.background='#eef2ff'" ondragleave="event.preventDefault();this.style.borderColor='';this.style.background=''" ondrop="event.preventDefault();event.stopPropagation();var f=event.dataTransfer.files[0];if(f&&f.type.startsWith('image/')){App._processSSFile(f);}else{App.showToast('请拖入图片文件','error')}">
-                    <div style="font-size:48px;margin-bottom:8px;">📸</div>
-                    <div style="font-size:16px;font-weight:600;color:var(--text-main);">点击上传或拖入截图</div>
-                    <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">支持 JPG / PNG，AI 提示词技巧截图</div>
+                <!-- 涓婁紶鍖?-->
+                <div id="ssUploadArea" style="border:2px dashed var(--border-color);border-radius:10px;padding:30px;text-align:center;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('ssFileInput').click()" ondragover="event.preventDefault();this.style.borderColor='#4f46e5';this.style.background='#eef2ff'" ondragleave="event.preventDefault();this.style.borderColor='';this.style.background=''" ondrop="event.preventDefault();event.stopPropagation();var f=event.dataTransfer.files[0];if(f&&f.type.startsWith('image/')){App._processSSFile(f);}else{App.showToast('璇锋嫋鍏ュ浘鐗囨枃浠?,'error')}">
+                    <div style="font-size:48px;margin-bottom:8px;">馃摳</div>
+                    <div style="font-size:16px;font-weight:600;color:var(--text-main);">鐐瑰嚮涓婁紶鎴栨嫋鍏ユ埅鍥?/div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">鏀寔 JPG / PNG锛孉I 鎻愮ず璇嶆妧宸ф埅鍥?/div>
                     <input type="file" id="ssFileInput" accept="image/*" style="display:none;" onchange="App._onSSFileSelect(event)">
-                    <button class="btn btn-outline-primary btn-sm mt-3" onclick="event.stopPropagation();App._onSSPaste()"><i class="bi bi-clipboard"></i> 粘贴剪贴板图片</button>
+                    <button class="btn btn-outline-primary btn-sm mt-3" onclick="event.stopPropagation();App._onSSPaste()"><i class="bi bi-clipboard"></i> 绮樿创鍓创鏉垮浘鐗?/button>
                 </div>
 
-                <!-- 粘贴预览区（Ctrl+V后先显示图片，确认后再分析） -->
+                <!-- 绮樿创棰勮鍖猴紙Ctrl+V鍚庡厛鏄剧ず鍥剧墖锛岀‘璁ゅ悗鍐嶅垎鏋愶級 -->
                 <div id="ssPastePreview" style="display:none;text-align:center;padding:10px;">
-                    <div style="font-size:14px;font-weight:600;margin-bottom:8px;">📋 剪贴板图片预览</div>
+                    <div style="font-size:14px;font-weight:600;margin-bottom:8px;">馃搵 鍓创鏉垮浘鐗囬瑙?/div>
                     <div id="ssPasteThumb" style="max-width:100%;max-height:200px;border-radius:8px;overflow:hidden;margin:0 auto 12px;background:#f1f5f9;"></div>
-                    <button class="btn btn-primary btn-sm" onclick="App._confirmSSPaste()"><i class="bi bi-check-lg"></i> 确认分析</button>
-                    <button class="btn btn-outline-secondary btn-sm" onclick="App._cancelSSPaste()">重新选择</button>
+                    <button class="btn btn-primary btn-sm" onclick="App._confirmSSPaste()"><i class="bi bi-check-lg"></i> 纭鍒嗘瀽</button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="App._cancelSSPaste()">閲嶆柊閫夋嫨</button>
                 </div>
 
-                <!-- 识别中加载提示 -->
+                <!-- 璇嗗埆涓姞杞芥彁绀?-->
                 <div id="ssLoading" style="display:none;text-align:center;padding:30px;">
                     <div class="spinner-border text-primary" role="status"></div>
-                    <p style="margin-top:12px;color:var(--text-muted);">🔍 正在分析截图...</p>
-                    <p style="font-size:11px;color:#94a3b8;">第1步：版面分析 → 第2步：文本识别(Ollama Vision) → 第3步：结构化解析</p>
+                    <p style="margin-top:12px;color:var(--text-muted);">馃攳 姝ｅ湪鍒嗘瀽鎴浘...</p>
+                    <p style="font-size:11px;color:#94a3b8;">绗?姝ワ細鐗堥潰鍒嗘瀽 鈫?绗?姝ワ細鏂囨湰璇嗗埆(Ollama Vision) 鈫?绗?姝ワ細缁撴瀯鍖栬В鏋?/p>
                 </div>
 
-                <!-- 预览确认区 -->
+                <!-- 棰勮纭鍖?-->
                 <div id="ssPreviewArea" style="display:none;">
-                    <!-- 缩略图预览 + 原OCR文字 -->
+                    <!-- 缂╃暐鍥鹃瑙?+ 鍘烵CR鏂囧瓧 -->
                     <div style="display:flex;gap:16px;margin-bottom:16px;">
-                        <div id="ssThumbPreview" style="width:200px;height:133px;border-radius:8px;overflow:hidden;background:#f1f5f9;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:#94a3b8;">无效果图</div>
+                        <div id="ssThumbPreview" style="width:200px;height:133px;border-radius:8px;overflow:hidden;background:#f1f5f9;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:#94a3b8;">鏃犳晥鏋滃浘</div>
                         <div style="flex:1;">
-                            <div style="font-size:12px;font-weight:600;margin-bottom:4px;">识别结果</div>
+                            <div style="font-size:12px;font-weight:600;margin-bottom:4px;">璇嗗埆缁撴灉</div>
                             <div id="ssRawText" style="font-size:11px;color:var(--text-muted);background:var(--hover-bg);padding:8px;border-radius:6px;max-height:100px;overflow-y:auto;white-space:pre-wrap;"></div>
                         </div>
                     </div>
-                    <!-- 可编辑字段 -->
+                    <!-- 鍙紪杈戝瓧娈?-->
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-                        <div style="grid-column:1/3;"><label style="font-size:12px;font-weight:600;">内容 *</label><textarea id="ssContent" class="modal-input" rows="3" style="font-size:13px;" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){App._confirmSSImport(false)}"></textarea></div>
-                        <div><label style="font-size:12px;font-weight:600;">释义</label><input type="text" id="ssMeaning" class="modal-input" style="font-size:13px;"></div>
-                        <div><label style="font-size:12px;font-weight:600;">适用场景</label><input type="text" id="ssScene" class="modal-input" style="font-size:13px;"></div>
-                        <div><label style="font-size:12px;font-weight:600;">模块</label>
+                        <div style="grid-column:1/3;"><label style="font-size:12px;font-weight:600;">鍐呭 *</label><textarea id="ssContent" class="modal-input" rows="3" style="font-size:13px;" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){App._confirmSSImport(false)}"></textarea></div>
+                        <div><label style="font-size:12px;font-weight:600;">閲婁箟</label><input type="text" id="ssMeaning" class="modal-input" style="font-size:13px;"></div>
+                        <div><label style="font-size:12px;font-weight:600;">閫傜敤鍦烘櫙</label><input type="text" id="ssScene" class="modal-input" style="font-size:13px;"></div>
+                        <div><label style="font-size:12px;font-weight:600;">妯″潡</label>
                             <select id="ssModule" class="modal-input" style="font-size:13px;">
-                                <option value="emotion">人物表情</option>
-                                <option value="color">场景色彩</option>
-                                <option value="tone">画面色调</option>
-                                <option value="composition">构图运镜</option>
-                                <option value="seedance">视频模板</option>
-                                <option value="custom">自定义</option>
+                                <option value="emotion">浜虹墿琛ㄦ儏</option>
+                                <option value="color">鍦烘櫙鑹插僵</option>
+                                <option value="tone">鐢婚潰鑹茶皟</option>
+                                <option value="composition">鏋勫浘杩愰暅</option>
+                                <option value="seedance">瑙嗛妯℃澘</option>
+                                <option value="custom">鑷畾涔?/option>
                             </select>
                         </div>
-                        <div><label style="font-size:12px;font-weight:600;">分类</label><input type="text" id="ssCategory" class="modal-input" style="font-size:13px;"></div>
-                        <div style="grid-column:1/3;"><label style="font-size:12px;font-weight:600;">标签 <span style="font-size:11px;color:var(--text-muted);">(JSON数组)</span></label><input type="text" id="ssTags" class="modal-input" style="font-size:13px;" placeholder='["标签1","标签2"]'></div>
-                        <div style="grid-column:1/3;"><label style="font-size:12px;font-weight:600;">技巧说明</label><textarea id="ssTips" class="modal-input" rows="2" style="font-size:13px;"></textarea></div>
+                        <div><label style="font-size:12px;font-weight:600;">鍒嗙被</label><input type="text" id="ssCategory" class="modal-input" style="font-size:13px;"></div>
+                        <div style="grid-column:1/3;"><label style="font-size:12px;font-weight:600;">鏍囩 <span style="font-size:11px;color:var(--text-muted);">(JSON鏁扮粍)</span></label><input type="text" id="ssTags" class="modal-input" style="font-size:13px;" placeholder='["鏍囩1","鏍囩2"]'></div>
+                        <div style="grid-column:1/3;"><label style="font-size:12px;font-weight:600;">鎶€宸ц鏄?/label><textarea id="ssTips" class="modal-input" rows="2" style="font-size:13px;"></textarea></div>
                     </div>
                 </div>
 
-                <!-- 错误提示 -->
+                <!-- 閿欒鎻愮ず -->
                 <div id="ssError" style="display:none;padding:16px;background:#fef2f2;color:#ef4444;border-radius:8px;font-size:13px;text-align:center;"></div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalScreenshotImport').style.display='none'">取消</button>
-                <button class="btn btn-secondary btn-sm" id="ssBtnRetry" style="display:none;" onclick="App._retrySSUpload()">🔄 重新识别</button>
-                <button class="btn btn-primary btn-sm" id="ssBtnImport" style="display:none;" onclick="App._confirmSSImport(false)"><i class="bi bi-check-lg"></i> 确认导入</button>
-                <button class="btn btn-outline-primary btn-sm" id="ssBtnContinue" style="display:none;" onclick="App._confirmSSImport(true)"><i class="bi bi-arrow-right"></i> 导入并继续</button>
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalScreenshotImport').style.display='none'">鍙栨秷</button>
+                <button class="btn btn-secondary btn-sm" id="ssBtnRetry" style="display:none;" onclick="App._retrySSUpload()">馃攧 閲嶆柊璇嗗埆</button>
+                <button class="btn btn-primary btn-sm" id="ssBtnImport" style="display:none;" onclick="App._confirmSSImport(false)"><i class="bi bi-check-lg"></i> 纭瀵煎叆</button>
+                <button class="btn btn-outline-primary btn-sm" id="ssBtnContinue" style="display:none;" onclick="App._confirmSSImport(true)"><i class="bi bi-arrow-right"></i> 瀵煎叆骞剁户缁?/button>
             </div>
         </div>
     </div>
 
-    <!-- Seedance V2 词卡选择弹窗 -->
+    <!-- Seedance V2 璇嶅崱閫夋嫨寮圭獥 -->
     <div class="modal-overlay" id="s2CardPicker" style="display:none;z-index:600;" onclick="App.seedanceV2.closePicker()">
         <div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:700px;">
             <div class="modal-header">
-                <h5 id="s2PickerTitle">选择词卡</h5>
-                <button class="header-btn-sm" onclick="App.seedanceV2.closePicker()" title="关闭 (Esc)">&times;</button>
+                <h5 id="s2PickerTitle">閫夋嫨璇嶅崱</h5>
+                <button class="header-btn-sm" onclick="App.seedanceV2.closePicker()" title="鍏抽棴 (Esc)">&times;</button>
             </div>
             <div class="modal-body">
                 <div id="s2PickerLibTabs" class="s2-picker-lib-tabs"></div>
-                <input id="s2PickerSearch" class="modal-input" placeholder="搜索词条..." oninput="App.seedanceV2.renderCards(App.seedanceV2.activePickerLibId)" style="margin-bottom:12px;">
+                <input id="s2PickerSearch" class="modal-input" placeholder="鎼滅储璇嶆潯..." oninput="App.seedanceV2.renderCards(App.seedanceV2.activePickerLibId)" style="margin-bottom:12px;">
                 <div id="s2PickerCards" class="s2-picker-grid"></div>
             </div>
         </div>
     </div>
 
-    <!-- Seedance V2 分组管理弹窗 -->
+    <!-- Seedance V2 鍒嗙粍绠＄悊寮圭獥 -->
     <div class="modal-overlay" id="s2GroupManager" style="display:none;z-index:650;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:480px;">
             <div class="modal-header">
-                <h5>⚙ 管理自定义分组</h5>
+                <h5>鈿?绠＄悊鑷畾涔夊垎缁?/h5>
                 <button class="header-btn-sm" onclick="document.getElementById('s2GroupManager').style.display='none'">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="s2-group-create">
-                    <input id="s2NewGroupName" class="modal-input" placeholder="新分组名称..." style="flex:1;margin:0;" onkeydown="if(event.key==='Enter')App.seedanceV2.createCustomLib()">
-                    <button class="btn btn-sm btn-primary" onclick="App.seedanceV2.createCustomLib()">＋ 创建</button>
+                    <input id="s2NewGroupName" class="modal-input" placeholder="鏂板垎缁勫悕绉?.." style="flex:1;margin:0;" onkeydown="if(event.key==='Enter')App.seedanceV2.createCustomLib()">
+                    <button class="btn btn-sm btn-primary" onclick="App.seedanceV2.createCustomLib()">锛?鍒涘缓</button>
                 </div>
                 <div class="s2-group-manager-body" id="s2GroupList">
-                    <div class="s2-empty" style="padding:12px;font-size:12px;">加载中...</div>
+                    <div class="s2-empty" style="padding:12px;font-size:12px;">鍔犺浇涓?..</div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('s2GroupManager').style.display='none'">关闭</button>
+                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('s2GroupManager').style.display='none'">鍏抽棴</button>
             </div>
         </div>
     </div>
@@ -824,7 +824,7 @@
     <script src="/static/js/monitor_dashboard.js?v=3"></script>
     <script src="/static/js/health_check.js?v=3"></script>
     <script src="/static/js/app_sync.js?v=9.1"></script>
-    <script src="/static/js/app_editor.js?v=10.2"></script>
+    <script src="/static/js/app_editor.js?v=10.3"></script>
     <script src="/static/js/app_collections.js?v=10.0"></script>
     <script src="/static/js/app_tools.js?v=9.1"></script>
     <script src="/static/js/app_media.js?v=9.1"></script>
@@ -832,12 +832,12 @@
     <script src="/static/js/word_picker.js?v=3"></script>
     <script src="/static/js/word_editor.js?v=6"></script>
     <script src="/static/js/word_card_manager.js?v=5"></script>
-    <script src="/static/js/wc_bridge.js?v=5"></script>
+    <script src="/static/js/wc_bridge.js?v=6"></script>
     <script src="/static/js/v4_library.js?v=3"></script>
     <script src="/static/js/v4_cards.js?v=3"></script>
     <script src="/static/js/v3_composer.js?v=9.3"></script>
     <script src="/static/js/seedance_v2_composer.js?v=69"></script>
-    <script src="/static/js/composer_wc_bridge.js?v=5"></script>
+    <script src="/static/js/composer_wc_bridge.js?v=6"></script>
     <script src="/static/js/character_library.js?v=3"></script>
     <script src="/static/js/app_search.js?v=3"></script>
     <script src="/static/js/app_theme.js?v=9"></script>
@@ -848,11 +848,11 @@
   <div class="scene-review-panel" onclick="event.stopPropagation()">
     <div class="sr-timeline-bar" id="srTimelineBar"></div>
     <div class="scene-review-header">
-      <span class="scene-review-title" id="sceneReviewTitle">镜头审阅</span>
+      <span class="scene-review-title" id="sceneReviewTitle">闀滃ご瀹￠槄</span>
       <div style="display:flex;gap:8px;align-items:center;">
-        <select id="srShowCount" class="s2-input" style="width:auto;min-width:50px;font-size:12px;padding:2px 6px;" onchange="App.seedanceV2._onSrShowCountChange()"><option value="1">1个</option><option value="2">2个</option><option value="3">3个</option><option value="4">4个</option><option value="6">6个</option><option value="0">全部</option></select>
-        <button class="btn btn-sm btn-outline" onclick="App.seedanceV2.copySceneReview()" title="复制当前可见镜头文本">📋 复制</button>
-        <button class="btn btn-sm btn-outline" onclick="App.seedanceV2.closeSceneReview()">✕ 关闭</button>
+        <select id="srShowCount" class="s2-input" style="width:auto;min-width:50px;font-size:12px;padding:2px 6px;" onchange="App.seedanceV2._onSrShowCountChange()"><option value="1">1涓?/option><option value="2">2涓?/option><option value="3">3涓?/option><option value="4">4涓?/option><option value="6">6涓?/option><option value="0">鍏ㄩ儴</option></select>
+        <button class="btn btn-sm btn-outline" onclick="App.seedanceV2.copySceneReview()" title="澶嶅埗褰撳墠鍙闀滃ご鏂囨湰">馃搵 澶嶅埗</button>
+        <button class="btn btn-sm btn-outline" onclick="App.seedanceV2.closeSceneReview()">鉁?鍏抽棴</button>
       </div>
     </div>
     <div class="scene-review-body" id="sceneReviewBody"></div>
