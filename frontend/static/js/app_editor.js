@@ -184,7 +184,7 @@ Object.assign(App, {
     async createCustomModule() {
         var name = document.getElementById('inputModuleName').value.trim();
         if (!name) { App.showToast('请输入分组名称', 'error'); return; }
-        var key = 'custom_' + name.replace(/[^a-z0-9_\u4e00-\u9fff]/gi, '_').substring(0, 30);
+        var key = 'custom_' + name.replace(/[^a-z0-9_一-鿿]/gi, '_').substring(0, 30);
         try {
             var resp = await fetch('/api/v4/word-cards/groups', {
                 method: 'POST',
@@ -193,7 +193,7 @@ Object.assign(App, {
             });
             if (resp.ok) {
                 document.getElementById('modalCreateModule').style.display = 'none';
-                App.showToast('分组「' + name + '」已创建', 'success');
+                App.showToast('分组\u300C' + name + '\u300D已创建', 'success');
                 App.loadModules();
             } else {
                 var detail = '';
@@ -803,7 +803,7 @@ Object.assign(App, {
             // 仅保留主版本号 (如 v4.0.0-phase9.3 → v4.0.0)
             v = v.split('-')[0];
             var brand = document.querySelector('.brand small');
-            if (brand) brand.textContent = 'v' + v;
+            if (brand) brand.textContent = v;
         }).catch(function(){});
     }
 });
