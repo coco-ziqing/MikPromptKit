@@ -47,8 +47,7 @@ App.switchGroup = async function(groupId, groupName) {
     
     this.renderSidebar();
     this._closeMobileMenu();
-    this.switchView('home');
-    await this._wcLoadPrompts();
+    this.switchView('home');  // switchView 内部会调用 loadPrompts → _wcLoadPrompts
     this._updatePageTitle();
 };
 
@@ -63,9 +62,7 @@ App.switchAllGroups = function() {
     try { localStorage.removeItem('promptkit_group_id'); } catch(e) {}
     this.renderSidebar();
     this._closeMobileMenu();
-    this.switchView('home');
-    // 显示陈列架
-    this._showShowcase();
+    this.switchView('home');  // switchView → loadPrompts → _wcLoadPrompts → _showShowcase
 };
 
 // ============================================================
@@ -162,12 +159,19 @@ App._showShowcase = function() {
     document.getElementById('countInfo').textContent = '共 ' + leafGroups.reduce(function(s,g){return s+g.card_count;},0) + ' 条词卡';
 };
 
+// 陈列架点击代理（data属性避免引号注入）
+App._showcaseClick = function(el) {
+    var gid = parseInt(el.getAttribute('data-gid'));
+    var gname = el.getAttribute('data-gname') || '';
+    if (gid) App.switchGroup(gid, gname);
+};
+
 // 陈列架卡片
 App._renderShowcaseCard = function(grp) {
     var icon = grp.icon || '📄';
     var badge = grp.group_type === 'builtin' ? '<span style="font-size:10px;background:var(--bg-primary);color:var(--text-muted);padding:1px 6px;border-radius:4px;">内置</span>' :
                 grp.group_type === 'custom' ? '<span style="font-size:10px;background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:4px;">自定义</span>' : '';
-    return '<div class="showcase-card" onclick="App.switchGroup(' + grp.id + ',\'' + App._escape(grp.name) + '\')" style="cursor:pointer;border:1px solid var(--border-color);border-radius:12px;padding:16px;background:var(--bg-card);transition:all 0.2s;display:flex;align-items:center;gap:12px;">' +
+    return '<div class="showcase-card" data-gid="' + grp.id + '" data-gname="' + (grp.name||'').replace(/"/g,'&quot;') + '" onclick="App._showcaseClick(this)" style="cursor:pointer;border:1px solid var(--border-color);border-radius:12px;padding:16px;background:var(--bg-card);transition:all 0.2s;display:flex;align-items:center;gap:12px;">' +
         '<div style="font-size:28px;flex-shrink:0;">' + icon + '</div>' +
         '<div style="flex:1;min-width:0;">' +
             '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">' +
@@ -271,7 +275,7 @@ App._renderTreeNode = function(node, depth) {
         return html;
     }
     
-    // leaf 节点（builtin/seedance/custom）：可点击加载
+    // leaf 节点（builtin/seedance/custom）：可点击加载（data属性避免引号注入）
     var delBtn = '';
     if (node.group_type === 'custom' && this.state.editMode) {
         delBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.deleteGroupFromTree(' + node.id + ')" title="删除分组" style="font-size:10px;color:#ef4444;padding:0 3px;opacity:0.7;">✕</button>';
@@ -281,13 +285,20 @@ App._renderTreeNode = function(node, depth) {
         editBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.showGroupEditModal(' + node.id + ')" title="编辑分组" style="font-size:10px;opacity:0.7;">✎</button>';
     }
     
-    return '<div class="module-item ' + (isActive ? 'active' : '') + '" onclick="App.switchGroup(' + node.id + ',\'' + App._escape(node.name) + '\')" ' +
+    return '<div class="module-item ' + (isActive ? 'active' : '') + '" data-gid="' + node.id + '" data-gname="' + (node.name||'').replace(/"/g,'&quot;') + '" onclick="App._treeLeafClick(this)" ' +
         'style="margin:0 8px 2px;padding-left:' + padLeft + 'px;" data-group-id="' + node.id + '">' +
         '<span class="icon">' + icon + '</span>' +
         '<span>' + App._escape(node.name) + '</span>' +
         countStr +
         editBtn + delBtn +
         '</div>';
+};
+
+// 叶子节点点击代理（data属性避免引号注入）
+App._treeLeafClick = function(el) {
+    var gid = parseInt(el.getAttribute('data-gid'));
+    var gname = el.getAttribute('data-gname') || '';
+    if (gid) App.switchGroup(gid, gname);
 };
 
 // 折叠/展开树节点
