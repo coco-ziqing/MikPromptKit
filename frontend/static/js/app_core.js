@@ -95,13 +95,13 @@ const App = {
             if (d && d.version) {
                 var v = d.version;
                 // 美化显示
-                var displayVersion = v.replace('v', '').replace('-phase', '.');
+                var displayVersion = v.replace(/^v+/i, '').replace('-phase', '.');
                 document.title = '咪卡MiK提示词助手';
                 var bv = document.getElementById('brandVersion');
-                if (bv) bv.textContent = v.replace('v', '');  // 去除v前缀，只显示数字
+                if (bv) bv.textContent = v.replace(/^v+/i, '');  // 去除所有前导v前缀，只显示数字
                 // 同时更新 headerStats
                 var hs = document.getElementById('headerStats');
-                if (hs) hs.textContent = v.replace('v', '') + ' | 词库 ' + (d.total_prompts||0) + ' 条 | 使用 ' + (d.total_usage||0) + ' 次';
+                if (hs) hs.textContent = v.replace(/^v+/i, '') + ' | 词库 ' + (d.total_prompts||0) + ' 条 | 使用 ' + (d.total_usage||0) + ' 次';
             }
         }).catch(function(){});
     },
