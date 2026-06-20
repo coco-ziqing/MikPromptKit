@@ -284,8 +284,10 @@ const App = {
             var navEl = document.getElementById('navV4Media');
             if (navEl) navEl.classList.add('active');
             this._hideSearchBox();
+            this._showSidebar();
+            this._collapseSidebar();
             this.loadV4Media();
-                } else if (view === 'seedance') {
+        } else if (view === 'seedance') {
             this.state.currentModule = 'seedance';
             this.renderSidebar();
             this._closeMobileMenu();
