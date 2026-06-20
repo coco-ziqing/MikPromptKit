@@ -2620,20 +2620,29 @@ body.dark-theme .skeleton-line {
     transition: background 0.15s;
     border-radius: 6px;
     margin: 0 4px;
+    user-select: none;
 }
 .tree-node:hover {
     background: var(--hover-bg);
 }
+.tree-node.tree-root {
+    margin-top: 4px;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    border-top: 1px solid var(--border-color);
+}
 .tree-arrow {
     text-align: center;
     color: var(--text-muted);
-    transition: transform 0.2s;
+    transition: transform 0.15s;
+    flex-shrink: 0;
 }
 .tree-node:hover .tree-arrow {
     color: var(--primary);
 }
 .tree-children {
-    transition: all 0.2s;
+    overflow: hidden;
+    transition: opacity 0.15s;
 }
 
 body.dark-theme .showcase-card:hover {
