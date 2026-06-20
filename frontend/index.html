@@ -6,7 +6,7 @@
     <title>咪卡Mik词库</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-    <link href="/static/css/style.css?v=9.5" rel="stylesheet">
+    <link href="/static/css/style.css?v=9.6" rel="stylesheet">
 </head>
 <body>
     <header class="navbar-tool">
@@ -123,6 +123,25 @@
             </div>
             <div class="view-scroll"><div id="trashList"><div class="empty-state"><div class="icon">🗑️</div><p>回收站为空</p></div></div>
             <div id="trashPagination" class="pagination-bar" style="margin-top:12px;"></div></div>
+        </div>
+        <div id="viewV4media" class="view-panel">
+            <div class="page-header"><h3><i class="bi bi-images"></i> 媒体资产</h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <select id="v4mediaTypeFilter" class="modal-input" style="width:auto;font-size:12px;" onchange="App.loadV4Media()">
+                        <option value="">全部类型</option>
+                        <option value="image">📷 图片</option>
+                        <option value="video">🎬 视频</option>
+                        <option value="audio">🎵 音频</option>
+                    </select>
+                    <span id="v4mediaCount" style="font-size:12px;color:var(--text-muted);align-self:center;"></span>
+                </div>
+            </div>
+            <div class="view-scroll">
+            <div id="v4mediaList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">
+                <div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div></div>
+            </div>
+            <div id="v4mediaPagination" class="pagination-bar"></div>
+            </div>
         </div>
         <div id="viewWCManager" class="view-panel">
             <div class="page-header" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
@@ -799,7 +818,7 @@
 
     <div id="toastContainer" class="toast-container"></div>
         <script src="/static/js/signal_lights.js?v=2"></script>
-    <script src="/static/js/app_core.js?v=9.3"></script>
+    <script src="/static/js/app_core.js?v=9.4"></script>
     <script src="/static/js/app_card_model.js?v=1"></script>
     <script src="/static/js/monitor_dashboard.js?v=2"></script>
     <script src="/static/js/health_check.js?v=2"></script>
@@ -813,13 +832,14 @@
     <script src="/static/js/word_editor.js?v=3"></script>
     <script src="/static/js/word_card_manager.js?v=4"></script>
     <script src="/static/js/wc_bridge.js?v=2"></script>
+    <script src="/static/js/v4_library.js?v=2"></script>
     <script src="/static/js/v4_cards.js?v=2"></script>
     <script src="/static/js/v3_composer.js?v=9.2"></script>
     <script src="/static/js/seedance_v2_composer.js?v=68"></script>
     <script src="/static/js/composer_wc_bridge.js?v=4"></script>
     <script src="/static/js/character_library.js?v=2"></script>
     <script src="/static/js/app_search.js?v=2"></script>
-    <script src="/static/js/app_theme.js?v=6"></script>
+    <script src="/static/js/app_theme.js?v=7"></script>
     <script src="/static/js/app_i18n.js?v=3"></script>
 
 
