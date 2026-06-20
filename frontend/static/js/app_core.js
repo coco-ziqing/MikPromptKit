@@ -106,6 +106,17 @@ const App = {
         }).catch(function(){});
     },
 
+    // 语言切换按钮初始化
+    _initLangBtn() {
+        var btn = document.getElementById('btnLang');
+        if (!btn) return;
+        var self = this;
+        btn.onclick = function() {
+            var nextLang = App._i18nCurrent === 'zh-CN' ? 'en' : 'zh-CN';
+            App.switchLang(nextLang);
+        };
+    },
+
     async init() {
         // 恢复主题
         const savedTheme = ((typeof localStorage !== 'undefined' && localStorage.getItem) ? localStorage.getItem('promptkit_theme') : 'dark') || 'dark';
@@ -133,6 +144,10 @@ const App = {
         this.bindEvents();
         this._initDropZone();
         this._syncVersion();
+        // 语言切换按钮事件绑定
+        this._initLangBtn();
+        // 应用国际化（必须在首次渲染后执行）
+        setTimeout(function() { App._applyI18n(); }, 100);
         
         // 初始默认显示 home 视图（防止 JS 错误时白屏）
         this.switchView('home', true);  // true = 静默模式，不写 localStorage

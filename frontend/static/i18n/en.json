@@ -1,4 +1,5 @@
 {
+  "nav.brand": "MiKa Prompt Assistant",
   "brand.name": "MiKa Prompt Assistant",
   "brand.version": "v4.1.0",
   "nav.home": "Home",
@@ -41,6 +42,7 @@
   "error.timeout": "Request timed out",
   "theme.dark": "Switch to light mode",
   "theme.light": "Switch to dark mode",
+  "theme.toggle": "Toggle dark mode",
   "collection.title": "Collections",
   "collection.new": "New Group",
   "collection.empty": "No collections yet",
@@ -101,5 +103,7 @@
   "health.db_ok": "Database OK",
   "health.ffmpeg_ok": "FFmpeg available",
   "health.pillow_ok": "Pillow available",
-  "not_found.library": "Library not found: {field}"
+  "not_found.library": "Library not found: {field}",
+  "lang.switch": "Switch Language",
+  "lang.switched": "Language: English"
 }
