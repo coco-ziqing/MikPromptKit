@@ -192,10 +192,23 @@ Object.assign(App, {
                 body: JSON.stringify({ name: name, group_key: key, icon: '📂', description: '自定义模块: ' + name })
             });
             if (resp.ok) {
-                var json = await resp.json();
                 document.getElementById('modalCreateModule').style.display = 'none';
                 App.showToast('分组「' + name + '」已创建', 'success');
-                if (App.loadModules) await App.loadModules();
+                // 刷新侧边栏
+                setTimeout(function() {
+                    fetch('/api/v4/word-cards/groups?include_empty=true').then(function(r){return r.json()}).then(function(d){
+                        if (d && d.groups) {
+                            var modules = [];
+                            for (var i = 0; i < d.groups.length; i++) {
+                                var g = d.groups[i];
+                                if (g.group_type !== 'builtin' && g.group_type !== 'custom') continue;
+                                modules.push({id: g.group_key, name: g.name, count: g.card_count, builtin: g.group_type === 'builtin', _group_id: g.id});
+                            }
+                            App.state.modules = modules;
+                            if (App.renderSidebar) App.renderSidebar();
+                        }
+                    }).catch(function(){});
+                }, 100);
             } else {
                 var detail = '';
                 try { var ej = await resp.json(); detail = ej.detail || ej.error || JSON.stringify(ej); } catch(e) {}
