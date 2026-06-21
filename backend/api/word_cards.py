@@ -19,8 +19,16 @@ def list_groups(group_type: str = Query(None), include_empty: bool = Query(False
     db = get_db()
     where = ["wg.is_active=1"]; params = []
     if group_type: where.append("wg.group_type=?"); params.append(group_type)
-    rows = db.execute(f"SELECT wg.*, COUNT(wc.id) as card_count FROM word_card_group wg LEFT JOIN word_card wc ON wc.group_id=wg.id AND wc.is_deleted=0 WHERE {' AND '.join(where)} GROUP BY wg.id ORDER BY wg.sort_order", params).fetchall()
-    return {"ok": True, "groups": [dict(r) for r in rows if include_empty or r["card_count"] > 0], "total": len(rows)}
+    rows = db.execute(f"SELECT wg.*, COUNT(wc.id) as card_count FROM word_card_group wg LEFT JOIN word_card wc ON wc.group_id=wg.id AND wc.is_deleted=0 WHERE {' AND '.join(where)} GROUP BY wg.id ORDER BY wg.group_type, wg.parent_group_id, wg.sort_order", params).fetchall()
+    groups = [dict(r) for r in rows if include_empty or r["card_count"] > 0]
+    # 计算 _depth（嵌套深度，用于前端缩进）
+    id_map = {g["id"]: g for g in groups}
+    def calc_depth(g):
+        d = 0; pid = g.get("parent_group_id")
+        while pid and pid in id_map: d += 1; pid = id_map[pid].get("parent_group_id")
+        return d
+    for g in groups: g["_depth"] = calc_depth(g)
+    return {"ok": True, "groups": groups, "total": len(groups)}
 
 @router.get("/groups/tree")
 def groups_tree():
