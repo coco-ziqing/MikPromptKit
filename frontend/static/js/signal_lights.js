@@ -1,10 +1,13 @@
 // ============================================================
 // v4.0.0-phase11.1: External Dependency Signal Lights
 // 页面固定信号灯 — 每10s轮询 Ollama / ComfyUI 状态
+// v4.2.0-phase14-hotfix: 延迟加载，等待 App 就绪
 // ============================================================
 
-(function() {
+(function initSignalLights() {
 'use strict';
+
+if (!window.App || !App.fetchJSON) { setTimeout(initSignalLights, 200); return; }
 
 App.signalLights = {
     _bar: null,
