@@ -22,6 +22,7 @@ if _dev_backend not in sys.path:
 from database import init_db, rebuild_fts, get_db, safe_commit
 from seed_data import SEED_PROMPTS, get_builtin_count
 from backup import start_auto_backup, stop_auto_backup, do_backup, get_backup_info
+from logger import info as log_info, warn as log_warn, error as log_error, debug as log_debug, api_log, capture_exception
 
 # 启动时读取版本号
 APP_VERSION = 'v4.1.0-phase13'
@@ -51,6 +52,7 @@ from api.auto_tag import router as auto_tag_router
 from api.ai_thumbnail import router as ai_thumbnail_router
 from api.word_cards import router as word_card_router
 from health import router as health_router
+from api.logs import router as log_router
 from sync import (
     export_package, restore_package, import_package,
     list_packages, delete_package, get_package_info,
@@ -259,7 +261,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ============ HTTP 请求记录中间件 ============
+# ============ HTTP 请求记录中间件（v16: 接入日志引擎） ============
 @app.middleware("http")
 async def record_request_middleware(request: Request, call_next):
     import time as _time
@@ -269,6 +271,9 @@ async def record_request_middleware(request: Request, call_next):
         duration = (_time.time() - t0) * 1000
         from api.monitor import record_request
         record_request(request.method, request.url.path, response.status_code, duration)
+        # 慢请求 + 错误请求记录日志
+        if response.status_code >= 400 or duration > 500:
+            api_log(request.method, request.url.path, response.status_code, duration)
         return response
     except Exception:
         duration = (_time.time() - t0) * 1000
@@ -302,6 +307,7 @@ app.include_router(auto_tag_router)
 app.include_router(ai_thumbnail_router)
 app.include_router(word_card_router)
 app.include_router(health_router)
+app.include_router(log_router)
 
 
 # ============ 数据同步 API (.pkb 包系统) ============
@@ -402,11 +408,10 @@ async def backup_now():
     return result
 
 
-# ============ 全局异常处理器 ============
+# ============ 全局异常处理器 (v16: 接入日志引擎) ============
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    print("[全局异常]", request.url.path, type(exc).__name__, str(exc)[:200])
-    traceback.print_exc()
+    capture_exception(exc, source="api", path=request.url.path)
     return JSONResponse(
         status_code=500,
         content={"ok": False, "error": "服务器内部错误", "detail": str(exc)[:200]}
