@@ -3,7 +3,9 @@
  * 状态/初始化/事件/视图/搜索/数据/模块/复制/模板变量/Toast
  * 自动生成 — 勿手动编辑
  */
-const App = {
+
+// var 而非 const — 必须设置 window.App 供其他 script 标签通过 window.App 访问
+var App = window.App || {
 
     // ============ 状态 ============
     state: {
@@ -524,6 +526,30 @@ const App = {
     },
 
     // ============ 数据加载 ============
+
+    // Phase14: loadGroupTree 空安全桩（wc_bridge.js 会覆盖为真实实现）
+    // 如果 wc_bridge.js 尚未就绪，init 调用此桩时会轮询等待直到真实函数出现
+    // 注意：用命名函数 _loadGroupTreeStub 捕获自身引用（self===App会导致!==永远false）
+    loadGroupTree: function _loadGroupTreeStub() {
+        var stubFn = _loadGroupTreeStub;  // 直接捕获函数引用，避免 self.App 同引用问题
+        return new Promise(function(resolve) {
+            var tries = 0;
+            var retry = setInterval(function() {
+                tries++;
+                // 用直接函数引用比对，而非对象属性（self===App导致永远相等）
+                if (App.loadGroupTree !== stubFn) {
+                    clearInterval(retry);
+                    console.log('[app_core] wc_bridge 已就绪, 转发 loadGroupTree');
+                    resolve(App.loadGroupTree());
+                } else if (tries > 50) {
+                    clearInterval(retry);
+                    console.error('[app_core] loadGroupTree 等待超时 (10s), 降级为空白侧边栏');
+                    resolve();
+                }
+            }, 200);
+        });
+    },
+
     async fetchJSON(url, options) {
         try {
             var controller = new AbortController();

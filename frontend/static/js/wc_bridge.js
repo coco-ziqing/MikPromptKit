@@ -1,8 +1,10 @@
 // Phase14: 分类架构重构 — 树形侧边栏 + 陈列架首页
 // 将侧边栏模块列表、首页卡片全部接入 word_card 统一数据源（嵌套分组树）
-(function() {
+(function initWCBridge() {
 'use strict';
-if (!window.App || !App.fetchJSON) { setTimeout(arguments.callee, 200); return; }
+// try/catch 兼容 const App（const 不设置 window.App）
+try { if (!App || !App.fetchJSON) { setTimeout(initWCBridge, 200); return; } }
+catch(e) { setTimeout(initWCBridge, 200); return; }
 
 // ============================================================
 // state 扩展
@@ -21,6 +23,8 @@ App.loadGroupTree = async function() {
         if (d && d.tree) {
             this.state.groupTree = d.tree;
             this.renderSidebar();
+            // 延迟 Hook 搜索框（此时 DOM 已就绪）
+            setTimeout(function() { App._wcHookSearchAndRestore(); }, 100);
         }
     } catch(e) { console.warn('[wc-bridge] loadGroupTree error:', e.message); }
 };
@@ -184,16 +188,65 @@ App._renderShowcaseCard = function(grp) {
 };
 
 // ============================================================
-// 6. 重写 renderSidebar: 树形侧边栏
+// 6. 侧边栏折叠按钮注入（补全缺失函数）
+// ============================================================
+App._injectSidebarToggle = function(sidebar) {
+    // 移除旧按钮避免重复
+    var old = document.getElementById('sidebarToggleBtn');
+    if (old) old.remove();
+    // 添加侧边栏折叠按钮（作为sidebar的兄弟元素，匹配CSS ~ 选择器）
+    var btn = document.createElement('button');
+    btn.id = 'sidebarToggleBtn';
+    btn.className = 'sidebar-toggle-btn';
+    btn.innerHTML = '<i class="bi bi-chevron-left"></i>';
+    btn.title = '折叠侧边栏';
+    btn.onclick = function(e) {
+        e.stopPropagation();
+        if (sidebar.classList.contains('collapsed')) {
+            sidebar.classList.remove('collapsed');
+            document.body.classList.remove('sidebar-collapsed');
+            btn.innerHTML = '<i class="bi bi-chevron-left"></i>';
+            btn.title = '折叠侧边栏';
+        } else {
+            sidebar.classList.add('collapsed');
+            document.body.classList.add('sidebar-collapsed');
+            btn.innerHTML = '<i class="bi bi-chevron-right"></i>';
+            btn.title = '展开侧边栏';
+        }
+    };
+    // 插入到sidebar后面（匹配CSS ~兄弟选择器）
+    sidebar.parentNode.insertBefore(btn, sidebar.nextSibling);
+};
+
+// ============================================================
+// 7. 重写 renderSidebar: 树形侧边栏
 // ============================================================
 var _origRenderSidebar = App.renderSidebar;
 App.renderSidebar = function() {
+    try {
     var sidebar = document.getElementById('sidebar');
-    if (!sidebar) return;
+    if (!sidebar) { console.warn('[wc-bridge] sidebar DOM 元素不存在'); return; }
+
+    // 强制显示侧边栏（防止被之前隐藏）
+    sidebar.style.display = '';
+    var btn = document.getElementById('sidebarToggleBtn');
+    if (btn) btn.style.display = '';
+    
+    // 确保 _escape 可用（防御 app_editor.js 未加载场景）
+    if (!App._escape) {
+        App._escape = function(s) {
+            if (s === null || s === undefined) return '';
+            s = String(s);
+            var div = document.createElement('div');
+            div.textContent = s;
+            return div.innerHTML;
+        };
+    }
     
     var tree = this.state.groupTree;
+    var tree = this.state.groupTree;
     if (!tree || tree.length === 0) {
-        sidebar.innerHTML = '<div style="padding:20px;color:var(--text-muted);font-size:12px;">加载中...</div>';
+        sidebar.innerHTML = '<div style="padding:20px;color:var(--text-muted);font-size:12px;">📡 加载词库中...</div>';
         return;
     }
     
@@ -220,6 +273,11 @@ App.renderSidebar = function() {
     
     sidebar.innerHTML = html;
     App._injectSidebarToggle(sidebar);
+    } catch(e) {
+        console.error('[wc-bridge] renderSidebar 崩溃:', e.message, e.stack);
+        var sidebar = document.getElementById('sidebar');
+        if (sidebar) sidebar.innerHTML = '<div style="padding:20px;color:#ef4444;font-size:12px;">侧边栏渲染失败: ' + e.message + '</div>';
+    }
 };
 
 // 渲染单个树节点（递归）
@@ -358,7 +416,7 @@ App._loadTreeChildren = function(container, parentId) {
 };
 
 // ============================================================
-// 7. 词卡加载（按 group_id）
+// 8. 词卡加载（按 group_id）
 // ============================================================
 App._wcLoadPrompts = async function() {
     var s = this.state;
@@ -415,7 +473,7 @@ App._wcLoadPrompts = async function() {
 };
 
 // ============================================================
-// 8. 重写 loadPrompts
+// 9. 重写 loadPrompts
 // ============================================================
 var _origLoadPrompts = App.loadPrompts;
 App.loadPrompts = function() {
@@ -426,7 +484,7 @@ App.loadPrompts = function() {
 };
 
 // ============================================================
-// 9. 搜索也走 word_card
+// 10. 搜索也走 word_card
 // ============================================================
 App._wcDoSearch = function() {
     this.state.page = 1;
@@ -440,29 +498,24 @@ App._wcDoSearch = function() {
 };
 
 // ============================================================
-// 10. Hook 全局搜索 + init
+// 11. 搜索输入 Hook + 分组恢复（在 loadGroupTree 成功回调中调用）
+// 不再覆盖 App.init（wc_bridge 现在在 app_core 之前加载）
 // ============================================================
-if (typeof App.init === 'function') {
-    var _origInit = App.init;
-    App.init = function() {
-        var origSearchInput = document.getElementById('searchInput');
-        if (origSearchInput) {
-            origSearchInput.setAttribute('onkeydown', "if(event.key==='Enter')App._wcDoSearch()");
-        }
-        
-        // 恢复上次选中的分组
-        var savedGroupId = null;
-        try { savedGroupId = localStorage.getItem('promptkit_group_id'); } catch(e) {}
-        if (savedGroupId) {
-            this.state.currentGroupId = parseInt(savedGroupId) || null;
-        }
-        
-        return _origInit.apply(this, arguments);
-    };
-}
+App._wcHookSearchAndRestore = function() {
+    var origSearchInput = document.getElementById('searchInput');
+    if (origSearchInput) {
+        origSearchInput.setAttribute('onkeydown', "if(event.key==='Enter')App._wcDoSearch()");
+    }
+    // 恢复上次选中的分组
+    var savedGroupId = null;
+    try { savedGroupId = localStorage.getItem('promptkit_group_id'); } catch(e) {}
+    if (savedGroupId) {
+        this.state.currentGroupId = parseInt(savedGroupId) || null;
+    }
+};
 
 // ============================================================
-// 11. 分组管理 CRUD (Phase14)
+// 12. 分组管理 CRUD (Phase14)
 // ============================================================
 App.showGroupCreateModal = function() {
     var name = prompt('请输入新分组名称：');
@@ -539,7 +592,7 @@ App.showGroupManageModal = function() {
 };
 
 // ============================================================
-// 12. _updatePageTitle 增强
+// 13. _updatePageTitle 增强
 // ============================================================
 var _origUpdateTitle = App._updatePageTitle;
 App._updatePageTitle = function() {

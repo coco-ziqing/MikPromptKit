@@ -100,6 +100,73 @@
 - 旧卡（v4/cards）：151 条
 - library_assets 词库：233 条
 
+## Phase14.1 侧边栏空白修复 — 7层问题链排查实录（2026-06-21 13:39）
+
+### 症状
+- 页面最左侧侧边栏完全空白，折叠按钮消失
+- F12 Console: `Init error, fallback to home: this.loadGroupTree is not a function`
+- F12 Console: `[app_core] loadGroupTree 等待超时 (10s), 降级为空白侧边栏`
+
+### 根因链
+
+```
+Layer 1: app_core.js 用 const App = {...} 声明
+  → const 是块级作用域，不设置 window.App
+  → wc_bridge.js 检测 if (!window.App || !App.fetchJSON)
+  → window.App 永远 undefined → IIFE 永不进入体
+  → App.loadGroupTree 永远不被覆盖
+  ↓
+Layer 2: 空安全桩用 self.loadGroupTree != App.loadGroupTree 比对
+  → self === App（同一个对象引用）→ !== 永远为 false
+  → 桩函数 10s 超时 → 侧边栏空白
+  ↓
+Layer 3: arguments.callee 在 'use strict' 下抛 TypeError
+  → retry 延迟调用也崩溃
+  ↓
+Layer 4: _injectSidebarToggle 函数缺失
+  → renderSidebar 末尾调用 → TypeError → HTML 未写入 DOM
+  ↓
+Layer 5: _escape 可能在 renderSidebar 调用时未定义
+  ↓
+Layer 6: signal_lights.js 在 app_core 之前执行，直接引用 App → ReferenceError
+  ↓
+Layer 7: renderSidebar 无 try-catch，任意中间异常 → 侧边栏完全空白
+```
+
+### 修复清单（7项）
+
+| # | 根因 | 文件 | 修复 |
+|---|------|------|------|
+| 1 | `const App` 不挂 window | app_core.js | `const App` → `var App = window.App \|\| {...}` |
+| 2 | `self === App` 同引用 | app_core.js | 命名函数 `_loadGroupTreeStub` 独立捕获引用 |
+| 3 | `arguments.callee` 严格模式 | wc_bridge.js | → 命名函数 `initWCBridge` |
+| 4 | `_injectSidebarToggle` 缺失 | wc_bridge.js | 补全30行 + 兄弟元素注入（CSS ~选择器） |
+| 5 | `_escape` 未定义风险 | wc_bridge.js | renderSidebar 内自动补全安全垫 |
+| 6 | signal_lights 抢占 | signal_lights.js | IIFE 加 setTimeout 重试等待 App |
+| 7 | 渲染无异常保护 | wc_bridge.js | renderSidebar 全 try-catch 包裹 |
+
+### 加载顺序调整
+
+```
+修复前:  signal_lights → app_core → ... → wc_bridge（太晚）
+修复后:  wc_bridge → signal_lights → app_core → ... 其余模块
+```
+
+### 经验教训（8条）
+
+1. **`const` 声明顶层对象是危险的**：跨 `<script>` 标签共享对象必须用 `var` 或显式 `window.App = ...`
+2. **`self === this` 引用陷阱**：`self.prop !== App.prop` 在 `self === App` 时永远为假，需命名函数表达式
+3. **IIFE 等待条件要用 try-catch**：`if (!window.App)` 可能抛 ReferenceError
+4. **`'use strict'` + `arguments.callee` 不兼容**：重试循环必须用命名函数
+5. **模块加载顺序决定生死**：被依赖者必须在依赖者之前加载
+6. **浏览器缓存 + 版本号 = 双刃剑**：修复迭代时需频繁升级版本号 `v=8→9.0→...→9.6`
+7. **诊断面板比 F12 Console 快**：排查阶段注入可见的 `#_wcDebug` 面板
+8. **try-catch 是所有动态渲染函数的标配**：200行 renderSidebar 应从一开始就包裹
+
+### 当前版本号
+- wc_bridge.js v9.6 | app_core.js v12.4 | signal_lights.js v5
+- index.html — wc_bridge 移至第1行加载
+
 ## Git Tag 节点（最近 7 个）
 - `v4.2.0-phase14-arch` — 分类架构重构: 双总类嵌套树+陈列架+分组CRUD (2026-06-20)
 - `v4.1.0-phase13.1-hotfix` — UTF-8双重编码乱码根因修复 + 10项bug修复 + 25项版本号升级 (2026-06-20)
