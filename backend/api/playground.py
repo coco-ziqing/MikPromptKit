@@ -1,9 +1,9 @@
 """
-v4.2.2-phase15: Playground 深度升级
-- 目标模型预设 (SD1.5/SDXL/Flux/MJ/ComfyUI+LoRA/Seedance/Hunyuan/Kling/Seedream)
-- 优化方向 (格式转换/细节增强/精简压缩/负面提词/质量分析/多语言翻译/风格迁移/批量变体)
-- 智能 system prompt 模板引擎
-- 一键保存到词卡库
+v4.2.2-phase15: Playground 深度升级 — 15模型预设×8优化方向
+- 国际: SD1.5 / SDXL / SD3.5 / Flux / DALL·E 3 / Midjourney / Ideogram / Adobe Firefly / ComfyUI+LoRA
+- 国内: 通义万相 / 混元 / CogView(智谱) / Seedream(字节) / Seedance(视频) / Kling(可灵视频)
+- 优化方向: 格式转换/细节增强/精简压缩/负面提词/质量分析/多语言翻译/风格迁移/批量变体
+- 智能 system prompt 模板引擎 + 一键保存到词卡库
 """
 import json, time, hashlib
 from fastapi import APIRouter, Request
@@ -272,6 +272,66 @@ MODEL_PRESETS = {
 \n规则:\n- 描述顺序决定权重: 最重要的元素放在最前面\n- 使用完整的英文自然语句，不要标签堆叠\n- 参考摄影参数可以获得更好的效果: 85mm lens, f/2.8, shallow depth of field\n- 风格用自然语言: cinematic color grading, 1990s film aesthetic\n- Seedream 4.5+ 支持文字渲染: 把要显示的文字用双引号包裹\n- 支持多参考图编辑模式: 用 Image 1, Image 2 引用参考图\n- 输出分辨率可指定: 4K, 1024×1024\n- 建议 80-180 词，给模型足够上下文但不过载""",
         "example_raw": "a beautiful girl standing in a flower field during sunset",
         "example_optimized": "A young woman with soft features and flowing auburn hair stands in the center of a expansive wildflower meadow. She wears a simple white linen dress that catches the warm evening breeze. The setting sun behind her creates a dramatic golden rim light along her silhouette. Foreground features sharp detail on purple lupine and orange poppies. Midground shows the woman at waist level, looking directly at the camera with a calm, genuine expression. Background renders soft, out-of-focus hills under a sky transitioning from amber to deep lavender. Shot on 85mm lens at f/2.8 with shallow depth of field. Cinematic color grading with warmer tones. 4K, high definition."
+    },
+    "dalle3": {
+        "name": "DALL·E 3",
+        "icon": "🧠",
+        "family": "other",
+        "format": "自然语言段落，ChatGPT风格，不使用标签；会自动改写出图，不需要关键词堆砌",
+        "tips": ["用完整的自然段落，不要用逗号标签", "DALL·E 3 会自动重写 prompt，简洁比冗长好", "避免负面指令（DALL·E 3 对 don't/without 敏感度低）", "风格用自然语言: oil painting, watercolor, pixel art", "指定宽高比: wide (16:9), square (1:1), tall (9:16)", "不要用 SD 系术语 (masterpiece, best quality 等被忽略)"],
+        "system_prompt": """你是 DALL·E 3 提示词优化专家。DALL·E 3 使用自然语言理解，会自动改写和丰富 prompt。\n\n规则:\n- 写完整的英文段落，不要用标签堆叠（SD系关键词在 DALL·E 3 中会被忽略）\n- 描述你想要什么，而不是不要什么（DALL·E 3 对负面指令不敏感）\n- 越简洁越好，DALL·E 3 的自动丰富机制会补充细节\n- 风格描述用自然语言: 'a watercolor painting of...' / 'digital art in the style of...'\n- 可引用艺术家风格: 'in the style of Studio Ghibli'\n- 输出分正/负: 先给优化版，再用 ===negative=== 标注想避免的元素\n- 建议 40-100 词，过长可能被截断""",
+        "example_raw": "a beautiful girl standing in a flower field during sunset",
+        "example_optimized": "A serene digital painting of a young woman standing in a vibrant wildflower meadow at golden hour. Warm sunset light filters through her hair. Soft focus background with rolling hills. Wide composition.\n===negative=== \nblurry, distorted hands, extra fingers, watermark, text"
+    },
+    "sd35": {
+        "name": "SD3.5 Large",
+        "icon": "🧬",
+        "family": "sd",
+        "format": "自然语言为主，支持长文本和复杂描述，对材质和光线理解力大幅提升",
+        "tips": ["自然语言比标签更有效", "详细的光照和材质描述提升明显", "人像自然度大幅优于 SDXL", "支持文字渲染但不如 Flux", "CFG 建议 3.5-5，高于 SDXL"],
+        "system_prompt": """你是 Stable Diffusion 3.5 Large 提示词优化专家。SD3.5 在自然语言理解上显著优于前代。\n\n规则:\n- 使用完整的自然英文句子，SD3.5 对自然语言的理解力接近 Flux\n- 详细描述光照条件和材质，这些是 SD3.5 的强项\n- 人物提示词会更自然真实，减少"塑料感"\n- 不要过度堆叠质量词，2-3 个足够: 'high quality, detailed'\n- 构图描述可用摄影术语: 'shot on 85mm, f/2.8, shallow depth of field'\n- 如果有负面提示词需求，单独输出在 ===negative=== 之后\n- 建议 60-150 词""",
+        "example_raw": "a beautiful girl standing in a flower field during sunset",
+        "example_optimized": "A natural, candid portrait of a young woman standing in a sprawling wildflower meadow during golden hour. The late afternoon sun casts warm, directional light that creates a gentle rim glow along her silhouette. Her expression is relaxed and genuine, with soft catchlights in her eyes. She wears a cream-colored linen sundress. In the foreground, wild daisies and lavender create a natural frame. The background softly blurs into rolling green hills under a sky painted with wispy cirrus clouds in shades of gold and pale blue. Shot on 85mm lens at f/2.0 for shallow depth of field. Natural skin texture, realistic fabric folds. High quality, detailed.\n===negative=== \nplastic skin, oversaturated, artificial looking, blurred face, extra fingers"
+    },
+    "ideogram": {
+        "name": "Ideogram",
+        "icon": "✍️",
+        "family": "other",
+        "format": "自然语言+文字渲染，用双引号标注要显示的文字，对排版和字体理解力强",
+        "tips": ["文字渲染是核心优势: 把要显示的文字用双引号包裹", "风格用自然语言描述", "支持 Logo/Meme/海报等设计类图像", "可指定排版: centered text, bold font, neon sign", "对色彩和构图关系的自然语言理解力好"],
+        "system_prompt": """你是 Ideogram 提示词优化专家。Ideogram 以精准的文字渲染能力著称，同时支持高质量图像生成。\n\n规则:\n- 文字渲染: 用英文双引号包裹要显示的文本，如 'the text "Hello World" displayed on a sign'\n- 指定字体风格: serif, sans-serif, bold, elegant script, neon lettering\n- 排版细节: centered, top-aligned, large bold title, subtitle below\n- 对 Logo/海报/封面设计类 prompt 效果尤其出色\n- 风格描述用自然语言，不需要标签堆叠\n- 如果不需要文字，也能做纯图像生成，质量接近 Flux\n- 建议 40-120 词""",
+        "example_raw": "a beautiful girl standing in a flower field during sunset",
+        "example_optimized": "A beautiful young woman standing in a sprawling wildflower field at golden hour sunset, warm amber light filtering through tall grass and flowers, soft breeze moving her hair, dreamy atmosphere, cinematic composition with shallow depth of field, 4K quality.\n===negative=== \nblurry, distorted face, extra limbs, watermark"
+    },
+    "tongyi": {
+        "name": "通义万相",
+        "icon": "☁️",
+        "family": "other",
+        "format": "中英混合，中文场景理解力强，支持水墨/国风/3D等多种风格",
+        "tips": ["中文描述可充分表达文化细节", "国风/水墨/工笔画等中国风格效果出色", "质量词用英文: 4K, high quality, detailed", "支持动漫、写实、3D渲染等多种风格", "人物细节中英混合效果更好"],
+        "system_prompt": """你是阿里通义万相提示词优化专家。通义万相对中文理解力强，尤其擅长中国文化相关视觉表达。\n\n规则:\n- 主体和意境用中文描述，文化元素表达更精准\n- 质量词和风格词用英文: 4K, high quality, photorealistic\n- 风格预设: 水墨画/工笔画/赛博朋克/动漫/写实摄影/3D渲染/油画\n- 光线和氛围可中文: 晨光熹微/暮色苍茫/烟雨朦胧\n- 构图可用摄影术语: 中景/特写/鸟瞰/低角度\n- 建议 60-150 字""",
+        "example_raw": "一个女孩在花田里",
+        "example_optimized": "4K, high quality, highly detailed, 一位年轻女子站在广袤的薰衣草花田中，身着白色亚麻长裙，金色夕阳从她身后洒落，形成柔和的轮廓光。微风轻拂她的棕色长发和裙摆。前景是密集的紫色花穗，中景人物腰部以上构图，背景是起伏的山丘和橙粉渐变的天空。85mm镜头，浅景深，电影质感，写实摄影风格。"
+    },
+    "cogview": {
+        "name": "CogView (智谱)",
+        "icon": "🧩",
+        "family": "other",
+        "format": "中英混合，对中文成语和古诗词意境理解力独特，支持多种画风",
+        "tips": ["中文成语和诗词意境可直接使用", "风格标签中英混合: anime style, 水墨风", "支持二次元/写实/插画等多种风格", "可指定艺术家风格参考"],
+        "system_prompt": """你是智谱 CogView 提示词优化专家。CogView 对中文理解力强，特别是对成语、古诗词意境有独特理解。\n\n规则:\n- 可用中文直接描述场景和意境\n- 成语和诗词意境可充分使用: 落霞与孤鹜齐飞/小桥流水人家\n- 质量词用英文: masterpiece, high quality, detailed\n- 风格标签中英混合: anime style, 水墨画, oil painting\n- 人物和场景描述中文为主，风格词英文\n- 建议 50-120 字""",
+        "example_raw": "一个女孩在花田里",
+        "example_optimized": "masterpiece, high quality, detailed, 少女立于花海之中，夕阳西下，金色的光芒洒落在她的发梢和裙摆。她神情温柔，目光投向远方。四周薰衣草随风摇曳，远处天空呈现橘粉渐变的暮色。微风拂面，花瓣轻舞。写实摄影风格，85mm人像镜头，浅景深，温暖色调。"
+    },
+    "firefly": {
+        "name": "Adobe Firefly",
+        "icon": "🔥",
+        "family": "other",
+        "format": "自然语言，商业安全，对构图参数(画幅/景深/镜头)响应精准",
+        "tips": ["自然语言描述为主，不需要逗号标签", "对商业摄影风格的 prompt 效果出色", "摄影参数响应好: 广角/微距/长焦/景深", "支持参考图风格匹配", "商用版权安全，训练数据合法"],
+        "system_prompt": """你是 Adobe Firefly 提示词优化专家。Firefly 使用自然语言，对商业摄影和设计类 prompt 效果出色。\n\n规则:\n- 使用完整的英文自然语句\n- 摄影参数: wide-angle lens, macro shot, telephoto, f/2.8\n- 光照描述: studio lighting, natural window light, golden hour\n- 构图: close-up portrait, full body shot, overhead flat lay\n- 风格: product photography, editorial, fine art, illustration\n- 商业安全，避免明显的版权风险关键词\n- 建议 40-120 词""",
+        "example_raw": "a beautiful girl standing in a flower field during sunset",
+        "example_optimized": "An editorial portrait of a young woman standing gracefully in a wildflower meadow at golden hour. The setting sun creates soft, directional light wrapping around her figure. Shot on 85mm lens with shallow depth of field, the background dissolves into a dreamy blur of warm color. Her expression is serene and confident. Natural makeup, flowing dress, gentle breeze. Magazine-quality composition with professional color grading."
     }
 }
 
