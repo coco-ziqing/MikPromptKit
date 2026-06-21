@@ -266,7 +266,7 @@ App.renderSidebar = function() {
     // 编辑模式底部按钮
     if (this.state.editMode) {
         html += '<div style="margin-top:auto;padding:12px;border-top:1px solid var(--border-color);display:flex;gap:6px;flex-wrap:wrap;">' +
-            '<button onclick="App.showGroupCreateModal()" style="flex:1;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-muted);cursor:pointer;font-size:11px;"><i class="bi bi-plus-circle"></i> 新建分组</button>' +
+            '<button onclick="App.showGroupManageModal()" style="flex:1;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-muted);cursor:pointer;font-size:11px;"><i class="bi bi-plus-circle"></i> 新建分组</button>' +
             '<button onclick="App.showGroupManageModal()" style="flex:1;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-muted);cursor:pointer;font-size:11px;"><i class="bi bi-gear"></i> 管理分组</button>' +
             '</div>';
     }
@@ -335,11 +335,11 @@ App._renderTreeNode = function(node, depth) {
     // leaf 节点（builtin/seedance/custom）：可点击加载（data属性避免引号注入）
     var delBtn = '';
     if (node.group_type === 'custom' && this.state.editMode) {
-        delBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.deleteGroupFromTree(' + node.id + ')" title="删除分组" style="font-size:10px;color:#ef4444;padding:0 3px;opacity:0.7;">✕</button>';
+        delBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.gmDelete(' + node.id + ',\'' + (node.name||'').replace(/'/g,"\\'") + '\')" title="删除分组" style="font-size:10px;color:#ef4444;padding:0 3px;opacity:0.7;">✕</button>';
     }
     var editBtn = '';
     if (node.group_type === 'custom' && this.state.editMode) {
-        editBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.showGroupEditModal(' + node.id + ')" title="编辑分组" style="font-size:10px;opacity:0.7;">✎</button>';
+        editBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.gmEdit(' + node.id + ',\'' + (node.name||'').replace(/'/g,"\\'") + '\')" title="编辑分组" style="font-size:10px;opacity:0.7;">✎</button>';
     }
     
     return '<div class="module-item ' + (isActive ? 'active' : '') + '" data-gid="' + node.id + '" data-gname="' + (node.name||'').replace(/"/g,'&quot;') + '" onclick="App._treeLeafClick(this)" ' +
@@ -515,80 +515,153 @@ App._wcHookSearchAndRestore = function() {
 };
 
 // ============================================================
-// 12. 分组管理 CRUD (Phase14)
+// 12. 分组管理 (Phase14.2 — 完整弹窗)
 // ============================================================
-App.showGroupCreateModal = function() {
-    var name = prompt('请输入新分组名称：');
-    if (!name || !name.trim()) return;
-    var icon = prompt('图标（emoji，默认 📂）：', '📂') || '📂';
-    var parentIdStr = prompt('父级分组 ID（可选，留空则为自定义收纳）：', '');
-    var parentId = parentIdStr ? parseInt(parentIdStr) : null;
-    
-    fetch('/api/v4/word-cards/groups', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), icon: icon, parent_group_id: parentId || null })
-    }).then(function(r) {
-        if (r.ok) {
-            r.json().then(function(d) {
-                App.showToast('分组「' + name + '」已创建', 'success');
-                App.loadGroupTree().then(function() {
-                    App._showShowcase();
-                });
-            });
-        } else {
-            r.json().then(function(e) {
-                App.showToast('创建失败: ' + (e.detail || e.error || 'HTTP ' + r.status), 'error');
-            }).catch(function() {
-                App.showToast('创建失败: HTTP ' + r.status, 'error');
-            });
+
+// 打开管理弹窗
+App.showGroupManageModal = function() {
+    var modal = document.getElementById('modalGroupManager');
+    if (!modal) { this.showToast('管理面板未加载', 'error'); return; }
+    modal.style.display = 'flex';
+    this.gmRefresh();
+};
+
+App.closeGroupManager = function() {
+    document.getElementById('modalGroupManager').style.display = 'none';
+};
+
+// 刷新分组列表
+App.gmRefresh = function() {
+    var list = document.getElementById('gmGroupList');
+    if (!list) return;
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">加载中...</div>';
+    var self = this;
+    // 加载完整分组列表（含空分组）
+    this.fetchJSON('/api/v4/word-cards/groups?include_empty=true').then(function(d) {
+        if (!d || !d.groups) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">加载失败</div>'; return; }
+        var groups = d.groups;
+        // 更新父级下拉
+        var parentSel = document.getElementById('gmNewParent');
+        if (parentSel) {
+            // 保留第一项
+            parentSel.innerHTML = '<option value="">无父级（根级）</option>';
+            for (var i = 0; i < groups.length; i++) {
+                var g = groups[i];
+                if (g.group_type !== 'root') {
+                    parentSel.innerHTML += '<option value="' + g.id + '">' + self._escape(g.name) + (g.group_type === 'sub' ? ' (子类)' : '') + '</option>';
+                }
+            }
         }
+        // 渲染列表
+        var html = '';
+        for (var i = 0; i < groups.length; i++) {
+            var g = groups[i];
+            var typeLabel = g.group_type === 'root' ? '<span style="color:#6366f1;font-weight:600;">根</span>' :
+                            g.group_type === 'sub' ? '<span style="color:#8b5cf6;">子类</span>' :
+                            g.group_type === 'builtin' ? '<span style="color:#059669;">内置</span>' :
+                            g.group_type === 'seedance' ? '<span style="color:#d97706;">模板</span>' :
+                            '<span style="color:#64748b;">自定义</span>';
+            var locked = g.group_type === 'root' || g.group_type === 'builtin' || g.group_type === 'seedance';
+            var indent = Math.min(g._depth || 0, 5) * 20;
+            var iconStr = g.icon || '';
+            // 名称去掉开头的 icon emoji，避免双 emoji
+            var displayName = self._escape(g.name);
+            if (iconStr && displayName.indexOf(iconStr) === 0) {
+                displayName = displayName.substring(iconStr.length).trim();
+            }
+            html += '<div style="display:flex;align-items:center;padding:6px 12px;border-bottom:1px solid var(--border-color);' + (i%2===0?'background:var(--bg-card);':'') + '">' +
+                '<span style="width:30px;font-size:16px;">' + (iconStr || '📄') + '</span>' +
+                '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:' + indent + 'px;">' +
+                    '<span style="font-weight:500;">' + displayName + '</span>' +
+                    (g.description ? '<span style="font-size:10px;color:var(--text-muted);margin-left:6px;">' + self._escape(g.description) + '</span>' : '') +
+                '</span>' +
+                '<span style="width:60px;text-align:center;font-size:12px;color:var(--text-muted);">' + (g.card_count || 0) + '</span>' +
+                '<span style="width:80px;text-align:center;font-size:11px;">' + typeLabel + '</span>' +
+                '<span style="width:80px;text-align:center;display:flex;gap:4px;justify-content:center;">' +
+                    '<button onclick="App.gmEdit(' + g.id + ',\'' + self._escape(g.name).replace(/'/g,"\\'") + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-primary);color:var(--text-muted);cursor:pointer;" title="重命名"><i class="bi bi-pencil"></i></button>' +
+                    (locked ? '' : '<button onclick="App.gmDelete(' + g.id + ',\'' + self._escape(g.name).replace(/'/g,"\\'") + '\')" style="font-size:10px;padding:2px 6px;border:1px solid #ef4444;border-radius:4px;background:#fef2f2;color:#ef4444;cursor:pointer;" title="删除"><i class="bi bi-trash"></i></button>') +
+                '</span>' +
+            '</div>';
+        }
+        list.innerHTML = html || '<div style="padding:20px;text-align:center;color:var(--text-muted);">暂无分组</div>';
     }).catch(function(e) {
-        App.showToast('创建出错: ' + e.message, 'error');
+        list.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">加载出错: ' + e.message + '</div>';
     });
 };
 
-App.showGroupEditModal = function(groupId) {
-    var name = prompt('修改分组名称：');
+// 创建分组
+App.gmCreate = function() {
+    var nameEl = document.getElementById('gmNewName');
+    var iconEl = document.getElementById('gmNewIcon');
+    var parentEl = document.getElementById('gmNewParent');
+    var name = (nameEl ? nameEl.value.trim() : '');
+    if (!name) { this.showToast('请输入分组名称', 'warning'); return; }
+    var icon = iconEl ? iconEl.value : '📂';
+    var parentId = parentEl && parentEl.value ? parseInt(parentEl.value) : null;
+    var body = { name: name, icon: icon };
+    if (parentId) body.parent_group_id = parentId;
+    var self = this;
+    fetch('/api/v4/word-cards/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    }).then(function(r) {
+        if (r.ok) {
+            r.json().then(function() {
+                self.showToast('分组「' + name + '」已创建', 'success');
+                if (nameEl) nameEl.value = '';
+                self.loadGroupTree().then(function() {
+                    self.gmRefresh();
+                });
+            });
+        } else {
+            r.json().then(function(e) { self.showToast('创建失败: ' + (e.detail || 'HTTP ' + r.status), 'error'); })
+                .catch(function() { self.showToast('创建失败: HTTP ' + r.status, 'error'); });
+        }
+    }).catch(function(e) { self.showToast('创建出错: ' + e.message, 'error'); });
+};
+
+// 编辑分组
+App.gmEdit = function(groupId, oldName) {
+    var name = prompt('修改分组名称：', oldName || '');
     if (!name || !name.trim()) return;
-    
+    var self = this;
     fetch('/api/v4/word-cards/groups/' + groupId, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim() })
     }).then(function(r) {
         if (r.ok) {
-            App.showToast('已更新', 'success');
-            App.loadGroupTree().then(function() {
-                App._showShowcase();
-            });
+            self.showToast('已更新', 'success');
+            self.loadGroupTree().then(function() { self.gmRefresh(); });
         } else {
-            App.showToast('更新失败', 'error');
+            r.json().then(function(e) { self.showToast('更新失败: ' + (e.detail || 'HTTP ' + r.status), 'error'); })
+                .catch(function() { self.showToast('更新失败', 'error'); });
         }
     });
 };
 
-App.deleteGroupFromTree = function(groupId) {
-    if (!confirm('确定删除此分组？词卡将移至未分类。')) return;
-    
+// 删除分组
+App.gmDelete = function(groupId, groupName) {
+    if (!confirm('确定删除分组「' + groupName + '」？\n\n词卡将移至未分类，此操作可恢复。')) return;
+    var self = this;
     fetch('/api/v4/word-cards/groups/' + groupId, { method: 'DELETE' }).then(function(r) {
         if (r.ok) {
-            App.showToast('已删除', 'info');
-            App.loadGroupTree().then(function() {
-                if (App.state.currentGroupId === groupId) {
-                    App.switchAllGroups();
-                } else {
-                    App._showShowcase();
-                }
+            self.showToast('已删除「' + groupName + '」', 'info');
+            self.loadGroupTree().then(function() {
+                self.gmRefresh();
+                if (self.state.currentGroupId === groupId) self.switchAllGroups();
+                else self._showShowcase();
             });
         } else {
-            App.showToast('删除失败（可能不可删除）', 'error');
+            r.json().then(function(e) { self.showToast('删除失败: ' + (e.detail || '不可删除'), 'error'); });
         }
     });
 };
 
-App.showGroupManageModal = function() {
-    App.showToast('管理面板开发中...请在侧边栏中直接编辑/删除自定义分组', 'info');
+// 批量移动词卡（将来扩展）
+App.gmBatchMove = function(fromGroupId) {
+    App.showToast('批量迁移功能开发中...', 'info');
 };
 
 // ============================================================

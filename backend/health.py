@@ -60,6 +60,34 @@ def _get_comfy_cfg():
     return cfg
 
 
+def _save_comfy_url(url: str):
+    """自动发现后同步配置，使 ComfyUI 集成设置页无需手动填写"""
+    try:
+        from database import get_db, safe_commit
+        raw = _get_config("comfyui_config")
+        cfg = {"server_url": DEFAULT_COMFY_URL, "enabled": True}
+        if raw:
+            try:
+                cfg.update(json.loads(raw))
+            except Exception:
+                pass
+        # 只在地址变化时写入
+        if cfg.get("server_url") != url:
+            cfg["server_url"] = url
+            cfg["enabled"] = True
+            db = get_db()
+            db.execute(
+                "INSERT OR REPLACE INTO config (key, value) VALUES ('comfyui_config', ?)",
+                [json.dumps(cfg, ensure_ascii=False)]
+            )
+            safe_commit()
+            print(f"[ComfyUI] 自动发现地址已同步: {url}")
+            return True
+    except Exception as e:
+        print(f"[ComfyUI] 配置同步失败: {e}")
+    return False
+
+
 # ====================== 单项检测函数 ======================
 
 async def _check_ollama(timeout: float = 5.0) -> dict:
@@ -91,8 +119,89 @@ async def _check_ollama(timeout: float = 5.0) -> dict:
         return {"ok": False, "url": url, "error": msg[:100], "hint": "未知错误"}
 
 
+async def _probe_comfy_url(url: str, timeout: float = 2.0):
+    """探测某个 URL 是否运行 ComfyUI"""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            # 优先用 /system_stats（新版 ComfyUI）
+            resp = await client.get(f"{url}/system_stats")
+            if resp.status_code == 200 and 'application/json' in (resp.headers.get('content-type') or ''):
+                data = resp.json()
+                return {
+                    "ok": True, "url": url,
+                    "system": data.get("system", {}),
+                    "latency_ms": round(resp.elapsed.total_seconds() * 1000)
+                }
+    except Exception:
+        pass
+    
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(f"{url}/")
+            if resp.status_code == 200:
+                text = resp.text[:500].lower()
+                # ComfyUI 页面特征
+                if 'comfyui' in text or 'comfy' in text or 'graph-canvas' in text:
+                    return {"ok": True, "url": url, "system": "ComfyUI",
+                            "latency_ms": round(resp.elapsed.total_seconds() * 1000)}
+    except Exception:
+        pass
+    
+    # 旧版兼容: /api/queue
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(f"{url}/api/queue")
+            if resp.status_code in (200, 404) and 'json' in str(resp.headers.get('content-type', '')).lower():
+                return {"ok": True, "url": url, "system": "ComfyUI (API)",
+                        "latency_ms": round(resp.elapsed.total_seconds() * 1000)}
+    except Exception:
+        pass
+    
+    return None
+
+
+async def _autodetect_comfyui(timeout: float = 2.0):
+    """自动发现 ComfyUI 服务 — 支持桌面版（端口不固定）"""
+    import subprocess
+    
+    # ===== 方法1: netstat 扫描所有 127.0.0.1 监听端口 =====
+    local_ports = []
+    try:
+        result = subprocess.run(
+            ['netstat', '-ano', '-p', 'TCP'],
+            capture_output=True, text=True, timeout=3,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        for line in result.stdout.split('\n'):
+            if 'LISTENING' in line and '127.0.0.1' in line:
+                parts = line.split()
+                if len(parts) >= 2:
+                    addr = parts[1]
+                    port = addr.split(':')[-1]
+                    if port.isdigit() and port not in ('8080', '9200', '11434', '135', '445'):
+                        local_ports.append(port)
+    except Exception:
+        pass
+    
+    # ===== 方法2: 补充已知 ComfyUI 端口 =====
+    EXTRA = ['8188', '8189', '8190', '8191', '8000', '8001', '7860', '5000', '3000', '8088']
+    for p in EXTRA:
+        if p not in local_ports:
+            local_ports.append(p)
+    
+    # 逐个探测
+    for port in local_ports:
+        url = f"http://127.0.0.1:{port}"
+        result = await _probe_comfy_url(url, timeout=min(timeout, 1.2))
+        if result:
+            result["autodetected"] = True
+            return result
+    return None
+
+
 async def _check_comfyui(timeout: float = 5.0) -> dict:
-    """检测 ComfyUI 服务"""
+    """检测 ComfyUI 服务 — 配置地址优先，失败后自动扫描本地端口"""
     try:
         cfg = _get_comfy_cfg()
     except Exception:
@@ -102,6 +211,7 @@ async def _check_comfyui(timeout: float = 5.0) -> dict:
 
     url = (cfg.get("server_url") or DEFAULT_COMFY_URL).rstrip("/")
 
+    # 1) 先用配置地址探测
     try:
         import httpx
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -121,7 +231,13 @@ async def _check_comfyui(timeout: float = 5.0) -> dict:
             return {"ok": False, "url": url, "error": f"HTTP {resp.status_code}", "hint": "ComfyUI 服务异常"}
     except Exception as e:
         msg = str(e)
-        if "Connection refused" in msg or "ConnectError" in msg:
+        if "Connection refused" in msg or "ConnectError" in msg or "NameResolutionError" in msg:
+            # 2) 配置地址不可达 → 自动扫描本地端口
+            auto = await _autodetect_comfyui(timeout=3.0)
+            if auto:
+                auto["_auto_notice"] = f"配置地址 {url} 不可达，已自动发现 ComfyUI"
+                _save_comfy_url(auto["url"])  # 同步到配置
+                return auto
             return {"ok": False, "url": url, "error": "连接被拒绝", "hint": "ComfyUI 服务未启动"}
         if "timeout" in msg.lower():
             return {"ok": False, "url": url, "error": "连接超时", "hint": f"{timeout}s 内无响应"}
@@ -452,7 +568,7 @@ async def _ping_ollama() -> dict:
 
 
 async def _ping_comfyui() -> dict:
-    """轻量 ping ComfyUI"""
+    """轻量 ping ComfyUI（配置地址失败时自动扫描）"""
     try:
         cfg = _get_comfy_cfg()
     except Exception:
@@ -468,8 +584,14 @@ async def _ping_comfyui() -> dict:
             ok = resp.status_code == 200
             return {"ok": ok, "url": url, "error": "" if ok else f"HTTP {resp.status_code}",
                     "latency_ms": round((_time.time() - t0) * 1000)}
-    except Exception as e:
-        return {"ok": False, "url": url, "error": str(e)[:80], "latency_ms": round((_time.time() - t0) * 1000)}
+    except Exception:
+        # 配置地址不可达 → 自动扫描
+        auto = await _autodetect_comfyui(timeout=2.0)
+        if auto:
+            _save_comfy_url(auto["url"])  # 同步到配置
+            return {"ok": True, "url": auto["url"], "error": "", "latency_ms": auto.get("latency_ms", 0),
+                    "autodetected": True}
+        return {"ok": False, "url": url, "error": "未响应", "latency_ms": round((_time.time() - t0) * 1000)}
 
 
 async def _watch_loop():
