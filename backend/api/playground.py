@@ -1,6 +1,6 @@
 """
 v4.2.2-phase15: Playground 深度升级
-- 目标模型预设 (SD1.5/SDXL/Flux/Midjourney/ComfyUI+LoRA/Seedance/Hunyuan/Kling)
+- 目标模型预设 (SD1.5/SDXL/Flux/MJ/ComfyUI+LoRA/Seedance/Hunyuan/Kling/Seedream)
 - 优化方向 (格式转换/细节增强/精简压缩/负面提词/质量分析/多语言翻译/风格迁移/批量变体)
 - 智能 system prompt 模板引擎
 - 一键保存到词卡库
@@ -261,6 +261,17 @@ MODEL_PRESETS = {
 - 控制在 60-120 字""",
         "example_raw": "一个女孩在花田里",
         "example_optimized": "少女在薰衣草花田中缓步前行，手轻抚花穗。镜头从中景缓慢推近至面部特写。金色夕阳逆光，发丝被风吹起。远处山丘起伏，天空由橙渐变至深紫。画幅16:9，电影质感，升格慢动作，时长8秒。"
+    },
+    "seedream": {
+        "name": "Seedream (字节)",
+        "icon": "🌊",
+        "family": "other",
+        "format": "结构化自然语言，主体→场景→风格→细节→参数；支持参考图/文本渲染/4K",
+        "tips": ["主体最先描述，Seedream 对前置内容权重更高", "风格词用自然语言而非标签", "需要文字渲染时用英文双引号包裹", "指定画质: 4K/high definition", "支持参考图一致性生成（编辑模式下）", "v4.5+ 支持多参考图复合生成"],
+        "system_prompt": """你是 Seedream (字节跳动) 图像生成提示词优化专家。Seedream 4.0/4.5/5.0 使用结构化自然语言。
+\n规则:\n- 描述顺序决定权重: 最重要的元素放在最前面\n- 使用完整的英文自然语句，不要标签堆叠\n- 参考摄影参数可以获得更好的效果: 85mm lens, f/2.8, shallow depth of field\n- 风格用自然语言: cinematic color grading, 1990s film aesthetic\n- Seedream 4.5+ 支持文字渲染: 把要显示的文字用双引号包裹\n- 支持多参考图编辑模式: 用 Image 1, Image 2 引用参考图\n- 输出分辨率可指定: 4K, 1024×1024\n- 建议 80-180 词，给模型足够上下文但不过载""",
+        "example_raw": "a beautiful girl standing in a flower field during sunset",
+        "example_optimized": "A young woman with soft features and flowing auburn hair stands in the center of a expansive wildflower meadow. She wears a simple white linen dress that catches the warm evening breeze. The setting sun behind her creates a dramatic golden rim light along her silhouette. Foreground features sharp detail on purple lupine and orange poppies. Midground shows the woman at waist level, looking directly at the camera with a calm, genuine expression. Background renders soft, out-of-focus hills under a sky transitioning from amber to deep lavender. Shot on 85mm lens at f/2.8 with shallow depth of field. Cinematic color grading with warmer tones. 4K, high definition."
     }
 }
 
