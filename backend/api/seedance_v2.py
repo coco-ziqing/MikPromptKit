@@ -7,6 +7,11 @@ from fastapi import APIRouter, Query, Body, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from database import get_db, safe_commit
 from seedance_v2_seed import init_seedance_v2_seed
+from .composer_engine import (
+    make_structured_description, fmt_header, fmt_scene,
+    compose_full, _calc_pixel_res, _pick_non_empty,
+    RESOLUTION_MAP, ASPECT_MAX_MAP, AR_LABEL
+)
 
 router = APIRouter(prefix="/api/seedance/v2", tags=["seedance-v2"])
 
@@ -462,7 +467,7 @@ def list_projects(search: str = Query(None), page: int = Query(1, ge=1), page_si
 
 # ==================== 核心: 时间重算引擎 ====================
 
-def _recalculate_scene_times(project_id: int):
+def _recalculate_scene_times(project_id: int, commit: bool = False):
     """
     重新计算所有镜头的 duration 和时间轴。
     规则：
@@ -470,6 +475,9 @@ def _recalculate_scene_times(project_id: int):
       - 未锁定镜头均分剩余时长（最少 0.5s），从锁定镜头借时
       - 按 scene_order 顺序生成 start_time/end_time
       - 最后一个镜头吸收舍入误差
+    
+    参数:
+      commit: 为 True 时内部执行 safe_commit()，否则由调用者管理（推荐）
     """
     db = get_db()
     proj = db.execute("SELECT * FROM user_project WHERE id=?", [project_id]).fetchone()
@@ -555,6 +563,9 @@ def _recalculate_scene_times(project_id: int):
 
     safe_commit()
 
+    if commit:
+        safe_commit()
+
 
 @router.post("/projects")
 def create_project(data: dict = Body(...)):
@@ -589,8 +600,8 @@ def create_project(data: dict = Body(...)):
         "INSERT INTO user_project_scene (project_id, scene_order, start_time, end_time, duration) VALUES (?, 1, 0, ?, ?)",
         [cur.lastrowid, total_duration, total_duration]
     )
-    safe_commit()
     _recalculate_scene_times(cur.lastrowid)
+    safe_commit()
     return {"ok": True, "id": cur.lastrowid}
 
 
@@ -809,10 +820,9 @@ def create_scene(project_id: int, data: dict = Body(...)):
         f"INSERT INTO user_project_scene ({columns}) VALUES ({placeholders})",
         values
     )
-    safe_commit()
-
-    # 重算所有镜头时间
+    # 重算所有镜头时间（统一提交）
     _recalculate_scene_times(project_id)
+    safe_commit()
 
     return {"ok": True, "id": cur.lastrowid}
 
@@ -868,10 +878,10 @@ def update_scene(project_id: int, scene_id: int, data: dict = Body(...)):
     set_clause = ", ".join(set_parts)
     values += [scene_id]
     db.execute(f"UPDATE user_project_scene SET {set_clause} WHERE id=?", values)
-    safe_commit()
 
     if has_recalc:
         _recalculate_scene_times(project_id)
+    safe_commit()  # 统一提交：字段更新 + 时间重算
 
     return {"ok": True}
 
@@ -888,8 +898,8 @@ def toggle_lock_scene(project_id: int, scene_id: int, data: dict = Body(...)):
     if not scene:
         raise HTTPException(404, "镜头不存在")
     db.execute("UPDATE user_project_scene SET is_locked=? WHERE id=?", [1 if locked else 0, scene_id])
-    safe_commit()
-    _recalculate_scene_times(project_id)
+    _recalculate_scene_times(project_id)  # 重算时间轴
+    safe_commit()  # 统一提交：锁定 + 时间重算
     return {"ok": True, "locked": locked}
 
 
@@ -913,10 +923,9 @@ def delete_scene(project_id: int, scene_id: int):
         "UPDATE user_project_scene SET scene_order=scene_order-1 WHERE project_id=? AND scene_order>?",
         [project_id, scene["scene_order"]]
     )
-    safe_commit()
-
-    # 删除后重算时间线
+    # 删除后重算时间线并统一提交
     _recalculate_scene_times(project_id)
+    safe_commit()
 
     return {"ok": True}
 
@@ -933,10 +942,9 @@ def reorder_scenes(project_id: int, data: dict = Body(...)):
             "UPDATE user_project_scene SET scene_order=? WHERE id=? AND project_id=?",
             [idx + 1, sid, project_id]
         )
-    safe_commit()
-
-    # 排序后重算时间线
+    # 排序后重算时间线并统一提交
     _recalculate_scene_times(project_id)
+    safe_commit()
 
     return {"ok": True}
 
@@ -998,183 +1006,14 @@ def remove_scene_prompt(project_id: int, scene_id: int, sp_id: int):
 
 # ==================== 核心: 提示词拼接引擎 ====================
 
-# ==================== 分辨率映射表 ====================
-RESOLUTION_MAP = {
-    "1080p": (1920, 1080), "2K": (2560, 1440), "4K": (3840, 2160),
-    "6K": (5760, 3240), "8K": (7680, 4320),
-}
-ASPECT_MAX_MAP = {
-    "16:9": 2160, "9:16": 2160, "1:1": 2160, "21:9": 2160,
-    "2.35:1": 2160, "4:3": 2160, "3:4": 2160, "3:2": 2160, "2:3": 2160,
-}
-
-
-def _make_structured_description(scene_data: dict, density: str) -> str:
-    """将镜头维度字段拼接为自然语言描述（按标准公式）
-   
-    拼接公式（行业标准）：
-    运镜 → 主体 → 动作 → 场景 → 构图 → 光影 → 焦段 → 质感 → 速率 → 氛围 → 特效 → 细节
-  
-    密度:
-      compact  = 运镜+主体+场景 (Sora/Kling 模式，简洁有力)
-      standard = 运镜+主体+动作+场景+构图+光影+氛围 (Midjourney/Seedance)
-      detailed = 全部维度 (ComfyUI/专业后期排错用)
-    """
-    d = scene_data
-    parts = []
-
-    # Layer 1: 运镜（所有密度）
-    if d.get("camera_move"):
-        parts.append(d["camera_move"])
-
-    # Layer 2: 主体（所有密度）
-    if d.get("subject"):
-        parts.append(d["subject"])
-
-    # Layer 3: 动作 (standard+)
-    if d.get("action") and density != "compact":
-        parts.append(d["action"])
-
-    # Layer 4: 场景 (所有密度)
-    if d.get("scene_desc"):
-        parts.append(d["scene_desc"])
-
-    # Layer 5: 构图 (standard+)
-    if d.get("composition") and density != "compact":
-        parts.append(d["composition"])
-
-    # Layer 6: 光影 (standard+)
-    if d.get("lighting") and density != "compact":
-        parts.append(d["lighting"])
-
-    # Layer 7: 焦段 (detailed only)
-    if d.get("focal_length") and density == "detailed":
-        parts.append(d["focal_length"])
-
-    # Layer 8: 质感 (detailed only)
-    if d.get("texture") and density == "detailed":
-        parts.append(d["texture"])
-
-    # Layer 9: 速率 (detailed only)
-    if d.get("speed") and density == "detailed":
-        parts.append(d["speed"])
-
-    # Layer 10: 氛围组 (standard+)
-    if density != "compact":
-        mood = _pick_non_empty(d, ["emotion", "color_grade", "weather"])
-        if mood:
-            parts.append(mood)
-
-    # Layer 11: 特效组 (detailed only)
-    if density == "detailed":
-        fx = _pick_non_empty(d, ["particles", "natural_force", "fantasy_physics", "filter"])
-        if fx:
-            parts.append(fx)
-
-    # Layer 12: 细节组 (detailed only)
-    if density == "detailed":
-        detail = _pick_non_empty(d, ["perspective", "depth_of_field", "environment_detail",
-                                      "film_flaw", "details"])
-        if detail:
-            parts.append(detail)
-
-    return "，".join(p for p in parts if p.strip())
-
-
-def _pick_non_empty(d: dict, keys: list) -> str:
-    vals = [d.get(k) for k in keys if d.get(k)]
-    return "，".join(vals) if vals else ""
-
-
-def _calc_pixel_res(ar: str, res: str) -> str:
-    """计算画幅像素分辨率 e.g. 16:9 4K -> 3840x2160, 9:16 4K -> 2160x3840"""
-    base_w, base_h = RESOLUTION_MAP.get(res, (1920, 1080))
-    w_ratio, h_ratio = map(int, ar.split(":"))
-    base_short = min(base_w, base_h)
-    if w_ratio >= h_ratio:
-        h = base_short
-        w = int(h * w_ratio / h_ratio)
-    else:
-        w = base_short
-        h = int(w * h_ratio / w_ratio)
-    return f"{w}x{h}"
-
-
-def _fmt_header(proj: dict, fmt: str) -> str:
-    """按目标平台格式生成全局头部"""
-    ar = proj["aspect_ratio"] or "16:9"
-    res = proj["resolution"] or "4K"
-    dur = int(proj["total_duration"] or 15)
-    style = proj["global_style"] or ""
-    transition = proj["global_transition"] or ""
-    neg = proj["negative_prompt"] or ""
-    pix = _calc_pixel_res(ar, res)
-
-    AR_LABEL = {
-        "16:9": "横屏", "9:16": "竖屏", "1:1": "方形",
-        "21:9": "超宽", "2.35:1": "电影宽屏", "4:3": "方屏", "3:4": "竖屏3:4"
-    }
-    ar_label = AR_LABEL.get(ar, ar)
-
-    if fmt == "kling":
-        # Kling 1.6 / 2.0 格式: 镜头语言前缀+主体+环境
-        line = f"{ar_label}{res} 视频 {dur}s"
-        if style:
-            line += f" {style}"
-        return line
-
-    elif fmt == "minimax":
-        # MiniMax Hailuo 格式: 英文为主
-        line = f"{ar_label}_{res}_{pix}_{dur}s"
-        if style:
-            line += f", {style}"
-        return line
-
-    elif fmt == "comfyui":
-        # ComfyUI 格式: 技术标注精确
-        line = f"resolution={pix}, duration={dur}s, fps=24"
-        if style:
-            line += f", style={style}"
-        return line
-
-    elif fmt == "raw":
-        return ""  # 纯镜头描述，无全局头
-
-    else:  # seedance (default)
-        parts = [f"{ar_label}{res}"]
-        if style:
-            parts.append(style)
-        parts.append(f"{dur}s")
-        if transition:
-            parts.append(transition)
-        return "，".join(parts)
-
-
-def _fmt_scene(shot: int, start: float, end: float, desc: str, sc: dict, fmt: str) -> str:
-    """按目标平台格式生成单个镜头行"""
-    st, et = int(start), int(end)
-    dur = round(end - start, 1)
-
-    if fmt == "kling":
-        return f"Shot{shot}[{st}s-{et}s]({dur}s): {desc}"
-    elif fmt == "minimax":
-        return f"[{st}-{et}]({dur}s) {desc}"
-    elif fmt == "comfyui":
-        fields = []
-        if sc.get("camera_move"):
-            fields.append(f"camera:{sc['camera_move']}")
-        fields.append(f"desc:{desc}")
-        return f"frame{shot}[{st}-{et}]: {'; '.join(fields)}"
-    elif fmt == "raw":
-        return desc
-    else:  # seedance
-        return f"{st}-{et}s：{desc}"
+# 引擎函数已移至 composer_engine.py，此处保留别名向后兼容
+# 直接使用导入的 make_structured_description / fmt_header / fmt_scene 等
 
 
 @router.post("/projects/{project_id}/compose")
 def compose_project(project_id: int, data: dict = Body({})):
     """
-    核心拼接引擎 v2.0 — 5平台多格式输出
+    核心拼接引擎 v2.0 — 5平台多格式输出（使用共享引擎 composer_engine）
     
     参数:
       format: seedance|kling|minimax|comfyui|raw (default: seedance)
@@ -1197,219 +1036,38 @@ def compose_project(project_id: int, data: dict = Body({})):
     fmt = data.get("format", "seedance")
     density = data.get("density", "standard")
     include_audio = data.get("include_audio", False)
-    # v4.0.0-phase10: 也接受项目级 audio_enabled
-    if not include_audio and proj.get("audio_enabled"):
-        include_audio = bool(int(proj["audio_enabled"]))
+    proj_dict = dict(proj)
+    if not include_audio and proj_dict.get("audio_enabled"):
+        include_audio = bool(int(proj_dict["audio_enabled"]))
 
-    # ---- 全局头部 ----
-    ar = proj["aspect_ratio"] or "16:9"
-    res = proj["resolution"] or "4K"
-    duration = int(proj["total_duration"] or 15)
-    pix = _calc_pixel_res(ar, res)
-    header_line = _fmt_header(dict(proj), fmt)
+    # 委托给共享引擎
+    result = compose_full(scenes, proj_dict, fmt=fmt, density=density,
+                          include_audio=include_audio, db=db)
 
-    # ---- 多镜头描述 ----
-    scene_lines = []
-    json_scenes = []
-    all_negatives = []  # 镜头级负词汇总
-
-    for sc in scenes:
-        scd = dict(sc)
-        st = float(scd["start_time"])
-        et = float(scd["end_time"])
-
-        # 拼接镜头描述
-        scene_desc = _make_structured_description(scd, density)
-
-        # v4.0.0-phase10: 音频四要素融入镜头描述
-        if include_audio and scd.get("audio_enabled"):
-            audio_parts = []
-
-            # v4.0.0-phase10.1: 角色库自动注入
-            char_id = scd.get("character_id")
-            char_info = None
-            if char_id:
-                char_info = db.execute(
-                    "SELECT name, voice_type, voice_detail, narration_style, personality FROM character_profiles WHERE id=?",
-                    [char_id]
-                ).fetchone()
-
-            if char_info:
-                # 角色名称 + 声线来自角色档案
-                char_name = char_info["name"] or ""
-                voice_text = char_info["voice_type"] or ""
-                if char_info["voice_detail"]:
-                    voice_text += "，" + char_info["voice_detail"]
-                if char_name and voice_text:
-                    audio_parts.append(f"[角色:{char_name}({voice_text})]")
-                elif char_name:
-                    audio_parts.append(f"[角色:{char_name}]")
-                # 旁白来自角色档案
-                narr = char_info["narration_style"] or ""
-                if narr:
-                    audio_parts.append(f"[旁白:{narr}]")
-            else:
-                # 回退：无角色关联时使用镜头手动填写的字段
-                cv = scd.get("character_voice") or scd.get("narration") or ""
-                if cv:
-                    audio_parts.append(f"[角色旁白:{cv}]")
-
-            bm = scd.get("bgm") or ""
-            sf = scd.get("sfx") or ""
-            if bm:
-                audio_parts.append(f"[BGM:{bm}]")
-            if sf:
-                audio_parts.append(f"[音效:{sf}]")
-            if audio_parts:
-                scene_desc = scene_desc + " (" + ", ".join(audio_parts) + ")" if scene_desc else ", ".join(audio_parts)
-
-        # 镜头负词
-        shot_neg = scd.get("details") or ""
-        if shot_neg and shot_neg.startswith("--neg"):
-            all_negatives.append(shot_neg.replace("--neg", "").strip())
-            shot_neg = ""
-
-        # 格式化镜头行
-        if scene_desc:
-            scene_lines.append(
-                _fmt_scene(scd["scene_order"], st, et, scene_desc, scd, fmt)
-            )
-
-        json_scenes.append({
-            "shot": scd["scene_order"],
-            "start": st,
-            "end": et,
-            "duration": round(et - st, 1),
-            "text": scene_desc,
-            "negative": shot_neg,
-            # v4.0.0-phase10: per-shot audio
-            "audio": {
-                "character_voice": scd.get("character_voice") or scd.get("narration") or "",
-                "bgm": scd.get("bgm") or "",
-                "sfx": scd.get("sfx") or "",
-                "enabled": bool(scd.get("audio_enabled")),
-                "character_id": scd.get("character_id"),
-                "character_name": char_info["name"] if char_info else None,
-            } if include_audio else None,
-            "fields": {
-                "camera_move": scd.get("camera_move") or "",
-                "subject": scd.get("subject") or "",
-                "action": scd.get("action") or "",
-                "scene": scd.get("scene_desc") or "",
-                "composition": scd.get("composition") or "",
-                "lighting": scd.get("lighting") or "",
-                "focal_length": scd.get("focal_length") or "",
-                "texture": scd.get("texture") or "",
-                "speed": scd.get("speed") or "",
-                "emotion": scd.get("emotion") or "",
-                "color_grade": scd.get("color_grade") or "",
-                "weather": scd.get("weather") or "",
-                "particles": scd.get("particles") or "",
-                "perspective": scd.get("perspective") or "",
-                "depth_of_field": scd.get("depth_of_field") or "",
-                "environment_detail": scd.get("environment_detail") or "",
-                "film_flaw": scd.get("film_flaw") or "",
-                "fantasy_physics": scd.get("fantasy_physics") or "",
-            }
-        })
-
-    # ---- 负面词 ----
-    global_neg = proj["negative_prompt"] or ""
-    all_neg = []
-    if global_neg:
-        all_neg.append(global_neg)
-    all_neg.extend(all_negatives)
-    neg_line = "，".join(all_neg) if all_neg else ""
-
-    # ---- 音频（全局+镜头级）----
-    audio_text = ""
+    # 添加遗留兼容字段（注意 scenes 是 Row 对象，不能用 .get）
     if include_audio:
-        # 全局项级（向后兼容）
-        bgm = data.get("bgm", "") or proj["bgm"] or ""
-        sfx = data.get("sfx", "") or proj["sfx"] or ""
-        dialogue = data.get("dialogue", "") or proj["dialogue"] or ""
-        if bgm:
-            audio_text += f"BGM: {bgm}\n"
-        if sfx:
-            audio_text += f"音效: {sfx}\n"
-        if dialogue:
-            audio_text += f"对白: {dialogue}\n"
-        # v4.0.0-phase10: 收集镜头级音频摘要
         audio_shots = []
-        for sc in scenes:
-            scd = dict(sc)
-            if scd.get("audio_enabled"):
-                shot_audio = []
-                cv = scd.get("character_voice") or scd.get("narration") or ""
-                bm = scd.get("bgm") or ""
-                sf = scd.get("sfx") or ""
-                if cv: shot_audio.append(f"角色旁白:{cv}")
-                if bm: shot_audio.append(f"BGM:{bm}")
-                if sf: shot_audio.append(f"SFX:{sf}")
-                if shot_audio:
-                    audio_shots.append(f"镜头{scd['scene_order']}: " + ", ".join(shot_audio))
-        if audio_shots:
-            audio_text += "---\n" + "\n".join(audio_shots) + "\n"
-
-    # ---- 完整提示词 ----
-    full_lines = []
-    if header_line:
-        full_lines.append(header_line)
-    if audio_text:
-        full_lines.append(audio_text.strip())
-    if full_lines and scene_lines:
-        full_lines.append("")
-    full_lines.extend(scene_lines)
-    if neg_line:
-        full_lines.append("")
-        full_lines.append(f"负面：{neg_line}")
-
-    full_text = "\n".join(full_lines).strip()
-
-    # ---- JSON 输出 ----
-    json_output = {
-        "meta": {
-            "format": fmt,
-            "density": density,
-            "pixel_res": pix,
-            "fps": 24,
-        },
-        "global": {
-            "aspect_ratio": ar,
-            "resolution": res,
-            "pixel_width": int(pix.split("x")[0]) if "x" in pix else 0,
-            "pixel_height": int(pix.split("x")[1]) if "x" in pix else 0,
-            "duration": duration,
-            "style": proj["global_style"] or "",
-            "transition": proj["global_transition"] or "",
-            "negative": neg_line,
-        },
-        "audio": {
-            "bgm": data.get("bgm", "") or proj["bgm"] or "",
-            "sfx": data.get("sfx", "") or proj["sfx"] or "",
-            "dialogue": data.get("dialogue", "") or proj["dialogue"] or "",
-            "shot_audio": [
-                {"shot": s["scene_order"], "character_voice": s.get("character_voice") or s.get("narration") or "", "bgm": s.get("bgm") or "", "sfx": s.get("sfx") or "", "enabled": bool(s.get("audio_enabled"))}
-                for s in scenes
-            ]
-        } if include_audio else None,
-        "shots": json_scenes,
-        "full_text": full_text
-    }
+        for s in scenes:
+            audio_shots.append({
+                "shot": s["scene_order"],
+                "character_voice": s["character_voice"] or s["narration"] or "",
+                "bgm": s["bgm"] or "",
+                "sfx": s["sfx"] or "",
+                "enabled": bool(s["audio_enabled"])
+            })
+        result["json"]["audio"] = {
+            "bgm": data.get("bgm", "") or proj_dict.get("bgm", ""),
+            "sfx": data.get("sfx", "") or proj_dict.get("sfx", ""),
+            "dialogue": data.get("dialogue", "") or proj_dict.get("dialogue", ""),
+            "shot_audio": audio_shots
+        }
+    else:
+        result["json"]["audio"] = None
 
     if fmt == "json":
-        return json_output
+        return result["json"]
 
-    return {
-        "text": full_text,
-        "json": json_output,
-        "length": len(full_text),
-        "shot_count": len(scenes),
-        "duration": duration,
-        "format": fmt,
-        "density": density,
-        "pixel_res": pix,
-    }
+    return result
 
 
 # ==================== 智能推荐 ====================

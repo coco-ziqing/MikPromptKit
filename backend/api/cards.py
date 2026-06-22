@@ -5,6 +5,7 @@ API 路由 — Phase 1: 统一提示词卡 + 词库资产 API
 import json
 from fastapi import APIRouter, Query, HTTPException
 from database import get_db, safe_commit
+from api.version_helpers import compute_next_version, archive_current, build_diff, parse_tags_safe
 
 router = APIRouter(prefix="/api/v4", tags=["v4-cards"])
 
@@ -53,25 +54,38 @@ def list_cards(
         params + [page_size, offset]
     ).fetchall()
     
+    # 批量预取关联数据（消除N+1: 50条卡片从150次查询→3次）
+    card_ids = [r['id'] for r in rows]
+    thumbs_map = {}; videos_map = {}; colls_map = {}
+    if card_ids:
+        placeholders = ','.join(['?'] * len(card_ids))
+        for t in db.execute(
+            f"SELECT prompt_id, filename, media_type FROM prompt_thumbnails WHERE prompt_id IN ({placeholders})",
+            card_ids).fetchall():
+            thumbs_map[t['prompt_id']] = t
+        for v in db.execute(
+            f"SELECT prompt_id, filename, duration FROM prompt_videos WHERE prompt_id IN ({placeholders})",
+            card_ids).fetchall():
+            videos_map[v['prompt_id']] = v
+        for cr in db.execute(
+            f"SELECT ci.prompt_id, c.id, c.name, c.icon FROM collections c "
+            f"JOIN collection_items ci ON c.id=ci.collection_id WHERE ci.prompt_id IN ({placeholders})",
+            card_ids).fetchall():
+            colls_map.setdefault(cr['prompt_id'], []).append(dict(cr))
+
     items = []
     for r in rows:
         item = dict(r)
         item['structured_fields'] = json.loads(item.get('structured_fields') or '{}')
         item['tags'] = item.get('tags') or '[]'
         item['library_refs'] = json.loads(item.get('library_refs') or '[]')
-        # 附加媒体信息（兼容旧渲染）
-        thumb = db.execute("SELECT filename, media_type FROM prompt_thumbnails WHERE prompt_id=?", (item['id'],)).fetchone()
-        video = db.execute("SELECT filename, duration FROM prompt_videos WHERE prompt_id=?", (item['id'],)).fetchone()
-        item['thumbnail'] = thumb['filename'] if thumb else ''
-        item['media_type'] = thumb['media_type'] if thumb else 'image'
-        item['video_filename'] = video['filename'] if video else ''
-        # 兼容旧渲染：收藏信息
-        colls = db.execute(
-            "SELECT c.id, c.name, c.icon FROM collections c "
-            "JOIN collection_items ci ON c.id=ci.collection_id WHERE ci.prompt_id=?",
-            (item['id'],)
-        ).fetchall()
-        item['collections'] = [dict(c) for c in colls]
+        tid = item['id']
+        t = thumbs_map.get(tid)
+        v = videos_map.get(tid)
+        item['thumbnail'] = t['filename'] if t else ''
+        item['media_type'] = t['media_type'] if t else 'image'
+        item['video_filename'] = v['filename'] if v else ''
+        item['collections'] = colls_map.get(tid, [])
         items.append(item)
     
     total_pages = max(1, -(-total // page_size))
@@ -80,7 +94,7 @@ def list_cards(
 
 @router.get("/cards/{card_id}")
 def get_card(card_id: int):
-    """获取单张提示词卡（含媒体+词库引用+版本）"""
+    """获取单张提示词卡（含媒体+词库引用+版本）— 批量查询优化"""
     db = get_db()
     r = db.execute("SELECT * FROM prompt_cards WHERE id=? AND is_deleted=0", (card_id,)).fetchone()
     if not r:
@@ -91,39 +105,44 @@ def get_card(card_id: int):
     lib_refs = json.loads(item.get('library_refs') or '[]')
     item['library_refs'] = lib_refs
     
-    # 附加媒体资产
-    media = db.execute("SELECT * FROM media_assets WHERE prompt_id=? ORDER BY created_at DESC", (card_id,)).fetchall()
-    item['media'] = [dict(m) for m in media]
-    
-    # 附加词库引用详情
+    # 批量1: media + versions + usage 合并查询
+    combined = db.execute("""
+        SELECT 'media' as _type, id, filename, original_filename, media_type,
+               file_size, width, height, created_at, NULL as version, NULL as change_note
+        FROM media_assets WHERE prompt_id=?
+        UNION ALL
+        SELECT 'version', id, content, meaning, scene, NULL, NULL, NULL, created_at, version, change_note
+        FROM prompt_versions WHERE prompt_id=? ORDER BY version DESC LIMIT 5
+        UNION ALL
+        SELECT 'usage', NULL, CAST(COUNT(*) AS TEXT), NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+        FROM usage_history WHERE prompt_id=?
+    """, (card_id, card_id, card_id)).fetchall()
+    item['media'] = [dict(r2) for r2 in combined if r2['_type'] == 'media']
+    item['versions'] = [dict(r2) for r2 in combined if r2['_type'] == 'version']
+    item['usage_history_count'] = sum(1 for r2 in combined if r2['_type'] == 'usage')
+
+    # 批量2: 词库引用详情（一次IN查询替代逐条循环）
+    lib_ids = [ref['id'] for ref in lib_refs if isinstance(ref, dict) and 'id' in ref]
     lib_details = []
-    for ref in lib_refs:
-        if isinstance(ref, dict) and 'id' in ref:
-            lib = db.execute("SELECT id, lib_type, name, prompt FROM library_assets WHERE id=?", (ref['id'],)).fetchone()
-            if lib:
-                d = dict(lib)
+    if lib_ids:
+        placeholders = ','.join(['?'] * len(lib_ids))
+        lib_rows = db.execute(
+            f"SELECT id, lib_type, name, prompt FROM library_assets WHERE id IN ({placeholders})",
+            lib_ids).fetchall()
+        lib_map = {lr['id']: dict(lr) for lr in lib_rows}
+        for ref in lib_refs:
+            if isinstance(ref, dict) and ref.get('id') in lib_map:
+                d = lib_map[ref['id']]
                 d['field'] = ref.get('field', '')
                 lib_details.append(d)
     item['library_details'] = lib_details
     
-    # 附加版本历史
-    versions = db.execute(
-        "SELECT id, version, content, meaning, change_note, created_at FROM prompt_versions WHERE prompt_id=? ORDER BY version DESC LIMIT 5",
-        (card_id,)
-    ).fetchall()
-    item['versions'] = [dict(v) for v in versions]
-    
     # 附加收藏信息
-    collections = db.execute(
-        "SELECT c.id, c.name, c.icon FROM collections c JOIN collection_items ci ON c.id=ci.collection_id WHERE ci.prompt_id=?",
+    item['collections'] = [dict(c) for c in db.execute(
+        "SELECT c.id, c.name, c.icon FROM collections c "
+        "JOIN collection_items ci ON c.id=ci.collection_id WHERE ci.prompt_id=?",
         (card_id,)
-    ).fetchall()
-    item['collections'] = [dict(c) for c in collections]
-    
-    # 附加使用统计
-    usage = db.execute("SELECT COUNT(*) as c FROM usage_history WHERE prompt_id=?", (card_id,)).fetchone()['c']
-    item['usage_history_count'] = usage
-    
+    ).fetchall()]
     return {'ok': True, 'card': item}
 
 
@@ -294,13 +313,19 @@ def list_library_categories(lib_type: str = Query(None)):
 @router.post("/library")
 def create_library_item(data: dict):
     """创建词库条目"""
+    lib_type = (data.get('lib_type') or '').strip()
+    name = (data.get('name') or '').strip()
+    if not lib_type:
+        raise HTTPException(status_code=400, detail='缺少 lib_type')
+    if not name:
+        raise HTTPException(status_code=400, detail='缺少 name')
     db = get_db()
     cur = db.execute("""
         INSERT INTO library_assets 
             (lib_type, name, icon, category, prompt, definition, tags, is_builtin)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        data['lib_type'], data['name'], data.get('icon', ''),
+        lib_type, name, data.get('icon', ''),
         data.get('category', ''), data.get('prompt', ''),
         data.get('definition', ''),
         json.dumps(data.get('tags', []), ensure_ascii=False),
@@ -365,13 +390,13 @@ def export_library(lib_type: str = Query(None)):
 
 @router.post("/library/batch-import")
 def batch_import_library(data: dict):
-    """批量导入词库条目"""
+    """批量导入词库条目 — 含错误上报"""
     items = data.get('items', [])
     if not items:
         return {'ok': False, 'error': '未提供条目'}
     db = get_db()
-    imported = 0
-    for item in items:
+    imported = 0; errors = []
+    for idx, item in enumerate(items):
         try:
             db.execute("""INSERT INTO library_assets
                 (lib_type, name, icon, category, prompt, definition, tags, is_builtin, sort_order)
@@ -381,10 +406,10 @@ def batch_import_library(data: dict):
                 json.dumps(item.get('tags',[]), ensure_ascii=False), 0, 0
             ))
             imported += 1
-        except Exception:
-            pass
+        except Exception as e:
+            errors.append({'index': idx, 'name': item.get('name', '?'), 'error': str(e)[:200]})
     safe_commit()
-    return {'ok': True, 'imported': imported}
+    return {'ok': True, 'imported': imported, 'failed': len(errors), 'errors': errors}
 
 
 @router.get("/library/stats")
@@ -530,25 +555,27 @@ def rollback_card(card_id: int, data: dict):
     if not row:
         return {"ok": False, "error": "版本未找到"}
 
-    # 回滚前将当前内容存档
-    last_ver = db.execute(
-        "SELECT MAX(version) as max_v FROM prompt_versions WHERE prompt_id=?",
-        (card_id,)
-    ).fetchone()
-    next_ver = (last_ver['max_v'] or 0) + 1
+    # 回滚前将当前内容存档（完整10字段，与versions.py save_version对齐）
+    next_ver = compute_next_version(db, card_id)
+    # 读取当前 subcategory + tags, 补全存档（防止数据丢失）
+    cur_tags_val = (current.get('tags') or '') if isinstance(current.get('tags'), str) else json.dumps(current.get('tags') or [], ensure_ascii=False) if current.get('tags') else '[]'
+    cur_subcat_val = current.get('subcategory') or ''
     db.execute("""
         INSERT INTO prompt_versions
-            (prompt_id, content, meaning, scene, change_note, version)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (prompt_id, content, meaning, scene, module, category, subcategory, tags, change_note, version)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, [card_id, current['content'] or '', current['meaning'] or '',
-          current['scene'] or '', f'回滚到 v{version}', next_ver])
+          current['scene'] or '', current['module'] or '', current['category'] or '',
+          cur_subcat_val, cur_tags_val, f'回滚到 v{version}', next_ver])
 
-    # 完整恢复所有字段
+    # 完整恢复所有字段（与versions.py save_version 存档字段对齐）
     new_ver = next_ver + 1
+    row_tags = (row.get('tags') or '') if isinstance(row.get('tags'), str) else json.dumps(row.get('tags') or [], ensure_ascii=False) if row.get('tags') else '[]'
+    row_subcat = row.get('subcategory') or ''
     db.execute("""
         UPDATE prompt_cards SET
             content=?, meaning=?, scene=?,
-            module=?, category=?, version=?
+            module=?, category=?, subcategory=?, tags=?, version=?
         WHERE id=?
     """, [
         row['content'] or '',
@@ -556,6 +583,8 @@ def rollback_card(card_id: int, data: dict):
         row['scene'] or '',
         row['module'] or current['module'],
         row['category'] or current['category'],
+        row_subcat,
+        row_tags,
         new_ver, card_id
     ])
     safe_commit()
@@ -573,7 +602,7 @@ def card_version_history(card_id: int):
         return {"ok": False, "error": "卡片不存在"}
 
     rows = db.execute("""
-        SELECT id, version, content, meaning, scene, module, category,
+        SELECT id, version, content, meaning, scene, module, category, subcategory, tags,
                change_note, created_at
         FROM prompt_versions WHERE prompt_id=?
         ORDER BY version DESC
@@ -588,7 +617,9 @@ def card_version_history(card_id: int):
             "meaning": current['meaning'],
             "scene": current['scene'],
             "module": current['module'],
-            "category": current['category']
+            "category": current['category'],
+            "subcategory": current.get('subcategory', ''),  # P1: 补全字段
+            "tags": current.get('tags', '[]')               # P1: 补全字段
         },
         "versions": [dict(r) for r in rows],
         "total": len(rows)
@@ -610,14 +641,7 @@ def card_version_diff(card_id: int, v1: int, v2: int):
     if not ver1 or not ver2:
         return {"ok": False, "error": "版本不存在"}
 
-    diffs = []
-    for field in ['content', 'meaning', 'scene', 'module', 'category']:
-        if ver1[field] != ver2[field]:
-            diffs.append({
-                "field": field,
-                "old": ver1[field] or '',
-                "new": ver2[field] or ''
-            })
+    diffs = build_diff(ver1, ver2)
 
     return {
         "ok": True,

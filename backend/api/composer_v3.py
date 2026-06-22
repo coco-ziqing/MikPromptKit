@@ -1,13 +1,18 @@
 """
 API 路由 — Phase 6: 组装器 v3（基于 prompt_cards 的智能编排）
+Phase 14.1 重构:
+  - 修复 FIELD_MAP 重复 key
+  - compose 端点接入共享组装引擎（5格式/3密度/音频）
+  - 创建时调用 _recalculate 确保时间轴正确
 """
 import json
 from fastapi import APIRouter, Query, HTTPException
 from database import get_db, safe_commit
+from .composer_engine import compose_full
 
 router = APIRouter(prefix="/api/v4/composer", tags=["v4-composer"])
 
-# 结构化字段 → 场景字段 映射表
+# 结构化字段 → 场景字段 映射表（去重后18条）
 FIELD_MAP = {
     'subject': 'subject',
     'scene_desc': 'scene_desc',
@@ -16,13 +21,13 @@ FIELD_MAP = {
     'lighting': 'lighting',
     'camera_move': 'camera_move',
     'camera': 'camera_move',
-    'lighting': 'lighting',
     'action': 'action',
     'motion': 'action',
     'focal_length': 'focal_length',
     'texture': 'texture',
     'speed': 'speed',
     'emotion': 'emotion',
+    'mood': 'emotion',
     'color_grade': 'color_grade',
     'weather': 'weather',
     'particles': 'particles',
@@ -33,7 +38,6 @@ FIELD_MAP = {
     'environment_detail': 'environment_detail',
     'film_flaw': 'film_flaw',
     'fantasy_physics': 'fantasy_physics',
-    'mood': 'emotion',
     'style': 'texture',
 }
 
@@ -67,13 +71,14 @@ def create_composer_project(data: dict):
     total_dur_input = 0
     
     for order, card_id in enumerate(card_ids):
-        card = db.execute("SELECT * FROM prompt_cards WHERE id=? AND is_deleted=0", (card_id,)).fetchone()
+        card = db.execute(
+            "SELECT * FROM prompt_cards WHERE id=? AND is_deleted=0", (card_id,)
+        ).fetchone()
         if not card:
             continue
         
         card = dict(card)
         sf = json.loads(card.get('structured_fields') or '{}')
-        card_content = card.get('content', '')
         
         # 3. 结构化字段映射到场景字段
         scene_data = {v: '' for v in [
@@ -83,20 +88,15 @@ def create_composer_project(data: dict):
             'environment_detail','film_flaw','fantasy_physics'
         ]}
         
-        # 从 structured_fields 映射
         for sf_key, sf_val in sf.items():
             if sf_val and sf_key in FIELD_MAP:
                 target = FIELD_MAP[sf_key]
                 scene_data[target] = sf_val
         
-        # 从 card.content 智能提取（如果有）
-        # 先用结构化字段，content 作为后备
-        
         start_time = total_dur_input
         end_time = total_dur_input + scene_duration
         total_dur_input = end_time
         
-        # 如果最后一个场景，补足剩余时间
         if order == len(card_ids) - 1 and total_dur_input < dur:
             end_time = dur
             total_dur_input = dur
@@ -112,7 +112,8 @@ def create_composer_project(data: dict):
         """, (
             project_id, order + 1, start_time, end_time,
             scene_data['camera_move'], scene_data['subject'], scene_data['scene_desc'],
-            scene_data['shot_scale'], scene_data['composition'], scene_data['lighting'], scene_data['action'],
+            scene_data['shot_scale'], scene_data['composition'], scene_data['lighting'],
+            scene_data['action'],
             scene_data['focal_length'], scene_data['texture'], scene_data['speed'],
             scene_data['emotion'], scene_data['color_grade'], scene_data['weather'],
             scene_data['particles'], scene_data['perspective'], scene_data['depth_of_field'],
@@ -120,6 +121,9 @@ def create_composer_project(data: dict):
             scene_data['film_flaw'], scene_data['fantasy_physics']
         ))
     
+    # 创建后重算时间轴
+    from .seedance_v2 import _recalculate_scene_times
+    _recalculate_scene_times(project_id)
     safe_commit()
     return {'ok': True, 'project_id': project_id}
 
@@ -164,8 +168,18 @@ def list_composer_cards(
 
 
 @router.get("/projects/{project_id}/compose")
-def compose_project(project_id: int):
-    """生成项目的输出提示词文本"""
+def compose_project(project_id: int,
+                    format: str = Query("seedance"),
+                    density: str = Query("standard"),
+                    include_audio: bool = Query(False)):
+    """
+    生成项目的输出提示词文本（使用共享组装引擎）
+    
+    参数:
+      format: seedance|kling|minimax|comfyui|raw (default: seedance)
+      density: compact|standard|detailed (default: standard)
+      include_audio: 是否含音频 (default: false)
+    """
     db = get_db()
     proj = db.execute("SELECT * FROM user_project WHERE id=?", (project_id,)).fetchone()
     if not proj:
@@ -179,45 +193,19 @@ def compose_project(project_id: int):
     if not scenes:
         return {'ok': True, 'output': '', 'output_json': {'header': '', 'scenes': []}}
     
-    proj = dict(proj)
-    lines = []
-    hd = []
+    # 使用共享组装引擎
+    result = compose_full(scenes, dict(proj), fmt=format, density=density,
+                          include_audio=include_audio, db=db)
     
-    # Header
-    ar = proj.get('aspect_ratio', '16:9')
-    res = proj.get('resolution', '1080p')
-    ar_map = {'16:9': '横屏', '9:16': '竖屏', '1:1': '方形', '21:9': '超宽', '4:3': '方屏', '3:4': '竖屏3:4'}
-    hd.append(f"{ar_map.get(ar, ar)}{res}")
-    if proj.get('global_style'): 
-        hd.append(proj['global_style'])
-    hd.append(f"{proj.get('total_duration', 15)}s")
-    if proj.get('negative_prompt'):
-        lines.append(f"[NEGATIVE] {proj['negative_prompt']}")
-    
-    output_json_scenes = []
-    for s in scenes:
-        s = dict(s)
-        st = int(s['start_time'])
-        et = int(s['end_time'])
-        sl = f"{st}-{et}s"
-        
-        parts = []
-        field_keys = [
-            'camera_move','subject','scene_desc','shot_scale','composition','lighting',
-            'action','focal_length','texture','speed','emotion','perspective',
-            'color_grade','particles','weather','natural_force','environment_detail',
-            'depth_of_field','filter','film_flaw','fantasy_physics'
-        ]
-        for k in field_keys:
-            if s.get(k):
-                parts.append(s[k])
-        
-        if parts:
-            sl += f": {','.join(parts)}"
-        lines.append(sl)
-        output_json_scenes.append({'time': f"{st}-{et}s", 'fields': parts})
-    
-    output = f"[{','.join(hd)}]\n" + '\n'.join(lines)
-    output_json = {'header': ','.join(hd), 'scenes': output_json_scenes}
-    
-    return {'ok': True, 'output': output, 'output_json': output_json}
+    # 向后兼容的字段映射
+    return {
+        'ok': True,
+        'output': result['text'],
+        'output_json': result['json'],
+        'length': result['length'],
+        'shot_count': result['shot_count'],
+        'duration': result['duration'],
+        'format': result['format'],
+        'density': result['density'],
+        'pixel_res': result['pixel_res'],
+    }

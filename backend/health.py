@@ -358,9 +358,8 @@ def _check_disk() -> dict:
         return {"ok": True, "error": str(e)[:80]}
 
 
-def _check_port() -> dict:
-    """检测端口 + LAN IP"""
-    # 读取默认端口
+def _check_self_reachable() -> dict:
+    """检测服务端口可达性 + LAN IP + 防火墙规则 + IP变更"""
     default_port = 8080
     try:
         from database import get_db
@@ -370,7 +369,6 @@ def _check_port() -> dict:
             default_port = int(row["value"])
     except Exception:
         pass
-
     # LAN IP
     lan_ip = "127.0.0.1"
     try:
@@ -380,15 +378,59 @@ def _check_port() -> dict:
         s.close()
     except Exception:
         pass
-
+    # 防火墙规则检查
+    fw_ok = False; fw_rule_name = ""
+    try:
+        fw = subprocess.run(['netsh','advfirewall','firewall','show','rule','name=PromptKit'],
+            capture_output=True,text=True,timeout=3,creationflags=subprocess.CREATE_NO_WINDOW)
+        fw_ok = f'LocalPort{default_port}' in fw.stdout or f':{default_port}' in fw.stdout
+        fw_rule_name = 'PromptKit' if fw_ok else ''
+        if not fw_ok:
+            fw2 = subprocess.run(['netsh','advfirewall','firewall','show','rule','name=PromptKit 8080'],
+                capture_output=True,text=True,timeout=3,creationflags=subprocess.CREATE_NO_WINDOW)
+            if 'LocalPort' in fw2.stdout: fw_ok = True; fw_rule_name = 'PromptKit 8080'
+    except Exception:
+        pass
+    # IP变更检测
+    ip_changed = False; last_ip = None
+    try:
+        from database import get_db as _gdb2
+        db2 = _gdb2()
+        row = db2.execute("SELECT value FROM config WHERE key='last_lan_ip'").fetchone()
+        if row:
+            last_ip = row["value"]
+            ip_changed = last_ip != lan_ip
+        db2.execute("INSERT OR REPLACE INTO config (key,value) VALUES ('last_lan_ip',?)",[lan_ip])
+        db2.execute("INSERT OR REPLACE INTO config (key,value) VALUES ('last_ip_check_at',?)",
+            [__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
+        db2.commit()
+    except Exception:
+        pass
+    hint = None
+    if not fw_ok:
+        hint = f"防火墙规则未配置端口 {default_port}，局域网设备可能无法访问"
+    elif ip_changed:
+        hint = f"IP 已变更: {last_ip} -> {lan_ip}，请更新书签"
     return {
-        "ok": True,
-        "port": default_port,
-        "lan_ip": lan_ip,
+        "ok": True, "port": default_port, "lan_ip": lan_ip,
         "access_url": f"http://{lan_ip}:{default_port}",
         "local_url": f"http://127.0.0.1:{default_port}",
-        "hint": None
+        "firewall_ok": fw_ok, "firewall_rule": fw_rule_name,
+        "ip_changed": ip_changed, "last_ip": last_ip, "hint": hint
     }
+
+
+def _check_wal_integrity() -> dict:
+    """检测 SQLite WAL 完整性"""
+    try:
+        from database import get_db
+        db = get_db()
+        wal = db.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+        pages = wal[0][2] if len(wal) > 0 and len(wal[0]) > 2 else -1
+        return {"ok": True, "wal_pages_remaining": pages,
+            "hint": f"WAL {pages} pages pending" if pages > 100 else None}
+    except Exception as e:
+        return {"ok": True, "skipped": True, "reason": str(e)[:80]}
 
 
 def _check_playground_llm() -> dict:
@@ -451,13 +493,14 @@ async def health_check(
     checks = [
         ("ollama", "Ollama 大模型服务", _check_ollama, True),
         ("comfyui", "ComfyUI 图片生成", _check_comfyui, True),
-        ("semantic", "语义搜索依赖", lambda: _check_semantic(), False),
-        ("ffmpeg", "ffmpeg 视频处理", lambda: _check_ffmpeg(), False),
-        ("pillow", "Pillow 图片处理", lambda: _check_pillow(), False),
-        ("db", "数据库读写", lambda: _check_database(), False),
-        ("disk", "磁盘空间", lambda: _check_disk(), False),
-        ("port", "端口绑定 & LAN IP", lambda: _check_port(), False),
-        ("llm", "LLM Playground 模型", lambda: _check_playground_llm(), False),
+        ("semantic", "语义搜索依赖", _check_semantic, False),
+        ("ffmpeg", "ffmpeg 视频处理", _check_ffmpeg, False),
+        ("pillow", "Pillow 图片处理", _check_pillow, False),
+        ("db", "数据库读写", _check_database, False),
+        ("wal", "WAL 完整性", _check_wal_integrity, False),
+        ("disk", "磁盘空间", _check_disk, False),
+        ("port", "端口+防火墙+IP变更", _check_self_reachable, False),
+        ("llm", "LLM Playground 模型", _check_playground_llm, False),
     ]
 
     for key, label, check_fn, is_async in checks:

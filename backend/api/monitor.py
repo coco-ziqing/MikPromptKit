@@ -179,7 +179,7 @@ async def get_health_snapshot(timeout: float = Query(5.0, ge=1.0, le=10.0)):
     """快速健康快照（含后台监听状态 + 轻量自检）"""
     from health import (
         _check_ollama, _check_comfyui, _check_semantic, _check_ffmpeg,
-        _check_pillow, _check_database, _check_disk, _check_port, _check_playground_llm,
+        _check_pillow, _check_database, _check_disk, _check_self_reachable, _check_playground_llm, _check_wal_integrity,
     )
 
     # 并行检测（不阻塞）
@@ -193,14 +193,15 @@ async def get_health_snapshot(timeout: float = Query(5.0, ge=1.0, le=10.0)):
     for key, (fn, _) in checks.items():
         async_tasks[key] = fn(timeout)
 
-    # 同步检测
+    # 同步检测（新增 wal, port→self_reachable）
     sync_checks = {
         "db": _check_database,
+        "wal": _check_wal_integrity,
         "pillow": _check_pillow,
         "disk": _check_disk,
         "semantic": _check_semantic,
         "ffmpeg": _check_ffmpeg,
-        "port": _check_port,
+        "port": _check_self_reachable,
         "llm": _check_playground_llm,
     }
 
@@ -249,15 +250,16 @@ async def get_dashboard(timeout: float = Query(5.0, ge=1.0, le=10.0)):
 
     # 健康状态
     try:
-        from health import _check_database, _check_pillow, _check_disk, _check_port, _check_ffmpeg
+        from health import _check_database, _check_pillow, _check_disk, _check_self_reachable, _check_ffmpeg, _check_wal_integrity
         from health import _check_ollama, _check_comfyui
 
         health_snapshot = {}
         for fn, key in [
             (_check_database, "db"),
+            (_check_wal_integrity, "wal"),
             (_check_pillow, "pillow"),
             (_check_disk, "disk"),
-            (_check_port, "port"),
+            (_check_self_reachable, "port"),
             (_check_ffmpeg, "ffmpeg"),
         ]:
             try:
