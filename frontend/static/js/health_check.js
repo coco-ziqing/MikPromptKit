@@ -67,7 +67,7 @@ App.healthCheck._setStatus = function(state, msg) {
     m.style.display = 'flex';
     if (state === 'error') {
         var body = document.getElementById('hcBody');
-        if (body) body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--danger,#ef4444);">❌ ' + (msg||'连接失败') + '</div>';
+        if (body) body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--danger,#ef4444);">❌ ' + (msg||App._t('auto.str_0745fc09', '连接失败')) + '</div>';
     }
 };
 
@@ -135,7 +135,7 @@ App.healthCheck._renderResults = function() {
             else if (item.provider) detail = '<span style="color:var(--text-muted);font-size:10px;">' + item.provider + ' · ' + App._escape(item.model||'') + '</span>';
             else if (item.prompt_count !== undefined) detail = '<span style="color:var(--text-muted);font-size:10px;">' + item.prompt_count + ' 条数据</span>';
         } else {
-            detail = '<span style="color:var(--danger,#ef4444);font-size:10px;">' + App._escape(item.hint || item.error || '检测失败') + '</span>';
+            detail = '<span style="color:var(--danger,#ef4444);font-size:10px;">' + App._escape(item.hint || item.error || App._t('auto.str_6bc0fbb8', '检测失败')) + '</span>';
         }
 
         h += '<div class="hc-item" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid ' + (skipped?'transparent':'var(--border-color)') + ';border-radius:8px;background:' + (skipped?'var(--hover-bg,transparent)':'') + ';">';

@@ -59,7 +59,7 @@ sc[S.activeField]=cv;S.updateSceneField(S.activeSceneId,S.activeField,cv);S._ref
 
 // 4. 添加词条
 S.__origAP=S._addPanelWord;
-S._addPanelWord=async function(libId){var wi=document.getElementById('s2PanelWordInput'),di=document.getElementById('s2PanelWordDef'),w=(wi?wi.value:'').trim();if(!w){App.showToast('请输入词条','warning');return;}var def=di?(di.value||'').trim():'';try{var d=await App.fetchJSON('/api/v4/word-cards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:w,meaning:def,name:w.substring(0,60),group_id:libId,module:'custom',source:'composer_add'})});if(d&&d.ok){if(wi)wi.value='';if(di)di.value='';delete S.cardCache[libId];await S.loadCards(libId);var l=S.getLibraryById(libId);if(l)S._renderRightPickerContent(l);App.showToast('已添加','success');}}catch(e){App.showToast('添加失败:'+e.message,'error');}};
+S._addPanelWord=async function(libId){var wi=document.getElementById('s2PanelWordInput'),di=document.getElementById('s2PanelWordDef'),w=(wi?wi.value:'').trim();if(!w){App.showToast(App._t('auto.enter_词条', '请输入词条'),'warning');return;}var def=di?(di.value||'').trim():'';try{var d=await App.fetchJSON('/api/v4/word-cards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:w,meaning:def,name:w.substring(0,60),group_id:libId,module:'custom',source:'composer_add'})});if(d&&d.ok){if(wi)wi.value='';if(di)di.value='';delete S.cardCache[libId];await S.loadCards(libId);var l=S.getLibraryById(libId);if(l)S._renderRightPickerContent(l);App.showToast('已添加','success');}}catch(e){App.showToast('添加失败:'+e.message,'error');}};
 
 // 5. 高亮刷新
 S._refreshRightSelection=function(){var sc=S._getCurrentScene(),fv=sc?(sc[S.activeField]||''):'';document.querySelectorAll('.s2-right-card-item').forEach(function(el){var w=el.dataset.word||'',s=fv&&w&&fv.indexOf(w)>=0;el.classList.toggle('selected',s);el.style.background=s?'rgba(16,185,129,0.08)':'';el.style.borderColor=s?'#10b981':'var(--border-color)';});S.renderScenes();};
@@ -77,7 +77,7 @@ S._openRightPicker=function(sid,field){
     var isCustomKey=field&&typeof field==='string'&&field.startsWith&&field.startsWith('custom_');
     if(isCustomKey){
         // custom_字段: 只设场景ID，不设activeField，走原生
-        App.showToast('自定义分组词库', 'info');
+        App.showToast(App._t('auto.custom_分组词库', '自定义分组词库'), 'info');
         S.__origORP.call(S, sid, field);
         return;
     }
@@ -91,7 +91,7 @@ S._openRightPicker=function(sid,field){
     
     // === 修复2: libraries 未加载完成时等待 ===
     if(!S.libraries||S.libraries.length===0){
-        App.showToast('词库正在加载，请稍候...', 'info');
+        App.showToast(App._t('auto.str_abf8a041', '词库正在加载，请稍候...'), 'info');
         var retry=0, maxRetry=20;
         var timer=setInterval(function(){
             retry++;
@@ -100,7 +100,7 @@ S._openRightPicker=function(sid,field){
                 S._openRightPicker(sid, field);
             }else if(retry>=maxRetry){
                 clearInterval(timer);
-                App.showToast('词库加载超时，请刷新页面', 'error');
+                App.showToast(App._t('auto.str_c8773c55', '词库加载超时，请刷新页面'), 'error');
             }
         },300);
         return;
@@ -138,7 +138,7 @@ S.preloadAllCardCaches=async function(){var L=this.libraries||[];for(var i=0;i<M
 
 // 8. 渲染标注+双击编辑
 S.__origRRC=S._renderRightPickerContent;
-S._renderRightPickerContent=function(lib){S.__origRRC.call(this,lib);var t=document.querySelector('.s2-panel-toolbar');if(t&&!t.querySelector('.wc-indicator')){var ind=document.createElement('span');ind.className='wc-indicator';ind.style.cssText='font-size:9px;color:var(--primary);margin-left:4px;opacity:0.5;';ind.textContent='🔄 统一词卡';t.appendChild(ind);}document.querySelectorAll('.s2-right-card-item').forEach(function(el){if(el._wcBound)return;el._wcBound=true;el.addEventListener('dblclick',function(){var cid=parseInt(this.getAttribute('data-card-id'));if(cid&&App.wordEditor)App.wordEditor.openFromComposer(cid);});el.title=(el.title||'')+' | 双击编辑';});};
+S._renderRightPickerContent=function(lib){S.__origRRC.call(this,lib);var t=document.querySelector('.s2-panel-toolbar');if(t&&!t.querySelector('.wc-indicator')){var ind=document.createElement('span');ind.className='wc-indicator';ind.style.cssText='font-size:9px;color:var(--primary);margin-left:4px;opacity:0.5;';ind.textContent=App._t('auto.str_c974d8ec', '🔄 统一词卡');t.appendChild(ind);}document.querySelectorAll('.s2-right-card-item').forEach(function(el){if(el._wcBound)return;el._wcBound=true;el.addEventListener('dblclick',function(){var cid=parseInt(this.getAttribute('data-card-id'));if(cid&&App.wordEditor)App.wordEditor.openFromComposer(cid);});el.title=(el.title||'')+App._t('auto.str_74d4e1a2', ' | 双击编辑');});};
 
 console.log('[WC Bridge v4.1.1] ready — libraries='+(S.libraries||[]).length+', fieldToDim='+Object.keys(S._fieldToDim||{}).length);
 }})();

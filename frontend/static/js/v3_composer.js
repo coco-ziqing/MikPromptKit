@@ -1,6 +1,7 @@
 // ================================================================
 // Phase 6: 组装器 v3 — 基于 prompt_cards 的智能编排
 // Seedance V2 Composer 增强模块
+// Phase 14.1 优化: _v3ToggleCard 不再全量重渲染，改为 CSS class 切换
 // ================================================================
 (function() {
     'use strict';
@@ -12,7 +13,6 @@
     V2._v3ProjectName = '';
 
     V2.showCardComposer = function() {
-        // 渲染卡片选择器
         var editor = document.getElementById('s2Editor');
         if (!editor) return;
 
@@ -29,7 +29,6 @@
         h += '  <div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div></div>';
         h += '</div></div>';
 
-        // 显示在编辑器区
         editor.innerHTML = h;
         V2._v3LoadCards();
     };
@@ -61,18 +60,18 @@
                 var isSelected = selectedIds.indexOf(card.id) >= 0;
                 var sfSummary = Object.keys(sf).filter(function(k) { return sf[k]; }).map(function(k) { return k; }).join(', ');
 
-                h += '<div class="v3-card" data-id="' + card.id + '" style="border:2px solid ' + (isSelected ? '#10b981' : 'var(--border-color,#e2e8f0)') + ';border-radius:8px;padding:10px;cursor:pointer;background:' + (isSelected ? 'rgba(16,185,129,0.05)' : 'var(--bg-card,#fff)') + ';" onclick="App.seedanceV2._v3ToggleCard(' + card.id + ')">';
-                h += '  <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px;">';
-                h += '    <div><span class="card-type-badge card-type-' + (card.card_type || 'image') + '">' + ((card.card_type || 'image') === 'video' ? '🎬' : '📷') + ' ' + (card.card_type || '图片') + '</span>';
-                h += '      <span style="font-size:11px;color:#94a3b8;margin-left:4px;">' + App._escape(App._moduleDisplayName(card.module || '')) + '</span>';
+                h += '<div class="v3-card' + (isSelected ? ' v3-selected' : '') + '" data-id="' + card.id + '" onclick="App.seedanceV2._v3ToggleCard(' + card.id + ')">';
+                h += '  <div class="v3-card-header">';
+                h += '    <div><span class="card-type-badge card-type-' + (card.card_type || 'image') + '">' + ((card.card_type || 'image') === 'video' ? '🎬' : '📷') + ' ' + (card.card_type || App._t('auto.str_20def794', '图片')) + '</span>';
+                h += '      <span class="v3-card-module">' + App._escape(App._moduleDisplayName(card.module || '')) + '</span>';
                 h += '    </div>';
                 h += '    <input type="checkbox" ' + (isSelected ? 'checked' : '') + ' style="pointer-events:none;">';
                 h += '  </div>';
-                h += '  <div style="font-size:12px;line-height:1.4;margin-bottom:4px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;">' + App._escape((card.content || '').substring(0, 100)) + '</div>';
+                h += '  <div class="v3-card-content">' + App._escape((card.content || '').substring(0, 100)) + '</div>';
                 if (sfSummary) {
-                    h += '  <div style="font-size:10px;color:#94a3b8;">🔧 ' + App._escape(sfSummary.substring(0, 60)) + '</div>';
+                    h += '  <div class="v3-card-fields">🔧 ' + App._escape(sfSummary.substring(0, 60)) + '</div>';
                 }
-                h += '  <div style="font-size:10px;color:#94a3b8;margin-top:4px;">使用 ' + (card.usage_count || 0) + ' 次</div>';
+                h += '  <div class="v3-card-usage">使用 ' + (card.usage_count || 0) + ' 次</div>';
                 h += '</div>';
             }
             grid.innerHTML = h;
@@ -81,6 +80,7 @@
         }
     };
 
+    // ✅ Phase 14.1: 不再全量重渲染，只切换 CSS class + DOM 属性
     V2._v3ToggleCard = function(cardId) {
         var idx = V2._v3ProjectCards.indexOf(cardId);
         if (idx >= 0) {
@@ -88,14 +88,21 @@
         } else {
             V2._v3ProjectCards.push(cardId);
         }
-        // 刷新网格显示选中状态
-        V2._v3LoadCards();
+
+        // 只更新对应 DOM 节点的样式，不重新请求 API
+        var cardEl = document.querySelector('.v3-card[data-id="' + cardId + '"]');
+        if (cardEl) {
+            var isNowSelected = idx < 0; // pushed → now selected
+            cardEl.classList.toggle('v3-selected', isNowSelected);
+            var cb = cardEl.querySelector('input[type="checkbox"]');
+            if (cb) cb.checked = isNowSelected;
+        }
     };
 
     V2._v3CreateProject = async function() {
         var cardIds = V2._v3ProjectCards;
         if (!cardIds.length) {
-            App.showToast('请至少选择一张提示词卡', 'warning');
+            App.showToast(App._t('auto.str_f5823279', '请至少选择一张提示词卡'), 'warning');
             return;
         }
 
@@ -117,16 +124,13 @@
 
             if (resp && resp.ok) {
                 App.showToast('项目已创建: ' + name, 'success');
-                // 清空选择
                 V2._v3ProjectCards = [];
-                // 切换到组装器主视图并打开新项目
                 App.switchSeedanceTab('composer');
-                // 等待 DOM 渲染后打开项目
                 setTimeout(function() {
                     App.seedanceV2.openProject(resp.project_id);
                 }, 300);
             } else {
-                App.showToast('创建失败: ' + (resp?.error || '未知错误'), 'error');
+                App.showToast('创建失败: ' + (resp?.error || App._t('common.unknown_error', '未知错误')), 'error');
             }
         } catch (e) {
             App.showToast('创建失败: ' + e.message, 'error');
@@ -134,11 +138,9 @@
     };
 
     // 在种子 V2 的标签页中添加「卡片编排」按钮
-    // 找到 composer tab 的渲染点
     var origTabRender = App.switchSeedanceTab;
     App.switchSeedanceTab = function(tab) {
         if (origTabRender) origTabRender.call(this, tab);
-        // 当前只处理 composer tab
     };
 
     // 在 composer 空状态中添加入口
@@ -147,7 +149,6 @@
         if (origComposerEmpty) origComposerEmpty.call(this);
         var editor = document.getElementById('s2Editor');
         if (!editor) return;
-        // 在空状态中添加卡片编排入口
         var emptyState = editor.querySelector('.s2-empty-state');
         if (emptyState) {
             var btn = document.createElement('button');
@@ -163,7 +164,6 @@
     var origRenderEditor = V2.renderProjectEditor;
     V2.renderProjectEditor = function() {
         if (origRenderEditor) origRenderEditor.call(this);
-        // 在编辑器顶部添加卡片编排按钮
         var header = document.querySelector('.s2-editor-header');
         if (header) {
             var existing = document.getElementById('btnV3CardComposer');
@@ -179,5 +179,5 @@
         }
     };
 
-    console.log('[Phase 6] 组装器 v3 卡片编排模块已加载');
+    console.log('[Phase 6] 组装器 v3 卡片编排模块已加载 (v14.1-optimized)');
 })();

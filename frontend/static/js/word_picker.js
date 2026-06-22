@@ -163,7 +163,7 @@ App.wordPicker._load = async function() {
         if (this._searchQuery) url += '&search=' + encodeURIComponent(this._searchQuery);
 
         var data = await App.fetchJSON(url);
-        if (!data || !data.groups) throw new Error('加载失败');
+        if (!data || !data.groups) throw new Error(App._t('common.load_failed', '加载失败'));
 
         this._groups = data.groups;
 
@@ -196,7 +196,7 @@ App.wordPicker._renderGroups = function() {
     for (var i = 0; i < this._groups.length; i++) {
         var g = this._groups[i];
         var icon = g.icon || '📄';
-        var name = (g.name || '').replace('词库', '').substring(0, 8);
+        var name = (g.name || '').replace(App._t('auto.str_dd745fe3', '词库'), '').substring(0, 8);
         var isActive = g.id === this._activeGroupId;
         var typeColor = g.type === 'seedance' ? '#8b5cf6' : (g.type === 'builtin' ? '#10b981' : '#f59e0b');
         h += '<button class="wc-group-tab' + (isActive ? ' active' : '') + '" '
@@ -376,7 +376,7 @@ App.wordPicker.openBrowser = function() {
         position: 'modal',
         onSelect: function(card) {
             // 点击卡片：复制内容
-            App.copyText(card.content, '已复制: ' + (card.name || card.content).substring(0, 30));
+            App.copyText(card.content, App._t('common.copied', '已复制: ') + (card.name || card.content).substring(0, 30));
         }
     });
 };

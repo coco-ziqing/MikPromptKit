@@ -34,7 +34,7 @@ Object.assign(App, {
         this._editThumbnailCleared = false;
         this._editThumbnailMode = false;
         this.updateEditThumbDisplay();
-        document.getElementById('editPromptTitle').textContent = promptId > 151 ? '编辑提示词' : '查看提示词';
+        document.getElementById('editPromptTitle').textContent = promptId > 151 ? App._t('common.edit', '编辑提示词') : App._t('auto.view_提示词', '查看提示词');
         document.getElementById('editContent').value = data.content || '';
         document.getElementById('editMeaning').value = data.meaning || '';
         document.getElementById('editScene').value = data.scene || '';
@@ -75,7 +75,7 @@ Object.assign(App, {
             // 保存缩略图变更
             await this._saveEditThumbnail(pid);
             this.closeEditModal();
-            this.showToast('保存成功', 'success');
+            this.showToast(App._t('common.save', '保存成功'), 'success');
             await this.loadPrompts();
         }
     },
@@ -103,15 +103,15 @@ Object.assign(App, {
 
     async deleteEditPrompt() {
         var pid = this._editingPromptId;
-        if (!pid || pid <= 151) { this.showToast('内置词条不可删除', 'error'); return; }
+        if (!pid || pid <= 151) { this.showToast(App._t('auto.str_21307bb8', '内置词条不可删除'), 'error'); return; }
         // 编辑弹窗内删除: 使用停靠式确认框（停靠在编辑弹窗的删除按钮旁）
         var delBtn = document.getElementById('editDeleteBtn');
         if (delBtn) {
             this._pendingDeleteId = pid;
             this._pendingDeleteCallback = this._doDeleteFromEditor.bind(this);
-            this._showDeleteConfirm('确定删除此提示词？', delBtn);
+            this._showDeleteConfirm(App._t('common.ok', '确定删除此提示词？'), delBtn);
         } else {
-            if (!confirm('确定删除此提示词?')) return;
+            if (!confirm(App._t('common.ok', '确定删除此提示词?'))) return;
             await this._doDeleteFromEditor(pid);
         }
     },
@@ -120,7 +120,7 @@ Object.assign(App, {
         var result = await this.fetchJSON('/api/prompts/' + pid, { method: 'DELETE' });
         if (result) {
             this.closeEditModal();
-            this.showToast('已删除', 'info');
+            this.showToast(App._t('auto.str_5cc23262', '已删除'), 'info');
             await this.loadPrompts();
         }
     },
@@ -148,7 +148,7 @@ Object.assign(App, {
             '<span class="count-badge">' + (this.state.stats.total_prompts || '') + '</span>' +
             '</div>';
         var icons = { emotion: '😊', color: '🎨', tone: '💡', storyboard: '📋', camera_move: '🎥', seedance: '🎬' };
-        var names = { emotion: '人物表情', color: '场景色彩', tone: '画面色调', storyboard: '分镜构图', composition: '分镜构图', camera_move: '运镜模版', seedance: '视频模版' };
+        var names = { emotion: '人物表情', color: App._t('auto.str_67a7c94b', '场景色彩'), tone: '画面色调', storyboard: App._t('auto.str_ebe1d3eb', '分镜构图'), composition: App._t('auto.str_ebe1d3eb', '分镜构图'), camera_move: App._t('auto.str_6885459d', '运镜模版'), seedance: App._t('auto.str_94df12b2', '视频模版') };
         for (var i = 0; i < modules.length; i++) {
             var m = modules[i];
             if (m.id === 'seedance') continue;
@@ -183,23 +183,23 @@ Object.assign(App, {
 
     async createCustomModule() {
         var name = document.getElementById('inputModuleName').value.trim();
-        if (!name) { App.showToast('请输入分组名称', 'error'); return; }
+        if (!name) { App.showToast(App._t('auto.enter_分组名称', '请输入分组名称'), 'error'); return; }
         var key = 'custom_' + name.replace(/[^a-z0-9_一-鿿]/gi, '_').substring(0, 30);
         try {
             var resp = await fetch('/api/v4/word-cards/groups', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name, group_key: key, icon: '📂', description: '自定义模块: ' + name })
+                body: JSON.stringify({ name: name, group_key: key, icon: '📂', description: App._t('auto.custom_模块__', '自定义模块: ') + name })
             });
             if (resp.ok) {
                 document.getElementById('modalCreateModule').style.display = 'none';
-                App.showToast('分组\u300C' + name + '\u300D已创建', 'success');
+                App.showToast(App._t('auto.str_9e5e8f6f', '分组\u300C') + name + '\u300D已创建', 'success');
                 App.loadModules();
             } else {
                 var detail = '';
                 try { var ej = await resp.json(); detail = ej.detail || ej.error || JSON.stringify(ej); } catch(e) {}
                 if (resp.status === 409) {
-                    App.showToast('分组名称已存在，请换一个', 'warning');
+                    App.showToast(App._t('group.name', '分组名称已存在，请换一个'), 'warning');
                 } else {
                     App.showToast('创建失败: ' + (detail || 'HTTP ' + resp.status), 'error');
                 }
@@ -211,10 +211,10 @@ Object.assign(App, {
     },
 
     async deleteCustomModule(modName) {
-        if (!confirm('确认删除分组「' + modName + '」？关联词条将自动移至「自定义」分类')) return;
+        if (!confirm(App._t('common.confirm', '确认删除分组「') + modName + App._t('auto.str_a2894322', '」？关联词条将自动移至「自定义」分类'))) return;
         var data = await this.fetchJSON('/api/modules/' + encodeURIComponent(modName), { method: 'DELETE' });
         if (data) {
-            this.showToast('分组已删除', 'info');
+            this.showToast(App._t('auto.str_0196e406', '分组已删除'), 'info');
             if (this.state.currentModule === modName) {
                 this.state.currentModule = null;
             }
@@ -289,12 +289,12 @@ Object.assign(App, {
                                 }
                             </div>
                             ${p.thumbnail && App.state.editMode ? '<span class="thumb-clear-btn" onclick="event.stopPropagation();App.clearCardThumbnail(' + p.id + ')" title="清除缩略图">✕</span>' : ''}
-                            ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (p.video_filename ? 'App.openVideoViewer(\'' + p.video_filename + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (p.video_filename ? '查看原视频' : '查看原图') + '">' + (p.video_filename ? '▶' : '🔍') + '</span>' : ''}
+                            ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (p.video_filename ? 'App.openVideoViewer(\'' + p.video_filename + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (p.video_filename ? App._t('auto.view_原视频', '查看原视频') : App._t('auto.view_原图', '查看原图')) + '">' + (p.video_filename ? '▶' : '🔍') + '</span>' : ''}
                         </div>
                         <div class="card-add-row">
-                            <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>
+                            <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title=App._t('auto.add_到收藏分组', '添加到收藏分组')>+</span>
                             ${App.state.editMode ? `
-                            <select class="card-module-move" onchange="App.movePromptToModule(${p.id}, this.value)" title="移动到其他模块" style="font-size:10px;padding:1px 4px;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-muted);cursor:pointer;max-width:76px;">
+                            <select class="card-module-move" onchange="App.movePromptToModule(${p.id}, this.value)" title=App._t('auto.str_fe03db57', '移动到其他模块') style="font-size:10px;padding:1px 4px;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-muted);cursor:pointer;max-width:76px;">
                                 <option value="">📦 移动</option>
                                 ${App.state.modules.filter(function(m) { return m.id !== p.module; }).map(function(m) { return '<option value="' + m.id + '">' + m.name + '</option>'; }).join('')}
                             </select>
@@ -317,7 +317,7 @@ Object.assign(App, {
                             <div style="font-size:10px;color:#cbd5e1;margin-bottom:6px;">${tagHtml}</div>
                             <div class="card-actions">
                                 <span style="font-size:11px;color:#94a3b8;margin-right:auto;">使用 ${p.usage_count} 次</span>
-                                <button class="btn-copy" onclick="App.toggleTranslation(${p.id})" title="中英文切换" style="border-color:#6366f1;color:#6366f1;">🌐 ${App.state._cardTranslations[p.id] ? '中文' : '英文'}</button>
+                                <button class="btn-copy" onclick="App.toggleTranslation(${p.id})" title="中英文切换" style="border-color:#6366f1;color:#6366f1;">🌐 ${App.state._cardTranslations[p.id] ? App._t('auto.str_a7bac223', '中文') : App._t('auto.str_f9fb6a06', '英文')}</button>
                                 ${App.state.editMode ? '<button class="btn-copy" style="border-color:#eab308;color:#eab308;" onclick="App.openEditModal(' + p.id + ')">\u270f \u7f16\u8f91</button>' : ''}
                                 <button class="btn-copy" onclick="App.handleCopy(${p.id}, '${this._escape(p.content).replace(/'/g, "\\'")}')">📋 复制</button>
                                 ${App.state.editMode ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.trashPrompt(' + p.id + ', this)">🗑 删除</button>' : ''}
@@ -458,7 +458,7 @@ Object.assign(App, {
 
     async openInComposer(tplId) {
         var d = await this.fetchJSON('/api/seedance/templates/' + tplId);
-        if (!d || !d.template) { this.showToast('模板数据加载失败', 'error'); return; }
+        if (!d || !d.template) { this.showToast(App._t('auto.str_99c719dc', '模板数据加载失败'), 'error'); return; }
         var tpl = d.template;
         var tplCategory = tpl.category || 'Seedance';
         var tplMeaning = tpl.meaning || '';
@@ -468,7 +468,7 @@ Object.assign(App, {
         this.switchSeedanceTab('composer');
         if (App.seedanceV2) App.seedanceV2._skipSwitchInit = false;
 
-        if (!App.seedanceV2) { this.showToast('组装器未加载', 'warning'); return; }
+        if (!App.seedanceV2) { this.showToast(App._t('nav.composer', '组装器未加载'), 'warning'); return; }
 
         await App.seedanceV2.init();
 
@@ -490,9 +490,9 @@ Object.assign(App, {
 
         var shotCount = importResp.scene_count || 0;
         var populated = importResp.fields_populated || 0;
-        var msg = '模板「' + (tplMeaning.substring(0, 15) || tplCategory) + '」已智能导入';
-        if (shotCount > 1) msg += '，拆分为 ' + shotCount + ' 个镜头';
-        if (populated > 0) msg += '，' + populated + ' 个镜头已自动填充词卡';
+        var msg = '模板「' + (tplMeaning.substring(0, 15) || tplCategory) + App._t('auto.str_02b227dd', '」已智能导入');
+        if (shotCount > 1) msg += '，拆分为 ' + shotCount + App._t('auto.str_8d42c778', ' 个镜头');
+        if (populated > 0) msg += '，' + populated + App._t('auto.str_c83e14ef', ' 个镜头已自动填充词卡');
         App.showToast(msg, 'success');
     },
 
@@ -529,12 +529,12 @@ Object.assign(App, {
         if (!data) return;
         document.getElementById('composerOutput').value = data.text;
         document.getElementById('composerResult').style.display = 'block';
-        this.showToast('提示词已生成', 'success');
+        this.showToast(App._t('common.notice', '提示词已生成'), 'success');
     },
 
     async copyComposerResult() {
         const text = document.getElementById('composerOutput').value;
-        await this.copyText(text, '提示词已复制到剪贴板');
+        await this.copyText(text, App._t('common.notice', '提示词已复制到剪贴板'));
     },
 
     async loadGallery() {
@@ -559,7 +559,7 @@ Object.assign(App, {
         const data = await this.fetchJSON('/api/seedance/templates/' + id);
         if (!data || !data.template) return;
         this.switchSeedanceTab('templates');
-        this.copyText(data.template.content, '模板内容已复制');
+        this.copyText(data.template.content, App._t('auto.str_129d24bf', '模板内容已复制'));
     },
 
     async loadGlossary() {
@@ -618,7 +618,7 @@ Object.assign(App, {
                 return;
             }
         }
-        App.showToast('请拖拽 PNG 文件', 'error');
+        App.showToast(App._t('auto.str_81047aec', '请拖拽 PNG 文件'), 'error');
     },
 
     // --- 全局拖拽导入（编辑模式显示PNG覆盖层，非编辑模式支持JSON/.pt/PNG） ---
@@ -642,7 +642,7 @@ Object.assign(App, {
             var res = await fetch('/api/thumbnails/upload', { method: 'POST', body: formData });
             var data = await res.json();
             if (!data || !data.ok) {
-                this.showToast('上传失败: ' + (data ? data.error : '未知错误'), 'error');
+                this.showToast(App._t('auto.upload_失败__', '上传失败: ') + (data ? data.error : App._t('common.unknown_error', '未知错误')), 'error');
                 return;
             }
             // 3. 关联到提示词
@@ -656,10 +656,10 @@ Object.assign(App, {
                 await this.loadPrompts();
                 await this.loadThumbLibrary();
             } else {
-                this.showToast('关联失败', 'error');
+                this.showToast(App._t('auto.str_6d973dbe', '关联失败'), 'error');
             }
         } catch(e) {
-            this.showToast('上传失败: ' + e.message, 'error');
+            this.showToast(App._t('auto.upload_失败__', '上传失败: ') + e.message, 'error');
         }
     },
 
@@ -678,12 +678,12 @@ Object.assign(App, {
                 body: JSON.stringify({ prompt_id: promptId, filename: oldFilename })
             });
             if (!assignRes || !assignRes.ok) {
-                this.showToast('撤销失败', 'error');
+                this.showToast(App._t('auto.str_a8301ae8', '撤销失败'), 'error');
                 return;
             }
         }
         delete this._undoThumbnailState[promptId];
-        this.showToast('↩ 缩略图已恢复', 'success');
+        this.showToast(App._t('auto.str_5d83404a', '↩ 缩略图已恢复'), 'success');
         await this.loadPrompts();
         await this.loadThumbLibrary();
     },
@@ -753,7 +753,7 @@ Object.assign(App, {
         var btn = document.createElement('div');
         btn.className = 'sidebar-toggle-btn';
         btn.id = 'sidebarToggleBtn';
-        btn.title = '折叠/展开模块列表';
+        btn.title = App._t('auto.str_909863b4', '折叠/展开模块列表');
         btn.innerHTML = '\u25C0';
         btn.addEventListener('click', function(e) { e.stopPropagation(); App.toggleSidebarCollapse(); });
         document.body.appendChild(btn);
@@ -770,12 +770,12 @@ Object.assign(App, {
             sidebar.classList.add('collapsed');
             document.body.classList.add('sidebar-collapsed');
             btn.innerHTML = '\u25B6';
-            btn.title = '展开模块列表';
+            btn.title = App._t('auto.str_854e6c55', '展开模块列表');
         } else {
             sidebar.classList.remove('collapsed');
             document.body.classList.remove('sidebar-collapsed');
             btn.innerHTML = '\u25C0';
-            btn.title = '折叠模块列表';
+            btn.title = App._t('auto.str_b79711fb', '折叠模块列表');
         }
         try { localStorage.setItem('promptkit_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
     },
@@ -790,7 +790,7 @@ Object.assign(App, {
                 sidebar.classList.add('collapsed');
                 document.body.classList.add('sidebar-collapsed');
                 btn.innerHTML = '\u25B6';
-                btn.title = '展开模块列表';
+                btn.title = App._t('auto.str_854e6c55', '展开模块列表');
             }
         } catch(e) {}
     },

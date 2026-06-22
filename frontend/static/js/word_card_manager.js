@@ -68,7 +68,7 @@ App.wordCards.load = async function() {
                 var usage = c.usage_count>0 ? '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:var(--hover-bg);color:var(--text-muted);">×'+c.usage_count+'</span>' : '';
                 h += '<div class="wc-card" style="border:1px solid var(--border-color);border-radius:10px;overflow:hidden;background:var(--bg-card);transition:0.15s;" onmouseenter="this.style.borderColor=\'var(--primary)\';this.style.boxShadow=\'0 4px 16px rgba(0,0,0,0.08)\'" onmouseleave="this.style.borderColor=\'var(--border-color)\';this.style.boxShadow=\'none\'">'
                 + '<div style="padding:10px 12px 6px;display:flex;justify-content:space-between;align-items:start;">'
-+ '<div data-card-content="' + (c.content||'').replace(/'/g,'\\') + '" onclick="App.copyText(this.dataset.cardContent,\'已复制\')" style="display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer;flex:1;">'
++ '<div data-card-content="' + (c.content||'').replace(/'/g,'\\') + '" onclick="App.copyText(this.dataset.cardContent,\''+App._t('common.copied', '已复制')+'\')" style="display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer;flex:1;">'
                 + '<span style="font-size:16px;">'+App._escape(c.icon||'📄')+'</span>'
                 + '<div style="min-width:0;"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+App._escape(name)+'</div>'
                 + (c.group_name ? '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;">'+App._escape(c.group_name)+'</div>' : '')

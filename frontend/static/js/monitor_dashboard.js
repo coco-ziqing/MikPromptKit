@@ -92,7 +92,7 @@ App.monitor.refresh = async function() {
     if (!body) return;
 
     if (badge) {
-        badge.textContent = '刷新中...';
+        badge.textContent = App._t('common.refresh', '刷新中...');
         badge.style.color = '#f59e0b';
     }
 
@@ -105,7 +105,7 @@ App.monitor.refresh = async function() {
         }
     } catch (e) {
         if (badge) {
-            badge.textContent = '连接失败';
+            badge.textContent = App._t('auto.str_0745fc09', '连接失败');
             badge.style.color = '#ef4444';
         }
         if (body && !this._data) {
@@ -162,13 +162,13 @@ App.monitor._render = function() {
     html += '<div class="mon-section-title">🗄️ 数据存储</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:16px;">';
     var dbItems = [
-        {label:'提示词', val: db.prompts, icon:'📝'},
-        {label:'卡片', val: db.cards, icon:'🃏'},
-        {label:'已删除', val: db.cards_deleted, icon:'🗑️'},
-        {label:'词库资产', val: db.library_assets, icon:'📚'},
-        {label:'收藏分组', val: db.collections, icon:'⭐'},
-        {label:'词包', val: db.wordpacks, icon:'📦'},
-        {label:'DB大小', val: (db.db_size_mb||0) + 'MB', icon:'💾'},
+        {label:App._t('common.notice', '提示词'), val: db.prompts, icon:'📝'},
+        {label:App._t('auto.str_d87f215d', '卡片'), val: db.cards, icon:'🃏'},
+        {label:App._t('auto.str_5cc23262', '已删除'), val: db.cards_deleted, icon:'🗑️'},
+        {label:App._t('auto.str_441926a2', '词库资产'), val: db.library_assets, icon:'📚'},
+        {label:App._t('auto.str_ccbb2ef4', '收藏分组'), val: db.collections, icon:'⭐'},
+        {label:App._t('nav.wordpacks', '词包'), val: db.wordpacks, icon:'📦'},
+        {label:App._t('auto.str_2e7aa31a', 'DB大小'), val: (db.db_size_mb||0) + 'MB', icon:'💾'},
         {label:'WAL', val: (db.wal_size_mb||0) + 'MB', icon:'📋'},
     ];
     for (var i = 0; i < dbItems.length; i++) {
@@ -186,9 +186,10 @@ App.monitor._render = function() {
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;margin-bottom:16px;">';
     var health = d.health || {};
     var healthOrder = [
-        {key:'db', name:'数据库', icon:'🗄️', critical:true},
+        {key:'db', name:App._t('auto.str_68051bf4', '数据库'), icon:'🗄️', critical:true},
+        {key:'wal', name:'WAL 完整性', icon:'📋', critical:true},
         {key:'pillow', name:'Pillow', icon:'🖌️', critical:true},
-        {key:'port', name:'端口/LAN', icon:'🌐', critical:true},
+        {key:'port', name:'端口/防火墙/IP', icon:'🌐', critical:true},
         {key:'disk', name:'磁盘空间', icon:'💾', critical:true},
         {key:'ffmpeg', name:'FFmpeg', icon:'🎬', critical:false},
         {key:'ollama', name:'Ollama', icon:'🦙', critical:false},
@@ -225,7 +226,7 @@ App.monitor._render = function() {
     html += '<div class="mon-section-title">📊 请求统计</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px;margin-bottom:12px;">';
     html += this._card_sm('请求总数', reqs.total||0, '#4f46e5');
-    html += this._card_sm('错误', reqs.errors||0, (reqs.errors||0) > 0 ? '#ef4444' : '#10b981');
+    html += this._card_sm(App._t('common.error', '错误'), reqs.errors||0, (reqs.errors||0) > 0 ? '#ef4444' : '#10b981');
     var methodHtml = '';
     var methods = reqs.by_method || {};
     for (var m in methods) {

@@ -34,7 +34,7 @@
                 })
                 .catch(function(e) {
                     console.error('[Search] 搜索失败:', e);
-                    App.showToast('搜索请求失败', 'error');
+                    App.showToast(App._t('common.search', '搜索请求失败'), 'error');
                 });
         };
 
@@ -60,7 +60,7 @@
                 })
                 .catch(function(e) {
                     console.error('[Semantic Search] 搜索失败:', e);
-                    App.showToast('语义搜索请求失败', 'error');
+                    App.showToast(App._t('auto.str_a4b0155e', '语义搜索请求失败'), 'error');
                 });
         };
 
@@ -70,7 +70,7 @@
             var btn = document.getElementById('searchModeBtn');
             if (btn) {
                 btn.textContent = App._searchMode === 'text' ? '🔤' : '🧠';
-                btn.title = '当前: ' + (App._searchMode === 'text' ? '全文搜索' : '语义搜索');
+                btn.title = '当前: ' + (App._searchMode === 'text' ? App._t('auto.str_430c07cf', '全文搜索') : App._t('auto.str_16d27cb3', '语义搜索'));
             }
         };
 
@@ -84,7 +84,7 @@
             var modeBtn = document.getElementById('searchModeBtn');
             if (modeBtn) {
                 modeBtn.textContent = App._searchMode === 'text' ? '🔤' : '🧠';
-                modeBtn.title = '当前: ' + (App._searchMode === 'text' ? '全文搜索' : '语义搜索');
+                modeBtn.title = '当前: ' + (App._searchMode === 'text' ? App._t('auto.str_430c07cf', '全文搜索') : App._t('auto.str_16d27cb3', '语义搜索'));
             }
 
             input.addEventListener('input', function() {
@@ -208,7 +208,7 @@
                 exclude: (document.getElementById('advSearchExclude') || {}).value ? (document.getElementById('advSearchExclude').value.split(',').map(function(x){return parseInt(x.trim());}).filter(function(x){return !isNaN(x);})) : [],
                 date_from: (document.getElementById('advSearchDateFrom') || {}).value || ''
             };
-            if (!params.query.trim()) { App.showToast('请输入搜索关键词', 'warning'); return; }
+            if (!params.query.trim()) { App.showToast(App._t('auto.enter_搜索关键词', '请输入搜索关键词'), 'warning'); return; }
             App.showSkeleton();
             fetch('/api/search/advanced', {
                 method: 'POST',

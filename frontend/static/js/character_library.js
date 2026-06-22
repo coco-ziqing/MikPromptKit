@@ -157,8 +157,8 @@ App.characterLib._viewProfile = async function(charId) {
     h += '<div style="flex:1;min-width:280px;font-size:13px;">';
     var infoFields = [
         ['性别', c.gender], ['年龄段', c.age_range], ['职业', c.occupation],
-        ['角色定位', c.role_position], ['声线类型', c.voice_type],
-        ['声音细节', c.voice_detail], ['旁白风格', c.narration_style],
+        [App._t('auto.str_22cffcec', '角色定位'), c.role_position], [App._t('auto.str_217594d9', '声线类型'), c.voice_type],
+        [App._t('auto.str_71096074', '声音细节'), c.voice_detail], [App._t('auto.str_47f7ac38', '旁白风格'), c.narration_style],
         ['性格', c.personality]
     ];
     for (var fi = 0; fi < infoFields.length; fi++) {
@@ -219,26 +219,26 @@ App.characterLib._openEditor = async function(charId) {
     overlay.style.cssText = 'display:flex;z-index:670;';
     overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
 
-    var title = c ? '编辑角色: ' + c.name : '新建角色';
+    var title = c ? App._t('common.edit', '编辑角色: ') + c.name : App._t('common.new', '新建角色');
     var h = '<div class="modal-content" style="max-width:700px;width:95%;max-height:90vh;overflow-y:auto;border-radius:14px;padding:24px;">';
     h += '<h5 style="margin:0 0 16px;">'+title+'</h5>';
 
     // Form fields
     h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;">';
-    h += _charField('name','角色名称', c?.name||'', '必填','');
-    h += _charField('gender','性别', c?.gender||'', '','男/女/其他');
+    h += _charField('name',App._t('auto.str_10a6f121', '角色名称'), c?.name||'', '必填','');
+    h += _charField('gender','性别', c?.gender||'', '',App._t('auto.str_9e2d9d46', '男/女/其他'));
     h += _charField('age_range','年龄段', c?.age_range||'', '','25-30岁');
     h += _charField('occupation','职业', c?.occupation||'', '','程序员/学生');
-    h += _charField('role_position','角色定位', c?.role_position||'', '','主角/反派/配角');
-    h += _charField('voice_type','声线类型', c?.voice_type||'', '','年轻男声/低沉磁性');
-    h += _charField('voice_detail','声音细节', c?.voice_detail||'', '','语速适中，咬字清楚');
-    h += _charField('narration_style','旁白风格', c?.narration_style||'', '','第一人称/纪录片风');
+    h += _charField('role_position',App._t('auto.str_22cffcec', '角色定位'), c?.role_position||'', '','主角/反派/配角');
+    h += _charField('voice_type',App._t('auto.str_217594d9', '声线类型'), c?.voice_type||'', '','年轻男声/低沉磁性');
+    h += _charField('voice_detail',App._t('auto.str_71096074', '声音细节'), c?.voice_detail||'', '','语速适中，咬字清楚');
+    h += _charField('narration_style',App._t('auto.str_47f7ac38', '旁白风格'), c?.narration_style||'', '','第一人称/纪录片风');
     h += '</div>';
 
-    h += _charField('personality','性格描述', c?.personality||'', '', '多个性格词逗号分隔', 2);
-    h += _charTextArea('appearance','外貌描述', c?.appearance||'', '身高体型、发型发色、五官特征、着装风格');
-    h += _charTextArea('backstory','背景故事', c?.backstory||'', '角色过去经历、动机、关系网');
-    h += _charTextArea('notes','备注', c?.notes||'', '额外注释');
+    h += _charField('personality',App._t('auto.str_21796b34', '性格描述'), c?.personality||'', '', '多个性格词逗号分隔', 2);
+    h += _charTextArea('appearance',App._t('auto.str_b2ada31b', '外貌描述'), c?.appearance||'', App._t('auto.str_c36d2ea7', '身高体型、发型发色、五官特征、着装风格'));
+    h += _charTextArea('backstory','背景故事', c?.backstory||'', App._t('auto.str_8929547b', '角色过去经历、动机、关系网'));
+    h += _charTextArea('notes',App._t('auto.str_2432b575', '备注'), c?.notes||'', '额外注释');
 
     // Image upload area
     h += '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">';
@@ -280,7 +280,7 @@ App.characterLib._saveChar = async function(charId) {
         var el = document.getElementById('charField_'+fields[i]);
         if (el) data[fields[i]] = el.value.trim();
     }
-    if (!data.name) { App.showToast('角色名称必填','warning'); return; }
+    if (!data.name) { App.showToast(App._t('auto.str_a1684f27', '角色名称必填'),'warning'); return; }
 
     var url = '/api/characters';
     var method = 'POST';
@@ -289,11 +289,11 @@ App.characterLib._saveChar = async function(charId) {
     var d = await App.fetchJSON(url, {method:method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
     if (d && d.ok) {
         document.getElementById('charEditorModal')?.remove();
-        App.showToast(charId ? '角色已更新' : '角色已创建', 'success');
+        App.showToast(charId ? App._t('auto.str_52552f25', '角色已更新') : App._t('auto.str_648807a6', '角色已创建'), 'success');
         await App.characterLib.loadList();
         App.characterLib._showModal();
     } else {
-        App.showToast('保存失败: ' + (d?.detail||'未知错误'), 'error');
+        App.showToast(App._t('common.save', '保存失败: ') + (d?.detail||App._t('common.unknown_error', '未知错误')), 'error');
     }
 };
 
@@ -301,11 +301,11 @@ App.characterLib._deleteChar = async function(charId) {
     var d = await App.fetchJSON('/api/characters/' + charId, {method:'DELETE'});
     if (d && d.ok) {
         document.getElementById('charProfileModal')?.remove();
-        App.showToast('角色已删除','info');
+        App.showToast(App._t('auto.str_38199c97', '角色已删除'),'info');
         await App.characterLib.loadList();
         App.characterLib._showModal();
     } else {
-        App.showToast('删除失败','error');
+        App.showToast(App._t('common.delete', '删除失败'),'error');
     }
 };
 
@@ -345,7 +345,7 @@ App.characterLib._showCropModal = function() {
     overlay.style.cssText = 'display:flex;z-index:700;';
     overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
 
-    var label = st.imageType === 'avatar' ? '裁剪头像' : '裁剪预览图';
+    var label = st.imageType === 'avatar' ? App._t('auto.str_a88cf790', '裁剪头像') : '裁剪预览图';
     var ratioHint = st.imageType === 'avatar' ? '1:1' : '3:2';
     var arW = st.imageType === 'avatar' ? 1 : 3;
     var arH = st.imageType === 'avatar' ? 1 : 2;
@@ -560,14 +560,14 @@ App.characterLib._doCropAndUpload = async function() {
         var data = {};
         var fn = document.getElementById('charField_name');
         if (fn && fn.value.trim()) data.name = fn.value.trim();
-        else { App.showToast('请先填写角色名称','warning'); return; }
+        else { App.showToast(App._t('auto.please_填写角色名称', '请先填写角色名称'),'warning'); return; }
         var d = await App.fetchJSON('/api/characters', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
         if (d && d.ok) {
             charId = d.id;
             document.getElementById('charEditorModal')?.remove();
-            App.showToast('角色已创建，正在上传图片...','info');
+            App.showToast(App._t('auto.str_2b4668e2', '角色已创建，正在上传图片...'),'info');
         } else {
-            App.showToast('创建角色失败','error'); return;
+            App.showToast(App._t('auto.create_角色失败', '创建角色失败'),'error'); return;
         }
     }
 
@@ -579,13 +579,13 @@ App.characterLib._doCropAndUpload = async function() {
         var r = await fetch(url, {method:'POST', body:fd});
         var d = await r.json();
         if (d && d.ok) {
-            App.showToast(st.imageType==='avatar'?'头像已裁剪上传':'预览图已裁剪上传', 'success');
+            App.showToast(st.imageType==='avatar'?App._t('auto.str_0d40c987', '头像已裁剪上传'):App._t('auto.preview_图已裁剪上传', '预览图已裁剪上传'), 'success');
             App.characterLib._openEditor(charId);
         } else {
-            App.showToast('上传失败','error');
+            App.showToast(App._t('auto.upload_失败', '上传失败'),'error');
         }
     } catch(e) {
-        App.showToast('上传异常: '+e.message,'error');
+        App.showToast(App._t('auto.upload_异常__', '上传异常: ')+e.message,'error');
     }
     this._cropState = null;
 };

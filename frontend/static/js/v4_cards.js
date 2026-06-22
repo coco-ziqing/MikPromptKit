@@ -14,7 +14,7 @@
 
         try {
             var resp = await App.fetchJSON('/api/v4/cards/' + cardId + '/full');
-            if (!resp || !resp.card) { App.showToast('加载失败', 'error'); return; }
+            if (!resp || !resp.card) { App.showToast(App._t('common.load_failed', '加载失败'), 'error'); return; }
             var card = resp.card;
 
             var overlay = document.createElement('div');
@@ -26,8 +26,8 @@
             var sf = card.structured_fields || {};
             var sfHtml = '';
             var fieldNames = {
-                subject: '主体', scene_desc: '场景', composition: '构图', lighting: '光影',
-                camera_move: '运镜', mood: '氛围', style: '画风', texture: '质感',
+                subject: '主体', scene_desc: App._t('auto.str_c931653c', '场景'), composition: App._t('auto.str_c38d3f3b', '构图'), lighting: '光影',
+                camera_move: App._t('auto.str_4abc8a41', '运镜'), mood: '氛围', style: '画风', texture: '质感',
                 motion: '动作', speed: '速率', focal_length: '焦段', perspective: '视角',
                 color_grade: '调色', weather: '天气', particles: '粒子', filter: '滤镜'
             };
@@ -71,7 +71,7 @@
 
             // 基本信息
             h += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">';
-            h += '<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:' + (card.card_type === 'video' ? '#8b5cf6' : '#10b981') + ';color:#fff;">' + (card.card_type === 'video' ? '🎬 视频' : '📷 图片') + '</span>';
+            h += '<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:' + (card.card_type === 'video' ? '#8b5cf6' : '#10b981') + ';color:#fff;">' + (card.card_type === 'video' ? App._t('auto.str_71ed0088', '🎬 视频') : App._t('auto.str_77a2076d', '📷 图片')) + '</span>';
             h += '<span style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid var(--border-color);">' + App._escape(App._moduleDisplayName(card.module)) + '</span>';
             if (card.category) h += '<span style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid var(--border-color);">' + App._escape(card.category) + '</span>';
             h += '<span style="font-size:11px;color:#94a3b8;">使用 ' + (card.usage_count_total || 0) + ' 次</span>';
@@ -129,7 +129,7 @@
 
             // 版本信息
             h += '<div style="font-size:11px;color:#94a3b8;margin-top:8px;">';
-            h += '版本 v' + (card.version || 1) + ' · 创建 ' + (card.created_at || '') + ' · 更新 ' + (card.updated_at || '');
+            h += App._t('auto.str_af9abef0', '版本 v') + (card.version || 1) + ' · 创建 ' + (card.created_at || '') + ' · 更新 ' + (card.updated_at || '');
             h += '</div>';
 
             h += '</div></div>';

@@ -9,7 +9,7 @@ Object.assign(App, {
     // ============ 回收站相关 ============
 
     openAddPromptModal() {
-        document.getElementById('editPromptTitle').textContent = '新建提示词';
+        document.getElementById('editPromptTitle').textContent = App._t('common.new', '新建提示词');
         document.getElementById('editContent').value = '';
         document.getElementById('editMeaning').value = '';
         document.getElementById('editScene').value = '';
@@ -42,7 +42,7 @@ Object.assign(App, {
             meaning: document.getElementById('editMeaning').value.trim(),
             scene: document.getElementById('editScene').value.trim(),
             module: moduleVal,
-            category: document.getElementById('editCategory').value.trim() || '自定义',
+            category: document.getElementById('editCategory').value.trim() || App._t('auto.custom_', '自定义'),
             tags: document.getElementById('editTags').value.trim() || '[]'
         };
         if (!data.content) { this.showToast('内容不能为空', 'error'); return; }
@@ -58,7 +58,7 @@ Object.assign(App, {
                 await this._saveEditThumbnail(newId);
             }
             this.closeEditModal();
-            this.showToast('新建成功', 'success');
+            this.showToast(App._t('common.new', '新建成功'), 'success');
             this.state.batchSelected.clear();
             var eb = document.getElementById('batchBar');
             if (eb) eb.style.display = 'none';
@@ -151,17 +151,17 @@ Object.assign(App, {
         this._pendingDeleteCallback = null;  // 清除编辑弹窗残留回调
         if (!deleteBtn && window.matchMedia('(max-width: 768px)').matches) {
             // 移动端: 原生 confirm
-            if (!confirm('确认将此词条移入回收站？')) return;
+            if (!confirm(App._t('common.confirm', '确认将此词条移入回收站？'))) return;
             await this._doTrashDelete(promptId);
             return;
         }
         if (!deleteBtn) {
             // 无按钮引用: 降级到原生 confirm
-            if (!confirm('确认将此词条移入回收站？')) return;
+            if (!confirm(App._t('common.confirm', '确认将此词条移入回收站？'))) return;
             await this._doTrashDelete(promptId);
             return;
         }
-        this._showDeleteConfirm('确认将此词条移入回收站？', deleteBtn);
+        this._showDeleteConfirm(App._t('common.confirm', '确认将此词条移入回收站？'), deleteBtn);
     },
 
     async _processDeleteConfirm() {
@@ -182,20 +182,20 @@ Object.assign(App, {
             var res = await fetch('/api/prompts/' + pid, { method: 'DELETE' });
             var data = await res.json();
             if (data.trashed) {
-                this.showToast('已移入回收站', 'info');
+                this.showToast(App._t('auto.str_8d6e3b74', '已移入回收站'), 'info');
                 this.loadPrompts();
             } else if (data.detail) {
                 this.showToast(data.detail, 'error');
             }
         } catch(e) {
-            this.showToast('操作失败: ' + e.message, 'error');
+            this.showToast(App._t('common.op_failed', '操作失败: ') + e.message, 'error');
         }
     },
 
     async batchTrash() {
         const ids = [...this.state.batchSelected];
-        if (ids.length === 0) { this.showToast('请先选择词条', 'error'); return; }
-        if (!confirm('确认将选中的 ' + ids.length + ' 个词条移入回收站？')) return;
+        if (ids.length === 0) { this.showToast(App._t('auto.please_选择词条', '请先选择词条'), 'error'); return; }
+        if (!confirm(App._t('common.confirm', '确认将选中的 ') + ids.length + ' 个词条移入回收站？')) return;
         const data = await this.fetchJSON('/api/v2/trash/batch-trash', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -217,12 +217,12 @@ Object.assign(App, {
 
     async batchGenerateThumbnails() {
         var ids = [...this.state.batchSelected];
-        if (ids.length === 0) { this.showToast('请先选择词条', 'error'); return; }
-        if (!confirm('确认对 ' + ids.length + ' 条词条批量生成缩略图？\n注意：每张图需等待 ComfyUI 生成完成，耗时较长。')) return;
+        if (ids.length === 0) { this.showToast(App._t('auto.please_选择词条', '请先选择词条'), 'error'); return; }
+        if (!confirm(App._t('common.confirm', '确认对 ') + ids.length + ' 条词条批量生成缩略图？\n注意：每张图需等待 ComfyUI 生成完成，耗时较长。')) return;
 
         var cfg = await this.fetchJSON('/api/v2/comfyui/config');
         if (!cfg || !cfg.config || !cfg.config.enabled) {
-            this.showToast('ComfyUI 未启用，请先配置', 'warning');
+            this.showToast(App._t('auto.str_5f57664b', 'ComfyUI 未启用，请先配置'), 'warning');
             this.openComfyConfig();
             return;
         }
@@ -241,7 +241,7 @@ Object.assign(App, {
                     workflow_id: cfg.config.active_workflow || ''
                 })
             });
-            if (!resp.ok) { this.showToast('批处理请求失败', 'error'); return; }
+            if (!resp.ok) { this.showToast(App._t('auto.str_01b40748', '批处理请求失败'), 'error'); return; }
 
             var reader = resp.body.getReader();
             var decoder = new TextDecoder();
@@ -261,12 +261,12 @@ Object.assign(App, {
                             success = ev.success || 0;
                             errors = ev.errors || 0;
                         } else if (ev.done) {
-                            this.showToast('(' + ev.done + '/' + ev.total + ') ' + (ev.ok ? '✅ 完成' : '❌ ' + (ev.error || '失败')), ev.ok ? 'success' : 'error');
+                            this.showToast('(' + ev.done + '/' + ev.total + ') ' + (ev.ok ? '✅ 完成' : '❌ ' + (ev.error || App._t('common.failed', '失败'))), ev.ok ? 'success' : 'error');
                         }
                     } catch(e) {}
                 }
             }
-            this.showToast('✅ 批量生成完成: ' + success + ' 成功, ' + errors + ' 失败', errors > 0 ? 'warning' : 'success');
+            this.showToast('✅ 批量生成完成: ' + success + ' 成功, ' + errors + App._t('auto.str_f73d0c19', ' 失败'), errors > 0 ? 'warning' : 'success');
             await this.loadPrompts();
         } catch(e) {
             this.showToast('批量生成异常: ' + e.message, 'error');
@@ -325,9 +325,9 @@ Object.assign(App, {
                         ${thumbHtml}
                     </div>
                     <div class="card-actions">
-                        <button class="card-action-btn" onclick="event.stopPropagation();App.setCollectionThumbnail(${c.id})" title="设置缩略图">🖼</button>
-                        <button class="card-action-btn" onclick="event.stopPropagation();App.copyCollection(${c.id})" title="复制分组">📋</button>
-                        <button class="card-action-btn" onclick="event.stopPropagation();App.deleteCollection(${c.id})" title="删除分组">🗑</button>
+                        <button class="card-action-btn" onclick="event.stopPropagation();App.setCollectionThumbnail(${c.id})" title=App._t('auto.settings_缩略图', '设置缩略图')>🖼</button>
+                        <button class="card-action-btn" onclick="event.stopPropagation();App.copyCollection(${c.id})" title=App._t('common.copy', '复制分组')>📋</button>
+                        <button class="card-action-btn" onclick="event.stopPropagation();App.deleteCollection(${c.id})" title=App._t('common.delete', '删除分组')>🗑</button>
                         <div class="icon-select-wrap"><select class="icon-picker" onchange="App.changeCollectionIcon(${c.id}, this)" onclick="event.stopPropagation()">
                             ${iconOpts}
                         </select></div>
@@ -432,10 +432,10 @@ Object.assign(App, {
                                       </div>`
                                 }
                             </div>
-                            ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (p.video_filename ? 'App.openVideoViewer(\'' + p.video_filename + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (p.video_filename ? '查看原视频' : '查看原图') + '">' + (p.video_filename ? '▶' : '🔍') + '</span>' : ''}
+                            ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (p.video_filename ? 'App.openVideoViewer(\'' + p.video_filename + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (p.video_filename ? App._t('auto.view_原视频', '查看原视频') : App._t('auto.view_原图', '查看原图')) + '">' + (p.video_filename ? '▶' : '🔍') + '</span>' : ''}
                         </div>
                         <div class="card-add-row">
-                            <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>
+                            <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title=App._t('auto.add_到收藏分组', '添加到收藏分组')>+</span>
                             <div class="card-collections">
                                 <div class="card-checkbox">
                                     <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="App.toggleSelect(${p.id})">
@@ -506,11 +506,11 @@ Object.assign(App, {
                 this.state._cardTranslations[promptId] = true;
             } else {
                 el.innerHTML = App._escape(originalContent);
-                this.showToast('翻译失败: ' + (data ? data.error : '未知错误'), 'error');
+                this.showToast(App._t('auto.str_31ff785e', '翻译失败: ') + (data ? data.error : App._t('common.unknown_error', '未知错误')), 'error');
             }
         } catch(e) {
             el.innerHTML = App._escape(originalContent);
-            this.showToast('翻译失败: ' + e.message, 'error');
+            this.showToast(App._t('auto.str_31ff785e', '翻译失败: ') + e.message, 'error');
         }
         this._updateTranslateBtn(promptId);
     },
@@ -521,7 +521,7 @@ Object.assign(App, {
             if (parseInt(card.getAttribute('data-id')) === promptId) {
                 var btn = card.querySelector('.btn-copy[onclick*="toggleTranslation"]');
                 if (btn) {
-                    btn.textContent = App.state._cardTranslations[promptId] ? '🌐 中文' : '🌐 英文';
+                    btn.textContent = App.state._cardTranslations[promptId] ? App._t('auto.str_da36e10d', '🌐 中文') : App._t('auto.str_8682d301', '🌐 英文');
                 }
             }
         });
@@ -582,7 +582,7 @@ Object.assign(App, {
             });
             var data = await res.json();
             if (!data || !data.ok) {
-                this.showToast('上传失败: ' + (data ? data.error : '未知错误'), 'error');
+                this.showToast(App._t('auto.upload_失败__', '上传失败: ') + (data ? data.error : App._t('common.unknown_error', '未知错误')), 'error');
                 return;
             }
             // 关联到提示词
@@ -592,14 +592,14 @@ Object.assign(App, {
                 body: JSON.stringify({ prompt_id: promptId, filename: data.filename })
             });
             if (assignRes && assignRes.ok) {
-                this.showToast('✅ 图片已关联到提示词', 'success');
+                this.showToast(App._t('auto.str_30f20f2d', '✅ 图片已关联到提示词'), 'success');
                 await this.loadPrompts();
                 await this.loadThumbLibrary();
             } else {
-                this.showToast('关联失败', 'error');
+                this.showToast(App._t('auto.str_6d973dbe', '关联失败'), 'error');
             }
         } catch(e) {
-            this.showToast('上传失败: ' + e.message, 'error');
+            this.showToast(App._t('auto.upload_失败__', '上传失败: ') + e.message, 'error');
         }
     },
 
@@ -614,7 +614,7 @@ Object.assign(App, {
             });
             var data = await res.json();
             if (!data || !data.ok) {
-                this.showToast('上传失败: ' + (data ? data.error : '未知错误'), 'error');
+                this.showToast(App._t('auto.upload_失败__', '上传失败: ') + (data ? data.error : App._t('common.unknown_error', '未知错误')), 'error');
                 return;
             }
             // 关联到提示词
@@ -624,14 +624,14 @@ Object.assign(App, {
                 body: JSON.stringify({ prompt_id: promptId, video_filename: data.filename })
             });
             if (assignRes && assignRes.ok) {
-                this.showToast('✅ 视频已关联到提示词', 'success');
+                this.showToast(App._t('auto.str_ec86f555', '✅ 视频已关联到提示词'), 'success');
                 await this.loadPrompts();
                 await this.loadThumbLibrary();
             } else {
-                this.showToast('关联失败', 'error');
+                this.showToast(App._t('auto.str_6d973dbe', '关联失败'), 'error');
             }
         } catch(e) {
-            this.showToast('上传失败: ' + e.message, 'error');
+            this.showToast(App._t('auto.upload_失败__', '上传失败: ') + e.message, 'error');
         }
     },
 
@@ -644,10 +644,10 @@ Object.assign(App, {
 
     async deleteCollection(cid) {
         var c = this.state.collections.find(function(x) { return x.id === cid; });
-        var name = c ? c.name : '此收藏分组';
-        if (!confirm('确认删除「' + name + '」?分组内的词条不会被删除,仅移除分组关联。')) return;
+        var name = c ? c.name : App._t('auto.str_c392d4c7', '此收藏分组');
+        if (!confirm(App._t('common.confirm', '确认删除「') + name + '」?分组内的词条不会被删除,仅移除分组关联。')) return;
         await this.fetchJSON(`/api/v2/collections/${cid}`, { method: 'DELETE' });
-        this.showToast('已删除', 'info');
+        this.showToast(App._t('auto.str_5cc23262', '已删除'), 'info');
         await this.loadCollections();
         this.renderCollections();
     },
@@ -655,7 +655,7 @@ Object.assign(App, {
     async copyCollection(cid) {
         var data = await this.fetchJSON('/api/v2/collections/' + cid + '/copy', { method: 'POST' });
         if (data) {
-            this.showToast('已复制为「' + data.name + '」', 'success');
+            this.showToast(App._t('common.copied', '已复制为「') + data.name + '」', 'success');
             await this.loadCollections();
             this.renderCollections();
             // 自动打开编辑弹窗,允许修改名称
@@ -665,7 +665,7 @@ Object.assign(App, {
                 document.getElementById('inputCollectionIcon').value = newColl.icon || '⭐';
                 App._pendingEditCollection = data.id;
                 App._pendingEditRefresh = function() { App.loadCollections(); App.renderCollections(); };
-                document.getElementById('modalCreateCollection').querySelector('h5').textContent = '重命名分组';
+                document.getElementById('modalCreateCollection').querySelector('h5').textContent = App._t('auto.str_f67e2dbb', '重命名分组');
                 document.getElementById('modalCreateCollection').style.display = 'flex';
             }
         }
@@ -812,9 +812,9 @@ Object.assign(App, {
     },
 
     async deleteWordpack(wid) {
-        if (!confirm('确定删除此词包?')) return;
+        if (!confirm(App._t('common.ok', '确定删除此词包?'))) return;
         await this.fetchJSON(`/api/v2/wordpacks/${wid}`, { method: 'DELETE' });
-        this.showToast('已删除', 'info');
+        this.showToast(App._t('auto.str_5cc23262', '已删除'), 'info');
         await this.loadWordpacks();
         this.renderWordpacks();
     },
@@ -837,9 +837,9 @@ Object.assign(App, {
             a.download = filename;
             a.click();
             URL.revokeObjectURL(url);
-            this.showToast('导出成功', 'success');
+            this.showToast(App._t('common.export', '导出成功'), 'success');
         } catch (e) {
-            this.showToast('导出失败', 'error');
+            this.showToast(App._t('common.export', '导出失败'), 'error');
         }
     },
 
@@ -852,7 +852,7 @@ Object.assign(App, {
     async createWordpack() {
         const name = document.getElementById('inputWordpackName').value.trim();
         const desc = document.getElementById('inputWordpackDesc').value.trim();
-        if (!name) { this.showToast('请输入词包名称', 'error'); return; }
+        if (!name) { this.showToast(App._t('auto.enter_词包名称', '请输入词包名称'), 'error'); return; }
         const data = await this.fetchJSON('/api/v2/wordpacks', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -860,7 +860,7 @@ Object.assign(App, {
         });
         if (data) {
             document.getElementById('modalCreateWordpack').style.display = 'none';
-            this.showToast('词包已创建', 'success');
+            this.showToast(App._t('nav.wordpacks', '词包已创建'), 'success');
             await this.loadWordpacks();
             this.renderWordpacks();
         }
@@ -895,7 +895,7 @@ Object.assign(App, {
     },
 
     async clearHistory() {
-        if (!confirm('确定清空所有使用记录?')) return;
+        if (!confirm(App._t('common.ok', '确定清空所有使用记录?'))) return;
         await this.fetchJSON('/api/v2/history', { method: 'DELETE' });
         this.showToast('已清空', 'info');
         this.loadHistory();
@@ -976,19 +976,19 @@ Object.assign(App, {
         if (b2) b2.style.display = data.total > 0 ? 'inline-flex' : 'none';
         } catch(e) {
             console.warn('loadTrash error:', e);
-            grid.innerHTML = '<div class="empty-state"><div class="icon">🗑️</div><p>加载回收站失败: ' + (e.message || '未知错误') + '</p></div>';
+            grid.innerHTML = '<div class="empty-state"><div class="icon">🗑️</div><p>加载回收站失败: ' + (e.message || App._t('common.unknown_error', '未知错误')) + '</p></div>';
         }
     },
 
     async restoreFromTrash(pid) {
         await this.fetchJSON('/api/v2/trash/' + pid + '/restore', { method: 'POST' });
-        this.showToast('已恢复', 'success');
+        this.showToast(App._t('auto.str_b70e8e43', '已恢复'), 'success');
         this.loadTrash();
         this.loadPrompts();
     },
 
     async restoreAllTrash() {
-        if (!confirm('确认全部恢复？')) return;
+        if (!confirm(App._t('common.confirm', '确认全部恢复？'))) return;
         var data = await this.fetchJSON('/api/v2/trash?page_size=500');
         if (!data || data.items.length === 0) return;
         var ids = data.items.map(function(p) { return p.id; });
@@ -996,22 +996,22 @@ Object.assign(App, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt_ids: ids })
         });
-        this.showToast('已全部恢复', 'success');
+        this.showToast(App._t('auto.str_0d88a16f', '已全部恢复'), 'success');
         this.loadTrash();
         this.loadPrompts();
     },
 
     async permanentDelete(pid) {
-        if (!confirm('永久删除后无法恢复，确认删除？')) return;
+        if (!confirm(App._t('auto.str_3e79ede2', '永久删除后无法恢复，确认删除？'))) return;
         await this.fetchJSON('/api/v2/trash/' + pid, { method: 'DELETE' });
-        this.showToast('已永久删除', 'info');
+        this.showToast(App._t('auto.str_968c6dbf', '已永久删除'), 'info');
         this.loadTrash();
     },
 
     async emptyTrash() {
-        if (!confirm('确认清空回收站？所有词条将被永久删除！')) return;
+        if (!confirm(App._t('common.confirm', '确认清空回收站？所有词条将被永久删除！'))) return;
         await this.fetchJSON('/api/v2/trash/empty', { method: 'POST' });
-        this.showToast('回收站已清空', 'info');
+        this.showToast(App._t('nav.trash', '回收站已清空'), 'info');
         this.loadTrash();
     },
 
@@ -1022,7 +1022,7 @@ Object.assign(App, {
         if (!newModule) return;
         var self = this;
         var p = this.state.prompts.find(function(x) { return x.id === promptId; });
-        if (!p) { self.showToast('提示词不存在', 'error'); return; }
+        if (!p) { self.showToast(App._t('common.notice', '提示词不存在'), 'error'); return; }
         if (p.module === newModule) { return; }
 
         // 发送 PUT 请求更新模块（v4 API: prompt_cards 表，仅传 module 避免触发版本存档）
@@ -1049,7 +1049,7 @@ Object.assign(App, {
             this.loadModules();
             this.loadStats();
         } else {
-            self.showToast('移动失败: ' + (result ? result.error : '未知错误'), 'error');
+            self.showToast('移动失败: ' + (result ? result.error : App._t('common.unknown_error', '未知错误')), 'error');
         }
     },
 
@@ -1137,7 +1137,7 @@ Object.assign(App, {
             body: JSON.stringify({ prompt_id: promptId })
         });
         if (data) {
-            this.showToast('已收藏到「' + cname + '」', 'success');
+            this.showToast(App._t('auto.str_718b33fc', '已收藏到「') + cname + '」', 'success');
             await this.loadCollections();
             await this.loadPrompts();  // 刷新卡片显示收藏图标
             // 如果当前在收藏夹内，刷新收藏夹词条列表
@@ -1172,7 +1172,7 @@ Object.assign(App, {
     async createCollection() {
         const name = document.getElementById('inputCollectionName').value.trim();
         const icon = document.getElementById('inputCollectionIcon').value.trim() || '⭐';
-        if (!name) { this.showToast('请输入分组名称', 'error'); return; }
+        if (!name) { this.showToast(App._t('auto.enter_分组名称', '请输入分组名称'), 'error'); return; }
 
         // 如果有待编辑的分组,执行改名
         if (this._pendingEditCollection) {
@@ -1185,7 +1185,7 @@ Object.assign(App, {
             });
             if (data) {
                 document.getElementById('modalCreateCollection').style.display = 'none';
-                this.showToast('分组已更新', 'success');
+                this.showToast(App._t('auto.str_8b8d4db3', '分组已更新'), 'success');
                 await this.loadCollections();
                 if (this.state.currentView === 'collections') this.renderCollections();
             }
@@ -1229,7 +1229,7 @@ Object.assign(App, {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ prompt_id: pid })
                 });
-                this.showToast(`已收藏到「${name}」`, 'success');
+                this.showToast(App._t('auto.str_cae20b1f', '已收藏到「${name}」'), 'success');
                 if (this.state.currentView === 'home') this.loadPrompts();
                 if (this.state.currentView === 'collections' && this.state.currentCollection) this.loadCollectionItems();
             } else {

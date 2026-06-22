@@ -102,55 +102,7 @@
 
 ## Phase14.1 侧边栏空白修复 — 7层问题链排查实录（2026-06-21 13:39）
 
-### 症状
-- 页面最左侧侧边栏完全空白，折叠按钮消失
-- F12 Console: `Init error, fallback to home: this.loadGroupTree is not a function`
-- F12 Console: `[app_core] loadGroupTree 等待超时 (10s), 降级为空白侧边栏`
-
-### 根因链
-
-```
-Layer 1: app_core.js 用 const App = {...} 声明
-  → const 是块级作用域，不设置 window.App
-  → wc_bridge.js 检测 if (!window.App || !App.fetchJSON)
-  → window.App 永远 undefined → IIFE 永不进入体
-  → App.loadGroupTree 永远不被覆盖
-  ↓
-Layer 2: 空安全桩用 self.loadGroupTree != App.loadGroupTree 比对
-  → self === App（同一个对象引用）→ !== 永远为 false
-  → 桩函数 10s 超时 → 侧边栏空白
-  ↓
-Layer 3: arguments.callee 在 'use strict' 下抛 TypeError
-  → retry 延迟调用也崩溃
-  ↓
-Layer 4: _injectSidebarToggle 函数缺失
-  → renderSidebar 末尾调用 → TypeError → HTML 未写入 DOM
-  ↓
-Layer 5: _escape 可能在 renderSidebar 调用时未定义
-  ↓
-Layer 6: signal_lights.js 在 app_core 之前执行，直接引用 App → ReferenceError
-  ↓
-Layer 7: renderSidebar 无 try-catch，任意中间异常 → 侧边栏完全空白
-```
-
-### 修复清单（7项）
-
-| # | 根因 | 文件 | 修复 |
-|---|------|------|------|
-| 1 | `const App` 不挂 window | app_core.js | `const App` → `var App = window.App \|\| {...}` |
-| 2 | `self === App` 同引用 | app_core.js | 命名函数 `_loadGroupTreeStub` 独立捕获引用 |
-| 3 | `arguments.callee` 严格模式 | wc_bridge.js | → 命名函数 `initWCBridge` |
-| 4 | `_injectSidebarToggle` 缺失 | wc_bridge.js | 补全30行 + 兄弟元素注入（CSS ~选择器） |
-| 5 | `_escape` 未定义风险 | wc_bridge.js | renderSidebar 内自动补全安全垫 |
-| 6 | signal_lights 抢占 | signal_lights.js | IIFE 加 setTimeout 重试等待 App |
-| 7 | 渲染无异常保护 | wc_bridge.js | renderSidebar 全 try-catch 包裹 |
-
-### 加载顺序调整
-
-```
-修复前:  signal_lights → app_core → ... → wc_bridge（太晚）
-修复后:  wc_bridge → signal_lights → app_core → ... 其余模块
-```
+> 症状：侧边栏空白，折叠按钮消失。根因链7层：const App 不挂window → 自引用比对失效 → arguments.callee严格模式崩溃 → _injectSidebarToggle缺失 → signal_lights抢占 → renderSidebar无try-catch。修复7项，详见 `git show v4.2.0-phase14-arch`。
 
 ### 经验教训（8条）
 
@@ -168,6 +120,7 @@ Layer 7: renderSidebar 无 try-catch，任意中间异常 → 侧边栏完全空
 - index.html — wc_bridge 移至第1行加载
 
 ## Git Tag 节点（最近 7 个）
+
 - `v4.2.0-phase14-arch` — 分类架构重构: 双总类嵌套树+陈列架+分组CRUD (2026-06-20)
 - `v4.1.0-phase13.1-hotfix` — UTF-8双重编码乱码根因修复 + 10项bug修复 + 25项版本号升级 (2026-06-20)
 - `v4.1.0-phase13-complete` — Phase13短期迭代完成 (2026-06-19)
@@ -182,45 +135,7 @@ Layer 7: renderSidebar 无 try-catch，任意中间异常 → 侧边栏完全空
 - `v4.0.0-phase9-assembler` — 组装器v2引擎: 5格式+像素分辨率+音频+3档密度 (2026-06-12)
 - `v4.0.0-phase8.6-split` — 前端拆分: app.js→6模块(264方法零丢失) (2026-06-12)
 - `v4.0.0-phase8.5-vm` — 版本管理: 编辑自动存档+完整回滚+v4历史/diff (2026-06-12)：防重复渲染bug + 画风/负面词库API+选取器 + 输出预览实时刷新 + 全局默认值持久化 + 画幅分辨率参数修正 + UI精简 (2026-06-07)
-- `v3.10.24` — 会话关闭前完整备份快照 (2026-06-04)
-- `v3.10.23` — 非编辑模式禁用拖入导入功能 (2026-06-03)
-- `v3.10.22` — PNG拖拽导入失败修复 — File流被预览消耗后无法复用
-- `v3.10.21` — 拖入缩略图区域替换+Ctrl+Z撤销
-- `v3.10.20` — 统一单 document 级 drop 处理器解决闪烁+弹窗不显示
-- `v3.10.19` — 移除PNG拖入虚线覆盖层(globalDropZone)消除闪烁
-- `v3.10.16` ~ `v3.10.18` — 拖拽冲突系列修复
-- `v3.10.14` — 分镜构图模块主体描述+构图词组合优化
-- `v3.10.13` — 模块切换标题修复
-- `v3.10.12` — 模块切换后标题显示
-- `v3.10.10` — OCR截图导入保存原图到媒体资产管理库
-- `v3.10.9` — 截图导入模块默认值改为当前所在模块
-- `v3.10.7` — 编辑模式卡片新增「移动到其他模块」下拉
-- `v3.10.6` — Ctrl+V预览剪贴板图片 → 确认后再分析
-- `v3.10.5` — 粘贴弹窗打开即激活监听
-- `v3.10.4` — 粘贴剪贴板图片在HTTP局域网下修复
-- `v3.10.3` — 截图导入窗口新增粘贴按钮
-- `v3.10.2` — AI生成原图不显示修复
-- `v3.10.1` — AI生成缩略图async httpx死锁修复
-- `v3.10.0` — 后端媒体资产管理库
-- `v3.9.3` — safe_commit参数修复
-- `v3.9.2` — OCR超时/故障修复(3项)
-- `v3.9.1` — OCR故障修复(3项)
-- `v3.9.0` — OCR预扫描语言检测+智能模型路由
-- `v3.8.1` — OCR视觉模型配置修复
-- `v3.8.0` — 截图导入替换脚本导致JS语法错误修复
-- `v3.7.1` — 移动端汉堡菜单修复
-- `v3.6.2` — 翻译对照显示 + 全选/取消切换 + 模块主体预设编辑器 + 缩略图清除按钮 + AI生成确认替换 + 翻译缓存清除（2026-06-02）
-- `v3.6.1` — Bugfix: PNG拖拽导入确认弹窗修复 + 滚动位置恢复 + 卡片缩略图拖拽覆盖修复（2026-06-02）
-- `v3.6.0` — 卡片布局垂直重构 + 收藏夹显示修复 + .pkb包系统 + 数据同步（2026-06-02）
-- `v3.5.0` — 翻译(Ollama) + PNG导出元数据 + 拖拽上传
-- `v3.4.0` — ComfyUI缩略图生成 + 模块预设 + 批量AI生成
-- `v3.3.0` — 拖拽排序 + Markdown导出 + 浏览器扩展 + OCR导入
-- `v3.2.0` — AI Workflow API
-- `v3.1.3` — 提示词模板变量
-- `v3.1.2` — LLM Playground + 快捷键 + 标签 + 统计 + 移动端
-- `v3.1.1` — 语义搜索 + 版本管理
-- `v3.0.0.2` — .pt 包系统 + 导出名称优化 + 拖拽增强
-- `v3.0.0.1` — 基础版本
+*(50 older tags truncated — full list in CHANGELOG.md)*
 
 ## v3.0.0.2 新增功能清单
 
@@ -299,91 +214,31 @@ Layer 7: renderSidebar 无 try-catch，任意中间异常 → 侧边栏完全空
 - 下阶段推荐: v3.7.0 — 版本管理 + 模板变量 + 标签升级
 
 ## 目录结构
+
 ```
 prompt-tool-dev/
-├── QUICK_START.bat              # 快捷启动（端口自适应+防火墙提示）【推荐】
-├── PROJECT_SUMMARY.md           # 项目完整备份快照（2026-06-04）
-├── start.bat                    # 一键启动（含端口检测+防火墙提示）
-├── firewall_open.bat/ps1/vbs   # 防火墙一键放行脚本
-├── requirements.txt
-├── MEMORY.md                    # 长期记忆（会话启动自动注入）
-├── backend/
-│   ├── main.py                  # FastAPI 入口（20个路由挂载）
-│   ├── database.py              # SQLite 23 表 + FTS5 + 触发器
-│   ├── seed_data.py             # 165 条种子数据
-│   ├── backup.py                # 自动备份核心
-│   ├── sync.py                  # .pkb 打包/恢复/管理
-│   ├── semantic.py              # 语义搜索
-│   ├── exporter.py              # 导出功能
-│   └── api/
-│       ├── prompts.py           # 提示词 CRUD（含搜索/分页/收藏归属）
-│       ├── v2.py                # 收藏/词包/历史/推荐/主题（940行核心）
-│       ├── seedance.py          # Seedance 模板/组装/画廊/速查
-│       ├── thumbnails.py        # 缩略图/视频上传/裁剪/压缩（915行）
-│       ├── exporter.py          # 批量导出
-│       ├── versions.py          # 版本管理
-│       ├── playground.py        # LLM Playground
-│       ├── tags.py              # 标签管理
-│       ├── stats.py             # 统计
-│       ├── templates.py         # 模板变量
-│       ├── workflow.py          # AI Workflow API
-│       ├── comfyui.py           # ComfyUI 缩略图生成（507行）
-│       └── ocr.py               # OCR 截图导入（528行）
-├── frontend/
-│   ├── index.html               # WebUI 主页面（721行/73KB）
-│   └── static/
-│       ├── css/style.css        # 完整样式（1,371行/45KB）
-│       └── js/app.js            # SPA 交互逻辑（5,617行/301KB）
-├── browser-extension/
-│   ├── manifest.json            # Chrome 扩展清单
-│   ├── background.js            # 后台脚本
-│   ├── content.js               # 内容注入
-│   ├── popup.html               # 弹窗界面
-│   └── popup.js                 # 弹窗逻辑
-├── data/
-│   ├── prompts.db               # SQLite 数据库（WAL 模式，704KB）
-│   ├── packages/                # .pkb 备份包
-│   ├── backups/                 # 自动备份历史
-│   ├── thumbnails/              # 裁剪后缩略图 (240x160 JPEG, 287个)
-│   ├── originals/               # 上传原图（236个, 418MB）
-│   └── videos/                  # 上传视频（23个, 355MB）
-├── memory/                      # 会话记忆目录
-└── 开发需求/                     # 需求文档
+├── backend/            # Python FastAPI 后端 (25模块/200+端点)
+├── frontend/           # WebUI (index.html + static/js/ 22模块/~15000行)
+│   └── static/i18n/    # 国际化字典 (en.json 473条)
+├── data/               # SQLite WAL+FTS5 + backups
+├── tools/              # 迁移/修复/验证脚本
+├── start.bat / QUICK_START.bat
+└── dist/               # PyInstaller EXE 输出
 ```
 
-## 后端 API 总数：120+
-| 端点 | 功能 |
-|------|------|
-| `GET /api/status` | 服务状态（含cards/library统计）|
-| `GET /api/v4/cards` | 统一提示词卡列表（搜索+类型/模块/分类筛选）|
-| `POST/PUT/DELETE /api/v4/cards/{id}` | 提示词卡创建/编辑/删除 |
-| `GET /api/v4/library` | 统一词库资产列表（类型/分类筛选）|
-| `GET/POST/PUT/DELETE /api/v4/library/{id}` | 词库条目 CRUD |
-| `GET /api/v4/library/types` | 词库类型统计 |
-| `GET /api/v4/library/categories` | 词库分类列表 |
-| `GET /api/modules` / `categories` | 模块/分类列表 |
-| `GET /api/prompts` | 搜索+筛选+分页+收藏归属 |
-| `POST/PUT/DELETE /api/prompts/{id}` | 创建/编辑/删除 |
-| `POST /api/prompts/{id}/usage` | 使用计数+历史 |
-| `GET/POST/PUT/DELETE /api/v2/collections` | 收藏分组 CRUD |
-| `GET/POST/DELETE /api/v2/collections/{id}/items` | 收藏词条管理 |
-| `GET /api/v2/collections/prompt-batch` | 批量查询收藏归属 |
-| `GET/POST/PUT/DELETE /api/v2/wordpacks` | 词包 CRUD |
-| `GET/POST/DELETE /api/v2/wordpacks/{id}/items` | 词包条目管理 |
-| `GET /api/v2/wordpacks/{id}/export` | 词包导出 TXT/JSON |
-| `GET/DELETE /api/v2/history` | 最近使用 |
-| `POST /api/v2/batch/copy` / `batch/export` | 批量复制/导出 |
-| `GET /api/v2/recommend/{id}` | 智能推荐 |
-| `GET/POST /api/v2/config/theme` | 主题设置 |
-| `GET/POST /api/thumbnails/upload` | 图片上传+裁剪 |
-| `POST /api/thumbnails/prepare-upload` | 视频预检 |
-| `POST /api/thumbnails/trim-video` | 视频裁剪压缩 |
-| `GET/POST/DELETE /api/thumbnails/*` | 图库/关联/原图 |
-| `GET /api/seedance/*` | Seedance 模板/组装/画廊/速查 |
-| `POST /api/sync/export` | .pkb 完整导出 |
-| `POST /api/sync/restore/{name}` | .pkb 恢复 |
-| `POST /api/ocr/analyze` | OCR 截图分析 |
-| `POST /api/comfyui/generate` | ComfyUI 缩略图生成 |
+## 后端 API 端点（120+，25 模块）
+
+| 模块 | 核心端点 | 数量 |
+|------|---------|------|
+| word_cards | CRUD + tree + search + export/import | 30+ |
+| word_assets (v4) | CRUD + search + batch | 15+ |
+| prompts | CRUD + search + semantic + categories | 12+ |
+| collections | CRUD + add/remove items | 8+ |
+| wordpacks | CRUD + items | 8+ |
+| ai_workflow | optimize + translate + autotag + thumbnail | 10+ |
+| media | upload + thumbnail + list | 6+ |
+| health | check + watcher-status + stats | 5+ |
+| 其余 17 模块 | backup/sync/comfyui/ocr/seedance/character... | 30+ |
 
 ## 网络配置
 - 防火墙 TCP 8080 入站已放行（规则名：PromptKit / PromptKit 8080）
@@ -391,11 +246,73 @@ prompt-tool-dev/
 - Tailscale 作为备用通道
 - 当前内网IP：192.168.0.103
 
-## 架构升级规划
-- 完整方案: `memory/ARCHITECTURE_PLAN_v4.md`
-- 核心理念：提示词卡作为系统基础数据单元
-- 5 个 Phase：数据结构重构 → 词库统一 → 媒体资产管理统一 → 高级功能重建 → 导入导出标准化
-- 下次会话优先启动 Phase 1：prompt_cards 表 + 迁移脚本
+
+## 📦 跨平台封装规则（Win+macOS 双系统，2026-06-15）
+
+### ZIP 打包（zipfile 替代 PowerShell Compress-Archive）
+| # | 规则 |
+|---|------|
+| 1 | 用 Python zipfile 打 ZIP，不用 Compress-Archive（路径分隔符 \ 在 macOS 不可用）|
+| 2 | arcname 统一用 /：Path.as_posix() 或 '/'.join(parts) |
+| 3 | 排除 __pycache__/、data/（GB 级）、dist/、.git/、memory/、
+ode_modules/ |
+| 4 | 包含目录: ackend/ rontend/ 	ools/；包含文件: start.command 
+equirements.txt INSTALL_MACOS.md |
+| 5 | ZIP 产物的 arcname 在 Windows 和 macOS 解压后路径必须一致 |
+
+### requirements.txt 跨平台约束
+| # | 规则 |
+|---|------|
+| 1 | 
+umpy<2（NumPy 2.x 破坏 PyTorch，macOS Intel GPU 回退 CPU 触发 _ARRAY_API not found）|
+| 2 | sentence-transformers 不加 == 锁死版本 |
+| 3 | 必须含 python-multipart（FastAPI UploadFile 依赖）|
+| 4 | 必须含 	orch（macOS Intel vs Apple Silicon 需用户自行装对版本）|
+| 5 | 必须含 iofiles（异步文件 IO）|
+
+### Python 代码兼容性
+| # | 规则 |
+|---|------|
+| 1 | AI/OCR API 用 except Exception，不要只用 except ImportError（macOS 缺 PyTorch 会抛 NameError/RuntimeError）|
+| 2 | msvcrt 用 	ry: import msvcrt except ImportError: input() 替代 |
+| 3 | 路径一律 os.path.join() / pathlib.Path，禁 \ 硬编码 |
+| 4 | LLM 请求 timeout 设合理值（2013 款 iMac 无 GPU 跑 sentence-transformers 极慢）|
+
+### macOS 启动脚本 (.command)
+| # | 规则 |
+|---|------|
+| 1 | 分发前 chmod +x start.command |
+| 2 | 用 xattr -cr start.command 清除 com.apple.quarantine 标记（Gatekeeper）|
+| 3 | Shebang 用 #!/bin/bash（Catalina 后默认 zsh 但 bash 可用）|
+| 4 | Python 查找：python3.12 python3 python 依次尝试 |
+| 5 | 自动创建 venv 并安装依赖 |
+| 6 | ffmpeg 检测并提示安装（rew install ffmpeg）|
+
+### Windows EXE（PyInstaller）+ macOS ZIP 统一打包示例
+
+**PyInstaller spec.hiddenimports：**
+\\python
+hiddenimports = ['uvicorn.logging','uvicorn.loops.auto','uvicorn.protocols.http.auto',
+    'fastapi','aiohttp','PIL._imaging','sentence_transformers','numpy','aiofiles','sqlite3','asyncio']
+excludes = ['tkinter','PyQt5','PySide6','wx','matplotlib','scipy','pandas','torch','tensorflow']
+\
+**打包命令：**
+\\ash
+# Windows EXE (onedir)
+pyinstaller build.spec --clean --noconfirm
+# macOS ZIP
+python tools/pack_zip.py
+\
+**启动初始化顺序：** init_db() → seed_data.init_seedance_v2(db) → _migrate_v4(db) → safe_commit(db) → include_router
+
+### 打包前检查清单
+- [ ] ZIP 在 Windows 解压后 dir backend\main.py 可见
+- [ ] ZIP 在 macOS 解压后 ls backend/main.py 可见（路径分隔符一致性）
+- [ ] start.command 已 chmod +x
+- [ ] start.bat 已含端口自适应 + 防火墙提示
+- [ ] 端口探测范围 8080~8089
+- [ ] PyInstaller 已配置 hiddenimports + excludes
+- [ ] EXE 启动不抛 ModuleNotFoundError
 
 ## 已安装 ClawHub 技能
 - `page-builder` — WebUI 页面生成

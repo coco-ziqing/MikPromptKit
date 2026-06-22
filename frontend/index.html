@@ -10,34 +10,34 @@
 </head>
 <body>
     <header class="navbar-tool">
-        <button class="header-btn" id="btnMenu" onclick="App.toggleMobileMenu()" style="display:none;" title="菜单"><i class="bi bi-list"></i></button>
+        <button class="header-btn" id="btnMenu" onclick="App.toggleMobileMenu()" style="display:none;" title="菜单" data-i18n-title="nav.menu" data-i18n-title-zh="菜单"><i class="bi bi-list"></i></button>
         <div class="brand" onclick="App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> <span data-i18n="nav.brand" data-i18n-zh="咪卡Mik词库">咪卡Mik词库</span> <small id="brandVersion">4.1.0</small></div>
-        <div class="search-box" id="globalSearchBox"><input type="text" id="searchInput" placeholder="搜索提示词，Ctrl+F 快速定位" autocomplete="off" data-i18n-placeholder="search.placeholder" data-i18n-placeholder-zh="搜索提示词，Ctrl+F 快速定位"><i class="bi bi-search search-icon"></i><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()" title="切换搜索模式">🔤</button></div>
+        <div class="search-box" id="globalSearchBox"><input type="text" id="searchInput" placeholder="搜索提示词，Ctrl+F 快速定位" autocomplete="off" data-i18n-placeholder="search.placeholder" data-i18n-placeholder-zh="搜索提示词，Ctrl+F 快速定位"><i class="bi bi-search search-icon"></i><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()" title="切换搜索模式" data-i18n-title="search.mode.toggle" data-i18n-title-zh="切换搜索模式">🔤</button></div>
         <div class="header-actions">
-            <button class="header-btn" onclick="App.switchView('home')" id="navHome" title="首页词库"><i class="bi bi-house-door"></i></button>
-            <button class="header-btn" onclick="App.toggleEditMode()" id="btnEditMode" title="编辑模式" style="color:#94a3b8;"><i class="bi bi-pencil"></i></button>
-            <button class="header-btn" onclick="App.switchView('collections')" id="navCollections" title="收藏夹"><i class="bi bi-bookmark-star"></i><span class="nav-badge" id="collectionBadge" style="display:none;">0</span></button>
-            <button class="header-btn" onclick="App.switchView('wordpacks')" id="navWordpacks" title="自定义词包"><i class="bi bi-folder"></i><span class="nav-badge" id="wordpackBadge" style="display:none;">0</span></button>
-            <button class="header-btn" onclick="App.switchView('history')" id="navHistory" title="最近使用"><i class="bi bi-clock-history"></i></button>
-            <button onclick="App.switchView('trash')" id="navTrash" title="回收站"><i class="bi bi-trash"></i></button>
-            <button class="header-btn" onclick="App.switchView('seedance')" id="navSeedance" title="提示词组装器" style="color:#8b5cf6;"><i class="bi bi-tools"></i></button>
-            <button class="header-btn" onclick="App.switchView('wcmanager')" id="navWCManager" title="词卡管理"><i class="bi bi-grid-3x3-gap-fill"></i></button>
-            <button class="header-btn" onclick="App.switchView('v4media')" id="navV4Media" title="媒体资产"><i class="bi bi-images"></i></button>
-            <div class="column-slider-wrap" title="调整卡片列数">
-                <button class="header-btn" onclick="App.decColumn()" style="font-size:16px;width:26px;height:26px;">-</button>
-                <input type="range" id="columnSlider" min="1" max="6" value="3" class="column-slider" oninput="App.onColumnSlider(this.value)">
-                <button class="header-btn" onclick="App.incColumn()" style="font-size:16px;width:26px;height:26px;">+</button>
-                <span id="columnLabel" class="column-label">3列</span>
+            <button class="header-btn" onclick="App.switchView('home')" id="navHome" title="首页词库" data-i18n-title="nav.home" data-i18n-title-zh="首页词库"><i class="bi bi-house-door"></i></button>
+            <button class="header-btn" onclick="App.toggleEditMode()" id="btnEditMode" title="编辑模式" data-i18n-title="nav.editmode" data-i18n-title-zh="编辑模式" style="color:#94a3b8;"><i class="bi bi-pencil"></i></button>
+            <button class="header-btn" onclick="App.switchView('collections')" id="navCollections" title="收藏夹" data-i18n-title="nav.collections" data-i18n-title-zh="收藏夹"><i class="bi bi-bookmark-star"></i><span class="nav-badge" id="collectionBadge" style="display:none;">0</span></button>
+            <button class="header-btn" onclick="App.switchView('wordpacks')" id="navWordpacks" title="自定义词包" data-i18n-title="nav.wordpacks" data-i18n-title-zh="自定义词包"><i class="bi bi-folder"></i><span class="nav-badge" id="wordpackBadge" style="display:none;">0</span></button>
+            <button class="header-btn" onclick="App.switchView('history')" id="navHistory" title="最近使用" data-i18n-title="nav.history" data-i18n-title-zh="最近使用"><i class="bi bi-clock-history"></i></button>
+            <button class="header-btn" onclick="App.switchView('trash')" id="navTrash" title="回收站" data-i18n-title="nav.trash" data-i18n-title-zh="回收站"><i class="bi bi-trash"></i></button>
+            <button class="header-btn" onclick="App.switchView('seedance')" id="navSeedance" title="提示词组装器" data-i18n-title="nav.seedance" data-i18n-title-zh="提示词组装器" style="color:#8b5cf6;"><i class="bi bi-tools"></i></button>
+            <button class="header-btn" onclick="App.switchView('wcmanager')" id="navWCManager" title="词卡管理" data-i18n-title="nav.wordcards" data-i18n-title-zh="词卡管理"><i class="bi bi-grid-3x3-gap-fill"></i></button>
+            <button class="header-btn" onclick="App.switchView('v4media')" id="navV4Media" title="媒体资产" data-i18n-title="nav.media" data-i18n-title-zh="媒体资产"><i class="bi bi-images"></i></button>
+            <div class="column-slider-wrap" title="调整卡片列数" data-i18n-title="layout.columns" data-i18n-title-zh="调整卡片列数">
+                <button class="header-btn" onclick="App.decColumn()" style="font-size:16px;width:26px;height:26px;" title="减少列数" data-i18n-title="layout.cols.dec" data-i18n-title-zh="减少列数">-</button>
+                <input type="range" id="columnSlider" min="1" max="6" value="3" class="column-slider" oninput="App.onColumnSlider(this.value)" title="拖动调整列数" data-i18n-title="layout.cols.slider" data-i18n-title-zh="拖动调整列数">
+                <button class="header-btn" onclick="App.incColumn()" style="font-size:16px;width:26px;height:26px;" title="增加列数" data-i18n-title="layout.cols.inc" data-i18n-title-zh="增加列数">+</button>
+                <span id="columnLabel" class="column-label" data-i18n="layout.cols.label" data-i18n-zh="3列">3列</span>
             </div>
             <span class="header-divider"></span>
             <button class="header-btn" id="btnLang" title="Switch Language" data-i18n-title="lang.switch" data-i18n-title-zh="切换语言" style="font-size:13px;font-weight:bold;min-width:32px;">中</button>
             <button class="header-btn" onclick="App.toggleTheme()" id="btnTheme" title="切换深色模式" data-i18n-title="theme.toggle" data-i18n-title-zh="切换深色模式"><i class="bi bi-moon-stars"></i></button>
-            <button class="header-btn" onclick="App.openPlayground()" id="btnPlayground" title="LLM Playground 测试提示词"><i class="bi bi-cpu"></i></button>
-            <button class="header-btn" onclick="App.showBackupInfo()" id="btnBackup" title="数据库备份"><i class="bi bi-database"></i></button>
-            <button class="header-btn" onclick="App.showSyncPanel()" id="btnSync" title="数据同步 .pkb 包"><i class="bi bi-arrow-left-right"></i></button>
-            <button class="header-btn" onclick="App.monitor.open()" id="btnMonitor" title="服务监测仪表盘"><i class="bi bi-speedometer2"></i></button>
-            <button class="header-btn" onclick="App.showDashboard()" id="btnDashboard" title="统计仪表盘"><i class="bi bi-bar-chart"></i></button>
-            <button class="header-btn" onclick="App.openScreenshotImport()" id="btnOCR" title="截图导入提示词 — 自动识别图+文"><i class="bi bi-camera"></i></button>
+            <button class="header-btn" onclick="App.openPlayground()" id="btnPlayground" title="LLM Playground 测试提示词" data-i18n-title="nav.playground" data-i18n-title-zh="LLM Playground 测试提示词"><i class="bi bi-cpu"></i></button>
+            <button class="header-btn" onclick="App.showBackupInfo()" id="btnBackup" title="数据库备份" data-i18n-title="nav.backup" data-i18n-title-zh="数据库备份"><i class="bi bi-database"></i></button>
+            <button class="header-btn" onclick="App.showSyncPanel()" id="btnSync" title="数据同步 .pkb 包" data-i18n-title="nav.sync" data-i18n-title-zh="数据同步 .pkb 包"><i class="bi bi-arrow-left-right"></i></button>
+            <button class="header-btn" onclick="App.monitor.open()" id="btnMonitor" title="服务监测仪表盘" data-i18n-title="nav.monitor" data-i18n-title-zh="服务监测仪表盘"><i class="bi bi-speedometer2"></i></button>
+            <button class="header-btn" onclick="App.showDashboard()" id="btnDashboard" title="统计仪表盘" data-i18n-title="nav.dashboard" data-i18n-title-zh="统计仪表盘"><i class="bi bi-bar-chart"></i></button>
+            <button class="header-btn" onclick="App.openScreenshotImport()" id="btnOCR" title="截图导入提示词 — 自动识别图+文" data-i18n-title="nav.ocr" data-i18n-title-zh="截图导入提示词 — 自动识别图+文"><i class="bi bi-camera"></i></button>
             <button class="header-btn" onclick="App.openComfyConfig()" id="btnWorkflow" title="ComfyUI 集成配置 + 模块预设"><i class="bi bi-link-45deg"></i></button>
             <span class="header-divider"></span>
             <button class="header-btn" onclick="App.logs.open()" id="btnLogs" title="运行日志"><i class="bi bi-terminal"></i></button>
@@ -884,9 +884,9 @@
         </div>
     </div>
         // <!-- Phase14: wc_bridge 必须在 app_core 之前加载，定义 loadGroupTree + renderSidebar -->
-    <script src="/static/js/wc_bridge.js?v=10.1"></script>
+                            <script src="/static/js/wc_bridge.js?v=11.8"></script>
     <script src="/static/js/signal_lights.js?v=5"></script>
-    <script src="/static/js/app_core.js?v=12.4"></script>
+    <script src="/static/js/app_core.js?v=13.0"></script>
     <script src="/static/js/app_card_model.js?v=4"></script>
     <!-- wc_bridge 已移到上面 -->
     <script src="/static/js/monitor_dashboard.js?v=5"></script>
@@ -904,12 +904,12 @@
     <script src="/static/js/v4_library.js?v=5"></script>
     <script src="/static/js/v4_cards.js?v=5"></script>
     <script src="/static/js/v3_composer.js?v=9.5"></script>
-    <script src="/static/js/seedance_v2_composer.js?v=71"></script>
+    <script src="/static/js/app_i18n.js?v=10"></script>
+    <script src="/static/js/seedance_v2_composer.js?v=72"></script>
     <script src="/static/js/composer_wc_bridge.js?v=8"></script>
     <script src="/static/js/character_library.js?v=5"></script>
     <script src="/static/js/app_search.js?v=5"></script>
     <script src="/static/js/app_theme.js?v=11"></script>
-    <script src="/static/js/app_i18n.js?v=7"></script>
     <script src="/static/js/app_playground.js?v=15"></script>
     <script src="/static/js/log_viewer.js?v=16"></script>
 
