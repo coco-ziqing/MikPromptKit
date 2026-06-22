@@ -6,8 +6,9 @@
 - Diff：对比两个版本差异
 """
 from fastapi import APIRouter
-from database import get_db
+from database import get_db, safe_commit
 import json
+from api.version_helpers import compute_next_version, build_diff
 
 router = APIRouter(prefix="/api/v2/versions", tags=["versions"])
 
@@ -21,11 +22,7 @@ def save_version(prompt_id: int, change_note: str = ""):
     p = dict(row)
 
     # 计算下一个版本号
-    last = db.execute(
-        "SELECT MAX(version) as max_v FROM prompt_versions WHERE prompt_id=?",
-        [prompt_id]
-    ).fetchone()
-    next_ver = (last["max_v"] or 0) + 1
+    next_ver = compute_next_version(db, prompt_id)
 
     db.execute("""
         INSERT INTO prompt_versions
@@ -43,7 +40,7 @@ def save_version(prompt_id: int, change_note: str = ""):
         change_note,
         next_ver
     ])
-    db.commit()
+    safe_commit()
     return {"version": next_ver, "id": prompt_id}
 
 
@@ -68,14 +65,14 @@ def list_versions(prompt_id: int):
         v = dict(r)
         try:
             v["tags"] = json.loads(v.get("tags", "[]"))
-        except Exception:
+        except (json.JSONDecodeError, TypeError, AttributeError):
             v["tags"] = []
         versions.append(v)
 
     current_dict = dict(current)
     try:
         current_dict["tags"] = json.loads(current_dict.get("tags", "[]"))
-    except Exception:
+    except (json.JSONDecodeError, TypeError, AttributeError):
         current_dict["tags"] = []
 
     return {
@@ -115,9 +112,9 @@ def restore_version(prompt_id: int, version_id: int):
         v["module"], v["category"], v["subcategory"],
         v["tags"], prompt_id
     ])
-    db.commit()
+    safe_commit()
 
-    return {"ok": True, "version": v["version"]}
+    return {"ok": True, "version": v["version"], "prompt_id": prompt_id}
 
 
 @router.get("/{prompt_id}/diff/{v1_id}/{v2_id}")
@@ -137,17 +134,7 @@ def diff_versions(prompt_id: int, v1_id: int, v2_id: int):
     if not v1 or not v2:
         return {"ok": False, "error": "版本不存在"}
 
-    def _diff_field(name, a, b):
-        if a != b:
-            return {"field": name, "old": a, "new": b}
-        return None
-
-    fields = ["content", "meaning", "scene", "module", "category", "tags"]
-    diffs = []
-    for f in fields:
-        d = _diff_field(f, v1[f], v2[f])
-        if d:
-            diffs.append(d)
+    diffs = build_diff(v1, v2)
 
     return {
         "ok": True,

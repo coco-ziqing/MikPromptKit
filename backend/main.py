@@ -1,4 +1,4 @@
-﻿"""
+"""
 主入口 — FastAPI 应用 + Uvicorn 启动（加固版）
 """
 import sys, os, socket, traceback, subprocess
@@ -186,39 +186,40 @@ async def lifespan(app: FastAPI):
     try:
         import asyncio as _asyncio
         async def _do_startup_check():
-            from health import _check_ollama, _check_comfyui, _check_semantic, _check_ffmpeg
-            from health import _check_pillow, _check_database, _check_disk, _check_port, _check_playground_llm
+            import health as _h
             print("[自检] 启动健康检查...")
-            checks = [
-                ("DB", lambda: _check_database()),
-                ("Pillow", lambda: _check_pillow()),
-                ("Port", lambda: _check_port()),
-                ("Disk", lambda: _check_disk()),
-                ("FFmpeg", lambda: _check_ffmpeg()),
-                ("Semantic", lambda: _check_semantic()),
+            # 同步检测 (直接引用模块函数, 无闭包隐患)
+            sync_checks = [
+                ("DB",        _h._check_database),
+                ("Pillow",    _h._check_pillow),
+                ("Port",      _h._check_self_reachable),
+                ("Disk",      _h._check_disk),
+                ("WAL",       _h._check_wal_integrity),
+                ("FFmpeg",    _h._check_ffmpeg),
+                ("Semantic",  _h._check_semantic),
             ]
-            for name, fn in checks:
+            for name, fn in sync_checks:
                 try:
                     r = fn()
-                    status = "OK" if r.get("ok") else ("SKIP" if r.get("skipped") else "WARN")
-                    print(f"  [{status}] {name}: {r.get('hint') or r.get('error') or '通过'}")
+                    st = "OK" if r.get("ok") else ("SKIP" if r.get("skipped") else "WARN")
+                    print(f"  [{st}] {name}: {r.get('hint') or r.get('error') or '通过'}")
                 except Exception as e:
                     print(f"  [ERR] {name}: {e}")
-            # Async checks
+            # 异步检测
             try:
-                r = await _check_ollama(3.0)
+                r = await _h._check_ollama(3.0)
                 st = "OK" if r.get("ok") else "WARN"
                 print(f"  [{st}] Ollama: {r.get('hint') or r.get('error') or f'{r.get("model_count",0)} models'}")
             except Exception as e:
                 print(f"  [WARN] Ollama: {e}")
             try:
-                r = await _check_comfyui(3.0)
+                r = await _h._check_comfyui(3.0)
                 st = "OK" if r.get("ok") else ("SKIP" if r.get("skipped") else "WARN")
                 print(f"  [{st}] ComfyUI: {r.get('hint') or r.get('error') or '通过'}")
             except Exception as e:
                 print(f"  [SKIP] ComfyUI: {e}")
             try:
-                r = _check_playground_llm()
+                r = _h._check_playground_llm()
                 st = "OK" if r.get("ok") else ("SKIP" if r.get("skipped") else "WARN")
                 print(f"  [{st}] Playground: {r.get('hint') or r.get('error') or '通过'}")
             except Exception as e:

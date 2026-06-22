@@ -46,7 +46,7 @@ def _save_config(cfg: dict):
         "INSERT OR REPLACE INTO config (key, value) VALUES ('comfyui_config', ?)",
         [json.dumps(cfg, ensure_ascii=False)]
     )
-    db.commit()
+    safe_commit()
 
 
 # ==================== 模块主体预设提示词 ====================
@@ -71,7 +71,7 @@ def _save_module_presets(presets: dict):
         "INSERT OR REPLACE INTO config (key, value) VALUES ('module_presets', ?)",
         [json.dumps(presets, ensure_ascii=False)]
     )
-    db.commit()
+    safe_commit()
 
 
 def _auto_populate_missing_presets(presets: dict) -> dict:
@@ -93,31 +93,42 @@ def _auto_populate_missing_presets(presets: dict) -> dict:
     return presets
 
 
+def _find_workflow(cfg: dict, workflow_id: str = ""):
+    """查找工作流配置, 返回 (workflow_cfg, name)"""
+    workflows = cfg.get("workflows", [])
+    if not workflows:
+        return (None, "")
+    if workflow_id:
+        for w in workflows:
+            if w.get("id") == workflow_id:
+                return (w, w.get("name", ""))
+    return (workflows[0], workflows[0].get("name", ""))
+
 def _compose_prompt(preset_text: str, card_text: str, style_suffix: str) -> str:
     """自然语言组合规则
     针对分镜构图模块：卡片内容(构图指令)优先，确保模型接收到明确的构图要求
     其他模块：预设主体 + 卡片细节
     """
-    # 初步判断是否为构图类指令（短英文标签，占预设比重小）
-    # 当卡片较短(<=30字)且预设较长(>=200字)时，把卡片放前面以确保不被稀释
-    preset_len = len(preset_text.strip()) if preset_text else 0
-    card_len = len(card_text.strip()) if card_text else 0
+    preset = preset_text.strip() if preset_text else ""
+    card = card_text.strip() if card_text else ""
+    suffix = style_suffix.strip() if style_suffix else ""
+    preset_len = len(preset)
+    card_len = len(card)
 
     parts = []
-    if preset_text and preset_text.strip():
+    if preset:
         # 卡片很短而预设很长时，卡片优先（典型：分镜构图词 + 长预设）
-        if card_text and card_text.strip() and preset_len > 200 and card_len <= 60:
-            parts.append(card_text.strip().rstrip(","))
-            parts.append(preset_text.strip().rstrip(","))
+        if card and preset_len > 200 and card_len <= 60:
+            parts.append(card.rstrip(","))
+            parts.append(preset.rstrip(","))
         else:
-            parts.append(preset_text.strip().rstrip(","))
-            if card_text and card_text.strip():
-                parts.append(card_text.strip().rstrip(","))
-    else:
-        if card_text and card_text.strip():
-            parts.append(card_text.strip().rstrip(","))
-    if style_suffix and style_suffix.strip():
-        parts.append(style_suffix.strip().rstrip(","))
+            parts.append(preset.rstrip(","))
+            if card:
+                parts.append(card.rstrip(","))
+    elif card:
+        parts.append(card.rstrip(","))
+    if suffix:
+        parts.append(suffix.rstrip(","))
 
     return ", ".join(parts)
 
@@ -187,13 +198,7 @@ async def batch_generate_thumbnail(data: BatchGenerateRequest):
     if not cfg.get("enabled") or not cfg.get("server_url"):
         return {"ok": False, "error": "ComfyUI 未启用或服务器地址未配置"}
 
-    workflow_cfg = None
-    for w in cfg.get("workflows", []):
-        if w.get("id") == data.workflow_id:
-            workflow_cfg = w
-            break
-    if not workflow_cfg:
-        workflow_cfg = cfg.get("workflows", [{}])[0] if cfg.get("workflows") else None
+    workflow_cfg, _ = _find_workflow(cfg, data.workflow_id)
     if not workflow_cfg or not workflow_cfg.get("workflow_json"):
         return {"ok": False, "error": "未找到工作流模板，请先配置"}
 
@@ -265,40 +270,27 @@ def sync_workflow(data: SyncRequest = None):
 
     try:
         import httpx
+        _http_sync = httpx.Client(timeout=httpx.Timeout(10.0))
     except ImportError:
-        httpx = None
+        try:
+            import requests as _requests
+            _http_sync = type('_',(),{'get':lambda self,url: _req(url)})()
+            def _req(url):
+                r = _requests.get(f"{server_url}{url}", timeout=10)
+                return type('_',(),{'status_code':r.status_code,'json':lambda: r.json()})()
+        except ImportError:
+            return {"ok": False, "error": "需要安装 httpx 或 requests"}
 
     def _http_get(path):
-        if httpx:
-            import threading
-            result = []
-            def _fetch():
-                import asyncio
-                async def _get():
-                    async with httpx.AsyncClient(timeout=10) as c:
-                        r = await c.get(f"{server_url}{path}")
-                        return r
-                loop = asyncio.new_event_loop()
-                try:
-                    r = loop.run_until_complete(_get())
-                    result.append((r.status_code, r.json()))
-                except Exception as e:
-                    result.append((0, {"error": str(e)}))
-                finally:
-                    loop.close()
-            t = threading.Thread(target=_fetch, daemon=True)
-            t.start()
-            t.join(timeout=15)
-            if result:
-                return result[0]
-            return (0, {"error": "timeout"})
-        else:
-            import requests
-            try:
-                r = requests.get(f"{server_url}{path}", timeout=10)
+        try:
+            if isinstance(_http_sync, httpx.Client):
+                r = _http_sync.get(f"{server_url}{path}")
                 return (r.status_code, r.json())
-            except Exception as e:
-                return (0, {"error": str(e)})
+            else:
+                r = _http_sync.get(path)
+                return (r.status_code, r.json())
+        except Exception as e:
+            return (0, {"error": str(e)})
 
     code, qdata = _http_get("/queue")
     workflow = None
@@ -449,13 +441,7 @@ async def generate_thumbnail(data: GenerateRequest):
     print(f"[ComfyUI] 组合后提示词: {final_prompt[:200]}")
 
     # 3. 查找工作流配置
-    workflow_cfg = None
-    for w in cfg.get("workflows", []):
-        if w.get("id") == data.workflow_id:
-            workflow_cfg = w
-            break
-    if not workflow_cfg:
-        workflow_cfg = cfg.get("workflows", [{}])[0] if cfg.get("workflows") else None
+    workflow_cfg, _ = _find_workflow(cfg, data.workflow_id)
     if not workflow_cfg or not workflow_cfg.get("workflow_json"):
         return {"ok": False, "error": "未找到工作流模板，请先配置"}
 
@@ -581,9 +567,9 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
                  media_type, width, height, mime_type, prompt_id, source)
                 VALUES (?,?,?,?,'image',?,?,'image/jpeg',?,'ai_generated')""",
                 [tf, of, ts, len(img_bytes), iw, ih, prompt_id])
-        except:
-            pass
-        db.commit()
+        except Exception as _e:
+            print(f"[ComfyUI] 媒体资产写入失败: {_e}")
+        safe_commit()
         print(f"[ComfyUI] 已关联 prompt_id={prompt_id}: {tf}")
         return {"ok": True, "thumbnail": tf, "thumbnail_url": f"/api/thumbnails/file/{tf}", "original": of, "image_size": len(img_bytes), "generated_from": prompt_text[:80]}
 

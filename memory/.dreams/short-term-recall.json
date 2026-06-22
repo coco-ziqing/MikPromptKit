@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-15T03:17:39.563Z",
+  "updatedAt": "2026-06-22T08:56:53.017Z",
   "entries": {
     "memory:memory/2026-05-29.md:88:118": {
       "key": "memory:memory/2026-05-29.md:88:118",
@@ -718,6 +718,223 @@
         "requirements.txt",
         "会话",
         "记忆"
+      ]
+    },
+    "memory:memory/2026-06-11.md:79:111": {
+      "key": "memory:memory/2026-06-11.md:79:111",
+      "path": "memory/2026-06-11.md",
+      "startLine": 79,
+      "endLine": 111,
+      "source": "memory",
+      "snippet": "### 下次打开建议 1. 读取 HEARTBEAT.md + MEMORY.md 恢复上下文 2. 启动服务: `start.bat` 或 Python 直接启动 3. 从 87fc6f4 (景别词库) 基准开始，**用脚本文件一次性完成所有改动** 4. 优先修复：项目名交互 (侧栏双击编辑+切换保存) 5. CSS/JS 改动用 Python 脚本批量操作，避免手动 edit 工具导致的括号错配 --- # 第2轮会话 — 2026-06-11 下午 (Phase 7.1 → 7.4-hotfix) ## 版本基线 - 起始: `v4.0.0-phase8` (1f0b279) - 当前: `v4.0.0-phase7.4-hotfix` (7548be1) ## Phase 7.1 — 字段清理 (f7b02fa) | 改动 | 文件 | |------|------| | shot_scale 从前端 8 处引用全链移除 | seedance_v2_composer.js | | shot_scale 从后端 updatable 列表移除 | seedance_v2.py | | 空壳自定义分组 id=29 (cards=0) 删除 | prompts.db | ## Phase 7.2 — 性能+交互优化 (67a7ebe) | 改动 | 说明 | |------|------| | _debouncedCompose() 300ms 防抖 | compose 高频调用点 6 处 → | preloadAllCardCaches() 后台预加载 | ini",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-22T01:50:14.840Z",
+      "lastRecalledAt": "2026-06-22T01:50:14.840Z",
+      "queryHashes": [
+        "da8eed96712e"
+      ],
+      "recallDays": [
+        "2026-06-22"
+      ],
+      "conceptTags": [
+        "heartbeat.md",
+        "memory.md",
+        "start.bat",
+        "css/js",
+        "7.1",
+        "7.4-hotfix",
+        "v4.0.0-phase8",
+        "v4.0.0-phase7.4-hotfix"
+      ]
+    },
+    "memory:memory/2026-06-12.md:1:44": {
+      "key": "memory:memory/2026-06-12.md:1:44",
+      "path": "memory/2026-06-12.md",
+      "startLine": 1,
+      "endLine": 44,
+      "source": "memory",
+      "snippet": "# 2026-06-12 会话完整记录 ## 会话概要 - 日期: 2026-06-12 (Friday) - 当前 IP: 192.168.0.101 - 服务端口: 8080 - 启动版本: v4.0.0-phase8-crud - 结束版本: v4.0.0-phase9.2-final - Git commits: fab15c2 ~ (9 commits) --- ## Phase 8.5: 版本管理系统 ### 变更 1. `cards.py` update_card：编辑前自动存档到 prompt_versions 2. `cards.py` rollback：完整恢复6字段 + 回滚前存档 3. `cards.py` 新增 GET /cards/{id}/versions, GET /versions/diff 4. 前端调用 /api/v2/versions + _showVersionDiff UI 已连接 --- ## Phase 8.6: 前端拆分 ### 拆分方案 (264方法零丢失) ``` app.js (6164行) → 6模块: ├── app_core.js 658行 — 状态/初始化/事件/视图/搜索/数据/复制/Toast ├── app_editor.js 730行 — 编辑模式/侧边栏/卡片渲染/Seedance/折叠 ├── app_sync.js 811行 — 主题/备份/pkb同步/统计/ComfyUI ├── app_collections.js 1142行 — 收藏夹/词包/历史/回收站",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-22T01:50:14.840Z",
+      "lastRecalledAt": "2026-06-22T01:50:14.840Z",
+      "queryHashes": [
+        "da8eed96712e"
+      ],
+      "recallDays": [
+        "2026-06-22"
+      ],
+      "conceptTags": [
+        "备份",
+        "192.168.0.101",
+        "v4.0.0-phase8-crud",
+        "v4.0.0-phase9.2-final",
+        "8.5",
+        "cards.py",
+        "update-card",
+        "prompt-versions"
+      ]
+    },
+    "memory:memory/2026-05-30.md:56:89": {
+      "key": "memory:memory/2026-05-30.md:56:89",
+      "path": "memory/2026-05-30.md",
+      "startLine": 56,
+      "endLine": 89,
+      "source": "memory",
+      "snippet": "for kw in ['doImport', 'doExport', 'showImportExportModal']: i = c.find(kw) if i >= 0: print(f'=== {kw} at {i} ===') print(c[i:i+300]) print() # -*- coding: utf-8 -*- with open(r'C:\\Users\\ASUS\\.openclaw\\workspace\\prompt-tool-dev\\frontend\\static\\js\\app.js', encoding='utf-8') as f: lines = f.readlines() for i, l in enumerate(lines): if any(kw in l for kw in ['doImport', 'doExport', 'showImportExport', 'switchIETab']): print(f'{i+1}: {l.rstrip()[:200]}') # -*- coding: utf-8 -*- import sys; sys.stdout.reconfigure(encoding='utf-8') fn = r'C:\\Users\\ASUS\\.openclaw\\workspace\\prompt-tool-dev\\frontend\\static\\js\\app.js' with open(fn, encoding='utf-8') as",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-22T01:50:14.840Z",
+      "lastRecalledAt": "2026-06-22T01:50:14.840Z",
+      "queryHashes": [
+        "da8eed96712e"
+      ],
+      "recallDays": [
+        "2026-06-22"
+      ],
+      "conceptTags": [
+        "c.find",
+        "utf-8",
+        "prompt-tool-dev",
+        "app.js",
+        "f.readlines",
+        "l.rstrip",
+        "sys.stdout.reconfigure",
+        "doimport"
+      ]
+    },
+    "memory:memory/2026-05-30.md:83:111": {
+      "key": "memory:memory/2026-05-30.md:83:111",
+      "path": "memory/2026-05-30.md",
+      "startLine": 83,
+      "endLine": 111,
+      "source": "memory",
+      "snippet": "# -*- coding: utf-8 -*- import sys; sys.stdout.reconfigure(encoding='utf-8') fn = r'C:\\Users\\ASUS\\.openclaw\\workspace\\prompt-tool-dev\\frontend\\static\\js\\app.js' with open(fn, encoding='utf-8') as f: c = f.read() for kw in ['doImport', 'doExport', 'showImportExport', 'switchIETab', '_populateModuleOptions']: i = c.rfind(kw) if i >= 0: print(f'--- {kw} at {i} ---') print(c[i:i+500]) print('---') python -c \"fn = r'C:\\Users\\ASUS\\.openclaw\\workspace\\prompt-tool-dev\\frontend\\static\\js\\app.js'; c = open(fn, encoding='utf-8').read(); slots = ['doImport', 'doExport', 'showImportExport', 'switchIETab', '_populateModuleOptions']; [ (print('--- ' + kw + ' ---'), print",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-22T01:50:14.840Z",
+      "lastRecalledAt": "2026-06-22T01:50:14.840Z",
+      "queryHashes": [
+        "da8eed96712e"
+      ],
+      "recallDays": [
+        "2026-06-22"
+      ],
+      "conceptTags": [
+        "utf-8",
+        "sys.stdout.reconfigure",
+        "prompt-tool-dev",
+        "app.js",
+        "f.read",
+        "c.rfind",
+        "coding",
+        "utf"
+      ]
+    },
+    "memory:memory/2026-06-11.md:54:83": {
+      "key": "memory:memory/2026-06-11.md:54:83",
+      "path": "memory/2026-06-11.md",
+      "startLine": 54,
+      "endLine": 83,
+      "source": "memory",
+      "snippet": "- ⚠️ 尝试添加文本段落模式 (彩色段落+tooltip入库) 因括号不匹配问题反复失败 - ⚠️ 部分提交被 revert 或 reset 丢弃 ### 最终保留的稳定改动 (v4.0.0-phase8) | 文件 | 改动 | |------|------| | `app.js` | URL hash `#/seedance/composer` 自动切到组装器 tab | | `index.html` | JS 版本号 v=15 (防缓存) | | `seedance_v2.py` | shot_scale 从 extra_fields 移除 | | `style.css` | 右侧面板 position:relative | ### 未完成的尝试 | 功能 | 状态 | |------|------| | 移除编辑器 header | ⚠️ 恢复保留，移除时破坏 JS 结构 | | 文本段落彩色模式 | ⚠️ 已 revert，括号错配导致页面不加载 | | 项目名双击编辑 | ⚠️ 已部分实现但冲突，需重新干净实现 | | 全屏按钮 | ❌ 未开始 | | 输出面板移到右侧 | ❌ 未开始 | ### 当前运行状态 - 服务: http://127.0.0.1:8080 / http://192.168.0.103:8080 - 数据库: 213 提示词 / 189 卡片 / 322 词库 / 31 词库维度 - 演示项目: id=73 (4镜头) ### 下次打开建议 1. 读取 HEARTBEAT.md + MEMORY.md 恢复上下文 2. 启动服务:",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-22T07:22:16.986Z",
+      "lastRecalledAt": "2026-06-22T07:22:16.986Z",
+      "queryHashes": [
+        "70e85e49a03e"
+      ],
+      "recallDays": [
+        "2026-06-22"
+      ],
+      "conceptTags": [
+        "v4.0.0-phase8",
+        "app.js",
+        "seedance/composer",
+        "index.html",
+        "seedance-v2.py",
+        "shot-scale",
+        "extra-fields",
+        "style.css"
+      ]
+    },
+    "memory:memory/2026-06-22.md:45:65": {
+      "key": "memory:memory/2026-06-22.md:45:65",
+      "path": "memory/2026-06-22.md",
+      "startLine": 45,
+      "endLine": 65,
+      "source": "memory",
+      "snippet": "- **versions.py**: except Exception→(JSONDecodeError, TypeError); last[\"max_v\"]安全取值; restore补prompt_id ### 文件变更总结 | 文件 | 状态 | |------|------| | cards.py | ✅ P0-1存档10字段+P0-1恢复8字段+P1 diff补全 | | versions.py | ✅ P0-2 safe_commit+P3 3处边界 | | version_helpers.py | ✅ 新增公共模块(150行, 5函数) | ## 3. 版本管理代码审查实战 (code-review-audit验证) - cards.py(631行, Python): 总分6.3/10 → CRITICAL: N+1查询+6次查询；修复后可达8.0+ - seedance_v2_composer.js(1928行, JS): 总分5.0/10 → HIGH: innerHTML XSS敞口+不可读单行函数(28处) - versions.py(147行): 总分6.7/10 → HIGH: 双轨版本系统不一致 ## 4. 技术要点记录 - skills总数: 46 → 3个启用(token-opt-admin + code-project-analyze + code-review-audit) - 所有技能均 lazy_load=true, Cache Boundary 动态下层, 非匹配0 Token - 技能间互不冲突, 独立触发: 审查→code-re",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-22T08:56:53.017Z",
+      "lastRecalledAt": "2026-06-22T08:56:53.017Z",
+      "queryHashes": [
+        "5611ac02ac94"
+      ],
+      "recallDays": [
+        "2026-06-22"
+      ],
+      "conceptTags": [
+        "versions.py",
+        "max-v",
+        "restore补prompt-id",
+        "cards.py",
+        "p0-1存档10字段",
+        "p0-1恢复8字段",
+        "p0-2",
+        "safe-commit"
+      ]
+    },
+    "memory:memory/2026-06-22.md:1:28": {
+      "key": "memory:memory/2026-06-22.md:1:28",
+      "path": "memory/2026-06-22.md",
+      "startLine": 1,
+      "endLine": 28,
+      "source": "memory",
+      "snippet": "# 2026-06-22 会话记忆 ## 1. Skills 部署 (3个新Skill) ### 1.1 token-opt-admin — DeepSeek Token配置自动运维 - 路径: `skills/token-opt-admin/SKILL.md` - config: `openclaw.json` skills.entries 43→44 (+1) - 调用: `/token-opt {target}`, `/token-check {target}` - 路由: deepseek-v4-pro(复杂诊断) / deepseek-v4-flash(轻量巡检) - lazy_load=true, Cache Boundary动态下层挂载 ### 1.2 code-project-analyze — 源码工程结构化解析 - 路径: `skills/code-project-analyze/SKILL.md` - config: skills.entries 44→45 (+1) - 调用: `/analyze-code`(V4 Pro), `/code-stack-only`(V4 Flash) - 验证: 对Mika词库执行完整10模块分析 → analysis_report_promptkit_v4.2.0.md (29.6KB/516行) - 10模块: ①技术栈②架构分层③交互逻辑④业务流程⑤风险建议⑥DB Schema⑦前端拓扑⑧构建部署⑨安全审计⑩Git演进 ### 1.3 code-review-audit — 标准化代码审查 - 路径: `s",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-22T08:56:53.017Z",
+      "lastRecalledAt": "2026-06-22T08:56:53.017Z",
+      "queryHashes": [
+        "5611ac02ac94"
+      ],
+      "recallDays": [
+        "2026-06-22"
+      ],
+      "conceptTags": [
+        "1.1",
+        "token-opt-admin",
+        "skills/token-opt-admin/skill.md",
+        "openclaw.json",
+        "skills.entries",
+        "token-opt",
+        "token-check",
+        "deepseek-v4-pro"
       ]
     }
   }
