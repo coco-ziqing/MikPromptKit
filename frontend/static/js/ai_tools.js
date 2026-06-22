@@ -49,6 +49,8 @@ App.aiTools.renderToolbar = function() {
 // ============ 工具栏显示/隐藏 ============
 
 App.aiTools.showToolbar = function() {
+    // 分组总目录页面不显示 AI 工具栏
+    if (App._aiToolbarSuppressed) return;
     var bar = this.renderToolbar();
     bar.style.display = 'flex';
 };
@@ -100,7 +102,7 @@ App.aiTools.openOptimizer = function(mode) {
 
     // 重置按钮
     var startBtn = document.getElementById('aiOptStartBtn');
-    if (startBtn) { startBtn.disabled = false; startBtn.innerHTML = '<span>✨</span> 开始优化'; }
+    if (startBtn) { startBtn.disabled = false; startBtn.innerHTML = App._t('auto.str_bce5366e', '<span>✨</span> 开始优化'); }
     var applyBtn = document.getElementById('aiOptApplyBtn');
     if (applyBtn) applyBtn.style.display = 'none';
 
@@ -197,7 +199,7 @@ App.aiTools._switchMode = function(mode) {
 App.aiTools._runOptimize = async function() {
     var input = document.getElementById('aiOptInput');
     var content = (input ? input.value : '').trim();
-    if (!content) { App.showToast('请输入提示词内容', 'warning'); return; }
+    if (!content) { App.showToast(App._t('editor.enter_content', '请输入提示词内容'), 'warning'); return; }
 
     var startBtn = document.getElementById('aiOptStartBtn');
     var stopBtn = document.getElementById('aiOptStopBtn');
@@ -209,7 +211,7 @@ App.aiTools._runOptimize = async function() {
     if (startBtn) { startBtn.style.display = 'none'; }
     if (stopBtn) { stopBtn.style.display = 'inline-block'; }
     if (applyBtn) applyBtn.style.display = 'none';
-    if (statusEl) statusEl.textContent = '⏳ 优化中...';
+    if (statusEl) statusEl.textContent = App._t('auto.str_c67d8154', '⏳ 优化中...');
     if (outputEl) outputEl.textContent = '';
     if (rawEl) rawEl.textContent = '';
 
@@ -269,12 +271,12 @@ App.aiTools._runOptimize = async function() {
         }
     } catch(e) {
         if (statusEl) statusEl.textContent = '❌ 请求失败: ' + e.message;
-        if (outputEl && !this._streamContent) outputEl.textContent = '请求失败: ' + e.message;
+        if (outputEl && !this._streamContent) outputEl.textContent = App._t('auto.str_67411e24', '请求失败: ') + e.message;
     }
 
     // 完成
     this._isStreaming = false;
-    if (startBtn) { startBtn.style.display = 'inline-block'; startBtn.innerHTML = '<span>🔄</span> 重新优化'; }
+    if (startBtn) { startBtn.style.display = 'inline-block'; startBtn.innerHTML = App._t('auto.str_fd0f4fc1', '<span>🔄</span> 重新优化'); }
     if (stopBtn) stopBtn.style.display = 'none';
 
     if (this._streamContent) {
@@ -282,7 +284,7 @@ App.aiTools._runOptimize = async function() {
         if (rawEl) rawEl.textContent = this._streamRaw.substring(0, 2000);
         if (applyBtn) applyBtn.style.display = 'inline-block';
     } else {
-        if (statusEl) statusEl.textContent = '⚠️ 未获得有效输出，请重试';
+        if (statusEl) statusEl.textContent = App._t('auto.str_049aada2', '⚠️ 未获得有效输出，请重试');
     }
 };
 
@@ -295,30 +297,30 @@ App.aiTools._stopStream = function() {
 App.aiTools._applyOptimize = function() {
     var pid = this._currentPromptId;
     var optContent = this._streamContent;
-    if (!optContent) { App.showToast('没有优化结果可应用', 'warning'); return; }
+    if (!optContent) { App.showToast(App._t('auto.str_c76a2753', '没有优化结果可应用'), 'warning'); return; }
 
     // 如果有编辑中的提示词ID，更新编辑弹窗内容
     var editInput = document.getElementById('editContent');
     if (editInput && pid) {
         editInput.value = optContent;
-        App.showToast('已填入编辑框，请保存', 'success');
+        App.showToast(App._t('auto.str_a1fa07b2', '已填入编辑框，请保存'), 'success');
         return;
     }
 
     // 否则直接更新到词条
     if (!pid) {
         // 仅复制到剪贴板
-        App.copyText(optContent, '已复制优化结果 (无关联词条)');
+        App.copyText(optContent, App._t('common.copied', '已复制优化结果 (无关联词条)'));
         return;
     }
 
-    App.showToast('请通过编辑弹窗保存', 'info');
+    App.showToast(App._t('auto.str_c9de9d53', '请通过编辑弹窗保存'), 'info');
 };
 
 App.aiTools._copyOutput = function() {
     var text = this._streamContent || '';
-    if (!text) { App.showToast('没有内容可复制', 'warning'); return; }
-    App.copyText(text, '已复制优化结果');
+    if (!text) { App.showToast(App._t('auto.str_cd2e83b1', '没有内容可复制'), 'warning'); return; }
+    App.copyText(text, App._t('common.copied', '已复制优化结果'));
 };
 
 App.aiTools.closeOptimizer = function() {
@@ -336,7 +338,7 @@ App.aiTools.openTranslate = function() {
     if (App.state.batchSelected && App.state.batchSelected.size > 0) {
         ids = Array.from(App.state.batchSelected);
     } else {
-        App.showToast('请先选择要翻译的提示词（编辑模式 + 勾选）', 'warning');
+        App.showToast(App._t('auto.please_选择要翻译的提示词_编辑模式___勾选_', '请先选择要翻译的提示词（编辑模式 + 勾选）'), 'warning');
         return;
     }
 
@@ -401,7 +403,7 @@ App.aiTools._runTranslate = async function() {
             body: JSON.stringify({ prompt_ids: ids.slice(0, 20), target_lang: lang, quality_check: false })
         });
 
-        var html = '<div style="margin-bottom:8px;font-weight:600;">✅ ' + data.success + '成功 / ' + data.failed + '失败 / ' + (data.cached || 0) + '缓存命中</div>';
+        var html = '<div style="margin-bottom:8px;font-weight:600;">✅ ' + data.success + App._t('common.success', '成功 / ') + data.failed + App._t('common.failed', '失败 / ') + (data.cached || 0) + '缓存命中</div>';
         for (var i = 0; i < (data.results || []).length; i++) {
             var r = data.results[i];
             var style = r.ok ? 'color:#10b981;' : 'color:#ef4444;';
@@ -411,7 +413,7 @@ App.aiTools._runTranslate = async function() {
             html += '</div>';
         }
         resultEl.innerHTML = html;
-        App.showToast('翻译完成: ' + data.success + '/' + ids.length, 'success');
+        App.showToast(App._t('auto.str_6578de1a', '翻译完成: ') + data.success + '/' + ids.length, 'success');
     } catch(e) {
         resultEl.innerHTML = '<span style="color:#ef4444;">翻译失败: ' + e.message + '</span>';
     }
@@ -432,9 +434,9 @@ App.aiTools._closeTranslate = function() {
 App.aiTools.autoTagCurrent = async function() {
     // 获取当前模块词条
     var prompts = App.state.prompts || [];
-    if (prompts.length === 0) { App.showToast('当前模块没有词条', 'warning'); return; }
+    if (prompts.length === 0) { App.showToast(App._t('auto.current_模块没有词条', '当前模块没有词条'), 'warning'); return; }
 
-    App.showToast('正在分析标签... (最多20条)', 'info');
+    App.showToast(App._t('auto.ing_分析标签_____最多__条_', '正在分析标签... (最多20条)'), 'info');
 
     var items = [];
     for (var i = 0; i < Math.min(prompts.length, 20); i++) {
@@ -447,11 +449,11 @@ App.aiTools.autoTagCurrent = async function() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ items: items })
         });
-        App.showToast('标签分析完成: ' + data.success + '/' + data.total + ' 条', data.failed > 0 ? 'warning' : 'success');
+        App.showToast(App._t('auto.str_bf72a052', '标签分析完成: ') + data.success + '/' + data.total + ' 条', data.failed > 0 ? 'warning' : 'success');
         // 刷新列表
         App.loadPrompts();
     } catch(e) {
-        App.showToast('标签分析失败: ' + e.message, 'error');
+        App.showToast(App._t('auto.str_7ace8112', '标签分析失败: ') + e.message, 'error');
     }
 };
 
@@ -470,13 +472,13 @@ App.aiTools.injectEditAiButton = function() {
     btn.id = 'aiEditTagBtn';
     btn.className = 'btn btn-sm ai-inline-btn';
     btn.style.cssText = 'font-size:11px;padding:3px 10px;margin-top:4px;background:var(--hover-bg);color:var(--primary);border:1px solid var(--border-color);border-radius:6px;cursor:pointer;';
-    btn.innerHTML = '🤖 AI 分析标签';
+    btn.innerHTML = App._t('auto.str_bef794c6', '🤖 AI 分析标签');
     btn.onclick = async function() {
         var content = document.getElementById('editContent').value;
-        if (!content || !content.trim()) { App.showToast('请先输入提示词内容', 'warning'); return; }
+        if (!content || !content.trim()) { App.showToast(App._t('auto.please_输入提示词内容', '请先输入提示词内容'), 'warning'); return; }
 
         btn.disabled = true;
-        btn.textContent = '⏳ 分析中...';
+        btn.textContent = App._t('auto.str_85a406c8', '⏳ 分析中...');
 
         try {
             var data = await App.fetchJSON('/api/ai/auto-tag/analyze', {
@@ -496,15 +498,15 @@ App.aiTools.injectEditAiButton = function() {
                 }
                 if (data.meaning) document.getElementById('editMeaning').value = data.meaning;
                 if (data.scene) document.getElementById('editScene').value = data.scene;
-                App.showToast('AI 分析完成 (置信度: ' + Math.round((data.confidence || 0.5) * 100) + '%)', 'success');
+                App.showToast(App._t('auto.str_844c894c', 'AI 分析完成 (置信度: ') + Math.round((data.confidence || 0.5) * 100) + '%)', 'success');
             } else {
-                App.showToast('AI 分析失败: ' + (data ? data.error : '未知'), 'warning');
+                App.showToast(App._t('auto.str_7b9d7831', 'AI 分析失败: ') + (data ? data.error : App._t('auto.str_1622dc9b', '未知')), 'warning');
             }
         } catch(e) {
-            App.showToast('AI 分析出错: ' + e.message, 'error');
+            App.showToast(App._t('auto.str_e82a1516', 'AI 分析出错: ') + e.message, 'error');
         }
         btn.disabled = false;
-        btn.textContent = '🤖 AI 分析标签';
+        btn.textContent = App._t('auto.str_bef794c6', '🤖 AI 分析标签');
     };
 
     tagsRow.parentNode.appendChild(btn);
@@ -523,9 +525,9 @@ App.aiTools.aiThumbCurrent = async function() {
         var prompts = App.state.prompts || [];
         if (prompts.length > 0) ids = [prompts[0].id];
     }
-    if (ids.length === 0) { App.showToast('请先选择词条', 'warning'); return; }
+    if (ids.length === 0) { App.showToast(App._t('auto.please_选择词条', '请先选择词条'), 'warning'); return; }
 
-    App.showToast('正在生成AI缩略图 (' + ids.length + '条)...', 'info');
+    App.showToast(App._t('auto.ing_生成ai缩略图__', '正在生成AI缩略图 (') + ids.length + App._t('common.items', '条)...'), 'info');
 
     try {
         var data = await App.fetchJSON('/api/ai/thumbnail/batch-generate', {
@@ -533,10 +535,10 @@ App.aiTools.aiThumbCurrent = async function() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt_ids: ids.slice(0, 10) })
         });
-        App.showToast('AI缩略图生成: ' + data.success + '/' + data.total + ' 成功', 'success');
+        App.showToast(App._t('auto.str_d7f024cd', 'AI缩略图生成: ') + data.success + '/' + data.total + App._t('auto.str_f28e75cf', ' 成功'), 'success');
         App.loadPrompts();
     } catch(e) {
-        App.showToast('AI缩略图生成失败: ' + e.message, 'error');
+        App.showToast(App._t('auto.str_6464e87f', 'AI缩略图生成失败: ') + e.message, 'error');
     }
 };
 
@@ -617,9 +619,9 @@ App.aiTools._ctxTranslate = async function() {
     try {
         var d = await App.fetchJSON('/api/translate/' + pid + '?target_lang=zh');
         if (d && d.ok && d.translated) {
-            App.copyText(d.translated, '已复制中文翻译');
+            App.copyText(d.translated, App._t('common.copied', '已复制中文翻译'));
         } else {
-            App.showToast('翻译失败: ' + (d ? d.error : '未知'), 'error');
+            App.showToast(App._t('auto.str_31ff785e', '翻译失败: ') + (d ? d.error : App._t('auto.str_1622dc9b', '未知')), 'error');
         }
     } catch(e) {
         App.showToast('翻译出错: ' + e.message, 'error');
@@ -649,10 +651,10 @@ App.aiTools._ctxAutoTag = async function() {
                     tags: d.tags, meaning: d.meaning, scene: d.scene
                 })
             });
-            App.showToast('标签已更新: ' + (d.module || '') + ' / ' + (d.tags || []).join(', '), 'success');
+            App.showToast(App._t('auto.str_8526cf2c', '标签已更新: ') + (d.module || '') + ' / ' + (d.tags || []).join(', '), 'success');
             App.loadPrompts();
         } else {
-            App.showToast('分析失败', 'error');
+            App.showToast(App._t('auto.str_6aee2d39', '分析失败'), 'error');
         }
     } catch(e) {
         App.showToast('分析出错: ' + e.message, 'error');
@@ -663,14 +665,14 @@ App.aiTools._ctxAiThumb = async function() {
     this._removeContextMenu();
     var pid = this._contextPromptId;
     if (!pid) return;
-    App.showToast('正在生成AI缩略图...', 'info');
+    App.showToast(App._t('auto.ing_生成ai缩略图___', '正在生成AI缩略图...'), 'info');
     try {
         var d = await App.fetchJSON('/api/ai/thumbnail/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt_id: pid })
         });
-        App.showToast(d.ok ? 'AI缩略图已生成' : '生成失败', d.ok ? 'success' : 'error');
+        App.showToast(d.ok ? App._t('auto.str_90ef7b61', 'AI缩略图已生成') : App._t('auto.str_7f7de8a2', '生成失败'), d.ok ? 'success' : 'error');
         App.loadPrompts();
     } catch(e) {
         App.showToast('生成出错: ' + e.message, 'error');
@@ -679,7 +681,7 @@ App.aiTools._ctxAiThumb = async function() {
 
 App.aiTools._ctxCopyPrompt = function() {
     this._removeContextMenu();
-    App.copyText(this._currentContextContent || '', '已复制提示词');
+    App.copyText(this._currentContextContent || '', App._t('common.copied', '已复制提示词'));
 };
 
 // ============ 辅助: 获取选中/当前内容 ============

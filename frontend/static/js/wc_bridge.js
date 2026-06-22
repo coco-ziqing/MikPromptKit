@@ -88,7 +88,7 @@ App.switchModule = function(moduleKey) {
 App.switchAllModules = function() { this.switchAllGroups(); };
 
 // ============================================================
-// 5. 陈列架视图（首页默认，无分组选中时）
+// 5. 全部词库 — 全部分组快捷入口（按根→子类→叶子三级可折叠）
 // ============================================================
 App._showShowcase = function() {
     var container = document.getElementById('promptList');
@@ -96,73 +96,87 @@ App._showShowcase = function() {
     
     var tree = this.state.groupTree;
     if (!tree || tree.length === 0) {
-        container.innerHTML = '<div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div><p>加载分组中...</p></div>';
+        container.innerHTML = '<div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div><p>' + App._t('showcase.loading', '加载分组中...') + '</p></div>';
         return;
     }
     
-    // 收集所有叶子分组（有 card_count > 0 的实际分组）
-    var leafGroups = [];
-    function collectLeaves(nodes, rootName) {
-        for (var i = 0; i < nodes.length; i++) {
-            var n = nodes[i];
-            if ((n.group_type === 'builtin' || n.group_type === 'seedance' || n.group_type === 'custom') && n.card_count > 0) {
-                n._rootName = rootName;
-                leafGroups.push(n);
-            }
-            if (n.children && n.children.length > 0) {
-                collectLeaves(n.children, n.name);
-            }
-        }
-    }
-    for (var t = 0; t < tree.length; t++) {
-        collectLeaves(tree[t].children, tree[t].name);
-    }
-    this.state.showcaseGroups = leafGroups;
+    var html = '<div style="padding:12px 0;">';
+    html += '<h5 style="margin-bottom:2px;display:flex;align-items:center;gap:8px;">';
+    html += '<i class="bi bi-grid-3x3-gap-fill"></i> ' + App._t('showcase.title', '全部词库');
+    html += '<span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:8px;">' + String.fromCharCode(8212) + ' ' + App._t('showcase.subtitle', '全部分组快捷入口') + '</span>';
+    html += '</h5>';
+    html += '<p style="color:var(--text-muted);font-size:12px;margin-bottom:14px;">' + App._t('showcase.hint', '点击分组名称进入词卡列表，点击 ' + String.fromCharCode(9654) + ' 展开子分组') + '</p>';
     
-    var html = '<div style="padding: 16px 0;"><h5 style="margin-bottom:4px;"><i class="bi bi-grid-3x3-gap-fill"></i> 词卡陈列架</h5>';
-    html += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">点击分组卡片进入词卡列表，或使用左侧分类树浏览</p>';
-    
-    // 按根分类分组展示
     for (var t = 0; t < tree.length; t++) {
         var root = tree[t];
-        var rootLeaves = leafGroups.filter(function(g) { return g._rootName === root.name; });
+        var rootId = 'root_' + t;
         
-        html += '<div style="margin-bottom:28px;">';
-        html += '<h6 style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border-color);">';
-        html += '<span style="font-size:20px;">' + (root.icon || '📁') + '</span>';
-        html += '<span>' + App._escape(root.name) + '</span>';
-        html += '<span style="font-size:12px;color:var(--text-muted);">' + rootLeaves.reduce(function(s,g){return s+g.card_count;},0) + ' 条</span>';
-        html += '</h6>';
+        html += '<div style="margin-bottom:16px;">';
+        html += '<div onclick="var c=document.getElementById(\'' + rootId + '\');c.style.display=c.style.display===\'none\'?\'block\':\'none\';var a=this.querySelector(\'.toggle-arrow\');if(a)a.textContent=c.style.display===\'none\'?\'' + String.fromCharCode(9654) + '\':\'' + String.fromCharCode(9660) + '\';" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:6px 0;margin-bottom:2px;border-bottom:1px solid var(--border-color);">';
+        html += '<span class="toggle-arrow" style="font-size:10px;width:14px;">' + String.fromCharCode(9660) + '</span>';
+        html += '<span style="font-size:18px;">' + (root.icon || '📁') + '</span>';
+        html += '<span style="font-weight:600;font-size:14px;">' + App._escape(root.name) + '</span>';
+        html += '<span style="font-size:11px;color:var(--text-muted);margin-left:auto;">' + (root.card_count || 0) + ' ' + App._t('common.items', '条') + '</span>';
+        html += '</div>';
         
-        // 按子类分组排列
+        html += '<div id="' + rootId + '" style="display:block;">';
+        
         if (root.children) {
             for (var s = 0; s < root.children.length; s++) {
                 var sub = root.children[s];
-                var subLeaves = rootLeaves.filter(function(g) {
-                    return g.parent_group_id === sub.id;
-                });
-                if (subLeaves.length === 0) continue;
+                if (!sub.children || sub.children.length === 0) continue;
                 
-                html += '<div style="margin-bottom:12px;">';
-                html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:600;">' + (sub.icon || '') + ' ' + App._escape(sub.name) + '</div>';
-                html += '<div class="prompt-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));">';
+                var subId = 'sub_' + t + '_' + s;
+                var subLeaves = sub.children;
+                var subTotal = subLeaves.reduce(function(sum,g){return sum+(g.card_count||0);},0);
+                if (subTotal === 0 && sub.group_type !== 'sub') continue;
                 
+                html += '<div style="margin-left:16px;margin-bottom:4px;">';
+                html += '<div onclick="var c=document.getElementById(\'' + subId + '\');c.style.display=c.style.display===\'none\'?\'block\':\'none\';var a=this.querySelector(\'.toggle-arrow\');if(a)a.textContent=c.style.display===\'none\'?\'' + String.fromCharCode(9654) + '\':\'' + String.fromCharCode(9660) + '\';" style="cursor:pointer;display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;color:var(--text-muted);">';
+                html += '<span class="toggle-arrow" style="font-size:9px;width:12px;">' + String.fromCharCode(9660) + '</span>';
+                html += '<span style="font-size:13px;">' + (sub.icon || '📂') + '</span>';
+                html += '<span style="font-weight:600;">' + App._escape(sub.name) + '</span>';
+                html += '<span style="font-size:10px;margin-left:auto;">' + subTotal + ' ' + App._t('common.items', '条') + '</span>';
+                html += '</div>';
+                
+                html += '<div id="' + subId + '" style="display:block;margin-left:28px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:6px;">';
                 for (var g = 0; g < subLeaves.length; g++) {
                     var grp = subLeaves[g];
-                    html += App._renderShowcaseCard(grp);
+                    if (grp.group_type === 'sub' || grp.group_type === 'root') continue;
+                    html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
+                    html += 'style="font-size:11px;padding:4px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;"';
+                    html += ' onmouseenter="this.style.borderColor=var(--primary);this.style.background=var(--hover-bg)" onmouseleave="this.style.borderColor=var(--border-color);this.style.background=var(--bg-card)"';
+                    html += '>';
+                    html += (grp.icon||'📄') + ' ' + App._escape(grp.name);
+                    html += '<span style="font-size:9px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
+                    html += '</button>';
                 }
                 html += '</div></div>';
             }
         }
-        html += '</div>';
+        html += '</div></div>';
     }
     
     html += '</div>';
     container.innerHTML = html;
-    document.getElementById('countInfo').textContent = '共 ' + leafGroups.reduce(function(s,g){return s+g.card_count;},0) + ' 条词卡';
+    
+    var totalLeaves = 0, totalCards = 0;
+    function countAll(nodes) {
+        for (var i = 0; i < nodes.length; i++) {
+            var n = nodes[i];
+            if (n.group_type !== 'root' && n.group_type !== 'sub') {
+                totalLeaves++;
+                totalCards += (n.card_count || 0);
+            }
+            if (n.children) countAll(n.children);
+        }
+    }
+    countAll(tree);
+    document.getElementById('countInfo').textContent = App._t('showcase.stats', '共 ') + totalLeaves + App._t('showcase.stats_groups', ' 个分组 · ') + totalCards + App._t('common.card_count_suffix', ' 条词卡');
 };
 
-// 陈列架点击代理（data属性避免引号注入）
+
+// 陈列架点击代理（data属性避免引号注入）（data属性避免引号注入）
 App._showcaseClick = function(el) {
     var gid = parseInt(el.getAttribute('data-gid'));
     var gname = el.getAttribute('data-gname') || '';
@@ -672,7 +686,7 @@ App._updatePageTitle = function() {
     if (this.state.currentGroupId !== null && this.state.currentView === 'home') {
         document.getElementById('pageTitle').textContent = this.state.currentGroupName || '词卡列表';
     } else if (this.state.currentView === 'home') {
-        document.getElementById('pageTitle').textContent = '词卡陈列架';
+        document.getElementById('pageTitle').textContent = '全部词库';
     } else {
         if (_origUpdateTitle) _origUpdateTitle.call(this);
     }

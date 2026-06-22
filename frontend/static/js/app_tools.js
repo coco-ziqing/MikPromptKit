@@ -280,7 +280,7 @@ Object.assign(App, {
             content = lines.join('\n');
         }
         document.getElementById('epContent').value = content;
-        document.getElementById('epCount').textContent = '选中 ' + items.length + ' 条 · ' + (fmt === 'json' ? 'JSON 格式' : 'TXT 格式');
+        document.getElementById('epCount').textContent = '选中 ' + items.length + ' 条 · ' + (fmt === 'json' ? App._t('auto.str_c4cee7d7', 'JSON 格式') : App._t('auto.str_8d90f45c', 'TXT 格式'));
     },
 
     async _doExportPreview() {
@@ -309,10 +309,10 @@ Object.assign(App, {
             a.download = this._makeExportFilename(this._epItems || [], fmt);
             a.click();
             URL.revokeObjectURL(url);
-            this.showToast('导出成功 (' + ids.length + ' 条)', 'success');
+            this.showToast(App._t('common.export', '导出成功 (') + ids.length + ' 条)', 'success');
             document.getElementById('modalExportPreview').style.display = 'none';
         } catch (e) {
-            this.showToast('导出失败: ' + e.message, 'error');
+            this.showToast(App._t('common.export', '导出失败: ') + e.message, 'error');
         }
     },
 
@@ -331,7 +331,7 @@ Object.assign(App, {
             var resp = await fetch('/api/export/preview-png', { method: 'POST', body: formData });
             var preview = await resp.json();
             if (!preview.ok || !preview.preview) {
-                this.showToast('该 PNG 不包含有效的提示词数据', 'error');
+                this.showToast(App._t('auto.str_694bb111', '该 PNG 不包含有效的提示词数据'), 'error');
                 return;
             }
             var p = preview.preview;
@@ -349,13 +349,13 @@ Object.assign(App, {
             this._diIsPng = true;
             this._diPngFile = file;
             document.getElementById('diFileName').textContent = file.name;
-            document.getElementById('diFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB · 1 条提示词';
-            document.getElementById('diCount').textContent = '共 1 条提示词';
+            document.getElementById('diFileSize').textContent = (file.size / 1024).toFixed(1) + App._t('auto.str_8311d110', ' KB · 1 条提示词');
+            document.getElementById('diCount').textContent = App._t('auto.str_25287afe', '共 1 条提示词');
             this._renderDiItems([item]);
             document.getElementById('diSelectAll').checked = true;
             document.getElementById('diResult').style.display = 'none';
             document.getElementById('btnDiImport').disabled = false;
-            document.getElementById('btnDiImport').innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+            document.getElementById('btnDiImport').innerHTML = App._t('auto.str_fc69a499', '<i class="bi bi-check-lg"></i> 确认导入');
             document.getElementById('btnDiImport').onclick = function() { App._confirmDropImport(); };
             document.getElementById('modalDropImport').style.display = 'flex';
         } catch (e) {
@@ -376,7 +376,7 @@ Object.assign(App, {
         // 兼容两种格式：{prompts: [...]} 或直接数组
         var items = data.prompts || data;
         if (!Array.isArray(items) || items.length === 0) {
-            this.showToast('未找到有效的提示词数据', 'error');
+            this.showToast(App._t('auto.str_88178d1c', '未找到有效的提示词数据'), 'error');
             return;
         }
         // 规范化：确保每个 item 有 content
@@ -398,8 +398,8 @@ Object.assign(App, {
 
         // 填充弹窗信息
         document.getElementById('diFileName').textContent = file.name;
-        document.getElementById('diFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB · ' + items.length + ' 条提示词';
-        document.getElementById('diCount').textContent = '共 ' + items.length + ' 条提示词';
+        document.getElementById('diFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB · ' + items.length + App._t('auto.str_6f2666c1', ' 条提示词');
+        document.getElementById('diCount').textContent = '共 ' + items.length + App._t('auto.str_6f2666c1', ' 条提示词');
 
         // 统一渲染预览列表
         this._renderDiItems(items);
@@ -407,7 +407,7 @@ Object.assign(App, {
         document.getElementById('diSelectAll').checked = true;
         document.getElementById('diResult').style.display = 'none';
         document.getElementById('btnDiImport').disabled = false;
-        document.getElementById('btnDiImport').innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+        document.getElementById('btnDiImport').innerHTML = App._t('auto.str_fc69a499', '<i class="bi bi-check-lg"></i> 确认导入');
 
         // 显示弹窗
         document.getElementById('modalDropImport').style.display = 'flex';
@@ -465,10 +465,10 @@ Object.assign(App, {
 
     async _confirmDropImport() {
         var cbs = document.querySelectorAll('.di-item-cb:checked');
-        if (cbs.length === 0) { this.showToast('请至少选择一条提示词', 'error'); return; }
+        if (cbs.length === 0) { this.showToast(App._t('auto.str_c31cfbc9', '请至少选择一条提示词'), 'error'); return; }
         var btn = document.getElementById('btnDiImport');
         btn.disabled = true;
-        btn.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div> 正在导入...';
+        btn.innerHTML = App._t('auto.str_8d04383b', '<div class="spinner-border spinner-border-sm" role="status"></div> 正在导入...');
 
         var data;
         if (this._diIsPng && this._diPngBuffer) {
@@ -495,8 +495,8 @@ Object.assign(App, {
                 var resp = await fetch('/api/export/import-png', { method: 'POST', body: formData });
                 data = await resp.json();
             } catch (e) {
-                this.showToast('PNG 导入失败', 'error');
-                btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+                this.showToast(App._t('auto.str_faed53ba', 'PNG 导入失败'), 'error');
+                btn.disabled = false; btn.innerHTML = App._t('auto.str_fc69a499', '<i class="bi bi-check-lg"></i> 确认导入');
                 return;
             }
             // 标准化返回值（后端 import-png 返回 {ok, result}，统一为 {created, skipped, failed}）
@@ -541,8 +541,8 @@ Object.assign(App, {
                 var resp = await fetch('/api/v2/pt/import', { method: 'POST', body: formData });
                 data = await resp.json();
             } catch (e) {
-                this.showToast('导入失败', 'error');
-                btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+                this.showToast(App._t('common.import', '导入失败'), 'error');
+                btn.disabled = false; btn.innerHTML = App._t('auto.str_fc69a499', '<i class="bi bi-check-lg"></i> 确认导入');
                 return;
             }
         } else {
@@ -571,8 +571,8 @@ Object.assign(App, {
         }
 
         if (!data) {
-            btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
-            this.showToast('导入失败，请重试', 'error');
+            btn.disabled = false; btn.innerHTML = App._t('auto.str_fc69a499', '<i class="bi bi-check-lg"></i> 确认导入');
+            this.showToast(App._t('common.import', '导入失败，请重试'), 'error');
             return;
         }
 
@@ -580,7 +580,7 @@ Object.assign(App, {
         resultEl.style.display = 'block';
         if (data.failed > 0) {
             resultEl.style.color = '#ef4444';
-            resultEl.innerHTML = '导入完成：' + data.created + ' 成功, ' + data.skipped + ' 跳过, ' + data.failed + ' 失败';
+            resultEl.innerHTML = App._t('common.import', '导入完成：') + data.created + ' 成功, ' + data.skipped + ' 跳过, ' + data.failed + App._t('auto.str_f73d0c19', ' 失败');
         } else {
             resultEl.style.color = '#059669';
             resultEl.innerHTML = '✅ 导入成功！' + data.created + ' 条提示词已添加';
@@ -603,7 +603,7 @@ Object.assign(App, {
             } else {
                 this.switchAllModules();
             }
-            this.showToast('成功导入 ' + data.created + ' 条提示词', 'success');
+            this.showToast(App._t('common.success', '成功导入 ') + data.created + App._t('auto.str_6f2666c1', ' 条提示词'), 'success');
         }
     },
 
@@ -615,12 +615,12 @@ Object.assign(App, {
         var resp = await fetch('/api/v2/pt/preview', { method: 'POST', body: formData });
         if (!resp.ok) {
             var errText = await resp.text();
-            this.showToast('预览失败: ' + errText, 'error');
+            this.showToast(App._t('auto.preview_失败__', '预览失败: ') + errText, 'error');
             return;
         }
         var data = await resp.json();
         if (!data || !data.items || data.items.length === 0) {
-            this.showToast('未找到有效的提示词数据', 'error');
+            this.showToast(App._t('auto.str_88178d1c', '未找到有效的提示词数据'), 'error');
             return;
         }
         this._diPtFile = file;
@@ -628,20 +628,20 @@ Object.assign(App, {
         this._diItems = data.items;
         document.getElementById('diFileName').textContent = file.name;
         document.getElementById('diFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB \u00B7 ' + data.count + ' \u6761\u63D0\u793A\u8BCD';
-        document.getElementById('diCount').textContent = '共 ' + data.count + ' 条提示词';
+        document.getElementById('diCount').textContent = '共 ' + data.count + App._t('auto.str_6f2666c1', ' 条提示词');
         this._renderDiItems(data.items);
         document.getElementById('diSelectAll').checked = true;
         document.getElementById('diResult').style.display = 'none';
         document.getElementById('btnDiImport').disabled = false;
-        document.getElementById('btnDiImport').innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+        document.getElementById('btnDiImport').innerHTML = App._t('auto.str_fc69a499', '<i class="bi bi-check-lg"></i> 确认导入');
         document.getElementById('btnDiImport').onclick = function() { App._confirmDropImport(); };
         document.getElementById('modalDropImport').style.display = 'flex';
     },
 
     _copyExportPreview() {
         var text = document.getElementById('epContent').value;
-        if (!text) { this.showToast('没有内容可复制', 'error'); return; }
-        this.copyText(text, '已复制导出内容');
+        if (!text) { this.showToast(App._t('auto.str_cd2e83b1', '没有内容可复制'), 'error'); return; }
+        this.copyText(text, App._t('common.copied', '已复制导出内容'));
     },
 
     clearEditSelection() {
@@ -652,7 +652,7 @@ Object.assign(App, {
 
     async batchCopy() {
         const ids = [...this.state.batchSelected];
-        if (ids.length === 0) { this.showToast('请先选择提示词', 'error'); return; }
+        if (ids.length === 0) { this.showToast(App._t('auto.please_选择提示词', '请先选择提示词'), 'error'); return; }
         const data = await this.fetchJSON('/api/v2/batch/copy', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -666,12 +666,12 @@ Object.assign(App, {
 
     async copyBatchResult() {
         const text = document.getElementById('batchResultText').value;
-        await this.copyText(text, '已复制全部内容');
+        await this.copyText(text, App._t('common.copied', '已复制全部内容'));
     },
 
     async batchExport(fmt) {
         const ids = [...this.state.batchSelected];
-        if (ids.length === 0) { this.showToast('请先选择提示词', 'error'); return; }
+        if (ids.length === 0) { this.showToast(App._t('auto.please_选择提示词', '请先选择提示词'), 'error'); return; }
         if (fmt === 'pt' || fmt === 'png') {
             this._exportQueue = { ids: ids, fmt: fmt };
             this._showExportNameDialog(ids, fmt);
@@ -690,20 +690,20 @@ Object.assign(App, {
             a.download = App._makeExportFilename(ids, fmt);
             a.click();
             URL.revokeObjectURL(url);
-            this.showToast('导出成功 (' + ids.length + ' 条)', 'success');
+            this.showToast(App._t('common.export', '导出成功 (') + ids.length + ' 条)', 'success');
         } catch (e) {
-            this.showToast('导出失败', 'error');
+            this.showToast(App._t('common.export', '导出失败'), 'error');
         }
     },
 
     // ============ 导出命名弹窗 ============
 
     _showExportNameDialog(ids, fmt) {
-        var fmtNames = { pt: '.pt 提示词包', png: '导出 PNG 卡片' };
-        document.getElementById('exportNameTitle').textContent = '导出 ' + (fmtNames[fmt] || fmt.toUpperCase());
+        var fmtNames = { pt: App._t('auto.str_7f391c64', '.pt 提示词包'), png: App._t('common.export', '导出 PNG 卡片') };
+        document.getElementById('exportNameTitle').textContent = App._t('common.export', '导出 ') + (fmtNames[fmt] || fmt.toUpperCase());
         var defaultName = this._makeExportFilename(ids, fmt).replace('.' + fmt, '');
         document.getElementById('exportNameInput').value = defaultName;
-        document.getElementById('exportNameCount').textContent = '共 ' + ids.length + ' 条 · 格式: ' + (fmt === 'pt' ? '.pt 提示词包' : 'PNG 卡片');
+        document.getElementById('exportNameCount').textContent = '共 ' + ids.length + ' 条 · 格式: ' + (fmt === 'pt' ? App._t('auto.str_7f391c64', '.pt 提示词包') : App._t('auto.str_aa9fa585', 'PNG 卡片'));
 
         var savedPath = localStorage.getItem('promptkit_export_path') || '';
         var pi = document.getElementById('exportPathInput');
@@ -716,14 +716,14 @@ Object.assign(App, {
             if (se) { se.innerHTML = '\u2705 文件夹: <strong>' + savedPath + '</strong>'; se.style.color = '#059669'; }
         } else {
             pi.value = '';
-            if (se) { se.innerHTML = '\U0001f4a1 点击输入框选择文件夹，或直接输入完整磁盘路径'; se.style.color = 'var(--text-muted)'; }
+            if (se) { se.innerHTML = App._t('auto.str_8b8d2b65', '\U0001f4a1 点击输入框选择文件夹，或直接输入完整磁盘路径'); se.style.color = 'var(--text-muted)'; }
         }
 
         pi.oninput = function() {
             var v = this.value.trim();
             var s = document.getElementById('exportPathStatus');
             if (!s) return;
-            if (!v) { s.innerHTML = '\U0001f4a1 点击输入框选择文件夹，或直接输入完整磁盘路径'; s.style.color = 'var(--text-muted)'; }
+            if (!v) { s.innerHTML = App._t('auto.str_8b8d2b65', '\U0001f4a1 点击输入框选择文件夹，或直接输入完整磁盘路径'); s.style.color = 'var(--text-muted)'; }
             else if (v.includes(":\\") || v.includes(":/")) {
                 s.innerHTML = '\u23f3 验证路径...';
                 s.style.color = '#f59e0b';
@@ -789,11 +789,11 @@ Object.assign(App, {
 
                 if (saveDir) {
                     var ok = await App._saveBlobToPath(b, saveDir + '\\' + dn);
-                    if (ok) { App.showToast('导出成功 (' + ids.length + ' 条)', 'success'); }
-                    else { App._fallbackDownload(b, dn); App.showToast('写入失败，已改为下载', 'warning'); }
+                    if (ok) { App.showToast(App._t('common.export', '导出成功 (') + ids.length + ' 条)', 'success'); }
+                    else { App._fallbackDownload(b, dn); App.showToast(App._t('auto.str_1680e142', '写入失败，已改为下载'), 'warning'); }
                 } else {
                     App._fallbackDownload(b, dn);
-                    App.showToast('导出成功 (' + ids.length + ' 条)', 'success');
+                    App.showToast(App._t('common.export', '导出成功 (') + ids.length + ' 条)', 'success');
                 }
             } else if (fmt === 'png') {
                 var saved = 0;
@@ -811,10 +811,10 @@ Object.assign(App, {
                         saved++;
                     }
                 }
-                App.showToast('导出成功 (' + saved + '/' + ids.length + ' 张 PNG)', 'success');
+                App.showToast(App._t('common.export', '导出成功 (') + saved + '/' + ids.length + ' 张 PNG)', 'success');
             }
         } catch (e) {
-            App.showToast('导出失败: ' + e.message, 'error');
+            App.showToast(App._t('common.export', '导出失败: ') + e.message, 'error');
         }
         this._exportQueue = null;
     },
@@ -833,7 +833,7 @@ Object.assign(App, {
                 this.showToast('选择目录失败: ' + d.error, 'error');
             }
         } catch (e) {
-            this.showToast('目录选择器调用失败', 'error');
+            this.showToast(App._t('auto.str_71fa02a5', '目录选择器调用失败'), 'error');
         }
     },
 
@@ -866,21 +866,21 @@ Object.assign(App, {
             var d = await r.json();
             return d.ok;
         } catch (e) {
-            console.warn('保存文件失败:', e.message);
+            console.warn(App._t('common.save', '保存文件失败:'), e.message);
             return false;
         }
     },
 
     async batchAddToWordpack() {
         const ids = [...this.state.batchSelected];
-        if (ids.length === 0) { this.showToast('请先选择提示词', 'error'); return; }
+        if (ids.length === 0) { this.showToast(App._t('auto.please_选择提示词', '请先选择提示词'), 'error'); return; }
         // 加载词包列表
         const data = await this.fetchJSON('/api/v2/wordpacks');
         if (!data || data.items.length === 0) {
-            this.showToast('请先创建词包', 'error');
+            this.showToast(App._t('auto.please_创建词包', '请先创建词包'), 'error');
             return;
         }
-        document.getElementById('modalAddToTitle').textContent = '添加到词包';
+        document.getElementById('modalAddToTitle').textContent = App._t('auto.add_到词包', '添加到词包');
         let html = '<p style="margin-bottom:12px;font-size:13px;color:var(--text-muted);">选择要添加到的词包:</p>';
         for (const wp of data.items) {
             html += `<div class="cat-tab" style="display:block;margin-bottom:6px;text-align:left;" onclick="App.doAddToWordpack(${wp.id}, '${this._escape(wp.name)}')">
@@ -962,7 +962,7 @@ Object.assign(App, {
             hasOptions = true;
         }
         if (!hasOptions) {
-            var fb = { emotion: '人物表情', color: '场景色彩', tone: '画面色调', composition: '构图运镜', seedance: '视频模板', custom: '自定义' };
+            var fb = { emotion: '人物表情', color: App._t('auto.str_67a7c94b', '场景色彩'), tone: '画面色调', composition: App._t('auto.str_bec46210', '构图运镜'), seedance: App._t('auto.str_b19db4a1', '视频模板'), custom: App._t('auto.custom_', '自定义') };
             for (var k in fb) {
                 var opt2 = document.createElement('option');
                 opt2.value = k;
@@ -1000,7 +1000,7 @@ Object.assign(App, {
 
             if (!data.ok) {
                 var errEl = document.getElementById('ssError');
-                errEl.innerHTML = '<strong>\u274c ' + (data.error || '识别失败') + '</strong><br><span style="font-size:12px;margin-top:8px;display:block;">\u8bf7\u786e\u8ba4 Ollama \u6b63\u5728\u8fd0\u884c\u4e14\u6709\u89c6\u89c9\u6a21\u578b\u53ef\u7528\u3002</span>';
+                errEl.innerHTML = '<strong>\u274c ' + (data.error || App._t('auto.str_80ce4593', '识别失败')) + '</strong><br><span style="font-size:12px;margin-top:8px;display:block;">\u8bf7\u786e\u8ba4 Ollama \u6b63\u5728\u8fd0\u884c\u4e14\u6709\u89c6\u89c9\u6a21\u578b\u53ef\u7528\u3002</span>';
                 errEl.style.display = 'block';
                 document.getElementById('ssBtnRetry').style.display = 'inline-block';
                 return;
@@ -1014,7 +1014,7 @@ Object.assign(App, {
             document.getElementById('ssContent').value = content;
             document.getElementById('ssMeaning').value = preview.meaning || '';
             document.getElementById('ssScene').value = preview.scene || '';
-            document.getElementById('ssCategory').value = preview.category || 'OCR导入';
+            document.getElementById('ssCategory').value = preview.category || App._t('auto.str_351d7032', 'OCR导入');
             document.getElementById('ssTags').value = JSON.stringify(preview.tags || []);
             document.getElementById('ssTips').value = preview.tips || '';
 
@@ -1057,7 +1057,7 @@ Object.assign(App, {
                     });
                     var dupData = await dupResp.json();
                     if (dupData && dupData.ok && dupData.duplicate) {
-                        self.showToast('\u26a0\ufe0f 已存在相同内容的词条 (模块: ' + (dupData.exists[0]?.module || '?') + ')，请确认', 'warning', 6000);
+                        self.showToast('\u26a0\ufe0f 已存在相同内容的词条 (模块: ' + (dupData.exists[0]?.module || '?') + App._t('auto.str_846a227a', ')，请确认'), 'warning', 6000);
                         document.getElementById('ssContent').style.borderColor = '#f59e0b';
                     } else {
                         document.getElementById('ssContent').style.borderColor = '';
@@ -1077,7 +1077,7 @@ Object.assign(App, {
 
     async _confirmSSImport(continueMode) {
         var content = document.getElementById('ssContent').value.trim();
-        if (!content) { this.showToast('请输入提示词内容', 'error'); return; }
+        if (!content) { this.showToast(App._t('editor.enter_content', '请输入提示词内容'), 'error'); return; }
 
         var tags = document.getElementById('ssTags').value.trim();
         try { tags = JSON.parse(tags || '[]'); } catch(e) { tags = []; }
@@ -1088,14 +1088,14 @@ Object.assign(App, {
             meaning: document.getElementById('ssMeaning').value.trim(),
             scene: document.getElementById('ssScene').value.trim(),
             module: document.getElementById('ssModule').value,
-            category: document.getElementById('ssCategory').value.trim() || 'OCR导入',
+            category: document.getElementById('ssCategory').value.trim() || App._t('auto.str_351d7032', 'OCR导入'),
             tags: tags,
             tips: document.getElementById('ssTips').value.trim(),
             temp_image: this._ssTempImage || '',
             has_image: this._ssHasImage
         };
 
-        this.showToast('\u23f3 正在导入...', 'info');
+        this.showToast(App._t('auto.str_e42eb5eb', '\u23f3 正在导入...'), 'info');
         var result = await this.fetchJSON('/api/v2/ocr/confirm', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1103,7 +1103,7 @@ Object.assign(App, {
         });
 
         if (result && result.ok) {
-            this.showToast(result.message || '\u2714 已导入', 'success');
+            this.showToast(result.message || App._t('auto.str_878c8448', '\u2714 已导入'), 'success');
             // 先关弹窗，再刷新数据（防止 loadPrompts 异常阻塞关闭）
             if (continueMode) {
                 this._ssTempImage = '';
@@ -1119,7 +1119,7 @@ Object.assign(App, {
             await this.loadPrompts();
             this.loadStats();
         } else {
-            this.showToast('导入失败: ' + (result ? result.error : '未知错误'), 'error');
+            this.showToast(App._t('common.import', '导入失败: ') + (result ? result.error : App._t('common.unknown_error', '未知错误')), 'error');
         }
     },
 
@@ -1194,7 +1194,7 @@ Object.assign(App, {
         var self = this;
         var items = e.clipboardData && e.clipboardData.items;
         if (!items || items.length === 0) {
-            self.showToast('剪贴板中未找到图片', 'warning');
+            self.showToast(App._t('auto.str_14f1f992', '剪贴板中未找到图片'), 'warning');
             return;
         }
 
@@ -1229,7 +1229,7 @@ Object.assign(App, {
                         fetch(m[1]).then(function(r) { return r.blob(); }).then(function(blob) {
                             showPastePreview(blob);
                         }).catch(function() {
-                            self.showToast('解析剪贴板图片失败', 'error');
+                            self.showToast(App._t('auto.str_7bd0314c', '解析剪贴板图片失败'), 'error');
                         });
                     } else {
                         self.showToast('剪贴板中未找到图片，请先截图再按 Ctrl+V', 'warning', 3000);
@@ -1275,7 +1275,7 @@ Object.assign(App, {
         document.getElementById('ieTabExport').className = tab === 'export' ? 'seedance-tab active' : 'seedance-tab';
         document.getElementById('ieImportPanel').style.display = tab === 'import' ? 'block' : 'none';
         document.getElementById('ieExportPanel').style.display = tab === 'export' ? 'block' : 'none';
-        document.getElementById('modalIETitle').textContent = tab === 'import' ? '导入提示词' : '导出提示词';
+        document.getElementById('modalIETitle').textContent = tab === 'import' ? App._t('common.import', '导入提示词') : App._t('common.export', '导出提示词');
     },
 
     _updateExportBtn() {
@@ -1302,10 +1302,10 @@ Object.assign(App, {
 
     async doImport() {
         var files = document.getElementById('ieFileInput').files;
-        if (!files || files.length === 0) { this.showToast('请先选择文件', 'error'); return; }
+        if (!files || files.length === 0) { this.showToast(App._t('auto.please_选择文件', '请先选择文件'), 'error'); return; }
         var conflict = document.getElementById('ieConflictSelect').value;
         var btn = document.getElementById('btnDoImport');
-        btn.disabled = true; btn.textContent = '正在导入...';
+        btn.disabled = true; btn.textContent = App._t('auto.ing_导入___', '正在导入...');
         var created = 0, skipped = 0, failed = 0;
         for (var i = 0; i < files.length; i++) {
             var file = files[i];
@@ -1334,11 +1334,11 @@ Object.assign(App, {
                 } else failed++;
             } catch(e) { failed++; }
         }
-        btn.disabled = false; btn.textContent = '开始导入';
+        btn.disabled = false; btn.textContent = App._t('auto.str_7d2ff42c', '开始导入');
         var el = document.getElementById('ieImportResult');
         el.style.display = 'block';
         el.style.color = failed > 0 ? '#ef4444' : '#059669';
-        el.innerHTML = '导入完成: ' + created + ' 成功, ' + skipped + ' 跳过, ' + failed + ' 失败';
+        el.innerHTML = App._t('common.import', '导入完成: ') + created + ' 成功, ' + skipped + ' 跳过, ' + failed + App._t('auto.str_f73d0c19', ' 失败');
         if (created > 0) await this.loadPrompts();
     },
 
@@ -1347,11 +1347,11 @@ Object.assign(App, {
         fmt = fmt ? fmt.value : 'png';
         var scope = document.getElementById('ieExportScope').value;
         var btn = document.getElementById('btnDoExport');
-        btn.disabled = true; btn.textContent = '正在导出...';
+        btn.disabled = true; btn.textContent = App._t('auto.ing_导出___', '正在导出...');
         var ids = [];
         if (scope === 'selected') {
             ids = [...this.state.batchSelected];
-            if (ids.length === 0) { this.showToast('请先选择词条', 'error'); btn.disabled = false; btn.textContent = '导出'; return; }
+            if (ids.length === 0) { this.showToast(App._t('auto.please_选择词条', '请先选择词条'), 'error'); btn.disabled = false; btn.textContent = App._t('common.export', '导出'); return; }
         } else if (scope === 'collection-item' && this.state.currentCollection) {
             ids = (this.state.collectionItems || []).map(function(p) { return p.id; });
         } else if (scope === 'all') {
@@ -1362,13 +1362,13 @@ Object.assign(App, {
             var modCbs = document.querySelectorAll('#ieModuleCheckboxes input[type="checkbox"]:checked');
             var mods = [];
             for (var mi = 0; mi < modCbs.length; mi++) mods.push(modCbs[mi].value);
-            if (mods.length === 0) { this.showToast('请选择至少一个模块', 'error'); btn.disabled = false; btn.textContent = '导出'; return; }
+            if (mods.length === 0) { this.showToast(App._t('auto.select_至少一个模块', '请选择至少一个模块'), 'error'); btn.disabled = false; btn.textContent = App._t('common.export', '导出'); return; }
             var allData = await this.fetchJSON('/api/prompts?page_size=500');
             if (allData && allData.items) {
                 ids = allData.items.filter(function(p) { return mods.indexOf(p.module) >= 0; }).map(function(p) { return p.id; });
             }
         }
-        if (ids.length === 0) { this.showToast('没有可导出的词条', 'error'); btn.disabled = false; btn.textContent = '导出'; return; }
+        if (ids.length === 0) { this.showToast('没有可导出的词条', 'error'); btn.disabled = false; btn.textContent = App._t('common.export', '导出'); return; }
         try {
             if (fmt === 'png') {
                 if (ids.length === 1) {
@@ -1404,13 +1404,13 @@ Object.assign(App, {
             }
             document.getElementById('ieExportResult').style.display = 'block';
             document.getElementById('ieExportResult').style.color = '#059669';
-            document.getElementById('ieExportResult').innerHTML = '导出成功，' + ids.length + ' 条词条已下载';
+            document.getElementById('ieExportResult').innerHTML = App._t('common.export', '导出成功，') + ids.length + App._t('auto.str_0759f025', ' 条词条已下载');
         } catch(e) {
             document.getElementById('ieExportResult').style.display = 'block';
             document.getElementById('ieExportResult').style.color = '#ef4444';
-            document.getElementById('ieExportResult').innerHTML = '导出失败: ' + e.message;
+            document.getElementById('ieExportResult').innerHTML = App._t('common.export', '导出失败: ') + e.message;
         }
-        btn.disabled = false; btn.textContent = '导出';
+        btn.disabled = false; btn.textContent = App._t('common.export', '导出');
     },
 
     async doAddToWordpack(wpId, wpName) {
@@ -1473,22 +1473,22 @@ Object.assign(App, {
 
     async batchTag() {
         var ids = [...this.state.batchSelected];
-        if (ids.length === 0) { this.showToast('请先选择词条', 'error'); return; }
-        var tags = prompt('输入标签（多个用逗号分隔）:\n例如: 自然,温暖,户外');
+        if (ids.length === 0) { this.showToast(App._t('auto.please_选择词条', '请先选择词条'), 'error'); return; }
+        var tags = prompt(App._t('auto.str_5bb0d666', '输入标签（多个用逗号分隔）:\n例如: 自然,温暖,户外'));
         if (!tags) return;
         var list = tags.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t; });
         if (list.length === 0) return;
-        var mode = confirm('确定添加标签？\n\n取消 = 移除这些标签') ? 'add' : 'remove';
+        var mode = confirm(App._t('common.ok', '确定添加标签？\n\n取消 = 移除这些标签')) ? 'add' : 'remove';
         var data = await this.fetchJSON('/api/v2/tags/batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt_ids: ids, tags: list, mode: mode })
         });
         if (data && data.ok) {
-            this.showToast('已' + (mode === 'add' ? '添加' : '移除') + ' ' + data.updated + ' 条词条的标签', 'success');
+            this.showToast('已' + (mode === 'add' ? '添加' : '移除') + ' ' + data.updated + App._t('auto.str_2892f5d4', ' 条词条的标签'), 'success');
             this.loadPrompts();
         } else {
-            this.showToast('操作失败', 'error');
+            this.showToast(App._t('common.op_failed', '操作失败'), 'error');
         }
     },
 

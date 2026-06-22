@@ -32,7 +32,7 @@
             for (var i = 0; i < resp.items.length; i++) {
                 var it = resp.items[i];
                 var icon = it.icon || '📄';
-                var typeLabel = { style: '🎨画风', negative: '🚫负面', camera: '🎬镜头', subject: '🧑主体', scene: '🌄场景', custom: '🔧自定义' }[it.lib_type] || it.lib_type;
+                var typeLabel = { style: '🎨画风', negative: '🚫负面', camera: App._t('auto.str_2985d62e', '🎬镜头'), subject: '🧑主体', scene: App._t('auto.str_bf0132fd', '🌄场景'), custom: App._t('auto.str_2a83910b', '🔧自定义') }[it.lib_type] || it.lib_type;
                 var preview = (it.prompt || '').length > 80 ? (it.prompt || '').substring(0, 80) + '...' : (it.prompt || '');
                 h += '<div class="v4lib-card" style="border:1px solid var(--border-color);border-radius:8px;padding:12px;background:var(--bg-card,#fff);" data-prompt="' + App._escape(it.prompt || '') + '">';
                 h += '  <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:6px;">';
@@ -62,7 +62,7 @@
             sel.innerHTML = '<option value="">全部类型</option>';
             for (var i = 0; i < resp.types.length; i++) {
                 var t = resp.types[i];
-                var label = { style: '🎨画风', negative: '🚫负面', camera: '🎬镜头', subject: '🧑主体', scene: '🌄场景', custom: '🔧自定义' }[t.lib_type] || t.lib_type;
+                var label = { style: '🎨画风', negative: '🚫负面', camera: App._t('auto.str_2985d62e', '🎬镜头'), subject: '🧑主体', scene: App._t('auto.str_bf0132fd', '🌄场景'), custom: App._t('auto.str_2a83910b', '🔧自定义') }[t.lib_type] || t.lib_type;
                 sel.innerHTML += '<option value="' + t.lib_type + '">' + label + ' (' + t.cnt + ')</option>';
             }
             sel.value = v;
@@ -78,7 +78,7 @@
             var h = '';
             for (var i = 0; i < resp.types.length; i++) {
                 var t = resp.types[i];
-                var label = { style: '🎨画风', negative: '🚫负面', camera: '🎬镜头', subject: '🧑主体', scene: '🌄场景', custom: '🔧自定义' }[t.lib_type] || t.lib_type;
+                var label = { style: '🎨画风', negative: '🚫负面', camera: App._t('auto.str_2985d62e', '🎬镜头'), subject: '🧑主体', scene: App._t('auto.str_bf0132fd', '🌄场景'), custom: App._t('auto.str_2a83910b', '🔧自定义') }[t.lib_type] || t.lib_type;
                 h += '<div style="padding:6px 12px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;background:var(--bg-card,#fff);">' + label + ' <strong>' + t.cnt + '</strong></div>';
             }
             el.innerHTML = h;
@@ -87,7 +87,7 @@
 
     App.showV4LibCreateModal = function() {
         document.getElementById('v4libEditId').value = '';
-        document.getElementById('v4libModalTitle').textContent = '新建词条';
+        document.getElementById('v4libModalTitle').textContent = App._t('common.new', '新建词条');
         document.getElementById('v4libFormType').value = 'style';
         document.getElementById('v4libFormCategory').value = '';
         document.getElementById('v4libFormName').value = '';
@@ -102,7 +102,7 @@
             if (!resp || !resp.item) { App.showToast('未找到词条', 'error'); return; }
             var item = resp.item;
             document.getElementById('v4libEditId').value = id;
-            document.getElementById('v4libModalTitle').textContent = '编辑词条';
+            document.getElementById('v4libModalTitle').textContent = App._t('common.edit', '编辑词条');
             document.getElementById('v4libFormType').value = item.lib_type;
             document.getElementById('v4libFormCategory').value = item.category || '';
             document.getElementById('v4libFormName').value = item.name;
@@ -110,7 +110,7 @@
             document.getElementById('v4libFormIcon').value = item.icon || '';
             document.getElementById('modalV4Lib').style.display = 'flex';
         } catch (e) {
-            App.showToast('加载失败: ' + e.message, 'error');
+            App.showToast(App._t('common.load_failed', '加载失败: ') + e.message, 'error');
         }
     };
 
@@ -123,7 +123,7 @@
             prompt: document.getElementById('v4libFormPrompt').value.trim(),
             icon: document.getElementById('v4libFormIcon').value.trim()
         };
-        if (!data.name) { App.showToast('请输入名称', 'warning'); return; }
+        if (!data.name) { App.showToast(App._t('auto.enter_名称', '请输入名称'), 'warning'); return; }
         try {
             var resp = await App.fetchJSON('/api/v4/library' + (id ? '/' + id : ''), {
                 method: id ? 'PUT' : 'POST',
@@ -135,23 +135,23 @@
                 document.getElementById('modalV4Lib').style.display = 'none';
                 App.loadV4Library();
             } else {
-                App.showToast('保存失败', 'error');
+                App.showToast(App._t('common.save', '保存失败'), 'error');
             }
         } catch (e) {
-            App.showToast('保存失败: ' + e.message, 'error');
+            App.showToast(App._t('common.save', '保存失败: ') + e.message, 'error');
         }
     };
 
     App.deleteV4LibItem = async function(id) {
-        if (!confirm('确定删除此词条？')) return;
+        if (!confirm(App._t('common.ok', '确定删除此词条？'))) return;
         try {
             var resp = await App.fetchJSON('/api/v4/library/' + id, { method: 'DELETE' });
             if (resp && resp.ok) {
-                App.showToast('已删除', 'info');
+                App.showToast(App._t('auto.str_5cc23262', '已删除'), 'info');
                 App.loadV4Library();
             }
         } catch (e) {
-            App.showToast('删除失败', 'error');
+            App.showToast(App._t('common.delete', '删除失败'), 'error');
         }
     };
 
@@ -162,7 +162,7 @@
                 var text = cards[i].dataset.prompt || '';
                 if (text) {
                     navigator.clipboard.writeText(text).then(function() {
-                        App.showToast('提示词已复制', 'success');
+                        App.showToast(App._t('common.notice', '提示词已复制'), 'success');
                     }).catch(function() {
                         var ta = document.createElement('textarea');
                         ta.value = text;
@@ -170,13 +170,13 @@
                         ta.select();
                         document.execCommand('copy');
                         document.body.removeChild(ta);
-                        App.showToast('提示词已复制', 'success');
+                        App.showToast(App._t('common.notice', '提示词已复制'), 'success');
                     });
                     return;
                 }
             }
         }
-        App.showToast('未找到提示词', 'warning');
+        App.showToast(App._t('auto.str_99d1c9e1', '未找到提示词'), 'warning');
     };
 
     // ==================== 媒体资产管理 ====================
@@ -193,7 +193,7 @@
             var resp = await App.fetchJSON(url);
             if (!resp || !resp.items) { listEl.innerHTML = '<div class="empty-state"><p>加载失败</p></div>'; return; }
             var countEl = document.getElementById('v4mediaCount');
-            if (countEl) countEl.textContent = '共 ' + resp.total + ' 个文件';
+            if (countEl) countEl.textContent = '共 ' + resp.total + App._t('auto.str_7c645c81', ' 个文件');
 
             if (!resp.items.length) {
                 listEl.innerHTML = '<div class="empty-state"><div class="icon">🖼️</div><p>暂无媒体文件</p></div>';
@@ -259,10 +259,10 @@
                 body: JSON.stringify({ items: items })
             }).then(function(resp) {
                 if (resp && resp.ok) {
-                    App.showToast('成功导入 ' + resp.imported + ' 条', 'success');
+                    App.showToast(App._t('common.success', '成功导入 ') + resp.imported + ' 条', 'success');
                     App.loadV4Library();
                 } else {
-                    App.showToast('导入失败', 'error');
+                    App.showToast(App._t('common.import', '导入失败'), 'error');
                 }
             });
         } catch (e) {
@@ -282,12 +282,12 @@
                 var blob = new Blob([jsonStr], { type: 'application/json' });
                 var a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
-                a.download = (typeFilter || '全部') + '_词库_' + new Date().toISOString().slice(0, 10) + '.json';
+                a.download = (typeFilter || App._t('common.all', '全部')) + '_词库_' + new Date().toISOString().slice(0, 10) + '.json';
                 a.click();
-                App.showToast('导出 ' + resp.total + ' 条', 'success');
+                App.showToast(App._t('common.export', '导出 ') + resp.total + ' 条', 'success');
             }
         } catch (e) {
-            App.showToast('导出失败', 'error');
+            App.showToast(App._t('common.export', '导出失败'), 'error');
         }
     };
 

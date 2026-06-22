@@ -29,7 +29,7 @@ App.wordEditor.open = async function(options) {
 
     // 更新标题
     var title = document.getElementById('wcEditTitle');
-    if (title) title.textContent = this._cardId ? '✏️ 编辑词卡' : '➕ 新建词卡';
+    if (title) title.textContent = this._cardId ? App._t('auto.str_78033f01', '✏️ 编辑词卡') : App._t('auto.str_3f8ea773', '➕ 新建词卡');
 
     // 加载分组列表
     await this._loadGroups();
@@ -206,7 +206,7 @@ App.wordEditor._buildModuleOptions = function() {
 
     // 确保预设5模块都在列表中
     var presetKeys = ['emotion','color','tone','composition','seedance'];
-    var presetNames = {emotion:'人物表情',color:'场景色彩',tone:'画面色调',composition:'分镜构图',seedance:'视频模版'};
+    var presetNames = {emotion:'人物表情',color:App._t('auto.str_67a7c94b', '场景色彩'),tone:'画面色调',composition:App._t('auto.str_ebe1d3eb', '分镜构图'),seedance:App._t('auto.str_94df12b2', '视频模版')};
     for (var i = 0; i < presetKeys.length; i++) {
         var pk = presetKeys[i];
         if (!seen[pk]) {
@@ -223,7 +223,7 @@ App.wordEditor._buildModuleOptions = function() {
     var h = '<option value="">-- 不归属任何模块 --</option>';
     for (var i = 0; i < modules.length; i++) {
         var m = modules[i];
-        var typeLabel = m.type === 'builtin' ? '内置' : '自定义';
+        var typeLabel = m.type === 'builtin' ? '内置' : App._t('auto.custom_', '自定义');
         h += '<option value="' + App._escape(m.key) + '" data-group-id="' + (m.groupId||'') + '">'
             + (m.icon||'📄') + ' ' + App._escape(m.name) + ' <span style="color:var(--text-muted);font-size:10px;">(' + typeLabel + ')</span>'
             + '</option>';
@@ -279,7 +279,7 @@ App.wordEditor._hideNewModule = function() {
 App.wordEditor._createModule = async function() {
     var inp = document.getElementById('wcNewModuleName');
     var name = (inp ? inp.value : '').trim();
-    if (!name) { App.showToast('请输入模块名称', 'warning'); return; }
+    if (!name) { App.showToast(App._t('auto.enter_模块名称', '请输入模块名称'), 'warning'); return; }
 
     var key = 'custom_' + name.replace(/[^a-z0-9_\u4e00-\u9fff]/gi, '_').substring(0, 30);
 
@@ -292,7 +292,7 @@ App.wordEditor._createModule = async function() {
                 name: name,
                 group_key: key,
                 icon: '📂',
-                description: '自定义模块: ' + name
+                description: App._t('auto.custom_模块__', '自定义模块: ') + name
             })
         });
 
@@ -312,9 +312,9 @@ App.wordEditor._createModule = async function() {
 
             // 关闭新模块输入框
             this._hideNewModule();
-            App.showToast('模块 \'' + name + '\' 已创建并选中', 'success');
+            App.showToast('模块 \'' + App._t('auto.str_2c7f8c16','模块 \'') + name + '\' 已创建并选中', 'success');
         } else {
-            App.showToast('创建失败: ' + (d ? d.error || d.detail || '名称可能重复' : ''), 'error');
+            App.showToast('创建失败: ' + (d ? d.error || d.detail || App._t('auto.str_4cd13eba', '名称可能重复') : ''), 'error');
         }
     } catch(e) {
         App.showToast('创建出错: ' + e.message, 'error');
@@ -324,7 +324,7 @@ App.wordEditor._createModule = async function() {
 App.wordEditor._loadCard = async function() {
     try {
         var d = await App.fetchJSON('/api/v4/word-cards/' + this._cardId);
-        if (!d || !d.card) { App.showToast('加载词卡失败', 'error'); return; }
+        if (!d || !d.card) { App.showToast(App._t('auto.load_词卡失败', '加载词卡失败'), 'error'); return; }
         var c = d.card;
 
         document.getElementById('wcEditGroup').value = c.group_id || '';
@@ -384,7 +384,7 @@ App.wordEditor._loadCard = async function() {
         }
 
     } catch(e) {
-        App.showToast('加载失败: ' + e.message, 'error');
+        App.showToast(App._t('common.load_failed', '加载失败: ') + e.message, 'error');
     }
 };
 
@@ -410,7 +410,7 @@ App.wordEditor._resetForm = function() {
     var delBtn = document.getElementById('wcEditDeleteBtn');
     if (delBtn) delBtn.style.display = 'none';
     var src = document.getElementById('wcEditSource');
-    if (src) src.textContent = '新建';
+    if (src) src.textContent = App._t('common.new', '新建');
 };
 
 // ============ 保存/删除 ============
@@ -486,7 +486,7 @@ App.wordEditor._save = async function() {
         if (result && result.ok) {
             var newId = result.id || this._cardId;
             this._cardId = newId;
-            App.showToast(this._cardId ? '词卡已保存' : '词卡已创建', 'success');
+            App.showToast(this._cardId ? App._t('auto.str_03f4d8a4', '词卡已保存') : App._t('auto.str_d2b555ae', '词卡已创建'), 'success');
 
             // 回调通知调用方刷新
             if (this._onSaved) {
@@ -506,23 +506,23 @@ App.wordEditor._save = async function() {
                 App.wordCards.load();
             }
         } else {
-            App.showToast('保存失败: ' + (result ? result.error || '未知错误' : '网络错误'), 'error');
+            App.showToast(App._t('common.save', '保存失败: ') + (result ? result.error || App._t('common.unknown_error', '未知错误') : App._t('common.net_error', '网络错误')), 'error');
         }
     } catch(e) {
-        App.showToast('保存出错: ' + e.message, 'error');
+        App.showToast(App._t('common.save', '保存出错: ') + e.message, 'error');
     }
 };
 
 App.wordEditor._delete = async function() {
     if (!this._cardId) return;
-    if (!confirm('确认删除此词卡？内置词卡将软删除，自定义词卡将永久删除。')) return;
+    if (!confirm(App._t('common.confirm', '确认删除此词卡？内置词卡将软删除，自定义词卡将永久删除。'))) return;
 
     try {
         var result = App.cardModel
             ? await App.cardModel.delete(this._cardId)
             : await App.fetchJSON('/api/v4/word-cards/' + this._cardId, { method: 'DELETE' });
         if (result && result.ok) {
-            App.showToast('词卡已删除', 'success');
+            App.showToast(App._t('auto.str_086098f3', '词卡已删除'), 'success');
             this.close();
 
             if (this._onSaved) this._onSaved({ id: this._cardId, _deleted: true });
@@ -530,7 +530,7 @@ App.wordEditor._delete = async function() {
             if (this._source === 'cards' && App.loadPrompts) App.loadPrompts();
         }
     } catch(e) {
-        App.showToast('删除失败: ' + e.message, 'error');
+        App.showToast(App._t('common.delete', '删除失败: ') + e.message, 'error');
     }
 };
 
@@ -555,12 +555,12 @@ App.wordEditor._aiAnalyze = async function() {
             if (d.category) document.getElementById('wcEditCategory').value = d.category;
             if (d.tags && d.tags.length > 0) document.getElementById('wcEditTags').value = d.tags.join(', ');
             if (d.meaning) document.getElementById('wcEditMeaning').value = d.meaning;
-            App.showToast('AI 分析完成', 'success');
+            App.showToast(App._t('auto.str_2af074b6', 'AI 分析完成'), 'success');
         } else {
-            App.showToast('AI 分析失败: ' + (d ? d.error : ''), 'warning');
+            App.showToast(App._t('auto.str_7b9d7831', 'AI 分析失败: ') + (d ? d.error : ''), 'warning');
         }
     } catch(e) {
-        App.showToast('AI 分析出错: ' + e.message, 'error');
+        App.showToast(App._t('auto.str_e82a1516', 'AI 分析出错: ') + e.message, 'error');
     }
 
     if (btn) { btn.disabled = false; btn.textContent = '🤖 AI分析'; }
@@ -649,7 +649,7 @@ App.wordPicker._renderCards = function(group) {
             var cid = parseInt(this.getAttribute('data-card-id'));
             if (cid) App.wordEditor.openFromPicker(cid);
         });
-        cards[i].title = (cards[i].title || '') + ' | 双击编辑';
+        cards[i].title = (cards[i].title || '') + App._t('auto.str_74d4e1a2', ' | 双击编辑');
     }
 };
 

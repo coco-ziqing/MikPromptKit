@@ -29,7 +29,7 @@ App.signalLights._buildBar = function() {
     var bar = document.createElement('div');
     bar.id = 'slBar';
     bar.className = 'sl-bar';
-    bar.title = '外部依赖连接状态 · 点击刷新';
+    bar.title = App._t('auto.str_85cfe79e', '外部依赖连接状态 · 点击刷新');
     bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:500;height:22px;display:flex;align-items:center;justify-content:center;gap:16px;'
         + 'font-size:10px;background:var(--bg-card);border-top:1px solid var(--border-color);color:var(--text-muted);opacity:0.92;'
         + 'font-family:system-ui,monospace;cursor:pointer;';
@@ -91,7 +91,7 @@ App.signalLights._setLight = function(id, msId, status) {
     } else if (status.skipped) {
         dot.classList.add('sl-dot-off');
         msEl.textContent = '';
-        el.title = '已禁用';
+        el.title = App._t('auto.str_1c1ed981', '已禁用');
     } else if (status.ok) {
         dot.classList.add('sl-dot-on');
         msEl.textContent = (status.latency_ms || '') + 'ms';
@@ -99,7 +99,7 @@ App.signalLights._setLight = function(id, msId, status) {
     } else {
         dot.classList.add('sl-dot-err');
         msEl.textContent = '';
-        el.title = status.error || '连接失败';
+        el.title = status.error || App._t('auto.str_0745fc09', '连接失败');
     }
 };
 

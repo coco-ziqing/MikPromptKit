@@ -30,7 +30,7 @@
             var btn = document.getElementById('btnTheme');
             if (btn) {
                 btn.innerHTML = isDark ? '<i class="bi bi-sun"></i>' : '<i class="bi bi-moon-stars"></i>';
-                btn.title = isDark ? '切换为浅色模式' : '切换为深色模式';
+                btn.title = isDark ? App._t('auto.toggle_为浅色模式', '切换为浅色模式') : App._t('auto.toggle_为深色模式', '切换为深色模式');
             }
         };
 
@@ -41,7 +41,7 @@
             var btn = document.getElementById('btnTheme');
             if (btn) {
                 btn.innerHTML = dark ? '<i class="bi bi-sun"></i>' : '<i class="bi bi-moon-stars"></i>';
-                btn.title = dark ? '切换为浅色模式' : '切换为深色模式';
+                btn.title = dark ? App._t('auto.toggle_为浅色模式', '切换为浅色模式') : App._t('auto.toggle_为深色模式', '切换为深色模式');
             }
             // 同步后端配置
             fetch('/api/v2/config/theme', {
@@ -69,7 +69,7 @@
                     var btn = document.getElementById('btnTheme');
                     if (btn) {
                         btn.innerHTML = dark ? '<i class="bi bi-sun"></i>' : '<i class="bi bi-moon-stars"></i>';
-                        btn.title = dark ? '切换为浅色模式' : '切换为深色模式';
+                        btn.title = dark ? App._t('auto.toggle_为浅色模式', '切换为浅色模式') : App._t('auto.toggle_为深色模式', '切换为深色模式');
                     }
                 })
                 .catch(function() {

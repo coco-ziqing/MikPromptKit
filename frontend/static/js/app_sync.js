@@ -24,14 +24,14 @@ Object.assign(App, {
     async showBackupInfo() {
         document.getElementById('modalBackup').style.display = 'flex';
         document.getElementById('backupInfoBody').innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">正在获取备份状态...</p></div>';
-        document.getElementById('backupStatusText').textContent = '加载中...';
+        document.getElementById('backupStatusText').textContent = App._t('common.loading', '加载中...');
         try {
             var data = await this.fetchJSON('/api/backup/info');
-            if (!data) { throw new Error('获取失败'); }
+            if (!data) { throw new Error(App._t('auto.str_56f0a1c0', '获取失败')); }
             this._renderBackupInfo(data);
         } catch (e) {
             document.getElementById('backupInfoBody').innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">❌ 获取备份信息失败: ' + e.message + '</div>';
-            document.getElementById('backupStatusText').textContent = '加载失败';
+            document.getElementById('backupStatusText').textContent = App._t('common.load_failed', '加载失败');
         }
     },
 
@@ -92,16 +92,16 @@ Object.assign(App, {
         try {
             var data = await this.fetchJSON('/api/backup/now', { method: 'POST' });
             if (data && data.ok) {
-                this.showToast('备份成功: ' + data.file + ' (' + (data.size/1024).toFixed(1) + ' KB)', 'success');
+                this.showToast(App._t('auto.str_d58e94a2', '备份成功: ') + data.file + ' (' + (data.size/1024).toFixed(1) + ' KB)', 'success');
                 // 刷新信息
                 await this.showBackupInfo();
             } else {
-                this.showToast('备份失败: ' + (data ? data.error : '未知错误'), 'error');
-                document.getElementById('backupStatusText').textContent = '备份失败';
+                this.showToast(App._t('auto.str_30e37f96', '备份失败: ') + (data ? data.error : App._t('common.unknown_error', '未知错误')), 'error');
+                document.getElementById('backupStatusText').textContent = App._t('auto.str_6af91784', '备份失败');
             }
         } catch (e) {
-            this.showToast('备份失败: ' + e.message, 'error');
-            document.getElementById('backupStatusText').textContent = '备份失败';
+            this.showToast(App._t('auto.str_30e37f96', '备份失败: ') + e.message, 'error');
+            document.getElementById('backupStatusText').textContent = App._t('auto.str_6af91784', '备份失败');
         }
     },
 
@@ -119,7 +119,7 @@ Object.assign(App, {
         body.innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">正在加载...</p></div>';
         try {
             var res = await this.fetchJSON('/api/sync/packages');
-            if (!res || !res.ok) throw new Error((res && res.error) || '获取失败');
+            if (!res || !res.ok) throw new Error((res && res.error) || App._t('auto.str_56f0a1c0', '获取失败'));
             this._renderSyncPackages(res.packages, res.count);
         } catch(e) {
             body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-danger);">&#10060; 加载失败: ' + e.message + '</div>';
@@ -137,7 +137,7 @@ Object.assign(App, {
             html += '<div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:600;font-size:13px;">&#128193; 已有 ' + count + ' 个包</span><span style="font-size:11px;color:var(--text-muted);">点击行展开详情</span></div>';
             packages.forEach(function(pkg, idx) {
                 var m = pkg.manifest || {};
-                var created = m.created_at ? m.created_at.replace('T', ' ').substring(0, 19) : (pkg.mtime ? pkg.mtime.replace('T', ' ').substring(0, 19) : '未知');
+                var created = m.created_at ? m.created_at.replace('T', ' ').substring(0, 19) : (pkg.mtime ? pkg.mtime.replace('T', ' ').substring(0, 19) : App._t('auto.str_1622dc9b', '未知'));
                 var prompts = m.prompts || 0;
                 var mediaBadge = m.media_included ? '<span class="badge bg-success" style="font-size:10px;">含媒体</span>' : '<span class="badge bg-secondary" style="font-size:10px;">仅数据库</span>';
                 var expanded = 'pkgDetail_' + idx;
@@ -192,22 +192,22 @@ Object.assign(App, {
         try {
             var res = await this.fetchJSON('/api/sync/export', { method: 'POST' });
             if (res && res.ok) {
-                this.showToast('导出成功: ' + res.file + ' (' + (res.size/1024/1024).toFixed(2) + ' MB)', 'success');
+                this.showToast(App._t('common.export', '导出成功: ') + res.file + ' (' + (res.size/1024/1024).toFixed(2) + ' MB)', 'success');
                 await this.syncRefreshList();
             } else {
-                this.showToast('导出失败: ' + (res ? res.error : '未知错误'), 'error');
+                this.showToast(App._t('common.export', '导出失败: ') + (res ? res.error : App._t('common.unknown_error', '未知错误')), 'error');
             }
         } catch(e) {
-            this.showToast('导出失败: ' + e.message, 'error');
+            this.showToast(App._t('common.export', '导出失败: ') + e.message, 'error');
         }
     },
 
     async syncVerifyPkg(name) {
         var res = await App.fetchJSON('/api/sync/verify/' + encodeURIComponent(name));
-        if (!res) { App.showToast('验证请求失败', 'error'); return; }
-        if (!res.ok) { App.showToast('验证出错: ' + (res.error || '未知'), 'error'); return; }
+        if (!res) { App.showToast(App._t('auto.str_e2aceeae', '验证请求失败'), 'error'); return; }
+        if (!res.ok) { App.showToast('验证出错: ' + (res.error || App._t('auto.str_1622dc9b', '未知')), 'error'); return; }
         if (res.valid) {
-            App.showToast('✅ 包完整性验证通过: ' + res.files_total + ' 个文件', 'success');
+            App.showToast('✅ 包完整性验证通过: ' + res.files_total + App._t('auto.str_7c645c81', ' 个文件'), 'success');
         } else {
             var errs = (res.errors || []).join('\n');
             App.showToast('⚠️ 包损坏: ' + (res.errors ? res.errors.length : 1) + ' 个问题', 'error');
@@ -221,34 +221,34 @@ Object.assign(App, {
     },
 
     async syncRestorePkg(name) {
-        if (!confirm('确定从 ' + name + ' 恢复数据？\n\n当前数据将自动备份，不会丢失。')) return;
+        if (!confirm(App._t('common.ok', '确定从 ') + name + ' 恢复数据？\n\n当前数据将自动备份，不会丢失。')) return;
         try {
             var res = await this.fetchJSON('/api/sync/restore/' + encodeURIComponent(name), { method: 'POST' });
             if (res && res.ok) {
-                this.showToast('恢复成功！已还原 ' + (res.count || res.restored.length) + ' 个文件', 'success');
+                this.showToast(App._t('trash.restore', '恢复成功！已还原 ') + (res.count || res.restored.length) + App._t('auto.str_7c645c81', ' 个文件'), 'success');
                 // 刷新当前视图
                 if (this.currentView === 'home') this.loadPrompts();
                 await this.syncRefreshList();
             } else {
-                this.showToast('恢复失败: ' + (res ? res.error : '未知错误'), 'error');
+                this.showToast(App._t('trash.restore', '恢复失败: ') + (res ? res.error : App._t('common.unknown_error', '未知错误')), 'error');
             }
         } catch(e) {
-            this.showToast('恢复失败: ' + e.message, 'error');
+            this.showToast(App._t('trash.restore', '恢复失败: ') + e.message, 'error');
         }
     },
 
     async syncDeletePkg(name) {
-        if (!confirm('确定删除包 ' + name + '？')) return;
+        if (!confirm(App._t('common.ok', '确定删除包 ') + name + '？')) return;
         try {
             var res = await this.fetchJSON('/api/sync/packages/' + encodeURIComponent(name), { method: 'DELETE' });
             if (res && res.ok) {
-                this.showToast('已删除: ' + name, 'success');
+                this.showToast(App._t('auto.str_bc2cacba', '已删除: ') + name, 'success');
                 await this.syncRefreshList();
             } else {
-                this.showToast('删除失败: ' + (res ? res.error : '未知错误'), 'error');
+                this.showToast(App._t('common.delete', '删除失败: ') + (res ? res.error : App._t('common.unknown_error', '未知错误')), 'error');
             }
         } catch(e) {
-            this.showToast('删除失败: ' + e.message, 'error');
+            this.showToast(App._t('common.delete', '删除失败: ') + e.message, 'error');
         }
     },
 
@@ -261,7 +261,7 @@ Object.assign(App, {
             var file = e.target.files[0];
             if (!file) return;
             if (!file.name.endsWith('.pkb')) {
-                App.showToast('请选择 .pkb 文件', 'error');
+                App.showToast(App._t('auto.select___pkb_文件', '请选择 .pkb 文件'), 'error');
                 return;
             }
             try {
@@ -271,13 +271,13 @@ Object.assign(App, {
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 var data = await res.json();
                 if (data && data.ok) {
-                    App.showToast('导入成功: ' + data.saved_as, 'success');
+                    App.showToast(App._t('common.import', '导入成功: ') + data.saved_as, 'success');
                     await App.syncRefreshList();
                 } else {
-                    App.showToast('导入失败: ' + (data ? data.error : '未知错误'), 'error');
+                    App.showToast(App._t('common.import', '导入失败: ') + (data ? data.error : App._t('common.unknown_error', '未知错误')), 'error');
                 }
             } catch(err) {
-                App.showToast('导入失败: ' + err.message, 'error');
+                App.showToast(App._t('common.import', '导入失败: ') + err.message, 'error');
             }
         };
         input.click();
@@ -290,7 +290,7 @@ Object.assign(App, {
         document.getElementById('dashboardBody').innerHTML = '<div style="text-align:center;padding:30px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">加载统计数据...</p></div>';
         try {
             var data = await this.fetchJSON('/api/v2/stats/dashboard');
-            if (!data) throw new Error('获取失败');
+            if (!data) throw new Error(App._t('auto.str_56f0a1c0', '获取失败'));
             this._renderDashboard(data);
         } catch(e) {
             document.getElementById('dashboardBody').innerHTML = '<div style="padding:30px;text-align:center;color:#ef4444;">❌ ' + e.message + '</div>';
@@ -306,7 +306,7 @@ Object.assign(App, {
             {label:'总词条', val:d.total_prompts, icon:'📝'},
             {label:'今日使用', val:d.today_usage, icon:'☀️'},
             {label:'收藏', val:d.total_collections, icon:'⭐'},
-            {label:'回收站', val:d.trash_count, icon:'🗑️'}
+            {label:App._t('nav.trash', '回收站'), val:d.trash_count, icon:'🗑️'}
         ];
         for (var i = 0; i < cards.length; i++) {
             html += '<div style="background:var(--hover-bg,#f1f5f9);border-radius:8px;padding:12px;text-align:center;">';
@@ -370,7 +370,7 @@ Object.assign(App, {
         document.getElementById('comfyUIConfigBody').innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">加载配置...</p></div>';
         try {
             var data = await this.fetchJSON('/api/v2/comfyui/config');
-            if (!data || !data.config) throw new Error('获取失败');
+            if (!data || !data.config) throw new Error(App._t('auto.str_56f0a1c0', '获取失败'));
             this._comfyConfig = data.config;
             this._renderComfyConfig(data.config);
         } catch(e) {
@@ -520,7 +520,7 @@ Object.assign(App, {
                 var wfItem = {
                     id: wfId,
                     name: name,
-                    description: '从 JSON 导入',
+                    description: App._t('auto.str_b66c72e9', '从 JSON 导入'),
                     prompt_node_id: this._importedPromptNode || '6',
                     prompt_field: 'text',
                     image_output_node_id: '9',
@@ -558,9 +558,9 @@ Object.assign(App, {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ presets: presets })
             });
-            this.showToast('ComfyUI 配置已保存', 'success');
+            this.showToast(App._t('auto.str_0ba39342', 'ComfyUI 配置已保存'), 'success');
         } else {
-            this.showToast('保存失败', 'error');
+            this.showToast(App._t('common.save', '保存失败'), 'error');
         }
     },
 
@@ -584,7 +584,7 @@ Object.assign(App, {
         var cfg = await this.fetchJSON('/api/v2/comfyui/config');
         if (!cfg || !cfg.config || !cfg.config.enabled) {
             _resetBtn();
-            this.showToast('ComfyUI 未启用，请先配置', 'warning');
+            this.showToast(App._t('auto.str_5f57664b', 'ComfyUI 未启用，请先配置'), 'warning');
             this.openComfyConfig();
             return;
         }
@@ -597,7 +597,7 @@ Object.assign(App, {
 
         // 取当前编辑框里的提示词
         var promptText = document.getElementById('editContent').value.trim();
-        if (!promptText) { _resetBtn(); this.showToast('请先输入提示词内容', 'error'); return; }
+        if (!promptText) { _resetBtn(); this.showToast(App._t('auto.please_输入提示词内容', '请先输入提示词内容'), 'error'); return; }
 
         this.showToast('⏳ 正在发送到 ComfyUI 生成...', 'info');
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-magic"></i> 生成中...'; }
@@ -625,7 +625,7 @@ Object.assign(App, {
             } catch(e) {
                 clearTimeout(timer);
                 if (e.name === 'AbortError') {
-                    this.showToast('生成超时（600秒），请检查 ComfyUI 状态', 'error');
+                    this.showToast(App._t('auto.str_7b4e92a2', '生成超时（600秒），请检查 ComfyUI 状态'), 'error');
                     _resetBtn();
                     return;
                 }
@@ -645,7 +645,7 @@ Object.assign(App, {
                 // 刷新查看器弹窗（如果打开）
                 this._refreshViewerPanels();
             } else {
-                this.showToast('生成失败: ' + (data ? data.error : '未知错误'), 'error');
+                this.showToast('生成失败: ' + (data ? data.error : App._t('common.unknown_error', '未知错误')), 'error');
             }
         } catch(e) {
             this.showToast('生成失败: ' + e.message, 'error');
@@ -662,11 +662,11 @@ Object.assign(App, {
 
     async showVersionHistory(promptId) {
         document.getElementById('modalVersions').style.display = 'flex';
-        document.getElementById('versionTitle').textContent = '版本历史';
+        document.getElementById('versionTitle').textContent = App._t('auto.str_6fdd8590', '版本历史');
         document.getElementById('versionBody').innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">加载版本历史...</p></div>';
         try {
             var data = await this.fetchJSON('/api/v2/versions/' + promptId);
-            if (!data) throw new Error('获取失败');
+            if (!data) throw new Error(App._t('auto.str_56f0a1c0', '获取失败'));
             this._renderVersionList(promptId, data);
         } catch (e) {
             document.getElementById('versionBody').innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">❌ 获取版本历史失败: ' + e.message + '</div>';
@@ -725,7 +725,7 @@ Object.assign(App, {
     },
 
     async _restoreVersion(promptId, versionId, versionNum) {
-        if (!confirm('确认恢复到 v' + versionNum + '？当前版本将自动存档')) return;
+        if (!confirm(App._t('common.confirm', '确认恢复到 v') + versionNum + '？当前版本将自动存档')) return;
         try {
             var data = await this.fetchJSON('/api/v2/versions/' + promptId + '/restore/' + versionId, { method: 'POST' });
             if (data && data.ok) {
@@ -733,20 +733,20 @@ Object.assign(App, {
                 document.getElementById('modalVersions').style.display = 'none';
                 await this.loadPrompts();
             } else {
-                this.showToast('恢复失败: ' + (data ? data.error : '未知'), 'error');
+                this.showToast(App._t('trash.restore', '恢复失败: ') + (data ? data.error : App._t('auto.str_1622dc9b', '未知')), 'error');
             }
         } catch (e) {
-            this.showToast('恢复失败: ' + e.message, 'error');
+            this.showToast(App._t('trash.restore', '恢复失败: ') + e.message, 'error');
         }
     },
 
     async _showVersionDiff(promptId, v1Id, v2Id) {
         document.getElementById('modalVersionDiff').style.display = 'flex';
-        document.getElementById('diffTitle').textContent = '版本对比';
+        document.getElementById('diffTitle').textContent = App._t('auto.str_956c9c9a', '版本对比');
         document.getElementById('diffBody').innerHTML = '<div style="text-align:center;padding:20px;font-family:sans-serif;"><div class="spinner-border text-primary" role="status"></div><p style="margin-top:12px;color:var(--text-muted);">正在对比...</p></div>';
         try {
             var data = await this.fetchJSON('/api/v2/versions/' + promptId + '/diff/' + v1Id + '/' + v2Id);
-            if (!data || !data.ok) throw new Error(data ? data.error : '获取失败');
+            if (!data || !data.ok) throw new Error(data ? data.error : App._t('auto.str_56f0a1c0', '获取失败'));
             var html = '';
             var diffs = data.diffs || [];
             if (diffs.length === 0) {
@@ -779,7 +779,7 @@ Object.assign(App, {
             if (btn) { btn.innerHTML = '<i class="bi bi-sun"></i>'; btn.title = '切换亮色模式'; }
         } else {
             document.body.classList.remove('dark-theme');
-            if (btn) { btn.innerHTML = '<i class="bi bi-moon-stars"></i>'; btn.title = '切换深色模式'; }
+            if (btn) { btn.innerHTML = '<i class="bi bi-moon-stars"></i>'; btn.title = App._t('theme.toggle', '切换深色模式'); }
         }
     },
 
@@ -788,7 +788,7 @@ Object.assign(App, {
     onColumnSlider(val) {
         this.state.columns = parseInt(val);
         document.getElementById('columnSlider').value = val;
-        document.getElementById('columnLabel').textContent = val + '列';
+        document.getElementById('columnLabel').textContent = val + App._t('layout.cols', '列');
         try { localStorage.setItem('promptkit_columns', val); } catch(e) {}
         this.applyColumns();
     },

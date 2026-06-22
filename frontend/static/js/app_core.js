@@ -77,14 +77,14 @@ var App = window.App || {
             if (!resp.ok) {
                 var text = '';
                 try { text = await resp.text(); } catch(e) {}
-                var errMsg = '请求失败: ' + resp.status;
+                var errMsg = App._t('auto.str_67411e24', '请求失败: ') + resp.status;
                 try { var j = JSON.parse(text); if (j.detail) errMsg = j.detail; } catch(e) {}
                 this.showToast(errMsg, 'error');
                 return null;
             }
             return await resp.json();
         } catch (e) {
-            this.showToast('网络连接失败: ' + e.message, 'error');
+            this.showToast(App._t('auto.str_57c2b634', '网络连接失败: ') + e.message, 'error');
             return null;
         }
     },
@@ -98,7 +98,7 @@ var App = window.App || {
                 var v = d.version;
                 // 美化显示
                 var displayVersion = v.replace(/^v+/i, '').replace('-phase', '.');
-                document.title = '咪卡Mik词库';
+                document.title = App._t('auto.str_c5da0d84', '咪卡Mik词库');
                 var bv = document.getElementById('brandVersion');
                 if (bv) bv.textContent = v.replace(/^v+/i, '');  // 去除所有前导v前缀，只显示数字
                 // 同时更新 headerStats
@@ -130,7 +130,7 @@ var App = window.App || {
         var slider = document.getElementById('columnSlider');
         if (slider) {
             slider.value = savedCols;
-            document.getElementById('columnLabel').textContent = savedCols + '列';
+            document.getElementById('columnLabel').textContent = savedCols + App._t('layout.cols', '列');
         }
         this.applyColumns();
 
@@ -148,8 +148,6 @@ var App = window.App || {
         this._syncVersion();
         // 语言切换按钮事件绑定
         this._initLangBtn();
-        // 应用国际化（必须在首次渲染后执行）
-        setTimeout(function() { App._applyI18n(); }, 100);
         
         // 初始默认显示 home 视图（延迟到树加载完成后渲染）
         // 先不调用 switchView，等 tree 加载完再渲染
@@ -361,6 +359,13 @@ var App = window.App || {
             this.state.editMode = false;
             try { localStorage.removeItem('promptkit_editmode'); } catch(e) {}
         }
+
+        // v4.2.0-phase14.2: 视图切换后重新应用国际化
+        // JS 动态渲染的 DOM 需要在渲染完成后翻译
+        if (App._i18nCurrent !== 'zh-CN') {
+            var _applyI18n = App._applyI18n;
+            setTimeout(function() { if (_applyI18n) _applyI18n(); }, 80);
+        }
     },
 
     // 辅助：隐藏搜索框但保留占位空间（避免顶部按钮位移）
@@ -376,7 +381,7 @@ var App = window.App || {
         if (sidebar && !sidebar.classList.contains('collapsed')) {
             sidebar.classList.add('collapsed');
             document.body.classList.add('sidebar-collapsed');
-            if (btn) { btn.innerHTML = '\u25B6'; btn.title = '展开模块列表'; }
+            if (btn) { btn.innerHTML = '\u25B6'; btn.title = App._t('auto.str_854e6c55', '展开模块列表'); }
         }
     },
 
@@ -411,7 +416,7 @@ var App = window.App || {
         if (sidebar && sidebar.classList.contains('collapsed')) {
             sidebar.classList.remove('collapsed');
             document.body.classList.remove('sidebar-collapsed');
-            if (btn) { btn.innerHTML = '\u25C0'; btn.title = '折叠模块列表'; }
+            if (btn) { btn.innerHTML = '\u25C0'; btn.title = App._t('auto.str_b79711fb', '折叠模块列表'); }
         }
     },
 
@@ -424,7 +429,7 @@ var App = window.App || {
         if (btn) {
             if (this.state._searchMode === 'semantic') {
                 btn.innerHTML = '<span style="font-weight:600;">🧠</span>';
-                btn.title = '语义搜索（点击切换回关键词）';
+                btn.title = App._t('auto.str_7526bffe', '语义搜索（点击切换回关键词）');
                 btn.style.color = '#818cf8';
             } else {
                 btn.innerHTML = '🔤';
@@ -441,7 +446,7 @@ var App = window.App || {
                 this.loadPrompts();
             }
         }
-        this.showToast('已切换到' + (this.state._searchMode === 'semantic' ? '🧠 语义搜索' : '🔤 关键词搜索'), 'info');
+        this.showToast('已切换到' + (this.state._searchMode === 'semantic' ? App._t('auto.str_05e6be83', '🧠 语义搜索') : App._t('auto.str_f0288e24', '🔤 关键词搜索')), 'info');
     },
 
     async _semanticSearch(query) {
@@ -496,7 +501,7 @@ var App = window.App || {
             html += '<div class="prompt-card" data-id="' + card.id + '" onclick="App.showCardDetail(' + card.id + ')">';
             html += '<div class="card-body">';
             html += '<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;">';
-            html += '<span class="card-type-badge card-type-' + (card.card_type||'image') + '">' + ((card.card_type||'image')==='video'?'🎬':'📷') + ' ' + (card.card_type||'图片') + '</span>';
+            html += '<span class="card-type-badge card-type-' + (card.card_type||'image') + '">' + ((card.card_type||'image')==='video'?'🎬':'📷') + ' ' + (card.card_type||App._t('auto.str_20def794', '图片')) + '</span>';
             html += '<span style="font-size:10px;color:#818cf8;">🧠 相似度 ' + score + '%</span>';
             html += '</div>';
             html += '<div class="card-content" id="cc_' + card.id + '">' + this._escape(card.content || '') + '</div>';
@@ -518,9 +523,9 @@ var App = window.App || {
     // ============ 模块名中文化 ============
     _moduleDisplayName(id) {
         var map = {
-            emotion: '人物表情', color: '场景色彩', tone: '画面色调',
-            composition: '分镜构图', storyboard: '分镜构图',
-            camera_move: '运镜模版', seedance: '视频模版'
+            emotion: '人物表情', color: App._t('auto.str_67a7c94b', '场景色彩'), tone: '画面色调',
+            composition: App._t('auto.str_ebe1d3eb', '分镜构图'), storyboard: App._t('auto.str_ebe1d3eb', '分镜构图'),
+            camera_move: App._t('auto.str_6885459d', '运镜模版'), seedance: App._t('auto.str_94df12b2', '视频模版')
         };
         return map[id] || id;
     },
@@ -560,9 +565,9 @@ var App = window.App || {
             return await res.json();
         } catch (err) {
             if (err.name === 'AbortError') {
-                console.warn('请求超时:', url);
+                console.warn(App._t('common.timeout', '请求超时:'), url);
             } else {
-                console.error('请求失败:', url, err.message);
+                console.error(App._t('auto.str_21a2ace8', '请求失败:'), url, err.message);
             }
             return null;
         }
@@ -603,7 +608,7 @@ var App = window.App || {
         s.totalPages = Math.ceil(data.total / s.pageSize) || 1;
         this.renderPrompts();
         this.renderPagination();
-        document.getElementById('countInfo').textContent = `共 ${data.total} 条提示词`;
+        document.getElementById('countInfo').textContent = App._t('auto.str_6de9513c', '共 ${data.total} 条提示词');
         // 同步恢复滚动位置（0 delay 确保布局已更新但同一帧内）
         if (savedScrollY > 0 && this.state.currentView === 'home') {
             var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
@@ -626,7 +631,7 @@ var App = window.App || {
         if (!data) return;
         this.state.stats = data;
         const el = document.getElementById('headerStats');
-        if (el) el.textContent = `词库 ${data.total_prompts} 条 | 使用 ${data.total_usage} 次`;
+        if (el) el.textContent = App._t('auto.str_d04bab0e', '词库 ${data.total_prompts} 条 | 使用 ${data.total_usage} 次');
     },
 
     // ============ 模块切换 ============
@@ -672,11 +677,11 @@ var App = window.App || {
         if (!el) return;
         var m = this.state.currentModule;
         if (!m) {
-            el.textContent = '全部词库';
+            el.textContent = App._t('common.all', '全部词库');
         } else {
             var modules = this.state.modules || [];
             var found = modules.find(function(x) { return x.id === m; });
-            el.textContent = (found ? found.name : m) + ' 提示词列表';
+            el.textContent = (found ? found.name : m) + App._t('auto.str_7fc0a1cc', ' 提示词列表');
         }
     },
 
@@ -716,7 +721,7 @@ var App = window.App || {
             prefix = clean.slice(0, 12) || 'prompts';
         }
         if (items && items.length > 1) {
-            prefix += '_等' + items.length + '条';
+            prefix += '_等' + items.length + App._t('common.items', '条');
         }
         return prefix + '.' + fmt;
     },
@@ -724,7 +729,7 @@ var App = window.App || {
     async copyText(content, msg) {
         try {
             await navigator.clipboard.writeText(content);
-            this.showToast(msg || '已复制到剪贴板', 'success');
+            this.showToast(msg || App._t('common.copied', '已复制到剪贴板'), 'success');
         } catch {
             const ta = document.createElement('textarea');
             ta.value = content;
@@ -734,7 +739,7 @@ var App = window.App || {
             ta.select();
             document.execCommand('copy');
             document.body.removeChild(ta);
-            this.showToast(msg || '已复制到剪贴板', 'success');
+            this.showToast(msg || App._t('common.copied', '已复制到剪贴板'), 'success');
         }
     },
 
@@ -817,11 +822,11 @@ var App = window.App || {
                 if (data.has_unfilled) {
                     this.showToast('部分变量未填充: ' + data.unfilled.join(', '), 'warning');
                 } else {
-                    this.showToast('已复制（模板已填充）', 'success');
+                    this.showToast(App._t('common.copied', '已复制（模板已填充）'), 'success');
                 }
             }
         } catch (e) {
-            this.showToast('模板渲染失败', 'error');
+            this.showToast(App._t('auto.str_dfcf8c14', '模板渲染失败'), 'error');
         }
     },
 

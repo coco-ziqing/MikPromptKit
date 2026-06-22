@@ -36,10 +36,10 @@
             var sf = card.structured_fields || {};
             var fieldDefs = [
                 { key: 'subject', label: '主体' },
-                { key: 'scene_desc', label: '场景' },
-                { key: 'composition', label: '构图' },
+                { key: 'scene_desc', label: App._t('auto.str_c931653c', '场景') },
+                { key: 'composition', label: App._t('auto.str_c38d3f3b', '构图') },
                 { key: 'lighting', label: '光影' },
-                { key: 'camera_move', label: '运镜' },
+                { key: 'camera_move', label: App._t('auto.str_4abc8a41', '运镜') },
                 { key: 'color_grade', label: '调色' },
                 { key: 'mood', label: '氛围' },
                 { key: 'style', label: '画风' },
@@ -105,7 +105,7 @@
     App.showVersionHistory = async function(cardId) {
         try {
             var resp = await App.fetchJSON('/api/v4/cards/' + cardId + '/full');
-            if (!resp || !resp.card) { App.showToast('加载失败', 'error'); return; }
+            if (!resp || !resp.card) { App.showToast(App._t('common.load_failed', '加载失败'), 'error'); return; }
             var card = resp.card;
 
             var overlay = document.createElement('div');
@@ -148,12 +148,12 @@
             overlay.innerHTML = h;
             document.body.appendChild(overlay);
         } catch (e) {
-            App.showToast('加载失败: ' + e.message, 'error');
+            App.showToast(App._t('common.load_failed', '加载失败: ') + e.message, 'error');
         }
     };
 
     App.rollbackVersion = async function(cardId, version) {
-        if (!confirm('确定回滚到 v' + version + '？当前内容将被替换')) return;
+        if (!confirm(App._t('common.ok', '确定回滚到 v') + version + '？当前内容将被替换')) return;
         try {
             var resp = await App.fetchJSON('/api/v4/cards/ + cardId + /rollback', {
                 method: 'POST',
@@ -165,7 +165,7 @@
                 document.getElementById('modalVersionHistory')?.remove();
                 App.loadPrompts();
             } else {
-                App.showToast('回滚失败', 'error');
+                App.showToast(App._t('auto.str_22d7b738', '回滚失败'), 'error');
             }
         } catch (e) {
             App.showToast('回滚失败: ' + e.message, 'error');

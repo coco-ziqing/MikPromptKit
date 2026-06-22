@@ -2652,3 +2652,62 @@ body.dark-theme .tree-node:hover {
     background: rgba(255,255,255,0.05);
 }
 
+/* ===== Phase 14.1: v3 卡片编排器选择状态 ===== */
+.v3-card {
+    border: 2px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    padding: 10px;
+    cursor: pointer;
+    background: var(--bg-card, #fff);
+    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.v3-card:hover {
+    border-color: var(--primary, #6366f1);
+    box-shadow: 0 2px 8px rgba(99,102,241,0.15);
+}
+.v3-card.v3-selected {
+    border-color: #10b981;
+    background: rgba(16,185,129,0.05);
+}
+.v3-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 4px;
+}
+.v3-card-content {
+    font-size: 12px;
+    line-height: 1.4;
+    margin-bottom: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.v3-card-module {
+    font-size: 11px;
+    color: #94a3b8;
+    margin-left: 4px;
+}
+.v3-card-fields {
+    font-size: 10px;
+    color: #94a3b8;
+}
+.v3-card-usage {
+    font-size: 10px;
+    color: #94a3b8;
+    margin-top: 4px;
+}
+/* 深色模式 */
+body.dark-theme .v3-card {
+    background: var(--bg-card, #1e293b);
+}
+body.dark-theme .v3-card.v3-selected {
+    background: rgba(16,185,129,0.08);
+}
+body.dark-theme .v3-card-module,
+body.dark-theme .v3-card-fields,
+body.dark-theme .v3-card-usage {
+    color: #94a3b8;
+}
+

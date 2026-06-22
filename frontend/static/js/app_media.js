@@ -123,7 +123,7 @@ Object.assign(App, {
         if (this._editVideoFilename) {
             preview.innerHTML = '<video src="/api/thumbnails/video/' + this._editVideoFilename + '" style="width:120px;height:80px;object-fit:cover;" muted loop playsinline></video>';
             preview.querySelector('video').play().catch(function(){});
-            name.textContent = '视频: ' + this._editVideoFilename;
+            name.textContent = App._t('auto.str_f2fb3010', '视频: ') + this._editVideoFilename;
             document.getElementById('editClearThumbBtn').style.display = 'inline-block';
         } else if (this._editThumbFilename) {
             preview.innerHTML = '<img src="/api/thumbnails/file/' + this._editThumbFilename + '" style="width:120px;height:80px;object-fit:cover;">';
@@ -131,7 +131,7 @@ Object.assign(App, {
             document.getElementById('editClearThumbBtn').style.display = 'inline-block';
         } else {
             preview.innerHTML = '<span style="font-size:24px;color:#cbd5e1;">🖼</span>';
-            name.textContent = '未设置';
+            name.textContent = App._t('auto.str_fe2d26a2', '未设置');
             document.getElementById('editClearThumbBtn').style.display = 'none';
         }
     },
@@ -144,13 +144,13 @@ Object.assign(App, {
     },
 
     async clearCardThumbnail(promptId) {
-        if (!confirm('确认清除此提示词的缩略图？')) return;
+        if (!confirm(App._t('common.confirm', '确认清除此提示词的缩略图？'))) return;
         var data = await this.fetchJSON('/api/thumbnails/assign/' + promptId, { method: 'DELETE' });
         if (data && data.ok) {
-            this.showToast('缩略图已清除', 'info');
+            this.showToast(App._t('auto.str_00cadfcb', '缩略图已清除'), 'info');
             await this.loadPrompts();
         } else {
-            this.showToast('清除失败', 'error');
+            this.showToast(App._t('auto.str_cd6849ea', '清除失败'), 'error');
         }
     },
 
@@ -290,19 +290,19 @@ Object.assign(App, {
     },
 
     async deleteSingleThumb(filename) {
-        if (!confirm('确认删除缩略图文件「' + filename + '」?')) return;
+        if (!confirm(App._t('common.confirm', '确认删除缩略图文件「') + filename + '」?')) return;
         var data = await this.fetchJSON('/api/thumbnails/file/' + filename, { method: 'DELETE' });
         if (data) {
-            this.showToast('已删除', 'success');
+            this.showToast(App._t('auto.str_5cc23262', '已删除'), 'success');
             this.loadThumbLibrary();
         }
     },
 
     async deleteSingleVideo(filename) {
-        if (!confirm('确认删除视频文件「' + filename + '」?')) return;
+        if (!confirm(App._t('common.confirm', '确认删除视频文件「') + filename + '」?')) return;
         var data = await this.fetchJSON('/api/thumbnails/video-file/' + filename, { method: 'DELETE' });
         if (data) {
-            this.showToast('已删除', 'success');
+            this.showToast(App._t('auto.str_5cc23262', '已删除'), 'success');
             this.loadVideoLibrary();
         }
     },
@@ -310,10 +310,10 @@ Object.assign(App, {
     async batchDeleteThumbItems() {
         var filenames = Object.keys(this._thumbBatchSelected);
         if (filenames.length === 0) {
-            this.showToast('请先选择文件', 'info');
+            this.showToast(App._t('auto.please_选择文件', '请先选择文件'), 'info');
             return;
         }
-        if (!confirm('确认删除选中的 ' + filenames.length + ' 个文件?此操作不可恢复!')) return;
+        if (!confirm(App._t('common.confirm', '确认删除选中的 ') + filenames.length + ' 个文件?此操作不可恢复!')) return;
         var tab = this._thumbnailTab;
         var ep = tab === 'videos' ? '/api/thumbnails/batch-delete-videos' : '/api/thumbnails/batch-delete-thumbnails';
         var data = await this.fetchJSON(ep, {
@@ -322,7 +322,7 @@ Object.assign(App, {
             body: JSON.stringify({ filenames: filenames })
         });
         if (data) {
-            this.showToast('已删除 ' + data.deleted_count + ' 个文件', 'success');
+            this.showToast(App._t('auto.str_023f5967', '已删除 ') + data.deleted_count + App._t('auto.str_7c645c81', ' 个文件'), 'success');
             this._thumbBatchSelected = {};
             this._thumbnailPage = 1;
             if (tab === 'videos') this.loadVideoLibrary(); else this.loadThumbLibrary();
@@ -431,7 +431,7 @@ Object.assign(App, {
                 });
                 if (data) {
                     document.getElementById('modalThumbnail').style.display = 'none';
-                    this.showToast('收藏夹缩略图已设置', 'success');
+                    this.showToast(App._t('nav.collections', '收藏夹缩略图已设置'), 'success');
                     this._thumbnailCollectionId = null;
                     await this.loadCollections();
                     this.renderCollections();
@@ -448,10 +448,10 @@ Object.assign(App, {
         });
         if (data) {
             document.getElementById('modalThumbnail').style.display = 'none';
-            this.showToast('视频已关联', 'success');
+            this.showToast(App._t('auto.str_7a1f2937', '视频已关联'), 'success');
             await this.loadPrompts();
         } else {
-            this.showToast('关联失败', 'error');
+            this.showToast(App._t('auto.str_6d973dbe', '关联失败'), 'error');
         }
     },
 
@@ -506,7 +506,7 @@ Object.assign(App, {
                 var data = await resp.json();
                 if (data.ok) {
                     if (data.duplicate) {
-                        this.showToast('已跳过重复图片', 'info');
+                        this.showToast(App._t('auto.str_412d7881', '已跳过重复图片'), 'info');
                         if (first) {
                             // 重复文件也尝试关联
                             await this.fetchJSON('/api/thumbnails/assign', {
@@ -519,7 +519,7 @@ Object.assign(App, {
                         }
                     } else {
                         if (first) {
-                            this.showToast('上传成功', 'success');
+                            this.showToast(App._t('auto.upload_成功', '上传成功'), 'success');
                             await this.fetchJSON('/api/thumbnails/assign', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -533,7 +533,7 @@ Object.assign(App, {
                     }
                 }
             } catch(e) {
-                this.showToast('上传失败: ' + file.name, 'error');
+                this.showToast(App._t('auto.upload_失败__', '上传失败: ') + file.name, 'error');
             }
         }
         if (files.length > 0) {
@@ -595,7 +595,7 @@ Object.assign(App, {
                     }
                 }
             } catch(e) {
-                this.showToast(file.name + ' 上传失败', 'error');
+                this.showToast(file.name + App._t('auto.str_0619e1fc', ' 上传失败'), 'error');
             }
         }
         if (files.length > 0) {
@@ -806,7 +806,7 @@ Object.assign(App, {
         var endSec = dur * endPct / 100;
         document.getElementById('trimStartLabel').textContent = this._fmtTime(startSec);
         document.getElementById('trimEndLabel').textContent = this._fmtTime(endSec);
-        document.getElementById('trimDurationLabel').textContent = (endSec - startSec).toFixed(1) + '秒';
+        document.getElementById('trimDurationLabel').textContent = (endSec - startSec).toFixed(1) + App._t('auto.str_0c1fec65', '秒');
         this._updateTrimSizeEstimate();
     },
 
@@ -843,9 +843,9 @@ Object.assign(App, {
             this._thumbnailPage = 1;
             await this.loadThumbLibrary();
             await this.loadPrompts();
-            this.showToast('视频处理完成,已关联到提示词', 'success');
+            this.showToast(App._t('auto.str_e23ed266', '视频处理完成,已关联到提示词'), 'success');
         } else {
-            this.showToast('处理失败', 'error');
+            this.showToast(App._t('auto.str_1012e098', '处理失败'), 'error');
         }
     },
 
@@ -874,7 +874,7 @@ Object.assign(App, {
             });
             if (data) {
                 document.getElementById('modalThumbnail').style.display = 'none';
-                this.showToast('收藏夹缩略图已设置', 'success');
+                this.showToast(App._t('nav.collections', '收藏夹缩略图已设置'), 'success');
                 this._thumbnailCollectionId = null;
                 await this.loadCollections();
                 this.renderCollections();
@@ -888,7 +888,7 @@ Object.assign(App, {
         });
         if (data) {
             document.getElementById('modalThumbnail').style.display = 'none';
-            this.showToast('缩略图已设置', 'success');
+            this.showToast(App._t('auto.str_b519a039', '缩略图已设置'), 'success');
             await this.loadPrompts();
         }
     },
@@ -1328,7 +1328,7 @@ openImageViewer(filename, promptId) {
     },
 
     _fillViewerPanel(prefix, p) {
-        var moduleNames = {emotion:'人物表情',color:'场景色彩',tone:'画面色调',composition:'构图运镜',seedance:'Seedance'};
+        var moduleNames = {emotion:'人物表情',color:App._t('auto.str_67a7c94b', '场景色彩'),tone:'画面色调',composition:App._t('auto.str_bec46210', '构图运镜'),seedance:'Seedance'};
         var mEl = document.getElementById(prefix + 'Module');
         var cEl = document.getElementById(prefix + 'Content');
         var mnEl = document.getElementById(prefix + 'Meaning');
@@ -1371,7 +1371,7 @@ openImageViewer(filename, promptId) {
         var el = document.getElementById('imgViewerContent');
         if (!el) return;
         var c = el.getAttribute('data-content') || el.textContent;
-        if (c && c !== '-') { App.copyText(c,'提示词已复制');
+        if (c && c !== '-') { App.copyText(c,App._t('common.notice', '提示词已复制'));
             var pid = parseInt(el.getAttribute('data-prompt-id'));
             if (pid) App.trackUsage(pid); }
     },
@@ -1380,7 +1380,7 @@ openImageViewer(filename, promptId) {
         var el = document.getElementById('vidViewerContent');
         if (!el) return;
         var c = el.getAttribute('data-content') || el.textContent;
-        if (c && c !== '-') { App.copyText(c,'提示词已复制');
+        if (c && c !== '-') { App.copyText(c,App._t('common.notice', '提示词已复制'));
             var pid = parseInt(el.getAttribute('data-prompt-id'));
             if (pid) App.trackUsage(pid); }
     },

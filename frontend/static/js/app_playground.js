@@ -126,12 +126,12 @@ App._pgToggleProvider = function() {
 App._pgOptimize = async function() {
     var promptEl = document.getElementById('pgPrompt');
     var prompt = (promptEl ? promptEl.value.trim() : '');
-    if (!prompt) { this.showToast('请先输入提示词', 'warning'); return; }
+    if (!prompt) { this.showToast(App._t('auto.please_输入提示词', '请先输入提示词'), 'warning'); return; }
 
     var resultEl = document.getElementById('pgResult');
     var statusEl = document.getElementById('pgStatus');
     var btn = document.getElementById('btnPgRun');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:12px;height:12px;"></span> 优化中...'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = App._t('auto.str_1c4db066', '<span class="spinner-border spinner-border-sm" style="width:12px;height:12px;"></span> 优化中...'); }
     if (resultEl) { resultEl.style.display = 'block'; resultEl.textContent = '⏳ 正在调用 LLM 优化...'; }
     if (statusEl) statusEl.textContent = '';
 
@@ -164,14 +164,14 @@ App._pgOptimize = async function() {
                 if (statusEl) statusEl.innerHTML += ' | <span style="color:#8b5cf6;">📦 #' + d.saved_card.id + ' 已保存</span>';
             }
         } else {
-            if (resultEl) resultEl.textContent = '❌ 优化失败: ' + (d ? d.error : '未知错误');
+            if (resultEl) resultEl.textContent = '❌ 优化失败: ' + (d ? d.error : App._t('common.unknown_error', '未知错误'));
             if (statusEl) statusEl.textContent = '请检查 LLM 模型是否可用';
         }
     } catch(e) {
         if (resultEl) resultEl.textContent = '❌ 请求异常: ' + e.message;
-        if (statusEl) statusEl.textContent = '网络错误或服务未启动';
+        if (statusEl) statusEl.textContent = App._t('common.net_error', '网络错误或服务未启动');
     }
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-magic"></i> 优化提示词'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = App._t('auto.str_05caa270', '<i class="bi bi-magic"></i> 优化提示词'); }
 };
 
 // ===== 复制结果 =====
@@ -179,14 +179,14 @@ App._pgCopyResult = function() {
     var r = this._pgState.lastResult;
     if (!r) { this.showToast('请先运行优化', 'warning'); return; }
     this.copyText(r);
-    this.showToast('已复制优化结果', 'success');
+    this.showToast(App._t('common.copied', '已复制优化结果'), 'success');
 };
 
 // ===== 保存到词卡库 =====
 App._pgSave = async function() {
     var promptEl = document.getElementById('pgPrompt');
     var prompt = (promptEl ? promptEl.value.trim() : '');
-    if (!prompt) { this.showToast('请先输入提示词', 'warning'); return; }
+    if (!prompt) { this.showToast(App._t('auto.please_输入提示词', '请先输入提示词'), 'warning'); return; }
 
     var body = {
         prompt: prompt,
@@ -222,7 +222,7 @@ App._pgSave = async function() {
                 this.loadGroupTree().catch(function(){});
             }
         } else {
-            if (statusEl) statusEl.textContent = '❌ ' + (d && d.error ? d.error : '保存失败');
+            if (statusEl) statusEl.textContent = '❌ ' + (d && d.error ? d.error : App._t('common.save', '保存失败'));
         }
     } catch(e) {
         if (statusEl) statusEl.textContent = '❌ ' + e.message;
@@ -244,7 +244,7 @@ App._pgClear = function() {
 
 // ===== 设置（打开配置页） =====
 App._pgSettings = function() {
-    App.showToast('配置已集成到弹窗面板中', 'info');
+    App.showToast(App._t('auto.config_已集成到弹窗面板中', '配置已集成到弹窗面板中'), 'info');
 };
 
 console.log('[Playground v15] ready — ' +
