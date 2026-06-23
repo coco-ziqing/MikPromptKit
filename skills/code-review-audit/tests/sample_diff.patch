@@ -1,0 +1,16 @@
+diff --git a/src/api/request.js b/src/api/request.js
+index 1a2b3c4..5d6e7f8 100644
+--- a/src/api/request.js
++++ b/src/api/request.js
+@@ -10,6 +10,12 @@ export async function fetchData(url) {
+-  const res = await fetch(url)
+-  return res.json()
++  const res = await fetch(url)
++  // 评审点: 未判 res.ok / content-type，404 返回 HTML 会导致 JSON 解析崩溃
++  return res.json()
++}
++
++export function buildSql(id) {
++  // 评审点: 字符串拼接 SQL，存在注入风险
++  return "SELECT * FROM t WHERE id=" + id
+ }
