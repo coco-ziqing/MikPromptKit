@@ -52,6 +52,9 @@ App.switchGroup = async function(groupId, groupName) {
     this._closeMobileMenu();
     // switchView('home') 内部会调用 renderSidebar + loadPrompts → _wcLoadPrompts
     this.switchView('home');
+    // 侧边栏渲染完后，滚动到选中分组
+    var self = this;
+    setTimeout(function() { self._scrollSidebarToGroup(groupId); }, 150);
 };
 
 // 全部词库
@@ -88,70 +91,100 @@ App.switchModule = function(moduleKey) {
 App.switchAllModules = function() { this.switchAllGroups(); };
 
 // ============================================================
-// 5. 全部词库 — 全部分组快捷入口（按根→子类→叶子三级可折叠）
+// 5. 查找词组 — 全部分组平铺入口（根可折叠 / 子类永远展开）
 // ============================================================
 App._showShowcase = function() {
     var container = document.getElementById('promptList');
     if (!container) return;
     
+    // 陈列架/查找词组页面：隐藏 AI 工具栏、面包屑、编辑工具栏
+    App._aiToolbarSuppressed = true;
+    if (App.aiTools) App.aiTools.hideToolbar();
+    this._showBreadcrumb(false);
+    this._hideBatchBar();
+    this._hideEditFilterBar();
+    
+    var self = this;
     var tree = this.state.groupTree;
     if (!tree || tree.length === 0) {
         container.innerHTML = '<div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div><p>' + App._t('showcase.loading', '加载分组中...') + '</p></div>';
         return;
     }
     
-    var html = '<div style="padding:12px 0;">';
-    html += '<h5 style="margin-bottom:2px;display:flex;align-items:center;gap:8px;">';
-    html += '<i class="bi bi-grid-3x3-gap-fill"></i> ' + App._t('showcase.title', '全部词库');
-    html += '<span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:8px;">' + String.fromCharCode(8212) + ' ' + App._t('showcase.subtitle', '全部分组快捷入口') + '</span>';
-    html += '</h5>';
-    html += '<p style="color:var(--text-muted);font-size:12px;margin-bottom:14px;">' + App._t('showcase.hint', '点击分组名称进入词卡列表，点击 ' + String.fromCharCode(9654) + ' 展开子分组') + '</p>';
+    var html = '<div>';
+    // 标题已由 page-header 统一显示，这里只保留极简导航提示
     
     for (var t = 0; t < tree.length; t++) {
         var root = tree[t];
-        var rootId = 'root_' + t;
+        var rootId = 'showcase_root_' + t;
         
-        html += '<div style="margin-bottom:16px;">';
-        html += '<div onclick="var c=document.getElementById(\'' + rootId + '\');c.style.display=c.style.display===\'none\'?\'block\':\'none\';var a=this.querySelector(\'.toggle-arrow\');if(a)a.textContent=c.style.display===\'none\'?\'' + String.fromCharCode(9654) + '\':\'' + String.fromCharCode(9660) + '\';" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:6px 0;margin-bottom:2px;border-bottom:1px solid var(--border-color);">';
-        html += '<span class="toggle-arrow" style="font-size:10px;width:14px;">' + String.fromCharCode(9660) + '</span>';
-        html += '<span style="font-size:18px;">' + (root.icon || '📁') + '</span>';
-        html += '<span style="font-weight:600;font-size:14px;">' + App._escape(root.name) + '</span>';
-        html += '<span style="font-size:11px;color:var(--text-muted);margin-left:auto;">' + (root.card_count || 0) + ' ' + App._t('common.items', '条') + '</span>';
+        // 计算根节点下总词卡数
+        var rootTotal = 0;
+        function sumCards(nodes) {
+            for (var i = 0; i < nodes.length; i++) {
+                rootTotal += (nodes[i].card_count || 0);
+                if (nodes[i].children) sumCards(nodes[i].children);
+            }
+        }
+        if (root.children) sumCards(root.children);
+        
+        html += '<div style="margin-bottom:12px;border:1px solid var(--border-color);border-radius:10px;overflow:hidden;">';
+        // 根节点标题栏（可折叠）
+        var rootAddBtnHtml = '';
+        if (this.state.editMode) {
+            rootAddBtnHtml = '<button onclick="event.stopPropagation();App._treeQuickAdd(' + root.id + ')" title="在此根下新建子分类" style="width:24px;height:24px;border:1px dashed var(--border-color);border-radius:50%;background:transparent;color:var(--text-muted);font-size:18px;line-height:1;cursor:pointer;opacity:0.6;margin-left:6px;transition:all 0.2s;" onmouseenter="this.style.borderColor=var(\'--primary\');this.style.background=var(\'--primary\');this.style.color=\'#fff\';this.style.opacity=\'1\'" onmouseleave="this.style.borderColor=var(\'--border-color\');this.style.background=\'transparent\';this.style.color=var(\'--text-muted\');this.style.opacity=\'0.6\'">+</button>';
+        }
+        html += '<div onclick="var c=document.getElementById(\'' + rootId + '\');c.style.display=c.style.display===\'none\'?\'block\':\'none\';var a=this.querySelector(\'.toggle-arrow\');if(a)a.textContent=c.style.display===\'none\'?\'▶\':\'▼\';" ';
+        html += 'style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--hover-bg);user-select:none;">';
+        html += '<span class="toggle-arrow" style="font-size:12px;width:18px;transition:transform 0.2s;">▼</span>';
+        html += '<span style="font-size:22px;">' + (root.icon || '📁') + '</span>';
+        html += '<span style="font-weight:700;font-size:15px;">' + App._escape(root.name.replace(root.icon||'','').trim()) + '</span>';
+        html += '<span style="font-size:12px;color:var(--text-muted);margin-left:auto;">' + rootTotal + ' 条</span>';
+        html += rootAddBtnHtml;
         html += '</div>';
         
-        html += '<div id="' + rootId + '" style="display:block;">';
+        // root 子节点区域（默认展开）
+        html += '<div id="' + rootId + '" style="display:block;padding:8px 16px 12px;">';
         
         if (root.children) {
             for (var s = 0; s < root.children.length; s++) {
                 var sub = root.children[s];
                 if (!sub.children || sub.children.length === 0) continue;
                 
-                var subId = 'sub_' + t + '_' + s;
                 var subLeaves = sub.children;
                 var subTotal = subLeaves.reduce(function(sum,g){return sum+(g.card_count||0);},0);
                 if (subTotal === 0 && sub.group_type !== 'sub') continue;
                 
-                html += '<div style="margin-left:16px;margin-bottom:4px;">';
-                html += '<div onclick="var c=document.getElementById(\'' + subId + '\');c.style.display=c.style.display===\'none\'?\'block\':\'none\';var a=this.querySelector(\'.toggle-arrow\');if(a)a.textContent=c.style.display===\'none\'?\'' + String.fromCharCode(9654) + '\':\'' + String.fromCharCode(9660) + '\';" style="cursor:pointer;display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;color:var(--text-muted);">';
-                html += '<span class="toggle-arrow" style="font-size:9px;width:12px;">' + String.fromCharCode(9660) + '</span>';
-                html += '<span style="font-size:13px;">' + (sub.icon || '📂') + '</span>';
-                html += '<span style="font-weight:600;">' + App._escape(sub.name) + '</span>';
-                html += '<span style="font-size:10px;margin-left:auto;">' + subTotal + ' ' + App._t('common.items', '条') + '</span>';
+                // sub: 永远展开 + 包含关系框
+                html += '<div style="border-left:2px solid var(--border-color);margin-left:8px;margin-bottom:6px;padding:6px 0 6px 12px;border-radius:0 8px 8px 0;">';
+                html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;color:var(--text-muted);font-weight:600;">';
+                html += '<span style="font-size:15px;">' + (sub.icon || '📂') + '</span>';
+                html += '<span>' + App._escape(sub.name.replace(sub.icon||'','').trim()) + '</span>';
+                html += '<span style="font-size:11px;margin-left:auto;">' + subTotal + ' 条</span>';
+                if (self.state.editMode) {
+                    html += '<button onclick="event.stopPropagation();App._treeQuickAdd(' + sub.id + ')" title="在此分组下新建" style="width:22px;height:22px;border:1px dashed var(--border-color);border-radius:50%;background:transparent;color:var(--text-muted);font-size:16px;line-height:1;cursor:pointer;opacity:0.5;flex-shrink:0;transition:all 0.2s;" onmouseenter="this.style.borderColor=var(\'--primary\');this.style.background=var(\'--primary\');this.style.color=\'#fff\';this.style.opacity=\'1\'" onmouseleave="this.style.borderColor=var(\'--border-color\');this.style.background=\'transparent\';this.style.color=var(\'--text-muted\');this.style.opacity=\'0.5\'">+</button>';
+                }
                 html += '</div>';
                 
-                html += '<div id="' + subId + '" style="display:block;margin-left:28px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:6px;">';
+                // leaf 按钮平铺
+                html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
                 for (var g = 0; g < subLeaves.length; g++) {
                     var grp = subLeaves[g];
                     if (grp.group_type === 'sub' || grp.group_type === 'root') continue;
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
-                    html += 'style="font-size:11px;padding:4px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;"';
+                    html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
                     html += ' onmouseenter="this.style.borderColor=var(--primary);this.style.background=var(--hover-bg)" onmouseleave="this.style.borderColor=var(--border-color);this.style.background=var(--bg-card)"';
                     html += '>';
-                    html += (grp.icon||'📄') + ' ' + App._escape(grp.name);
-                    html += '<span style="font-size:9px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
+                    html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
+                    html += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
                     html += '</button>';
                 }
-                html += '</div></div>';
+                html += '</div>';
+                // 编辑模式：底部添加行
+                if (self.state.editMode) {
+                    html += '<div onclick="event.stopPropagation();App._treeQuickAdd(' + sub.id + ')" style="margin-top:6px;margin-left:4px;padding:4px 10px;border:1px dashed var(--border-color);border-radius:6px;font-size:11px;color:var(--text-muted);cursor:pointer;opacity:0.6;transition:all 0.2s;" onmouseenter="this.style.borderColor=var(\'--primary\');this.style.color=var(\'--primary\');this.style.opacity=\'1\'" onmouseleave="this.style.borderColor=var(\'--border-color\');this.style.color=var(\'--text-muted\');this.style.opacity=\'0.6\'">+ 添加分组</div>';
+                }
+                html += '</div>'; // close sub container
             }
         }
         html += '</div></div>';
@@ -172,7 +205,7 @@ App._showShowcase = function() {
         }
     }
     countAll(tree);
-    document.getElementById('countInfo').textContent = App._t('showcase.stats', '共 ') + totalLeaves + App._t('showcase.stats_groups', ' 个分组 · ') + totalCards + App._t('common.card_count_suffix', ' 条词卡');
+    document.getElementById('countInfo').textContent = '共 ' + totalLeaves + ' 个分组 · ' + totalCards + ' 条词卡';
 };
 
 
@@ -186,13 +219,15 @@ App._showcaseClick = function(el) {
 // 陈列架卡片
 App._renderShowcaseCard = function(grp) {
     var icon = grp.icon || '📄';
+    var cardName = grp.name || '';
+    if (icon && cardName.indexOf(icon) === 0) cardName = cardName.substring(icon.length).trim();
     var badge = grp.group_type === 'builtin' ? '<span style="font-size:10px;background:var(--bg-primary);color:var(--text-muted);padding:1px 6px;border-radius:4px;">内置</span>' :
                 grp.group_type === 'custom' ? '<span style="font-size:10px;background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:4px;">自定义</span>' : '';
     return '<div class="showcase-card" data-gid="' + grp.id + '" data-gname="' + (grp.name||'').replace(/"/g,'&quot;') + '" onclick="App._showcaseClick(this)" style="cursor:pointer;border:1px solid var(--border-color);border-radius:12px;padding:16px;background:var(--bg-card);transition:all 0.2s;display:flex;align-items:center;gap:12px;">' +
         '<div style="font-size:28px;flex-shrink:0;">' + icon + '</div>' +
         '<div style="flex:1;min-width:0;">' +
             '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">' +
-                '<span style="font-weight:600;font-size:14px;">' + App._escape(grp.name) + '</span>' +
+                '<span style="font-weight:600;font-size:14px;">' + App._escape(cardName) + '</span>' +
                 badge +
             '</div>' +
             '<div style="font-size:12px;color:var(--text-muted);">' + grp.card_count + ' 条词卡</div>' +
@@ -233,7 +268,7 @@ App._injectSidebarToggle = function(sidebar) {
 };
 
 // ============================================================
-// 7. 重写 renderSidebar: 树形侧边栏
+// 7. 重写 renderSidebar: 树形侧边栏（Phase15 交互重构）
 // ============================================================
 var _origRenderSidebar = App.renderSidebar;
 App.renderSidebar = function() {
@@ -260,16 +295,16 @@ App.renderSidebar = function() {
     var tree = this.state.groupTree;
     var tree = this.state.groupTree;
     if (!tree || tree.length === 0) {
-        sidebar.innerHTML = '<div style="padding:20px;color:var(--text-muted);font-size:12px;">📡 加载词库中...</div>';
+        sidebar.innerHTML = '<div style="padding:20px;color:var(--text-muted);font-size:13px;">📡 加载词库中...</div>';
         return;
     }
     
-    var html = '<div style="padding:8px 14px 6px;color:var(--text-muted);font-size:11px;letter-spacing:1px;">分类导航</div>';
+    var html = '<div style="padding:10px 14px 6px;color:var(--text-muted);font-size:12px;letter-spacing:1px;font-weight:600;">查找词组</div>';
     
-    // "全部词库" 入口
+    // 统一入口：全部词组
     var allActive = this.state.currentGroupId === null ? 'active' : '';
-    html += '<div class="module-item ' + allActive + '" onclick="App.switchAllGroups()" style="margin:0 8px 4px;">' +
-        '<span class="icon">🏠</span><span>全部词库</span>' +
+    html += '<div class="module-item ' + allActive + '" onclick="App.switchAllGroups()" style="margin:0 8px 4px;font-size:14px;">' +
+        '<span class="icon">🏠</span><span>全部词组</span>' +
         '</div>';
     
     // 渲染树
@@ -280,8 +315,8 @@ App.renderSidebar = function() {
     // 编辑模式底部按钮
     if (this.state.editMode) {
         html += '<div style="margin-top:auto;padding:12px;border-top:1px solid var(--border-color);display:flex;gap:6px;flex-wrap:wrap;">' +
-            '<button onclick="App.showGroupManageModal()" style="flex:1;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-muted);cursor:pointer;font-size:11px;"><i class="bi bi-plus-circle"></i> 新建分组</button>' +
-            '<button onclick="App.showGroupManageModal()" style="flex:1;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-muted);cursor:pointer;font-size:11px;"><i class="bi bi-gear"></i> 管理分组</button>' +
+            '<button onclick="App.showGroupManageModal()" style="flex:1;padding:8px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-muted);cursor:pointer;font-size:12px;"><i class="bi bi-plus-circle"></i> 新建分组</button>' +
+            '<button onclick="App.showGroupManageModal()" style="flex:1;padding:8px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-muted);cursor:pointer;font-size:12px;"><i class="bi bi-gear"></i> 管理分组</button>' +
             '</div>';
     }
     
@@ -290,48 +325,57 @@ App.renderSidebar = function() {
     } catch(e) {
         console.error('[wc-bridge] renderSidebar 崩溃:', e.message, e.stack);
         var sidebar = document.getElementById('sidebar');
-        if (sidebar) sidebar.innerHTML = '<div style="padding:20px;color:#ef4444;font-size:12px;">侧边栏渲染失败: ' + e.message + '</div>';
+        if (sidebar) sidebar.innerHTML = '<div style="padding:20px;color:#ef4444;font-size:13px;">侧边栏渲染失败: ' + e.message + '</div>';
     }
 };
 
-// 渲染单个树节点（递归）
+// Phase15: 渲染单个树节点（递归）— 只有 root 可折叠，sub 永远展开
 App._renderTreeNode = function(node, depth) {
     if (node.group_type === 'custom' && node.card_count === 0 && depth > 0) return '';
     
-    var isExpanded = node._expanded !== false; // 默认展开
     var isLeaf = !node.children || node.children.length === 0;
     var isActive = this.state.currentGroupId === node.id;
-    var padLeft = 8 + depth * 16;
+    var padLeft = 12 + depth * 18;
     var icon = node.icon || (node.group_type === 'root' ? '📁' : node.group_type === 'sub' ? '📂' : '📄');
+    // 防止 icon + name 开头重复图标：若 name 以 icon 开头则去掉
+    var displayName = node.name || '';
+    if (icon && displayName.indexOf(icon) === 0) {
+        displayName = displayName.substring(icon.length).trim();
+    }
     
+    // 计算 countStr
     var countStr = '';
     if (node.group_type === 'root' || node.group_type === 'sub') {
-        // 计算子节点总卡数
         var totalCards = node.card_count || 0;
         if (node.children) {
             for (var i = 0; i < node.children.length; i++) {
                 totalCards += (node.children[i].card_count || 0);
             }
         }
-        countStr = '<span class="count-badge" style="font-size:10px;">' + totalCards + '</span>';
+        countStr = '<span class="count-badge" style="font-size:11px;">' + totalCards + '</span>';
     } else {
-        countStr = '<span class="count-badge" style="font-size:10px;">' + (node.card_count || 0) + '</span>';
+        countStr = '<span class="count-badge" style="font-size:11px;">' + (node.card_count || 0) + '</span>';
     }
     
     var nodeId = 'treeNode_' + (node.group_type || '') + '_' + node.id;
     
-    // root 和 sub：可折叠，不可点击加载
-    if (node.group_type === 'root' || node.group_type === 'sub') {
+    // ── ROOT: 只有根节点可折叠 ──
+    if (node.group_type === 'root') {
+        var isExpanded = node._expanded !== false;
         var arrow = isExpanded ? '▼' : '▶';
-        var expandIcon = isLeaf ? '<span style="width:16px;display:inline-block;">&nbsp;</span>' :
-            '<span class="tree-arrow" data-node="' + nodeId + '" style="cursor:pointer;width:16px;display:inline-block;font-size:10px;">' + arrow + '</span>';
+        var expandIcon = '<span class="tree-arrow" data-node="' + nodeId + '" style="cursor:pointer;width:20px;display:inline-block;font-size:12px;text-align:center;">' + arrow + '</span>';
         
-        var html = '<div id="' + nodeId + '" class="tree-node tree-' + node.group_type + '" style="padding:4px ' + (8 + depth*12) + 'px 4px ' + padLeft + 'px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);" ' +
-            'onclick="App._toggleTreeNode(\'' + nodeId + '\',' + node.id + ')">' +
+        var rootAddBtn = '';
+        if (this.state.editMode) {
+            rootAddBtn = '<button class="tree-add-btn" onclick="event.stopPropagation();App._treeQuickAdd(' + node.id + ')" title="在此根下新建子分类">+</button>';
+        }
+        
+        var html = '<div id="' + nodeId + '" class="tree-node tree-root" onclick="App._toggleTreeNode(\'' + nodeId + '\',' + node.id + ')">' +
             expandIcon +
-            '<span style="font-size:13px;">' + icon + '</span>' +
-            '<span style="font-weight:' + (node.group_type === 'root' ? '600' : '500') + ';flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + App._escape(node.name) + '</span>' +
+            '<span style="font-size:17px;width:22px;text-align:center;">' + icon + '</span>' +
+            '<span style="font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;">' + App._escape(displayName) + '</span>' +
             countStr +
+            rootAddBtn +
             '</div>';
         
         if (isExpanded && node.children) {
@@ -346,23 +390,79 @@ App._renderTreeNode = function(node, depth) {
         return html;
     }
     
-    // leaf 节点（builtin/seedance/custom）：可点击加载（data属性避免引号注入）
+    // ── SUB: 永远展开、无折叠箭头，编辑模式带 + 按钮 ──
+    if (node.group_type === 'sub') {
+        // 包含关系容器：sub 标题 + 所有子节点包在一个左边框容器里
+        var addBtn = '';
+        if (this.state.editMode) {
+            addBtn = '<button class="tree-add-btn" onclick="event.stopPropagation();App._treeQuickAdd(' + node.id + ')" title="在此分组下新建子分组">+</button>';
+        }
+        var html = '<div class="tree-sub-container">'; // Phase15: 包含关系容器
+        html += '<div class="tree-node tree-sub" style="cursor:default;">' +
+            '<span style="width:20px;display:inline-block;">&nbsp;</span>' +
+            '<span style="font-size:15px;width:22px;text-align:center;">' + icon + '</span>' +
+            '<span style="font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;">' + App._escape(displayName) + '</span>' +
+            countStr +
+            addBtn +
+            '</div>';
+        
+        if (node.children && node.children.length > 0) {
+            html += '<div class="tree-children" style="display:block;">';
+            for (var c = 0; c < node.children.length; c++) {
+                html += this._renderTreeNode(node.children[c], depth + 1);
+            }
+            html += '</div>';
+        }
+        // 编辑模式：底部「+ 添加分组」按钮
+        if (this.state.editMode) {
+            html += '<div class="tree-add-row" onclick="event.stopPropagation();App._treeQuickAdd(' + node.id + ')">' +
+                '<i class="bi bi-plus-circle"></i> 添加分组' +
+                '</div>';
+        }
+        html += '</div>'; // close tree-sub-container
+        return html;
+    }
+    
+    // ── LEAF: 可点击加载 ──
     var delBtn = '';
     if (node.group_type === 'custom' && this.state.editMode) {
-        delBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.gmDelete(' + node.id + ',\'' + (node.name||'').replace(/'/g,"\\'") + '\')" title="删除分组" style="font-size:10px;color:#ef4444;padding:0 3px;opacity:0.7;">✕</button>';
+        delBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.gmDelete(' + node.id + ',\'' + (node.name||'').replace(/'/g,"\\'") + '\',this)" title="移除分组" style="font-size:11px;color:#ef4444;padding:0 3px;opacity:0.7;">✕</button>';
     }
     var editBtn = '';
     if (node.group_type === 'custom' && this.state.editMode) {
-        editBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.gmEdit(' + node.id + ',\'' + (node.name||'').replace(/'/g,"\\'") + '\')" title="编辑分组" style="font-size:10px;opacity:0.7;">✎</button>';
+        editBtn = '<button class="header-btn-sm" onclick="event.stopPropagation();App.gmEdit(' + node.id + ',\'' + (node.name||'').replace(/'/g,"\\'") + '\',this)" title="重命名" style="font-size:11px;opacity:0.7;">✎</button>';
     }
     
     return '<div class="module-item ' + (isActive ? 'active' : '') + '" data-gid="' + node.id + '" data-gname="' + (node.name||'').replace(/"/g,'&quot;') + '" onclick="App._treeLeafClick(this)" ' +
         'style="margin:0 8px 2px;padding-left:' + padLeft + 'px;" data-group-id="' + node.id + '">' +
         '<span class="icon">' + icon + '</span>' +
-        '<span>' + App._escape(node.name) + '</span>' +
+        '<span>' + App._escape(displayName) + '</span>' +
         countStr +
         editBtn + delBtn +
         '</div>';
+};
+
+// Phase15: 侧边栏内快速添加分组
+App._treeQuickAdd = function(parentId) {
+    var name = prompt('在此分组下新建子分组名称：');
+    if (!name || !name.trim()) return;
+    var body = { name: name.trim(), icon: '📂', parent_group_id: parentId };
+    var self = this;
+    fetch('/api/v4/word-cards/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    }).then(function(r) {
+        if (r.ok) {
+            r.json().then(function() {
+                self.showToast('已添加', 'success');
+                self.loadGroupTree();
+            });
+        } else {
+            r.json().then(function(e) { self.showToast('添加失败: ' + (e.detail || 'HTTP ' + r.status), 'error'); })
+                .catch(function() { self.showToast('添加失败', 'error'); });
+        }
+    }).catch(function(e) { self.showToast('出错: ' + e.message, 'error'); });
 };
 
 // 叶子节点点击代理（data属性避免引号注入）
@@ -429,6 +529,61 @@ App._loadTreeChildren = function(container, parentId) {
     container.innerHTML = html;
 };
 
+// Phase15: 隐藏编辑工具栏
+App._hideBatchBar = function() {
+    var bb = document.getElementById('batchBar');
+    if (bb) bb.style.display = 'none';
+};
+App._hideEditFilterBar = function() {
+    var fb = document.getElementById('editFilterBar');
+    if (fb) fb.style.display = 'none';
+};
+
+// Phase15: 侧边栏滚动到选中分组（使其靠近顶部，父级可见）
+App._scrollSidebarToGroup = function(groupId) {
+    var sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    var el = sidebar.querySelector('[data-group-id="' + groupId + '"]') ||
+             sidebar.querySelector('.module-item.active');
+    if (!el) return;
+    // 确保所有父级 root 展开
+    var parent = el.parentElement;
+    while (parent && parent !== sidebar) {
+        if (parent.classList.contains('tree-children')) {
+            parent.style.display = 'block';
+        }
+        parent = parent.parentElement;
+    }
+    // 滚动：目标元素显示在侧边栏顶部下方 80px
+    sidebar.scrollTo({ top: Math.max(0, el.offsetTop - 80), behavior: 'smooth' });
+};
+
+// Phase15: 返回按钮 + 标题路径 — 整合到 page-header 行内
+App._showBreadcrumb = function(show) {
+    var btn = document.getElementById('btnBackToShowcase');
+    if (!btn) return;
+    if (!show) { btn.style.display = 'none'; return; }
+    btn.style.display = 'inline-flex';
+    // 标题旁显示路径（仅在 pageTitle 后追加）
+    var gid = this.state.currentGroupId;
+    var tree = this.state.groupTree;
+    var path = '';
+    function findPath(nodes, chain) {
+        for (var i = 0; i < nodes.length; i++) {
+            var n = nodes[i];
+            var nc = chain.concat([n.name]);
+            if (n.id === gid) return nc;
+            if (n.children) { var r = findPath(n.children, nc); if (r) return r; }
+        }
+        return null;
+    }
+    var chain = findPath(tree, []);
+    var pt = document.getElementById('pageTitle');
+    if (chain && chain.length > 1 && pt) {
+        pt.textContent = chain[chain.length - 1];
+    }
+};
+
 // ============================================================
 // 8. 词卡加载（按 group_id）
 // ============================================================
@@ -439,6 +594,11 @@ App._wcLoadPrompts = async function() {
         this._showShowcase();
         return;
     }
+    
+    // 进入具体分组 → 恢复 AI 工具栏 + 显示面包屑
+    App._aiToolbarSuppressed = false;
+    if (App.aiTools) App.aiTools.showToolbar();
+    this._showBreadcrumb(true);
     
     s.isLoading = true;
     if (s.prompts.length === 0) this.renderPrompts();
@@ -480,6 +640,9 @@ App._wcLoadPrompts = async function() {
         this.renderPagination();
         document.getElementById('countInfo').textContent = '共 ' + d.total + ' 条词卡';
         document.getElementById('pageTitle').textContent = s.currentGroupName || '词卡列表';
+        // 侧边栏滚动到当前分组（首次加载/刷新时也触发）
+        var self = this;
+        setTimeout(function() { self._scrollSidebarToGroup(s.currentGroupId); }, 200);
     } catch(e) {
         s.isLoading = false;
         this.renderPrompts();
@@ -635,42 +798,91 @@ App.gmCreate = function() {
     }).catch(function(e) { self.showToast('创建出错: ' + e.message, 'error'); });
 };
 
-// 编辑分组
-App.gmEdit = function(groupId, oldName) {
-    var name = prompt('修改分组名称：', oldName || '');
-    if (!name || !name.trim()) return;
-    var self = this;
-    fetch('/api/v4/word-cards/groups/' + groupId, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim() })
-    }).then(function(r) {
-        if (r.ok) {
-            self.showToast('已更新', 'success');
-            self.loadGroupTree().then(function() { self.gmRefresh(); });
-        } else {
-            r.json().then(function(e) { self.showToast('更新失败: ' + (e.detail || 'HTTP ' + r.status), 'error'); })
-                .catch(function() { self.showToast('更新失败', 'error'); });
+// Phase15: 行内重命名（有 btnEl 时变输入框，否则回退 prompt）
+App.gmEdit = function(groupId, oldName, btnEl) {
+    if (!btnEl) { var n=prompt('修改名称：',oldName||''); if(!n||!n.trim())return; var s=this; fetch('/api/v4/word-cards/groups/'+groupId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.trim()})}).then(function(r){if(r.ok){s.showToast('已更新','success');s.loadGroupTree().then(function(){s.gmRefresh()})}else{s.showToast('更新失败','error')}}); return; }
+    var el = btnEl.closest('.module-item');
+    var spans = el.querySelectorAll('span');
+    var nameSpan = null;
+    for (var i = 0; i < spans.length; i++) {
+        var s = spans[i];
+        if (!s.classList.contains('icon') && !s.classList.contains('count-badge') && s.textContent.trim() === oldName) {
+            nameSpan = s; break;
         }
-    });
+    }
+    if (!nameSpan) return;
+    var origText = nameSpan.textContent || '';
+    nameSpan.style.display = 'none';
+    var input = document.createElement('input');
+    input.type = 'text'; input.className = 'tree-rename-input';
+    input.value = origText;
+    input.style.cssText = 'flex:1;min-width:60px;font-size:13px;margin:1px 0;';
+    nameSpan.parentNode.insertBefore(input, nameSpan.nextSibling);
+    input.focus(); input.select();
+    var self = this;
+    var done = function() {
+        var v = input.value.trim();
+        input.remove(); nameSpan.style.display = '';
+        if (!v || v === origText) return;
+        fetch('/api/v4/word-cards/groups/' + groupId, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: v })
+        }).then(function(r) {
+            if (r.ok) { self.showToast('已更新', 'success'); self.loadGroupTree(); }
+            else { self.showToast('更新失败', 'error'); }
+        }).catch(function() { self.showToast('出错', 'error'); });
+    };
+    input.onblur = done;
+    input.onkeydown = function(e) {
+        if (e.key === 'Enter') input.blur();
+        if (e.key === 'Escape') { input.value = origText; input.blur(); }
+    };
 };
 
-// 删除分组
-App.gmDelete = function(groupId, groupName) {
-    if (!confirm('确定删除分组「' + groupName + '」？\n\n词卡将移至未分类，此操作可恢复。')) return;
+// Phase15: 删除确认弹窗（有 btnEl 时贴按钮，否则回退 confirm）
+App.gmDelete = function(groupId, groupName, btnEl) {
+    if (!btnEl) { if(!confirm('移除「'+groupName+'」？词卡移至未分类，可恢复。'))return; var s0=this; fetch('/api/v4/word-cards/groups/'+groupId,{method:'DELETE'}).then(function(r){if(r.ok){s0.showToast('已移除','info');s0.loadGroupTree().then(function(){s0.gmRefresh();if(s0.state.currentGroupId===groupId)s0.switchAllGroups();else s0._showShowcase()})}else{r.json().then(function(e){s0.showToast('失败','error')})}}); return; }
+    var old = document.querySelector('.gm-confirm-popover');
+    if (old) old.remove();
+    var pop = document.createElement('div');
+    pop.className = 'gm-confirm-popover';
+    pop.innerHTML = '<div style="text-align:center;">⚠️ 移除「'+App._escape(groupName)+'」？</div>' +
+        '<div style="text-align:center;font-size:10px;color:var(--text-muted);margin-top:2px;">词卡移至未分类，可恢复</div>' +
+        '<div class="gm-confirm-actions">' +
+            '<button onclick="this.closest(\'.gm-confirm-popover\').remove()">取消</button>' +
+            '<button class="gm-btn-danger" id="gmConfirmDeleteBtn">移入回收站</button>' +
+        '</div>';
+    document.body.appendChild(pop);
+    var rect = btnEl.getBoundingClientRect();
+    pop.style.position = 'fixed';
+    pop.style.left = Math.max(8, rect.left + rect.width/2 - 90) + 'px';
+    if (rect.top < 110) {
+        pop.style.top = (rect.bottom + 6) + 'px';
+        pop.style.transform = 'translate(-50%, 0)';
+    } else {
+        pop.style.top = (rect.top - 10) + 'px';
+        pop.style.transform = 'translate(-50%, -100%)';
+    }
     var self = this;
-    fetch('/api/v4/word-cards/groups/' + groupId, { method: 'DELETE' }).then(function(r) {
-        if (r.ok) {
-            self.showToast('已删除「' + groupName + '」', 'info');
-            self.loadGroupTree().then(function() {
-                self.gmRefresh();
-                if (self.state.currentGroupId === groupId) self.switchAllGroups();
-                else self._showShowcase();
-            });
-        } else {
-            r.json().then(function(e) { self.showToast('删除失败: ' + (e.detail || '不可删除'), 'error'); });
-        }
-    });
+    pop.querySelector('#gmConfirmDeleteBtn').onclick = function() {
+        pop.remove();
+        fetch('/api/v4/word-cards/groups/' + groupId, { method: 'DELETE' }).then(function(r) {
+            if (r.ok) {
+                self.showToast('已移除「'+groupName+'」', 'info');
+                self.loadGroupTree().then(function() {
+                    if (self.state.currentGroupId === groupId) self.switchAllGroups();
+                    else if (self.state.currentGroupId === null) self._showShowcase();
+                });
+            } else {
+                r.json().then(function(e) { self.showToast('移除失败: '+(e.detail||''), 'error'); });
+            }
+        });
+    };
+    setTimeout(function() {
+        document.addEventListener('click', function _cp(e) {
+            if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener('click', _cp); }
+        });
+    }, 50);
 };
 
 // 批量移动词卡（将来扩展）
@@ -684,13 +896,34 @@ App.gmBatchMove = function(fromGroupId) {
 var _origUpdateTitle = App._updatePageTitle;
 App._updatePageTitle = function() {
     if (this.state.currentGroupId !== null && this.state.currentView === 'home') {
-        document.getElementById('pageTitle').textContent = this.state.currentGroupName || '词卡列表';
+        document.getElementById('pageTitle').textContent = this.state.currentGroupName || '词组列表';
     } else if (this.state.currentView === 'home') {
-        document.getElementById('pageTitle').textContent = '全部词库';
+        document.getElementById('pageTitle').textContent = '查找词组';
     } else {
         if (_origUpdateTitle) _origUpdateTitle.call(this);
     }
 };
 
-console.log('[wc-bridge] Phase14 树形侧边栏+陈列架已激活');
+// ============================================================
+// 15. Phase15: Hook renderPrompts — 全部词组页面编辑模式切换后重渲染陈列架
+// （延迟等待 app_core.js 加载完毕后再 hook）
+// ============================================================
+(function _wcHookRenderPrompts() {
+    try { if (!App || !App.renderPrompts) { setTimeout(_wcHookRenderPrompts, 200); return; } }
+    catch(e) { setTimeout(_wcHookRenderPrompts, 200); return; }
+    var _origRP = App.renderPrompts;
+    App.renderPrompts = function() {
+        // 查找词组页面（currentGroupId === null）→ 重新渲染陈列架（含 + 按钮）
+        if (this.state.currentGroupId === null && this.state.currentView === 'home') {
+            this._showShowcase();
+            // 二次保险：toggleEditMode 可能先显示了 batchBar，这里再清一次
+            this._hideBatchBar();
+            this._hideEditFilterBar();
+            return;
+        }
+        return _origRP.call(this);
+    };
+})();
+
+console.log('[wc-bridge] Phase15 分组导航交互重构已激活');
 })();

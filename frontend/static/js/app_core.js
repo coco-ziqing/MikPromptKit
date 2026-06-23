@@ -677,7 +677,7 @@ var App = window.App || {
         if (!el) return;
         var m = this.state.currentModule;
         if (!m) {
-            el.textContent = App._t('common.all', '全部词库');
+            el.textContent = App._t('common.all', '查找词组');
         } else {
             var modules = this.state.modules || [];
             var found = modules.find(function(x) { return x.id === m; });
