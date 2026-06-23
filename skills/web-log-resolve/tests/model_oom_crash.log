@@ -1,0 +1,14 @@
+2026-06-23 10:30:02 INFO ollama serve listening on 127.0.0.1:11434
+2026-06-23 10:30:44 INFO loading model qwen3.5:9b onto GPU 0
+2026-06-23 10:31:12 WARNING KV cache size 18.4GiB exceeds reserved budget 16.0GiB
+2026-06-23 10:31:13 ERROR CUDA out of memory. Tried to allocate 2.00 GiB (GPU 0; 24.00 GiB total capacity; 22.31 GiB already allocated; 1.12 GiB free; 22.88 GiB reserved in total by PyTorch)
+Traceback (most recent call last):
+  File "/opt/vllm/engine/llm_engine.py", line 388, in step
+    output = self.model_executor.execute_model(seq_group_metadata_list)
+  File "/opt/vllm/worker/model_runner.py", line 912, in execute_model
+    hidden_states = model(input_ids, positions, kv_caches)
+torch.cuda.OutOfMemoryError: CUDA out of memory.
+2026-06-23 10:31:13 ERROR Engine iteration failed; aborting 4 pending requests
+2026-06-23 10:32:50 ERROR safetensors_rust.SafetensorError: Error while deserializing header: header too large / file truncated: model-00002-of-00004.safetensors
+2026-06-23 10:33:31 ERROR NCCL error in: ProcessGroupNCCL.cpp:1275, unhandled cuda error, NCCL version 2.18.1 (rank 1 timed out waiting for AllReduce)
+2026-06-23 10:34:05 PANIC tokenizer.json not found in /models/qwen3.5-9b; AutoTokenizer.from_pretrained failed
