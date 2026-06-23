@@ -1,0 +1,20 @@
+vite v5.2.11 building for production...
+✓ 12 modules transformed.
+[vite:esbuild] Transform failed with 1 error:
+/src/views/TaskQueue.vue:42:8: ERROR: Expected ";" but found "loadList"
+file: /src/views/TaskQueue.vue:42:8
+40 |    const list = ref([])
+41 |    async function loadList()
+42 |        await fetch('/api/v4/tasks').then(r => r.json())
+   |        ^
+error during build:
+Error: Cannot find module 'rollup-plugin-visualizer'
+Require stack:
+- /project/vite.config.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1145:15)
+    at require (node:internal/modules/cjs/helpers:121:18)
+    at /project/vite.config.js:5:23
+[vite]: Rollup failed to resolve import "@/utils/request" from "/src/views/PromptList.vue".
+This is most likely unintended because it can break your application at runtime.
+✗ build failed in 3.42s
+FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory

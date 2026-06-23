@@ -1,0 +1,19 @@
+2026-06-23 10:20:01 INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+2026-06-23 10:20:33 INFO:     192.168.0.55:51234 - "GET /api/v4/word-cards/groups/tree HTTP/1.1" 200 OK
+2026-06-23 10:21:07 ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev\backend\api\word_cards.py", line 214, in create_group
+    parent = db.execute("SELECT * FROM groups WHERE id = ?", (parent_id,)).fetchone()
+  File "C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev\backend\db.py", line 71, in execute
+    cur.execute(sql, params)
+sqlite3.OperationalError: database is locked
+2026-06-23 10:21:07 INFO:     192.168.0.55:51240 - "POST /api/v4/word-cards/groups HTTP/1.1" 500 Internal Server Error
+2026-06-23 10:22:15 ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev\backend\api\word_cards.py", line 142, in update_card
+    payload = WordCardIn(**body)
+pydantic_core._pydantic_core.ValidationError: 1 validation error for WordCardIn
+content
+  Field required [type=missing, input_value={'title': 'x'}, input_type=dict]
+2026-06-23 10:22:15 INFO:     192.168.0.55:51251 - "PUT /api/v4/word-cards/501 HTTP/1.1" 422 Unprocessable Entity
+2026-06-23 10:23:48 WARNING:  Address already in use: ('0.0.0.0', 8080)
