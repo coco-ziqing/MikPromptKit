@@ -69,6 +69,11 @@ App.switchAllGroups = function() {
     this._closeMobileMenu();
     // switchView('home') 内部会调用 renderSidebar + loadPrompts → _wcLoadPrompts → _showShowcase
     this.switchView('home');
+    // 侧边栏滚动到顶部
+    setTimeout(function() {
+        var sidebar = document.getElementById('sidebar');
+        if (sidebar) sidebar.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 150);
 };
 
 // ============================================================
@@ -331,8 +336,6 @@ App.renderSidebar = function() {
 
 // Phase15: 渲染单个树节点（递归）— 只有 root 可折叠，sub 永远展开
 App._renderTreeNode = function(node, depth) {
-    if (node.group_type === 'custom' && node.card_count === 0 && depth > 0) return '';
-    
     var isLeaf = !node.children || node.children.length === 0;
     var isActive = this.state.currentGroupId === node.id;
     var padLeft = 12 + depth * 18;
@@ -346,12 +349,19 @@ App._renderTreeNode = function(node, depth) {
     // 计算 countStr
     var countStr = '';
     if (node.group_type === 'root' || node.group_type === 'sub') {
-        var totalCards = node.card_count || 0;
-        if (node.children) {
-            for (var i = 0; i < node.children.length; i++) {
-                totalCards += (node.children[i].card_count || 0);
+        // 递归统计所有后代叶子节点的 card_count
+        var totalCards = 0;
+        function sumRecursive(ns) {
+            for (var i = 0; i < ns.length; i++) {
+                var n = ns[i];
+                if (!n.children || n.children.length === 0) {
+                    totalCards += (n.card_count || 0);
+                } else {
+                    sumRecursive(n.children);
+                }
             }
         }
+        if (node.children) sumRecursive(node.children);
         countStr = '<span class="count-badge" style="font-size:11px;">' + totalCards + '</span>';
     } else {
         countStr = '<span class="count-badge" style="font-size:11px;">' + (node.card_count || 0) + '</span>';
@@ -456,7 +466,10 @@ App._treeQuickAdd = function(parentId) {
         if (r.ok) {
             r.json().then(function() {
                 self.showToast('已添加', 'success');
-                self.loadGroupTree();
+                self.loadGroupTree().then(function() {
+                    // 添加后重渲染：侧边栏（loadGroupTree已做）+ 陈列架（currentGroupId=null需手动）
+                    if (self.state.currentGroupId === null) self._showShowcase();
+                });
             });
         } else {
             r.json().then(function(e) { self.showToast('添加失败: ' + (e.detail || 'HTTP ' + r.status), 'error'); })
@@ -527,6 +540,142 @@ App._loadTreeChildren = function(container, parentId) {
     }
     findAndRender(tree, 0);
     container.innerHTML = html;
+};
+
+// Phase15: 编辑模式下移动按钮已统一在 app_editor.js 模板中渲染，不再动态注入
+App._wcInjectMoveButtons = function() {
+    // 移动按钮已内联到卡片模板，无需动态注入
+};
+
+App._wcShowMovePicker = function(cardId) {
+    // Phase15.1: 直接复用批量移动弹窗
+    this._bmvIds = [cardId];
+    var tree = this.state.groupTree;
+    if (!tree || tree.length === 0) { this.showToast('分组未加载', 'error'); return; }
+    document.getElementById('bmvTitle').textContent = '移动词卡到分组';
+    this._wcRenderBmvTree(tree);
+    document.getElementById('modalBatchMove').style.display = 'flex';
+};
+
+App._wcMoveCard = function(cardId, targetGroupId, groupName) {
+    var self = this;
+    fetch('/api/v4/word-cards/' + cardId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_id: targetGroupId })
+    }).then(function(r) {
+        if (r.ok) {
+            self.showToast('已移动', 'success');
+            self._wcLoadPrompts();
+            // 刷新分组树统计（侧边栏 + 陈列架计数同步）
+            self.loadGroupTree();
+        } else {
+            self.showToast('移动失败', 'error');
+        }
+    }).catch(function() { self.showToast('出错', 'error'); });
+};
+
+// Phase15: 批量移动 — 独立弹窗，完整展示分组树（root→sub→leaf 三级）
+App._wcBatchMove = function() {
+    var ids = [];
+    try { ids = Array.from(App.state.batchSelected); } catch(e) { ids = []; }
+    if (ids.length === 0) {
+        document.querySelectorAll('#promptList .batch-checkbox:checked').forEach(function(cb) {
+            ids.push(parseInt(cb.getAttribute('data-id')));
+        });
+    }
+    if (ids.length === 0) { this.showToast('请先勾选词卡', 'warning'); return; }
+    
+    // 存储待移动 ID
+    this._bmvIds = ids;
+    var tree = this.state.groupTree;
+    if (!tree || tree.length === 0) { this.showToast('分组树未加载', 'error'); return; }
+    
+    document.getElementById('bmvTitle').textContent = '批量移动 ' + ids.length + ' 条到分组';
+    this._wcRenderBmvTree(tree);
+    document.getElementById('modalBatchMove').style.display = 'flex';
+};
+
+App._wcCloseBatchMove = function() {
+    document.getElementById('modalBatchMove').style.display = 'none';
+};
+
+// 渲染批量移动弹窗内的完整分组树
+App._wcRenderBmvTree = function(tree) {
+    var container = document.getElementById('bmvTreeList');
+    if (!container) return;
+    var gid = this.state.currentGroupId;
+    var self = this;
+    
+    var html = '';
+    for (var t = 0; t < tree.length; t++) {
+        var root = tree[t];
+        // 计算 root 总数
+        var rt = 0;
+        function s2(ns) { for (var i=0;i<ns.length;i++) { rt+=ns[i].card_count||0; if(ns[i].children)s2(ns[i].children); } }
+        if (root.children) s2(root.children);
+        
+        html += '<div style="margin-bottom:14px;border:1px solid var(--border-color);border-radius:8px;overflow:hidden;">';
+        html += '<div style="padding:8px 14px;background:var(--hover-bg);font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px;">';
+        html += '<span style="font-size:20px;">' + (root.icon||'📁') + '</span>';
+        html += App._escape(root.name.replace(root.icon||'','').trim());
+        html += '<span style="font-size:11px;color:var(--text-muted);margin-left:auto;">' + rt + ' 条</span>';
+        html += '</div>';
+        html += '<div style="padding:6px 14px 10px;">';
+        
+        if (root.children) {
+            for (var s = 0; s < root.children.length; s++) {
+                var sub = root.children[s];
+                if (!sub.children || sub.children.length === 0) continue;
+                
+                html += '<div style="border-left:2px solid var(--border-color);margin-bottom:4px;padding:4px 0 4px 10px;border-radius:0 6px 6px 0;">';
+                html += '<div style="font-weight:600;font-size:12px;color:var(--text-muted);margin-bottom:4px;">';
+                html += (sub.icon||'📂') + ' ' + App._escape(sub.name.replace(sub.icon||'','').trim());
+                html += '</div>';
+                html += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
+                
+                for (var g = 0; g < sub.children.length; g++) {
+                    var grp = sub.children[g];
+                    if (grp.group_type === 'sub' || grp.group_type === 'root') continue;
+                    var isCurrent = grp.id === gid;
+                    html += '<div data-bmv-gid="' + grp.id + '" class="bmv-leaf-btn" style="font-size:12px;padding:5px 12px;border:1px solid ' + (isCurrent ? 'var(--primary)' : 'var(--border-color)') + ';border-radius:6px;background:' + (isCurrent ? 'rgba(79,70,229,0.1)' : 'var(--bg-card)') + ';color:' + (isCurrent ? 'var(--primary)' : 'var(--text-main)') + ';cursor:pointer;white-space:nowrap;transition:all 0.15s;' + (isCurrent ? 'opacity:0.5;pointer-events:none;' : '') + '" onmouseenter="if(!this.dataset.disabled)this.style.borderColor=var(\'--primary\');this.style.background=var(\'--hover-bg\')" onmouseleave="if(!this.dataset.disabled){this.style.borderColor=var(\'--border-color\');this.style.background=var(\'--bg-card\')}">' + (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim()) + ' <span style="font-size:9px;color:var(--text-muted);">' + (grp.card_count||0) + '</span></div>';
+                }
+                html += '</div></div>';
+            }
+        }
+        html += '</div></div>';
+    }
+    container.innerHTML = html;
+    
+    // 委托点击
+    container.querySelectorAll('.bmv-leaf-btn').forEach(function(el) {
+        el.addEventListener('click', function() {
+            var tgId = parseInt(this.getAttribute('data-bmv-gid'));
+            var tgName = this.textContent.replace(/\s*\d+\s*$/,'').trim();
+            self._wcCloseBatchMove();
+            self._wcDoBatchMove(self._bmvIds, tgId, tgName);
+        });
+    });
+};
+
+// Phase15: 执行批量移动
+App._wcDoBatchMove = function(ids, targetGroupId, groupName) {
+    var self = this;
+    fetch('/api/v4/word-cards/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'move', ids: ids, group_id: targetGroupId })
+    }).then(function(r) {
+        if (r.ok) {
+            self.showToast('已移动 ' + ids.length + ' 条到「' + groupName + '」', 'success');
+            self.state.batchSelected.clear();
+            self.updateBatchCount();
+            self._wcLoadPrompts();
+            self.loadGroupTree();
+        } else {
+            self.showToast('移动失败', 'error');
+        }
+    }).catch(function() { self.showToast('出错', 'error'); });
 };
 
 // Phase15: 隐藏编辑工具栏
@@ -856,13 +1005,8 @@ App.gmDelete = function(groupId, groupName, btnEl) {
     var rect = btnEl.getBoundingClientRect();
     pop.style.position = 'fixed';
     pop.style.left = Math.max(8, rect.left + rect.width/2 - 90) + 'px';
-    if (rect.top < 110) {
-        pop.style.top = (rect.bottom + 6) + 'px';
-        pop.style.transform = 'translate(-50%, 0)';
-    } else {
-        pop.style.top = (rect.top - 10) + 'px';
-        pop.style.transform = 'translate(-50%, -100%)';
-    }
+    pop.style.top = (rect.bottom + 6) + 'px';
+    pop.style.transform = 'translate(-50%, 0)';
     var self = this;
     pop.querySelector('#gmConfirmDeleteBtn').onclick = function() {
         pop.remove();
@@ -913,15 +1057,15 @@ App._updatePageTitle = function() {
     catch(e) { setTimeout(_wcHookRenderPrompts, 200); return; }
     var _origRP = App.renderPrompts;
     App.renderPrompts = function() {
-        // 查找词组页面（currentGroupId === null）→ 重新渲染陈列架（含 + 按钮）
         if (this.state.currentGroupId === null && this.state.currentView === 'home') {
             this._showShowcase();
-            // 二次保险：toggleEditMode 可能先显示了 batchBar，这里再清一次
             this._hideBatchBar();
             this._hideEditFilterBar();
             return;
         }
-        return _origRP.call(this);
+        _origRP.call(this);
+        // 编辑模式：注入移动按钮到每张词卡
+        if (this.state.editMode) this._wcInjectMoveButtons();
     };
 })();
 
