@@ -22,37 +22,32 @@ App.aiTools = {
 // ============ AI 工具栏初始化 ============
 
 App.aiTools.renderToolbar = function() {
+    // Phase15: 渲染到 page-header 右侧，与标题同行
     var container = document.getElementById('aiToolbar');
     if (container) return container;
-
-    // 在 batchBar 上方插入 AI 工具栏
-    var batchBar = document.getElementById('batchBar');
+    var target = document.getElementById('pageHeaderRight');
+    if (!target) return null;
     container = document.createElement('div');
     container.id = 'aiToolbar';
     container.className = 'ai-toolbar';
-    container.style.cssText = 'display:none;flex-wrap:wrap;gap:6px;padding:8px 0;align-items:center;';
-
-    // ===== AI 操作按钮组 =====
+    container.style.cssText = 'display:none;display:flex;gap:4px;align-items:center;flex-wrap:wrap;';
     container.innerHTML = '' +
-    '<span class="ai-toolbar-label">🤖 AI 工具</span>' +
-    '<button class="ai-btn" onclick="App.aiTools.openOptimizer()" title="AI智能优化提示词 — 支持润色/精简/格式适配/反向解析"><span>✨</span> 优化提示词</button>' +
-    '<button class="ai-btn" onclick="App.aiTools.openTranslate()" title="批量翻译选中提示词"><span>🌐</span> 批量翻译</button>' +
-    '<button class="ai-btn" onclick="App.aiTools.autoTagCurrent()" title="AI自动分析当前模块词条的标签和分类"><span>🏷️</span> 智能标签</button>' +
-    '<button class="ai-btn ai-btn-purple" onclick="App.aiTools.openOptimizer(\'adapt\')" title="将提示词适配到SDXL/Flux/MJ/DALL-E格式"><span>🎯</span> 格式适配</button>' +
-    '<button class="ai-btn ai-btn-green" onclick="App.aiTools.aiThumbCurrent()" title="AI智能生成缩略图封面"><span>🎨</span> AI缩略图</button>' +
+    '<button class="ai-btn" onclick="App.aiTools.openOptimizer()" title="AI智能优化提示词"><span>✨</span> 优化</button>' +
+    '<button class="ai-btn" onclick="App.aiTools.openTranslate()" title="批量翻译选中提示词"><span>🌐</span> 翻译</button>' +
+    '<button class="ai-btn" onclick="App.aiTools.autoTagCurrent()" title="AI自动分析标签和分类"><span>🏷️</span> 标签</button>' +
+    '<button class="ai-btn ai-btn-purple" onclick="App.aiTools.openOptimizer(\'adapt\')" title="适配SDXL/Flux/MJ/DALL-E"><span>🎯</span> 适配</button>' +
+    '<button class="ai-btn ai-btn-green" onclick="App.aiTools.aiThumbCurrent()" title="AI智能生成缩略图"><span>🎨</span> 缩图</button>' +
     '';
-
-    batchBar.parentNode.insertBefore(container, batchBar);
+    target.appendChild(container);
     return container;
 };
 
 // ============ 工具栏显示/隐藏 ============
 
 App.aiTools.showToolbar = function() {
-    // 分组总目录页面不显示 AI 工具栏
     if (App._aiToolbarSuppressed) return;
     var bar = this.renderToolbar();
-    bar.style.display = 'flex';
+    if (bar) bar.style.display = 'flex';
 };
 
 App.aiTools.hideToolbar = function() {
