@@ -301,13 +301,14 @@ async def create_variations(req: VariationReq):
     locked = [a for a in atoms if a.get("id") in req.locked_ids]
     free = [a for a in atoms if a.get("id") not in req.locked_ids]
     free_texts = " | ".join(a.get("text", "") for a in free)
-    prompt = f"基于以下可自由变化的语义片段，生成 {req.count} 个不同表述的完整提示词:\n{free_texts}"
+    prompt = f"Generate {req.count} alternative phrasings for this prompt by varying these semantic segments:\n{free_texts}"
     if locked:
         lock_texts = " | ".join(a.get("text", "") for a in locked)
-        prompt += f"\n\n但必须保留这些固定元素: {lock_texts}"
+        prompt += f"\n\nKeep these elements unchanged: {lock_texts}"
+    prompt += f"\n\nReturn EXACTLY {req.count} lines, one complete prompt per line. No numbering, no markdown, no explanation."
 
     try:
-        raw = await call_ollama("optimize", prompt, temperature=0.7, max_tokens=800)
+        raw = await call_ollama("decompose", prompt, temperature=0.7, max_tokens=4000)
         variants = [v.strip() for v in str(raw).split("\n") if v.strip() and len(v) > 10][:req.count]
     except Exception:
         variants = [" [variation failed] "]

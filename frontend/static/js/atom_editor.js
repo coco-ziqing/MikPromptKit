@@ -251,24 +251,27 @@ App._atomShowVariations = async function(decomposeId) {
     var record = (this.state.atomDecomposes || []).find(function(r) { return r.id === decomposeId; });
     if (record) atoms = record.atoms || [];
     if (!atoms.length) { App.toast('无原子数据', 'danger'); return; }
-    App.toast('变异生成中...', 'info');
+    App.toast('变异生成中，请等待约30-60秒...', 'info');
     try {
         var d = await this.fetchJSON('/api/v4/atoms/variations', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ decompose_id: decomposeId, atoms_json: JSON.stringify(atoms), count: 3, locked_ids: [] }),
-            _timeoutMs: 120000
+            _timeoutMs: 180000
         });
-        if (d.ok && d.variations) {
-            var msg = '生成 ' + d.count + ' 个变体:\n';
-            d.variations.forEach(function(v, i) { msg += (i+1) + '. ' + (v.text||'').slice(0, 80) + '\n'; });
+        if (!d) { App.toast('变异请求超时，Ollama 可能正忙，请稍后重试', 'danger'); return; }
+        if (!d.ok) { App.toast('变异生成失败：' + (d.error || '未知错误'), 'danger'); return; }
+        if (d.variations && d.variations.length > 0) {
+            var msg = '生成 ' + d.count + ' 个变体提示词：\n\n';
+            d.variations.forEach(function(v, i) { msg += (i+1) + '. ' + (v.text||'').slice(0, 100) + '\n\n'; });
             alert(msg);
             await this._atomLoadList();
             await this._atomLoadStats();
+        } else {
+            App.toast('变异生成完成，但未返回有效变体', 'warning');
         }
     } catch(e) { App.toast('变异失败: ' + e.message, 'danger'); }
 };
-
 // ============ 核心操作：AI拆解 ============
 App._atomDoDecompose = async function() {
     var input = document.getElementById('atomInput');
@@ -297,7 +300,7 @@ App._atomDoDecompose = async function() {
             ? { prompt: text, media_type: (mediaType ? mediaType.value : 'image') }
             : { text: text, source_type: 'manual', media_type: (mediaType ? mediaType.value : 'image') };
 
-        var d = await this.fetchJSON(endpoint, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), _timeoutMs: 120000 });
+        var d = await this.fetchJSON(endpoint, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), _timeoutMs: 180000 });
         if (!d || !d.ok) { App._atomSetProgress(0, '请求失败'); App.toast('AI拆解请求失败，请刷新重试', 'danger'); return; }
         App._atomSetProgress(100, '完成！');
 
