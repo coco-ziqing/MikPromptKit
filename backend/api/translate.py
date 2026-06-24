@@ -153,7 +153,7 @@ async def translate_single(prompt_id: int, target_lang: str = "zh"):
     model = get_model_for("translate")
     result = await ollama_generate(
         prompt=prompt, system=TRANSLATE_ZH_SYSTEM,
-        model=model, temperature=0.1, max_tokens=2048, timeout_s=120
+        model=model, temperature=0.1, max_tokens=4096, timeout_s=120
     )
 
     if not result.get("ok"):
