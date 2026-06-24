@@ -623,14 +623,41 @@ def _insert_atom_card(db, atom: dict, decompose_id: int, group_id: int) -> int:
     
     module = ATOM_TYPE_TO_MODULE.get(atom_type, "composition")
     card_name = atom_text[:60]
+    category = ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type)
+    keywords = atom.get("keywords", [])
+    meaning = ", ".join(keywords) if keywords else ""
+    # 构建场景描述（从原子类型推导使用场景）
+    scene_map = {
+        "subject": "用于定义画面主体人物/对象的外观特征",
+        "style": "用于定义画面的艺术风格和视觉调性",
+        "composition": "用于定义画面的构图方式和取景角度",
+        "lighting": "用于定义画面的光源方向和光影效果",
+        "color": "用于定义画面的色彩倾向和色调氛围",
+        "quality": "用于定义画面的技术画质和细节参数",
+        "camera": "用于定义镜头焦段、光圈和拍摄设备",
+        "atmosphere": "用于定义画面的情绪氛围和意境",
+        "tone": "用于定义画面的色调风格和滤镜效果",
+        "negative": "负面提示词 — 排除不希望出现的元素",
+        "constraint": "限制条件 — 约束 AI 的生成边界",
+        "creative": "创意元素 — 添加特殊视觉效果或装饰",
+        "action": "用于定义画面中的动态动作或运动方式",
+    }
+    scene = scene_map.get(atom_type, f"[{atom_type}] 类型原子提示词")
+    # structured: 原子完整元数据
+    structured = json.dumps({
+        "atom_type": atom_type,
+        "weight": atom.get("weight", 0.5),
+        "keywords": keywords,
+        "decompose_id": decompose_id
+    }, ensure_ascii=False)
     db.execute(
-        """INSERT INTO word_card (group_id,name,content,meaning,module,category,tags,icon,card_role,media_type,sort_order,is_builtin,source)
-           VALUES (?,?,?,?,?,?,?,?,?,?,
+        """INSERT INTO word_card (group_id,name,content,meaning,scene,module,category,tags,icon,card_role,media_type,structured,version,sort_order,is_builtin,source)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,
            (SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),0,'atom_decompose')""",
-        [group_id, card_name, atom_text, ",".join(atom.get("keywords", [])),
-         module, ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type),
-         json.dumps(atom.get("keywords", []), ensure_ascii=False),
-         "⚛️", "atom", atom_type or "image", group_id]
+        [group_id, card_name, atom_text, meaning, scene,
+         module, category,
+         json.dumps(keywords, ensure_ascii=False),
+         "⚛️", "atom", atom_type or "image", structured, group_id]
     )
     card_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     db.execute(
