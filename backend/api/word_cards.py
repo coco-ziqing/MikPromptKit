@@ -6,7 +6,7 @@ v4.1.0: 统一词卡 API
 import json, re, hashlib, os
 from fastapi import APIRouter, Query, HTTPException, UploadFile, File
 from fastapi.responses import Response
-from database import get_db, safe_commit
+from database import get_db, safe_count, safe_count_dict, safe_fetch_one, safe_fetch_one, safe_count, safe_count_dict, safe_commit
 
 router = APIRouter(prefix="/api/v4/word-cards", tags=["word-cards"])
 
@@ -63,16 +63,16 @@ def create_group(data: dict):
     icon = data.get("icon", "📂")
     desc = data.get("description", "")
     db = get_db()
-    if db.execute("SELECT id FROM word_card_group WHERE group_key=?", [key]).fetchone():
+    if safe_fetch_one("SELECT id FROM word_card_group WHERE group_key=?", [key]):
         raise HTTPException(409, "分组已存在")
     # sort_order = 同级最大+1
     sort_sql = "SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card_group WHERE parent_group_id " + ("= ?" if parent_id else "IS NULL")
     sort_params = [parent_id] if parent_id else []
-    new_sort = db.execute(sort_sql, sort_params).fetchone()[0]
+    new_sort = safe_count(sort_sql, sort_params)
     db.execute("INSERT INTO word_card_group (name,group_key,icon,description,group_type,parent_group_id,sort_order) VALUES (?,?,?,?,'custom',?,?)",
                [name, key, icon, desc, parent_id, new_sort])
     safe_commit()
-    return {"ok": True, "id": db.execute("SELECT last_insert_rowid()").fetchone()[0], "name": name, "group_key": key}
+    return {"ok": True, "id": safe_count("SELECT last_insert_rowid()"), "name": name, "group_key": key}
 
 @router.put("/groups/{group_id}")
 def update_group(group_id: int, data: dict):
@@ -130,7 +130,7 @@ def link_card_to_scene(data: dict):
     scene_id = data.get("scene_id"); card_id = data.get("card_id")
     if not scene_id or not card_id: raise HTTPException(400, "请提供 scene_id 和 card_id")
     db = get_db()
-    card = db.execute("SELECT content FROM word_card WHERE id=?", [card_id]).fetchone()
+    card = safe_fetch_one("SELECT content FROM word_card WHERE id=?", [card_id])
     if not card: raise HTTPException(404, "词卡不存在")
     db.execute("INSERT OR REPLACE INTO scene_card_ref (scene_id,card_id,card_content) VALUES (?,?,?)", [scene_id, card_id, card["content"]])
     db.execute("UPDATE word_card SET usage_count=usage_count+1 WHERE id=?", [card_id])
@@ -155,7 +155,7 @@ def get_scene_cards(scene_id: int):
 @router.get("/stats")
 def get_stats():
     db = get_db()
-    total = db.execute("SELECT COUNT(*) as c FROM word_card WHERE is_deleted=0").fetchone()["c"]
+    total = safe_count_dict("SELECT COUNT(*) as c FROM word_card WHERE is_deleted=0", key="c")
     groups = db.execute("SELECT group_type,COUNT(*) as c FROM word_card_group WHERE is_active=1 GROUP BY group_type").fetchall()
     return {"ok":True,"total_cards":total,"groups":{g["group_type"]:g["c"] for g in groups}}
 
@@ -248,7 +248,7 @@ def list_cards(page: int = Query(1,ge=1), page_size: int = Query(50,ge=1,le=200)
     w = " AND ".join(where)
     sc = {"sort_order":"wc.sort_order","usage_count":"wc.usage_count","updated_at":"wc.updated_at","created_at":"wc.created_at","name":"wc.name"}.get(sort, "wc.sort_order")
     sd = "DESC" if order == "desc" else "ASC"
-    total = db.execute(f"SELECT COUNT(*) as c FROM word_card wc WHERE {w}", params).fetchone()["c"]
+    total = safe_count_dict(f"SELECT COUNT(*) as c FROM word_card wc WHERE {w}", params, key="c")
     rows = db.execute(f"SELECT wc.*,wg.name as group_name,wg.group_type as group_type_name,wg.icon as group_icon FROM word_card wc LEFT JOIN word_card_group wg ON wg.id=wc.group_id WHERE {w} ORDER BY {sc} {sd} LIMIT ? OFFSET ?",
                       params+[page_size, (page-1)*page_size]).fetchall()
     items = []
@@ -270,7 +270,7 @@ def create_card(data: dict):
     db.execute("INSERT INTO word_card (group_id,name,content,meaning,scene,module,category,tags,icon,thumbnail,preview_media,media_type,structured,card_role,sort_order,is_builtin,source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'{}',?,(SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),0,'manual')",
                [gid,(data.get("name") or content)[:60],content,data.get("meaning",""),data.get("scene",""),data.get("module","custom"),data.get("category",""),json.dumps(data.get("tags",[]),ensure_ascii=False),data.get("icon",""),data.get("thumbnail",""),data.get("preview_media",""),data.get("media_type","image"),card_role,gid])
     safe_commit()
-    cid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    cid = safe_count("SELECT last_insert_rowid()")
     try: from semantic import update_embedding; update_embedding(cid, content)
     except: pass
     return {"ok":True,"id":cid}
