@@ -12,6 +12,12 @@ App.state.atomDecomposes = [];
 App.state.atomStats = {};
 App.state.atomIsDecomposing = false;
 
+// ============ 兼容：App.toast → App.showToast ============
+App.toast = function(msg, type) { App.showToast(msg, type || 'success'); };
+
+// ============ 兼容：App.toast → App.showToast ============
+App.toast = function(msg, type) { App.showToast(msg, type || 'success'); };
+
 // ============ 视图切换 ============
 App._atomOriginSwitchView = App.switchView;
 App.switchView = function(view, ...args) {
