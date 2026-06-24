@@ -26,6 +26,7 @@
             <button class="header-btn" onclick="App.switchView('history')" id="navHistory" title="最近使用" data-i18n-title="nav.history" data-i18n-title-zh="最近使用"><i class="bi bi-clock-history"></i></button>
             <button class="header-btn" onclick="App.switchView('trash')" id="navTrash" title="回收站" data-i18n-title="nav.trash" data-i18n-title-zh="回收站"><i class="bi bi-trash"></i></button>
             <button class="header-btn" onclick="App.switchView('seedance')" id="navSeedance" title="提示词组装器" data-i18n-title="nav.seedance" data-i18n-title-zh="提示词组装器" style="color:#8b5cf6;"><i class="bi bi-tools"></i></button>
+            <button class="header-btn" onclick="App.switchView('character_composer')" id="navCharacterComposer" title="角色组装器" data-i18n-title="nav.character" data-i18n-title-zh="角色组装器" style="color:#ec4899;"><i class="bi bi-person-badge"></i></button>
             <button class="header-btn" onclick="App.switchView('wcmanager')" id="navWCManager" title="词卡管理" data-i18n-title="nav.wordcards" data-i18n-title-zh="词卡管理"><i class="bi bi-grid-3x3-gap-fill"></i></button>
             <button class="header-btn" onclick="App.switchView('atom_editor')" id="navAtomEditor" title="原子引擎" data-i18n-title="nav.atom" data-i18n-title-zh="原子引擎" style="color:#f59e0b;"><i class="bi bi-puzzle"></i></button>
             <button class="header-btn" onclick="App.switchView('v4media')" id="navV4Media" title="媒体资产" data-i18n-title="nav.media" data-i18n-title-zh="媒体资产"><i class="bi bi-images"></i></button>
@@ -206,6 +207,22 @@
             </div>
             <div id="seedanceGallery" class="seedance-panel" style="display:none;"><div id="galleryList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载精选模板...</p></div></div></div>
             <div id="seedanceGlossary" class="seedance-panel" style="display:none;"><div class="page-header"><h3><i class="bi bi-book"></i> 镜头语言速查表</h3><span class="count-info">共 20 种镜头技法</span></div><div id="glossaryTable"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载中...</p></div></div><div class="page-header mt-4"><h3><i class="bi bi-link-45deg"></i> 多模态引用语法</h3></div><div id="refSyntaxTable"></div></div>
+        </div>
+        <!-- Character Composer -->
+        <div id="viewCharacterComposer" class="view-panel" style="display:none;">
+            <div class="page-header"><h2>🎭 角色设定组装器</h2><span class="count-info">人物提示词工业化装配</span></div>
+            <div class="s2-layout" style="margin-top:8px;">
+                <!-- 左栏: 角色列表 -->
+                <div class="s2-sidebar" id="ccProjectList">
+                    <div style="padding:20px;text-align:center;color:var(--text-muted);">加载中...</div>
+                </div>
+                <!-- 中栏: 角色编辑器 + 输出 -->
+                <div class="s2-editor" id="ccEditor">
+                    <div class="s2-empty-state"><div class="s2-empty-icon">🎭</div><h4>选择或创建角色开始编辑</h4><p>从左栏选择已有角色，或点击「新建」创建新角色</p></div>
+                </div>
+            </div>
+            <!-- 右面板: 词卡选取器 -->
+            <div id="ccRightPanel" style="display:none;position:fixed;right:0;top:60px;width:320px;height:calc(100vh - 60px);background:var(--bg-card);border-left:1px solid var(--border-color);z-index:500;overflow-y:auto;box-shadow:-4px 0 20px rgba(0,0,0,0.1);"></div>
         </div>
     </main>
     <div class="modal-overlay" id="modalCreateCollection" style="display:none;z-index:400;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5>新建收藏分组</h5><button class="header-btn-sm" onclick="document.getElementById('modalCreateCollection').style.display='none'">&times;</button></div><div class="modal-body"><label>分组名称</label><input type="text" id="inputCollectionName" class="modal-input" placeholder="如：人像精选题"><label>图标</label><select id="inputCollectionIcon" class="modal-input icon-select"><option value="⭐">⭐ 星星</option><option value="📸">📸 相机</option><option value="🌄">🌄 风景</option><option value="❤️">❤️ 红心</option><option value="🔥">🔥 火焰</option><option value="🎯">🎯 靶心</option><option value="🌟">🌟 闪光</option><option value="💎">💎 钻石</option><option value="🏆">🏆 奖杯</option><option value="🎨">🎨 调色盘</option><option value="📷">📷 拍照</option><option value="🎬">🎬 场记板</option><option value="📁">📁 文件夹</option></select></div><div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalCreateCollection').style.display='none'">取消</button><button class="btn btn-primary btn-sm" onclick="App.createCollection()">创建</button></div></div></div>
@@ -921,6 +938,7 @@
     <script src="/static/js/app_i18n.js?v=10"></script>
     <script src="/static/js/seedance_v2_composer.js?v=73"></script>
     <script src="/static/js/composer_wc_bridge.js?v=9"></script>
+    <script src="/static/js/character_composer.js?v=1"></script>
     <script src="/static/js/character_library.js?v=5"></script>
     <script src="/static/js/app_search.js?v=5"></script>
     <script src="/static/js/atom_editor.js?v=14"></script>
