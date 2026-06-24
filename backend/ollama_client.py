@@ -20,7 +20,7 @@ MODEL_TIERS = {
 
 # 能力路由表：功能 → 模型tier
 FUNCTION_MODEL_MAP = {
-    "translate":         "high",     # 翻译 — 需要强语言理解
+    "translate":         "medium",   # 翻译 — 用 medium 避开 thinking 模型
     "translate_fast":    "medium",   # 快速翻译
     "optimize":          "ultra",    # 提示词优化 — 需要强推理
     "optimize_fast":     "high",     # 快速优化
