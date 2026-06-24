@@ -28,6 +28,9 @@ App.switchView = function(view, ...args) {
     return this._atomOriginSwitchView(view, ...args);
 };
 
+// ============ 兼容：App.toast → App.showToast ============
+App.toast = function(msg, type) { App.showToast(msg, type || 'success'); };
+
 // ============ 主入口 ============
 App._showAtomEditor = async function() {
     var mc = document.getElementById('mainContent');
@@ -288,7 +291,8 @@ App._atomDoDecompose = async function() {
             ? { prompt: text, media_type: (mediaType ? mediaType.value : 'image') }
             : { text: text, source_type: 'manual', media_type: (mediaType ? mediaType.value : 'image') };
 
-        var d = await this.fetchJSON(endpoint, { method: 'POST', body: JSON.stringify(body) });
+        var d = await this.fetchJSON(endpoint, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+        if (!d || !d.ok) { App._atomSetProgress(0, '请求失败'); App.toast('AI拆解请求失败，请刷新重试', 'danger'); return; }
         App._atomSetProgress(100, '完成！');
 
         // 渲染结果
