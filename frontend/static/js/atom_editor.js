@@ -165,13 +165,93 @@ App._atomRenderStats = function(d) {
 
 App._atomLoadList = async function() {
     try {
-        // 通过 /api/v4/atoms/decompose/{id} 遍历（简化版：用 stats 中的 totals 和直接读取）
-        // 完整版应新增 list endpoint，此处用 HTML 展示最近记录
+        var d = await this.fetchJSON('/api/v4/atoms/list?page_size=50');
+        this.state.atomDecomposes = d.items || [];
         var list = document.getElementById('atomList');
-        if (!list) return;
-        // 显示占位——实际使用需后端新增 list API
-        list.innerHTML = '<div class="atom-empty">拆解记录将在这里显示<br><small style="color:var(--text-muted);">（后端 GET /atoms 列表接口待 Phase16.2 补充）</small></div>';
-    } catch(e) {}
+        var count = document.getElementById('atomListCount');
+        if (count) count.textContent = (d.total || 0) + ' 条记录';
+        if (list) list.innerHTML = App._atomRenderDecomposeList(d.items || []);
+    } catch(e) {
+        console.warn('atom list error:', e);
+        var list = document.getElementById('atomList');
+        if (list) list.innerHTML = '<div class="atom-empty">加载失败: ' + e.message + '</div>';
+    }
+};
+
+// ============ 拆解记录列表渲染 ============
+// ============ 安全检查：HTML 转义 ============
+var _escapeHtml = function(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+};
+
+App._atomRenderDecomposeList = function(items) {
+    if (!items || items.length === 0) return '<div class="atom-empty">暂无拆解记录<br><small>输入提示词，点击「AI拆解」开始</small></div>';
+    var html = '';
+    items.forEach(function(it, idx) {
+        var sourcePreview = _escapeHtml((it.source_prompt || '').slice(0, 80));
+        var mediaIcon = it.media_type === 'video' ? '🎬' : '🎨';
+        var scoreColor = (it.quality_score||0) >= 0.8 ? 'var(--primary,#4f46e5)' : (it.quality_score||0) >= 0.5 ? '#f59e0b' : '#ef4444';
+        var atomCount = (it.atoms || []).length;
+        
+        html += '<div class="atom-record" onclick="App._atomExpandRecord(' + it.id + ')">' +
+            '<div class="atom-record-hd">' +
+            '<span class="atom-record-media">' + mediaIcon + '</span>' +
+            '<span class="atom-record-prompt" title="' + _escapeHtml(it.source_prompt||'') + '">' + sourcePreview + '</span>' +
+            '<span class="atom-record-score" style="color:' + scoreColor + ';font-weight:700;">' + (it.quality_score||0).toFixed(1) + '</span>' +
+            '<span class="atom-record-count">' + atomCount + ' 原子 | ' + (it.var_count||0) + ' 变异 | ' + (it.bridge_count||0) + ' 卡片</span>' +
+            '<span style="font-size:10px;color:var(--text-muted);">' + _escapeHtml((it.created_at||'').slice(0,16)) + '</span>' +
+            '<button class="atom-record-del" onclick="event.stopPropagation();App._atomDeleteRecord(' + it.id + ')" title="删除">✕</button>' +
+            '</div>' +
+            '<div id="atomExpand_' + it.id + '" class="atom-record-expand" style="display:none;">' +
+            '<div class="atom-record-atoms">' + App._atomRenderCards(it.atoms || []) + '</div>' +
+            '<div class="atom-record-actions">' +
+            '<button class="btn-atom-secondary" onclick="event.stopPropagation();App._atomArchive(' + it.id + ',\'' + encodeURIComponent(JSON.stringify(it.atoms||[])) + '\')">📥 归档到词卡</button>' +
+            '<button class="btn-atom-secondary" onclick="event.stopPropagation();App._atomShowVariations(' + it.id + ')">🔄 生成变异</button>' +
+            '</div></div></div>';
+    });
+    return html;
+};
+
+// ============ 展开/折叠记录 ============
+App._atomExpandRecord = function(id) {
+    var el = document.getElementById('atomExpand_' + id);
+    if (!el) return;
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
+
+// ============ 删除记录 ============
+App._atomDeleteRecord = async function(id) {
+    if (!confirm('确定删除此拆解记录？（级联删除变异+桥接+统计）')) return;
+    try {
+        await this.fetchJSON('/api/v4/atoms/decompose/' + id, { method: 'DELETE' });
+        App.toast('已删除', 'success');
+        await this._atomLoadList();
+        await this._atomLoadStats();
+    } catch(e) {
+        App.toast('删除失败: ' + e.message, 'danger');
+    }
+};
+
+// ============ 变异生成弹窗 ============
+App._atomShowVariations = async function(decomposeId) {
+    var atoms = [];
+    var record = (this.state.atomDecomposes || []).find(function(r) { return r.id === decomposeId; });
+    if (record) atoms = record.atoms || [];
+    if (!atoms.length) { App.toast('无原子数据', 'danger'); return; }
+    App.toast('变异生成中...', 'info');
+    try {
+        var d = await this.fetchJSON('/api/v4/atoms/variations', {
+            method: 'POST',
+            body: JSON.stringify({ decompose_id: decomposeId, atoms_json: JSON.stringify(atoms), count: 3, locked_ids: [] })
+        });
+        if (d.ok && d.variations) {
+            var msg = '生成 ' + d.count + ' 个变体:\n';
+            d.variations.forEach(function(v, i) { msg += (i+1) + '. ' + (v.text||'').slice(0, 80) + '\n'; });
+            alert(msg);
+            await this._atomLoadList();
+            await this._atomLoadStats();
+        }
+    } catch(e) { App.toast('变异失败: ' + e.message, 'danger'); }
 };
 
 // ============ 核心操作：AI拆解 ============
@@ -232,8 +312,9 @@ App._atomDoDecompose = async function() {
             list.innerHTML = App._atomRenderCards(atoms);
         }
 
-        // 刷新统计
+        // 刷新统计 + 列表
         await App._atomLoadStats();
+        await App._atomLoadList();
 
         // 隐藏进度条
         setTimeout(function() {
@@ -266,10 +347,10 @@ App._atomRenderCards = function(atoms) {
         }[typeLabel] || '#94a3b8';
 
         html += '<div class="atom-card">' +
-            '<span class="atom-card-type" style="background:'+typeColor+';">' + typeLabel + '</span>' +
-            '<span class="atom-card-text">' + (a.text||'').slice(0, 60) + '</span>' +
+            '<span class="atom-card-type" style="background:'+_escapeHtml(typeColor)+';">' + _escapeHtml(typeLabel) + '</span>' +
+            '<span class="atom-card-text">' + _escapeHtml((a.text||'').slice(0, 60)) + '</span>' +
             '<span class="atom-card-weight">w:' + (a.weight||0).toFixed(1) + '</span>' +
-            (a.keywords && a.keywords.length ? '<span class="atom-card-kw">' + a.keywords.slice(0,3).join(', ') + '</span>' : '') +
+            (a.keywords && a.keywords.length ? '<span class="atom-card-kw">' + _escapeHtml(a.keywords.slice(0,3).join(', ')) + '</span>' : '') +
             '</div>';
     });
     return html;
