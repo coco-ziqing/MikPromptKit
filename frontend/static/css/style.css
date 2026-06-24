@@ -2901,9 +2901,9 @@ body.dark-theme .gm-confirm-popover {
 /* ============ Phase16: 原子编辑器 ============ */
 .atom-editor-container { padding: 16px; max-width: 1400px; margin: 0 auto; height: calc(100vh - 112px); overflow-y: auto; }
 .atom-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-shrink: 0; }
-.atom-body { display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 16px; min-height: 0; }
+.atom-body { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; min-height: 0; }
 @media (max-width: 900px) { .atom-body { grid-template-columns: 1fr; } }
-.atom-panel { background: var(--bg-card,#fff); border: 1px solid var(--border-color,#e2e8f0); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; overflow: hidden; }
+.atom-panel { background: var(--bg-card,#fff); border: 1px solid var(--border-color,#e2e8f0); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 .atom-panel-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
 .atom-panel-input { display: flex; flex-direction: column; }
 .atom-input { width: 100%; background: var(--bg-main,#f8fafc); border: 1px solid var(--border-color,#e2e8f0); border-radius: 8px; padding: 10px; font-size: 13px; color: var(--text-main,#1e293b); resize: vertical; font-family: inherit; flex: 1; min-height: 180px; max-height: 40vh; }
@@ -2921,7 +2921,7 @@ body.dark-theme .gm-confirm-popover {
 .atom-list { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
 .atom-card { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--bg-main,#f8fafc); border-radius: 6px; font-size: 12px; }
 .atom-card-type { padding: 2px 8px; border-radius: 10px; color: #fff; font-size: 10px; font-weight: 600; white-space: nowrap; text-transform: uppercase; }
-.atom-card-text { flex: 1; color: var(--text-main,#1e293b); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.atom-card-text { flex: 1; color: var(--text-main,#1e293b); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: break-all; }
 .atom-card-weight { color: var(--text-muted,#64748b); font-weight: 600; white-space: nowrap; }
 .atom-card-kw { color: var(--primary,#4f46e5); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
 .atom-empty { text-align: center; padding: 40px 20px; color: var(--text-muted,#64748b); font-size: 13px; }
