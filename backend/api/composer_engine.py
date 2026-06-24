@@ -34,8 +34,8 @@ def _calc_pixel_res(ar: str, res: str) -> str:
 
 
 def _pick_non_empty(d: dict, keys: list) -> str:
-    """拼接非空字段"""
-    vals = [d.get(k) for k in keys if d.get(k)]
+    """拼接非空字段（排除纯空白值）"""
+    vals = [d.get(k) for k in keys if d.get(k) and str(d.get(k)).strip()]
     return "，".join(vals) if vals else ""
 
 
@@ -54,45 +54,45 @@ def make_structured_description(scene_data: dict, density: str) -> str:
     parts = []
 
     # Layer 1: 运镜（所有密度）
-    if d.get("camera_move"):
+    if d.get("camera_move", "").strip():
         parts.append(d["camera_move"])
 
     # Layer 2: 主体（所有密度）
-    if d.get("subject"):
+    if d.get("subject", "").strip():
         parts.append(d["subject"])
 
     # Layer 3: 动作 (standard+)
-    if d.get("action") and density != "compact":
+    if d.get("action", "").strip() and density != "compact":
         parts.append(d["action"])
 
     # Layer 4: 场景 (所有密度)
-    if d.get("scene_desc"):
+    if d.get("scene_desc", "").strip():
         parts.append(d["scene_desc"])
 
     # Layer 5: 构图 (standard+)
-    if d.get("composition") and density != "compact":
+    if d.get("composition", "").strip() and density != "compact":
         parts.append(d["composition"])
 
     # Layer 6: 光影 (standard+)
-    if d.get("lighting") and density != "compact":
+    if d.get("lighting", "").strip() and density != "compact":
         parts.append(d["lighting"])
 
     # Layer 7: 焦段 (detailed only)
-    if d.get("focal_length") and density == "detailed":
+    if d.get("focal_length", "").strip() and density == "detailed":
         parts.append(d["focal_length"])
 
     # Layer 8: 质感 (detailed only)
-    if d.get("texture") and density == "detailed":
+    if d.get("texture", "").strip() and density == "detailed":
         parts.append(d["texture"])
 
     # Layer 9: 速率 (detailed only)
-    if d.get("speed") and density == "detailed":
+    if d.get("speed", "").strip() and density == "detailed":
         parts.append(d["speed"])
 
     # Layer 10: 氛围组 (standard+)
     if density != "compact":
         mood = _pick_non_empty(d, ["emotion", "color_grade", "weather"])
-        if mood:
+        if mood and mood.strip():
             parts.append(mood)
 
     # Layer 11: 特效组 (detailed only)
