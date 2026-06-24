@@ -2,13 +2,27 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit) / 咪卡Mik词库
-- 版本：v5.0.0-phase15-atom-engine (2026-06-24)
+- 版本：v5.0.0-phase16-atom-editor (2026-06-24)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
 - 默认端口：8080（自增 8080→8089）
 - 局域网地址：http://192.168.0.103:8080
 - 前一个tag: `v4.2.0-phase14-arch`
-- 当前tag: `v5.0.0-phase15-atom-engine` (分类架构重构)
+- 当前tag: `v5.0.0-phase16-atom-editor` (分类架构重构)
+
+## Phase16 原子编辑器前端（2026-06-24 14:00~15:00）
+
+### 变更清单
+| 层级 | 文件 | 内容 |
+|------|------|------|
+| 前端 | atom_editor.js | **新建**: 原子编辑器模块（AI拆解面板+原子卡片+三格式导入+归档词卡） |
+| 前端 | index.html | 新增导航按钮「⚛ 原子引擎」+ 脚本加载 + 版本号 5.0.0 |
+| CSS | style.css | 新增 .atom-editor-* 系列 30+ 规则（三栏布局+卡片+进度条+深色适配） |
+
+### 版本号
+- brandVersion: 4.1.0 → **5.0.0**
+- atom_editor.js: v1 (新建)
+- style.css: v12.7 → **v12.8**
 
 ## Phase15 原子引擎加固（2026-06-24 11:00~14:00）
 
