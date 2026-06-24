@@ -804,6 +804,8 @@ App._wcLoadPrompts = async function() {
                 group_name: item.group_name || '',
                 scene: item.scene || '',
                 subcategory: item.subcategory || '',
+                card_role: item.card_role || '',
+                meaning: item.meaning || '',
                 video_filename: item.video_filename || '',
                 video_fps: item.video_fps || '',
                 _source: 'word_card'

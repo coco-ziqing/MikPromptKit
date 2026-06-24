@@ -526,7 +526,11 @@ var App = window.App || {
         var map = {
             emotion: '人物表情', color: App._t('auto.str_67a7c94b', '场景色彩'), tone: '画面色调',
             composition: App._t('auto.str_ebe1d3eb', '分镜构图'), storyboard: App._t('auto.str_ebe1d3eb', '分镜构图'),
-            camera_move: App._t('auto.str_6885459d', '运镜模版'), seedance: App._t('auto.str_94df12b2', '视频模版')
+            camera_move: App._t('auto.str_6885459d', '运镜模版'), seedance: App._t('auto.str_94df12b2', '视频模版'),
+            // 原子类型模块名映射
+            subject: '主体描述', style: '风格表现', lighting: '光影效果',
+            quality: '画质参数', camera: '镜头语言', atmosphere: '色调氛围',
+            negative: '负面词', constraint: '限制条件', creative: '创意元素', action: '动态动作'
         };
         return map[id] || id;
     },
@@ -558,18 +562,18 @@ var App = window.App || {
 
     async fetchJSON(url, options) {
         try {
+            var timeoutMs = (options && options._timeoutMs) || 30000;
             var controller = new AbortController();
-            var timer = setTimeout(function() { controller.abort(); }, 30000);
+            var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
             var res = await fetch(url, Object.assign({}, options || {}, { signal: controller.signal }));
             clearTimeout(timer);
             if (!res.ok) return null;
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      if (!res.ok) throw new Error('HTTP '+res.status); return await res.json();
+            return await res.json();
         } catch (err) {
             if (err.name === 'AbortError') {
-                console.warn(App._t('common.timeout', '请求超时:'), url);
+                console.warn('请求超时:', url);
             } else {
-                console.error(App._t('auto.str_21a2ace8', '请求失败:'), url, err.message);
+                console.error('请求失败:', url, err.message);
             }
             return null;
         }
