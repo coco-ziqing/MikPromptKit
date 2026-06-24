@@ -22,10 +22,12 @@ if _dev_backend not in sys.path:
 from database import init_db, rebuild_fts, get_db, safe_commit
 from seed_data import SEED_PROMPTS, get_builtin_count
 from backup import start_auto_backup, stop_auto_backup, do_backup, get_backup_info
-from logger import info as log_info, warn as log_warn, error as log_error, debug as log_debug, api_log, capture_exception
+from logger import info as log_info, warn as log_warn, error as log_error, debug as log_debug
+from database import safe_fetch_one, safe_count, safe_count_dict
+from logger import api_log, capture_exception
 
 # 启动时读取版本号
-APP_VERSION = 'v4.1.0-phase13'
+APP_VERSION = 'v5.0.0-phase15-atom-engine'
 from api.prompts import router as prompts_router
 from api.v2 import router as v2_router
 from api.seedance import router as seedance_router
@@ -53,6 +55,8 @@ from api.ai_thumbnail import router as ai_thumbnail_router
 from api.word_cards import router as word_card_router
 from health import router as health_router
 from api.logs import router as log_router
+from api.atoms import router as atoms_router
+from api.atoms_import import router as atoms_import_router
 from sync import (
     export_package, restore_package, import_package,
     list_packages, delete_package, get_package_info,
@@ -84,7 +88,7 @@ def _migrate_v4(db):
             db.execute(f"ALTER TABLE user_project_scene ADD COLUMN {name} {typ}")
             print("[迁移] user_project_scene 补列: %s" % name)
     # === 第一步: prompts → prompt_cards ===
-    count = db.execute("SELECT COUNT(*) FROM prompt_cards").fetchone()[0]
+    count = safe_count("SELECT COUNT(*) FROM prompt_cards")
     if count == 0:
         rows = db.execute("SELECT * FROM prompts ORDER BY id").fetchall()
         if rows:
@@ -97,7 +101,7 @@ def _migrate_v4(db):
             db.commit()
             print("[迁移] prompts -> prompt_cards: %d 条" % len(rows))
     # === 第二步: prompt_library + prompt_word_card → library_assets ===
-    count2 = db.execute("SELECT COUNT(*) FROM library_assets").fetchone()[0]
+    count2 = safe_count("SELECT COUNT(*) FROM library_assets")
     if count2 == 0:
         libs = db.execute("SELECT * FROM prompt_library ORDER BY sort_order").fetchall()
         for lib in libs:
@@ -112,7 +116,7 @@ def _migrate_v4(db):
                     card.get('word_text','')[:60],'style',lib.get('category',''),card.get('definition','') or card.get('word_text',''),'📄'
                 ))
         db.commit()
-        total = db.execute("SELECT COUNT(*) FROM library_assets").fetchone()[0]
+        total = safe_count("SELECT COUNT(*) FROM library_assets")
         print("[迁移] prompt_library -> library_assets: %d 条" % total)
 
 
@@ -121,7 +125,7 @@ async def lifespan(app: FastAPI):
     try:
         init_db()
         db = get_db()
-        existing = db.execute("SELECT COUNT(*) as cnt FROM prompts").fetchone()["cnt"]
+        existing = safe_count_dict("SELECT COUNT(*) as cnt FROM prompts")
         if existing == 0:
             print("[初始化] 导入 %d 条内置提示词..." % get_builtin_count())
             for p in SEED_PROMPTS:
@@ -168,9 +172,9 @@ async def lifespan(app: FastAPI):
     _migrate_v4(db)
 
     try:
-        total = db.execute("SELECT COUNT(*) as cnt FROM prompts").fetchone()["cnt"]
-        cards = db.execute("SELECT COUNT(*) as cnt FROM prompt_cards WHERE is_deleted=0").fetchone()["cnt"]
-        libs = db.execute("SELECT COUNT(*) as cnt FROM library_assets").fetchone()["cnt"]
+        total = safe_count_dict("SELECT COUNT(*) as cnt FROM prompts")
+        cards = safe_count_dict("SELECT COUNT(*) as cnt FROM prompt_cards WHERE is_deleted=0")
+        libs = safe_count_dict("SELECT COUNT(*) as cnt FROM library_assets")
     except Exception:
         total = cards = libs = 0
     print()
@@ -309,6 +313,8 @@ app.include_router(ai_thumbnail_router)
 app.include_router(word_card_router)
 app.include_router(health_router)
 app.include_router(log_router)
+app.include_router(atoms_router)
+app.include_router(atoms_import_router)
 
 
 # ============ 数据同步 API (.pkb 包系统) ============
@@ -423,10 +429,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 def get_status():
     try:
         db = get_db()
-        total = db.execute("SELECT COUNT(*) as cnt FROM prompts").fetchone()["cnt"]
-        usage = db.execute("SELECT SUM(usage_count) as cnt FROM prompts").fetchone()["cnt"] or 0
-        cards = db.execute("SELECT COUNT(*) as cnt FROM prompt_cards WHERE is_deleted=0").fetchone()["cnt"]
-        libs = db.execute("SELECT COUNT(*) as cnt FROM library_assets").fetchone()["cnt"]
+        total = safe_count_dict("SELECT COUNT(*) as cnt FROM prompts")
+        usage = safe_count_dict("SELECT SUM(usage_count) as cnt FROM prompts") or 0
+        cards = safe_count_dict("SELECT COUNT(*) as cnt FROM prompt_cards WHERE is_deleted=0")
+        libs = safe_count_dict("SELECT COUNT(*) as cnt FROM library_assets")
         return {
             "status": "running",
             "total_prompts": total,
