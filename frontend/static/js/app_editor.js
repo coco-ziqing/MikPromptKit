@@ -313,11 +313,11 @@ Object.assign(App, {
                             <div class="card-actions">
                                 <span style="font-size:11px;color:#94a3b8;">使用 ${p.usage_count} 次</span>
                                 <div style="display:flex;gap:4px;align-items:center;margin-left:auto;">
-                                <button class="btn-copy" onclick="App.toggleTranslation(${p.id})" title="中英文切换" style="border-color:#6366f1;color:#6366f1;">🌐</button>
-                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#8b5cf6;color:#8b5cf6;" onclick="event.stopPropagation();App._wcShowMovePicker(' + p.id + ')">📦</button>' : ''}
-                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#eab308;color:#eab308;" onclick="App.openEditModal(' + p.id + ')">✏</button>' : ''}
-                                <button class="btn-copy" onclick="App.handleCopy(${p.id}, '${this._escape(p.content).replace(/'/g, "\\'")}')">📋</button>
-                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.trashPrompt(' + p.id + ', this)">🗑</button>' : ''}
+                                <button class="btn-copy" onclick="App.toggleTranslation(${p.id})" title="中英文翻译 — 点击自动翻译并在卡片下方显示" style="border-color:#6366f1;color:#6366f1;">🌐</button>
+                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#8b5cf6;color:#8b5cf6;" onclick="event.stopPropagation();App._wcShowMovePicker(' + p.id + ')" title="移动到其他分组">📦</button>' : ''}
+                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#eab308;color:#eab308;" onclick="App.openEditModal(' + p.id + ')" title="编辑词卡内容">✏</button>' : ''}
+                                <button class="btn-copy" onclick="App.handleCopy(${p.id}, '${this._escape(p.content).replace(/'/g, "\\'")}')" title="复制提示词到剪贴板">📋</button>
+                                ${App.state.editMode ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.trashPrompt(' + p.id + ', this)" title="删除词卡">🗑</button>' : ''}
                                 </div>
                             </div>
                         </div>
