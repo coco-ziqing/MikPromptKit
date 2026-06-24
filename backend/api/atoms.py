@@ -606,15 +606,28 @@ def _ensure_atom_group(db, atom_type: str, media_type: str = "image") -> int:
 
 
 def _insert_atom_card(db, atom: dict, decompose_id: int, group_id: int) -> int:
-    """创建词卡 + 写入桥接表（单原子），返回 word_card.id"""
+    """创建词卡 + 写入桥接表（单原子），返回 word_card.id
+    去重：通过 atom_word_bridge 的 atom_hash 检查同一 group 内是否已有相同原子
+    """
     atom_type = atom.get("type", "creative")
+    atom_text = atom.get("text", "")
+    atom_hash = hashlib.md5(atom_text.encode()).hexdigest()
+    
+    # 去重：同一 group 内相同 atom_text 只保留一条词卡
+    existing = db.execute(
+        "SELECT b.word_card_id FROM atom_word_bridge b JOIN word_card wc ON b.word_card_id=wc.id WHERE b.atom_hash=? AND wc.group_id=? AND wc.is_deleted=0",
+        [atom_hash, group_id]
+    ).fetchone()
+    if existing:
+        return existing[0]
+    
     module = ATOM_TYPE_TO_MODULE.get(atom_type, "composition")
-    card_name = (atom.get("text") or "")[:60]
+    card_name = atom_text[:60]
     db.execute(
         """INSERT INTO word_card (group_id,name,content,meaning,module,category,tags,icon,card_role,media_type,sort_order,is_builtin,source)
            VALUES (?,?,?,?,?,?,?,?,?,?,
            (SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),0,'atom_decompose')""",
-        [group_id, card_name, atom.get("text", ""), ",".join(atom.get("keywords", [])),
+        [group_id, card_name, atom_text, ",".join(atom.get("keywords", [])),
          module, ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type),
          json.dumps(atom.get("keywords", []), ensure_ascii=False),
          "⚛️", "atom", atom_type or "image", group_id]
@@ -622,7 +635,7 @@ def _insert_atom_card(db, atom: dict, decompose_id: int, group_id: int) -> int:
     card_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     db.execute(
         "INSERT OR REPLACE INTO atom_word_bridge (atom_hash,decompose_id,word_card_id,atom_type,atom_text) VALUES (?,?,?,?,?)",
-        [hashlib.md5(atom.get("text", "").encode()).hexdigest(), decompose_id, card_id, atom_type, atom.get("text", "")]
+        [atom_hash, decompose_id, card_id, atom_type, atom_text]
     )
     return card_id
 
