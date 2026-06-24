@@ -2935,4 +2935,17 @@ body.dark-theme .atom-panel { background: var(--bg-card); border-color: var(--bo
 body.dark-theme .atom-input { background: var(--bg-main); color: var(--text-main); }
 body.dark-theme .atom-card { background: var(--bg-main); }
 body.dark-theme .atom-quality { background: rgba(79,70,229,0.12); }
+/* Phase17: 拆解记录列表 */
+.atom-record { background: var(--bg-main,#f8fafc); border: 1px solid var(--border-color,#e2e8f0); border-radius: 8px; padding: 10px; margin-bottom: 8px; cursor: pointer; transition: box-shadow 0.15s; }
+.atom-record:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.atom-record-hd { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.atom-record-media { font-size: 16px; flex-shrink: 0; }
+.atom-record-prompt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main,#1e293b); font-weight: 500; }
+.atom-record-score { flex-shrink: 0; font-size: 14px; }
+.atom-record-count { flex-shrink: 0; color: var(--text-muted,#64748b); font-size: 11px; }
+.atom-record-del { flex-shrink: 0; background: none; border: none; color: var(--danger,#ef4444); cursor: pointer; font-size: 14px; padding: 0 4px; opacity: 0.5; }
+.atom-record-del:hover { opacity: 1; }
+.atom-record-expand { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color,#e2e8f0); }
+.atom-record-atoms { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.atom-record-actions { display: flex; gap: 6px; }
 

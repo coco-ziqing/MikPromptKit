@@ -176,51 +176,21 @@ async def import_txt(file: UploadFile = File(...), group_id: int = None, auto_ar
 # ==================== 辅助函数 ====================
 
 def _auto_archive_one(db, decompose_id: int, atoms: list, group_id: int = None) -> int:
-    """自动归档单个拆解结果的词卡"""
-    from api.atoms import ATOM_TYPE_TO_MODULE, ATOM_TYPE_TO_CATEGORY
-
+    """自动归档单个拆解结果（P1-1: 复用 atoms._insert_atom_card）"""
+    from api.atoms import _insert_atom_card
     if not atoms:
         return 0
-
-    created = 0
     if not group_id:
-        # 使用默认自定义分组
-        g = db.execute(
-            "SELECT id FROM word_card_group WHERE group_key='atom_auto_import' AND is_active=1"
-        ).fetchone()
+        g = db.execute("SELECT id FROM word_card_group WHERE group_key='atom_auto_import' AND is_active=1").fetchone()
         if not g:
-            db.execute(
-                "INSERT INTO word_card_group (name,group_key,icon,group_type,description,sort_order) "
-                "VALUES ('[原子] 自动导入','atom_auto_import','📥','atom','AI批量导入原子',9999)"
-            )
+            db.execute("INSERT INTO word_card_group (name,group_key,icon,group_type,description,sort_order) VALUES ('[原子] 自动导入','atom_auto_import','📥','atom','AI批量导入原子',9999)")
             db.commit()
             group_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
         else:
             group_id = g["id"]
-
+    created = 0
     for atom in atoms:
-        atom_type = atom.get("type", "creative")
-        module = ATOM_TYPE_TO_MODULE.get(atom_type, "composition")
-        card_name = (atom.get("text") or "")[:60]
-        db.execute(
-            """INSERT INTO word_card (group_id,name,content,meaning,module,category,tags,icon,card_role,media_type,sort_order,is_builtin,source)
-               VALUES (?,?,?,?,?,?,?,?,?,?,
-               (SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),0,'atom_import')""",
-            [group_id, card_name, atom.get("text", ""),
-             ",".join(atom.get("keywords", [])),
-             module,
-             ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type),
-             json.dumps(atom.get("keywords", []), ensure_ascii=False),
-             "⚛️", "atom", atom_type or "image", group_id]
-        )
-        db.commit()
-        card_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        db.execute(
-            "INSERT OR REPLACE INTO atom_word_bridge (atom_hash,decompose_id,word_card_id,atom_type,atom_text) VALUES (?,?,?,?,?)",
-            [hashlib.md5(atom.get("text", "").encode()).hexdigest(),
-             decompose_id, card_id, atom_type, atom.get("text", "")]
-        )
+        _insert_atom_card(db, atom, decompose_id, group_id)
         created += 1
-
     db.commit()
     return created

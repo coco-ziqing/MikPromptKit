@@ -92,16 +92,6 @@ class ArchiveReq(BaseModel):
     create_groups: bool = True  # 自动创建缺失分组
 
 
-DECOMPOSE_SYS = """你是一个提示词原子化拆解专家。将用户输入的提示词拆解为结构化原子。
-严格返回 JSON 数组，每个元素包含:
-  id: 唯一标识(uuid格式)
-  type: creative|style|composition|constraint|tone|negative 之一
-  text: 原文提取片段(10字以内)
-  keywords: 关键词数组
-  weight: 权重(0-1, 越核心越接近1)
-不要包含任何解释文字，只输出 JSON。"""
-
-# ============ Phase15: 原子类型 → 词卡模块映射表 ============
 DECOMPOSE_SYS_EN = """You are a prompt decomposition expert. Decompose the given prompt into structured atoms.
 
 Return ONLY a JSON array (no markdown, no explanation). Each element:
@@ -206,9 +196,58 @@ async def decompose(req: DecomposeReq):
         [req.prompt, req.media_type, h, json.dumps(atoms, ensure_ascii=False), "ollama/optimize_fast", score]
     )
     db.commit()
-    cid = safe_count_dict("SELECT MAX(id) as cnt FROM atom_decompose", key="cnt")
+    cid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
     return {"ok": True, "cached": False, "id": cid, "atoms": atoms, "quality_score": score}
+
+
+# ==================== P17.1: 列表 + 桥接 + 删除 ====================
+
+@router.get("/list")
+async def list_decomposes(page: int = 1, page_size: int = 20):
+    """列出拆解记录（分页+最近优先）— 必须在 GET /decompose/{did} 之前注册"""
+    db = get_db()
+    total = db.execute("SELECT COUNT(*) FROM atom_decompose").fetchone()[0]
+    rows = db.execute(
+        """SELECT ad.*,
+            (SELECT COUNT(*) FROM atom_variation av WHERE av.decompose_id=ad.id) as var_count,
+            (SELECT COUNT(*) FROM atom_word_bridge awb WHERE awb.decompose_id=ad.id) as bridge_count
+         FROM atom_decompose ad
+         ORDER BY ad.id DESC
+         LIMIT ? OFFSET ?""",
+        [page_size, (page-1)*page_size]
+    ).fetchall()
+    items = []
+    for r in rows:
+        it = dict(r)
+        try: it["atoms"] = json.loads(it["atoms_json"])
+        except: it["atoms"] = []
+        items.append(it)
+    return {"ok": True, "items": items, "total": total}
+
+
+@router.get("/decompose/{did}/bridge")
+async def get_decompose_bridge(did: int):
+    """获取拆解→词卡桥接记录"""
+    db = get_db()
+    rows = db.execute(
+        "SELECT awb.*, wc.name, wc.content, wg.name as group_name FROM atom_word_bridge awb LEFT JOIN word_card wc ON wc.id=awb.word_card_id LEFT JOIN word_card_group wg ON wg.id=wc.group_id WHERE awb.decompose_id=?", [did]
+    ).fetchall()
+    return {"ok": True, "decompose_id": did, "bridge": [dict(r) for r in rows], "count": len(rows)}
+
+
+@router.delete("/decompose/{did}")
+async def delete_decompose(did: int):
+    """删除拆解记录（级联删除变异+桥接+统计）"""
+    db = get_db()
+    row = db.execute("SELECT id FROM atom_decompose WHERE id=?", [did]).fetchone()
+    if not row: raise HTTPException(404, "拆解记录不存在")
+    db.execute("DELETE FROM atom_variation WHERE decompose_id=?", [did])
+    db.execute("DELETE FROM atom_word_bridge WHERE decompose_id=?", [did])
+    db.execute("DELETE FROM atom_stats WHERE decompose_id=?", [did])
+    db.execute("DELETE FROM atom_decompose WHERE id=?", [did])
+    db.commit()
+    return {"ok": True, "deleted_id": did}
 
 
 @router.post("/decompose/batch")
@@ -289,7 +328,7 @@ async def create_variations(req: VariationReq):
              None, "main", 0.7]
         )
         db.commit()
-        vid = safe_count_dict("SELECT MAX(id) as cnt FROM atom_variation", key="cnt")
+        vid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
         created.append({"id": vid, "text": v, "atoms": var_atoms})
 
     return {"ok": True, "decompose_id": req.decompose_id, "variations": created, "count": len(created)}
@@ -438,109 +477,34 @@ async def decompose_text(req: TextDecomposeReq):
 @router.post("/archive-to-group")
 async def archive_to_group(req: ArchiveReq):
     """将已拆解的原子归档到 word_card 词卡 + word_card_group 分组（P15.2 双向桥接）
-    - 从 atom_decompose 读取原子
-    - 按 atom_type 自动映射到 word_card.module
-    - 自动创建缺失的分组（group_type='atom'）
-    - 写入 atom_word_bridge 关联表实现双向溯源
+    P1-1: 统一使用 _ensure_atom_group + _insert_atom_card 消除重复代码
+    P1-2: 统一 commit 消除 N+1 磁盘写入
     """
     db = get_db()
-
-    # 读取原子数据
     row = db.execute("SELECT * FROM atom_decompose WHERE id=?", [req.decompose_id]).fetchone()
     if not row:
         raise HTTPException(404, "原子拆解记录不存在")
-
     atoms = json.loads(row["atoms_json"])
     if req.atom_ids:
         atoms = [a for a in atoms if a.get("id") in req.atom_ids]
     if not atoms:
         raise HTTPException(400, "没有可归档的原子")
 
-    group_id = req.group_id
-
-    # 自动创建/查找 atom 类型的分组
-    if req.create_groups and not group_id:
-        # 按 atom_type 分组创建
-        created_cards = []
-        for atom in atoms:
-            atom_type = atom.get("type", "creative")
-            module = ATOM_TYPE_TO_MODULE.get(atom_type, "composition")
-
-            # 查找或创建该类型的分组
-            g = db.execute(
-                "SELECT id FROM word_card_group WHERE name=? AND group_type='atom' AND is_active=1",
-                [f"[原子] {ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type)}"]
-            ).fetchone()
-            if not g:
-                import hashlib as _h
-                gkey = "atom_" + _h.md5(atom_type.encode()).hexdigest()[:8]
-                db.execute(
-                    "INSERT INTO word_card_group (name,group_key,icon,group_type,description) VALUES (?,?,?,?,'atom',?)",
-                    [f"[原子] {ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type)}", gkey, "⚛️", f"AI自动拆解-{atom_type}"]
-                )
-                db.commit()
-                gid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-            else:
-                gid = g["id"]
-
-            # 创建词卡
-            card_name = atom.get("text", "")[:60]
-            db.execute(
-                """INSERT INTO word_card (group_id,name,content,meaning,module,category,tags,icon,card_role,media_type,sort_order,is_builtin,source)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,
-                    (SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),0,'atom_decompose')""",
-                [gid, card_name, atom.get("text", ""),
-                 ",".join(atom.get("keywords", [])),
-                 module,
-                 ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type),
-                 json.dumps(atom.get("keywords", []), ensure_ascii=False),
-                 "⚛️", "atom", atom_type or "image", gid]
-            )
-            db.commit()
-            card_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-
-            # 写入双向桥接表
-            db.execute(
-                "INSERT OR REPLACE INTO atom_word_bridge (atom_hash,decompose_id,word_card_id,atom_type,atom_text) VALUES (?,?,?,?,?)",
-                [hashlib.md5(atom.get("text", "").encode()).hexdigest(),
-                 req.decompose_id, card_id, atom_type, atom.get("text", "")]
-            )
-            created_cards.append({"card_id": card_id, "group_id": gid, "text": atom.get("text", "")})
-
-        db.commit()
-        return {"ok": True, "decompose_id": req.decompose_id, "created_cards": created_cards, "card_count": len(created_cards)}
-
-    # 归档到指定分组
-    if not group_id:
-        raise HTTPException(400, "请提供 group_id 或设置 create_groups=true")
-
-    created = 0
+    created = []
     for atom in atoms:
         atom_type = atom.get("type", "creative")
-        module = ATOM_TYPE_TO_MODULE.get(atom_type, "composition")
-        card_name = atom.get("text", "")[:60]
-        db.execute(
-            """INSERT INTO word_card (group_id,name,content,meaning,module,category,tags,icon,card_role,media_type,sort_order,is_builtin,source)
-               VALUES (?,?,?,?,?,?,?,?,?,?,
-               (SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),0,'atom_decompose')""",
-            [group_id, card_name, atom.get("text", ""),
-             ",".join(atom.get("keywords", [])),
-             module,
-             ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type),
-             json.dumps(atom.get("keywords", []), ensure_ascii=False),
-             "⚛️", "atom", atom_type or "image", group_id]
-        )
-        db.commit()
-        card_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        db.execute(
-            "INSERT OR REPLACE INTO atom_word_bridge (atom_hash,decompose_id,word_card_id,atom_type,atom_text) VALUES (?,?,?,?,?)",
-            [hashlib.md5(atom.get("text", "").encode()).hexdigest(),
-             req.decompose_id, card_id, atom_type, atom.get("text", "")]
-        )
-        created += 1
+        if req.create_groups and not req.group_id:
+            gid = _ensure_atom_group(db, atom_type)
+        else:
+            gid = req.group_id
+        if not gid:
+            raise HTTPException(400, "请提供 group_id 或设置 create_groups=true")
+        cid = _insert_atom_card(db, atom, req.decompose_id, gid)
+        created.append({"card_id": cid, "group_id": gid, "text": atom.get("text", "").strip()[:40]})
 
     db.commit()
-    return {"ok": True, "decompose_id": req.decompose_id, "group_id": group_id, "card_count": created}
+    return {"ok": True, "decompose_id": req.decompose_id, "card_count": len(created),
+            "created_cards": created if req.create_groups and not req.group_id else None}
 
 
 @router.get("/stats")
@@ -615,6 +579,42 @@ async def get_atom_stats():
 
 # ============ 辅助函数 ============
 
+def _ensure_atom_group(db, atom_type: str) -> int:
+    """查找或创建 atom 类型分组，返回 group_id"""
+    name = f"[原子] {ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type)}"
+    g = db.execute("SELECT id FROM word_card_group WHERE name=? AND group_type='atom' AND is_active=1", [name]).fetchone()
+    if g:
+        return g["id"]
+    gkey = "atom_" + hashlib.md5(atom_type.encode()).hexdigest()[:8]
+    db.execute(
+        "INSERT INTO word_card_group (name,group_key,icon,group_type,description) VALUES (?,?,?,'atom',?)",
+        [name, gkey, "⚛️", f"AI自动拆解-{atom_type}"]
+    )
+    return db.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+def _insert_atom_card(db, atom: dict, decompose_id: int, group_id: int) -> int:
+    """创建词卡 + 写入桥接表（单原子），返回 word_card.id"""
+    atom_type = atom.get("type", "creative")
+    module = ATOM_TYPE_TO_MODULE.get(atom_type, "composition")
+    card_name = (atom.get("text") or "")[:60]
+    db.execute(
+        """INSERT INTO word_card (group_id,name,content,meaning,module,category,tags,icon,card_role,media_type,sort_order,is_builtin,source)
+           VALUES (?,?,?,?,?,?,?,?,?,?,
+           (SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),0,'atom_decompose')""",
+        [group_id, card_name, atom.get("text", ""), ",".join(atom.get("keywords", [])),
+         module, ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type),
+         json.dumps(atom.get("keywords", []), ensure_ascii=False),
+         "⚛️", "atom", atom_type or "image", group_id]
+    )
+    card_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    db.execute(
+        "INSERT OR REPLACE INTO atom_word_bridge (atom_hash,decompose_id,word_card_id,atom_type,atom_text) VALUES (?,?,?,?,?)",
+        [hashlib.md5(atom.get("text", "").encode()).hexdigest(), decompose_id, card_id, atom_type, atom.get("text", "")]
+    )
+    return card_id
+
+
 def _split_text(text: str, max_len: int = 200) -> list[str]:
     """长文本智能分段（按句号/换行优先，避免截断词）"""
     if len(text) <= max_len:
@@ -637,7 +637,6 @@ def _split_text(text: str, max_len: int = 200) -> list[str]:
 
 def _extract_json_array(text: str) -> list | None:
     """鲁棒 JSON 数组提取 — 处理 LLM 各种输出格式"""
-    import re
     text = text.strip()
     if "```" in text:
         m = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
@@ -657,30 +656,10 @@ def _extract_json_array(text: str) -> list | None:
 
 
 def _archive_atoms_to_group(db, decompose_id: int, atoms: list, group_id: int) -> dict:
-    """内部函数：将原子批量归档到词卡分组"""
+    """内部函数：将原子批量归档到词卡分组（复用 _insert_atom_card）"""
     created = 0
     for atom in atoms:
-        atom_type = atom.get("type", "creative")
-        module = ATOM_TYPE_TO_MODULE.get(atom_type, "composition")
-        card_name = (atom.get("text") or "")[:60]
-        db.execute(
-            """INSERT INTO word_card (group_id,name,content,meaning,module,category,tags,icon,card_role,media_type,sort_order,is_builtin,source)
-               VALUES (?,?,?,?,?,?,?,?,?,?,
-               (SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),0,'atom_decompose')""",
-            [group_id, card_name, atom.get("text", ""),
-             ",".join(atom.get("keywords", [])),
-             module,
-             ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type),
-             json.dumps(atom.get("keywords", []), ensure_ascii=False),
-             "⚛️", "atom", atom_type or "image", group_id]
-        )
-        db.commit()
-        card_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        db.execute(
-            "INSERT OR REPLACE INTO atom_word_bridge (atom_hash,decompose_id,word_card_id,atom_type,atom_text) VALUES (?,?,?,?,?)",
-            [hashlib.md5(atom.get("text", "").encode()).hexdigest(),
-             decompose_id, card_id, atom_type, atom.get("text", "")]
-        )
+        _insert_atom_card(db, atom, decompose_id, group_id)
         created += 1
     db.commit()
     return {"group_id": group_id, "cards_created": created}
