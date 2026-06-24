@@ -306,6 +306,11 @@ App._atomBatchArchive = async function() {
     this._atomSelectedRecords.clear();
     await this._atomLoadList();
     await this._atomLoadStats();
+    // 同步刷新全部词组 + 词卡管理侧边栏
+    try { await App.loadGroupTree(); } catch(e) { console.warn('loadGroupTree refresh failed:', e); }
+    if (App.state.currentGroupId) {
+        try { await App.loadPrompts(App.state.currentGroupId); } catch(e) {}
+    }
 };
 
 // ============ 核心操作：AI拆解 ============
@@ -440,6 +445,13 @@ App._atomArchive = async function(decomposeId, atomsJsonEncoded) {
         if (!d || !d.ok) { App.toast('归档失败，请检查网络后重试', 'danger'); return; }
         App.toast('已归档 ' + (d.card_count || 0) + ' 个词卡到分组', 'success');
         await App._atomLoadStats();
+        await App._atomLoadList();
+        // 同步刷新全部词组 + 词卡管理侧边栏
+        try { await App.loadGroupTree(); } catch(e) { console.warn('loadGroupTree refresh failed:', e); }
+        // 如果当前正在词卡管理页，刷新当前分组卡片列表
+        if (App.state.currentGroupId) {
+            try { await App.loadPrompts(App.state.currentGroupId); } catch(e) {}
+        }
     } catch(e) {
         App.toast('归档失败: ' + e.message, 'danger');
     }
