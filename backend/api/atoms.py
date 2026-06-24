@@ -168,10 +168,17 @@ async def decompose(req: DecomposeReq):
             "model_used": cached["model_used"],
         }
 
-    # LLM 拆解 — 用英文 system prompt（qwen3.5 英文 JSON 输出更稳定）
+    # 语言检测：中文输入→中文输出，英文输入→英文输出
+    cjk_chars = sum(1 for ch in req.prompt if '\u4e00' <= ch <= '\u9fff' or '\u3400' <= ch <= '\u4dbf')
+    is_chinese = cjk_chars >= 3 or cjk_chars >= len(req.prompt) * 0.15
+    sys_prompt = DECOMPOSE_SYS_ZH if is_chinese else DECOMPOSE_SYS_EN
+    prompt_lang = "zh" if is_chinese else "en"
+    print(f"[ATOM-LOG] 语言检测: {'中文' if is_chinese else '英文'} (CJK={cjk_chars}/{len(req.prompt)}), 使用 {'ZH' if is_chinese else 'EN'} system prompt")
+
+    # LLM 拆解
     prompt = f"Prompt text to decompose (media_type={req.media_type}):\n{req.prompt}"
     try:
-        raw = await call_ollama("optimize_fast", prompt, system=DECOMPOSE_SYS_EN, temperature=0.3, max_tokens=4000)
+        raw = await call_ollama("optimize_fast", prompt, system=sys_prompt, temperature=0.3, max_tokens=4000)
         text = str(raw).strip()
         print(f"[ATOM-LOG] LLM raw output ({len(text)} chars): {text[:300]}")
         # 鲁棒 JSON 提取：尝试多种格式
