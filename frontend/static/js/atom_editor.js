@@ -68,7 +68,7 @@ App._atomRenderHTML = function() {
 '    <!-- 左栏：AI拆解面板 -->' +
 '    <div class="atom-panel atom-panel-input">' +
 '      <div class="atom-panel-title"><i class="bi bi-magic"></i> AI 拆解</div>' +
-'      <textarea id="atomInput" class="atom-input" rows="5" ' +
+'      <textarea id="atomInput" class="atom-input" rows="12" ' +
 '        placeholder="粘贴提示词文本，AI自动拆解为结构化原子...&#10;&#10;支持：单条、长段落（自动分段）、OCR图片文字"></textarea>' +
 '      <div class="atom-input-options">' +
 '        <select id="atomMediaType" class="modal-input" style="flex:1;font-size:12px;padding:6px;">' +
