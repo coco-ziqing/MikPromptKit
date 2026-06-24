@@ -2,13 +2,47 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit) / 咪卡Mik词库
-- 版本：v4.2.0-phase14-arch (2026-06-20)
+- 版本：v5.0.0-phase15-atom-engine (2026-06-24)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
-- 默认端口：8080
-- 局域网地址：http://192.168.0.101:8080
-- 前一个tag: `v4.1.0-phase13.1-hotfix`
-- 当前tag: `v4.2.0-phase14-arch` (分类架构重构)
+- 默认端口：8080（自增 8080→8089）
+- 局域网地址：http://192.168.0.103:8080
+- 前一个tag: `v4.2.0-phase14-arch`
+- 当前tag: `v5.0.0-phase15-atom-engine` (分类架构重构)
+
+## Phase15 原子引擎加固（2026-06-24 11:00~14:00）
+
+### 架构变更
+```
+原子化提示词工业化平台 v5.0
+├── 🤖 AI提取引擎 → atoms.py (12端点) + atoms_import.py (3导入)
+├── 🔗 双向桥接 → atom_word_bridge (原子↔词卡映射)
+├── 📊 资产溯源 → GET /atoms/stats (热门Top10/死码检测/类型分布)
+├── 📥 多端导入 → CSV/JSON/TXT 一键自动拆解归档
+└── 📷 OCR 识别 → extract-from-image (图片文字→原子拆解)
+```
+
+### 变更清单
+| 层级 | 文件 | 内容 |
+|------|------|------|
+| 后端 | api/atoms.py | **全新升级**: +4端点 OCR/文本拆解/归档/统计 + atom-type映射表 |
+| 后端 | api/atoms_import.py | **新建**: CSV/JSON/TXT 批量导入+自动拆解归档 |
+| DB | migrate_atom_tables.py | 新增 atom_word_bridge (3索引) + atom 分组类型修正 |
+| 后端 | main.py | 加载 atoms_import 路由 + 版本号 v5.0.0 + 修复导入 (api_log→logger) |
+| 工具 | test_atoms_api.py | 全端点测试脚本 |
+| 规划 | PLAN_v5.0_PHASE15.md | 完整升级工程规划书 |
+
+### 版本号
+- APP_VERSION: v4.1.0-phase13 → **v5.0.0-phase15-atom-engine**
+- atoms.py: 5 routes → **12 routes**
+- atoms_import.py: **3 routes** (csv/json/txt)
+
+### 原子系统表 (5张)
+- atom_decompose: AI拆解缓存 (MD5去重)
+- atom_variation: 变异重组结果
+- atom_template: 发布模板
+- atom_stats: 使用统计
+- atom_word_bridge: **新增** 原子↔词卡双向桥接
 
 ## Phase14 分类架构重构（2026-06-20 23:00）
 
