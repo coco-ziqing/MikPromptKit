@@ -82,7 +82,8 @@ var App = window.App || {
                 this.showToast(errMsg, 'error');
                 return null;
             }
-            return await resp.json();
+            if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+      if (!resp.ok) throw new Error('HTTP '+resp.status); return await resp.json();
         } catch (e) {
             this.showToast(App._t('auto.str_57c2b634', '网络连接失败: ') + e.message, 'error');
             return null;
@@ -562,7 +563,8 @@ var App = window.App || {
             var res = await fetch(url, Object.assign({}, options || {}, { signal: controller.signal }));
             clearTimeout(timer);
             if (!res.ok) return null;
-            return await res.json();
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error('HTTP '+res.status); return await res.json();
         } catch (err) {
             if (err.name === 'AbortError') {
                 console.warn(App._t('common.timeout', '请求超时:'), url);
@@ -631,7 +633,7 @@ var App = window.App || {
         if (!data) return;
         this.state.stats = data;
         const el = document.getElementById('headerStats');
-        if (el) el.textContent = App._t('auto.str_d04bab0e', '词库 ${data.total_prompts} 条 | 使用 ${data.total_usage} 次');
+        if (el) el.textContent = '词库 ' + (data.total_prompts||0) + ' 条 | 使用 ' + (data.total_usage||0) + ' 次';
     },
 
     // ============ 模块切换 ============
