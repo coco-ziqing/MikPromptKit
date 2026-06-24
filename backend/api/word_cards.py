@@ -39,7 +39,7 @@ def groups_tree():
                (SELECT COUNT(*) FROM word_card wc WHERE wc.group_id=wg.id AND wc.is_deleted=0) as card_count,
                (SELECT COUNT(*) FROM word_card_group child WHERE child.parent_group_id=wg.id AND child.is_active=1) as child_count
         FROM word_card_group wg
-        WHERE wg.is_active=1 AND wg.group_type IN ('root','sub','builtin','seedance','custom')
+        WHERE wg.is_active=1 AND wg.group_type IN ('root','sub','builtin','seedance','custom','atom')
         ORDER BY wg.group_type, wg.parent_group_id, wg.sort_order
     """).fetchall()
 

@@ -227,7 +227,8 @@ App._renderShowcaseCard = function(grp) {
     var cardName = grp.name || '';
     if (icon && cardName.indexOf(icon) === 0) cardName = cardName.substring(icon.length).trim();
     var badge = grp.group_type === 'builtin' ? '<span style="font-size:10px;background:var(--bg-primary);color:var(--text-muted);padding:1px 6px;border-radius:4px;">内置</span>' :
-                grp.group_type === 'custom' ? '<span style="font-size:10px;background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:4px;">自定义</span>' : '';
+                grp.group_type === 'custom' ? '<span style="font-size:10px;background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:4px;">自定义</span>' :
+                grp.group_type === 'atom' ? '<span style="font-size:10px;background:#fff3e0;color:#e65100;padding:1px 6px;border-radius:4px;">⚛ 原子</span>' : '';
     return '<div class="showcase-card" data-gid="' + grp.id + '" data-gname="' + (grp.name||'').replace(/"/g,'&quot;') + '" onclick="App._showcaseClick(this)" style="cursor:pointer;border:1px solid var(--border-color);border-radius:12px;padding:16px;background:var(--bg-card);transition:all 0.2s;display:flex;align-items:center;gap:12px;">' +
         '<div style="font-size:28px;flex-shrink:0;">' + icon + '</div>' +
         '<div style="flex:1;min-width:0;">' +
