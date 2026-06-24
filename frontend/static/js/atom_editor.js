@@ -22,6 +22,13 @@ App.switchView = function(view, ...args) {
         this._showAtomEditor();
         return;
     }
+    // 从原子编辑器切出时，移除原子面板，恢复其他视图
+    var atomPanel = document.getElementById('viewAtomEditor');
+    if (atomPanel) atomPanel.style.display = 'none';
+    // 恢复所有被隐藏的 view-panel（去掉 atom_editor 设置的 inline display:none）
+    var allViews = document.querySelectorAll('.view-panel');
+    allViews.forEach(function(v) { v.style.display = ''; });
+    // 委托给原始 switchView
     return this._atomOriginSwitchView(view, ...args);
 };
 
