@@ -491,11 +491,13 @@ async def archive_to_group(req: ArchiveReq):
     if not atoms:
         raise HTTPException(400, "没有可归档的原子")
 
+    media_type = row.get("media_type") or "image"
+
     created = []
     for atom in atoms:
         atom_type = atom.get("type", "creative")
         if req.create_groups and not req.group_id:
-            gid = _ensure_atom_group(db, atom_type)
+            gid = _ensure_atom_group(db, atom_type, media_type)
         else:
             gid = req.group_id
         if not gid:
@@ -580,16 +582,25 @@ async def get_atom_stats():
 
 # ============ 辅助函数 ============
 
-def _ensure_atom_group(db, atom_type: str) -> int:
-    """查找或创建 atom 类型分组，返回 group_id"""
+def _ensure_atom_group(db, atom_type: str, media_type: str = "image") -> int:
+    """查找或创建 atom 类型分组，返回 group_id
+    media_type: 'image' → [原子]图像词库 | 'video' → [原子]视频词库"""
+    # 确定父根
+    root_key = "root_atom_video" if media_type == "video" else "root_atom_image"
+    root = db.execute("SELECT id FROM word_card_group WHERE group_key=? AND is_active=1", [root_key]).fetchone()
+    parent_id = root["id"] if root else None
+    
     name = f"[原子] {ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type)}"
     g = db.execute("SELECT id FROM word_card_group WHERE name=? AND group_type='atom' AND is_active=1", [name]).fetchone()
     if g:
+        # 确保 parent 正确（幂等修复）
+        if g["parent_group_id"] != parent_id:
+            db.execute("UPDATE word_card_group SET parent_group_id=? WHERE id=?", [parent_id, g["id"]])
         return g["id"]
     gkey = "atom_" + hashlib.md5(atom_type.encode()).hexdigest()[:8]
     db.execute(
-        "INSERT INTO word_card_group (name,group_key,icon,group_type,description) VALUES (?,?,?,'atom',?)",
-        [name, gkey, "⚛️", f"AI自动拆解-{atom_type}"]
+        "INSERT INTO word_card_group (name,group_key,icon,group_type,parent_group_id,description) VALUES (?,?,?,?,'atom',?,?)",
+        [name, gkey, "⚛️", parent_id, f"AI auto-decompose {atom_type}"]
     )
     return db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
