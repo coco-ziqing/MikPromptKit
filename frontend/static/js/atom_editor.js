@@ -231,6 +231,7 @@ App._atomRenderDecomposeList = function(items) {
             '<div class="atom-record-atoms">' + App._atomRenderCards(it.atoms || []) + '</div>' +
             '<div class="atom-record-actions">' +
             '<button class="btn-atom-secondary" onclick="event.stopPropagation();App._atomArchive(' + it.id + ',\'' + encodeURIComponent(JSON.stringify(it.atoms||[])) + '\')">📥 归档到词卡</button>' +
+            '<button class="btn-atom-secondary" style="border-color:#8b5cf6;color:#8b5cf6;" onclick="event.stopPropagation();App._atomSendToComposer(' + it.id + ')" title="归档后打开组装器调用原子词卡">♻ 发送到组装器</button>' +
             '</div></div></div>';
     });
     return html;
@@ -454,6 +455,34 @@ App._atomArchive = async function(decomposeId, atomsJsonEncoded) {
         }
     } catch(e) {
         App.toast('归档失败: ' + e.message, 'danger');
+    }
+};
+
+// ============ 发送到组装器 ============
+App._atomSendToComposer = async function(decomposeId) {
+    // 先归档（幂等：已归档自动跳过）
+    App.toast('归档并跳转到组装器...', 'info');
+    try {
+        var d = await this.fetchJSON('/api/v4/atoms/archive-to-group', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ decompose_id: decomposeId, atom_ids: [], create_groups: true }),
+            _timeoutMs: 30000
+        });
+        if (d && d.ok) {
+            // 刷新全部词组侧边栏（组装器需要最新数据）
+            try { await App.loadGroupTree(); } catch(e) {}
+            // 切换到组装器
+            App.switchView('seedance');
+            setTimeout(function() {
+                App.switchSeedanceTab('composer');
+                App.toast('已归档并打开组装器 — 点击右侧底部「⚛ 原子引擎」调用词卡', 'success');
+            }, 300);
+        } else {
+            App.toast('归档失败，请检查网络后重试', 'danger');
+        }
+    } catch(e) {
+        App.toast('跳转失败: ' + e.message, 'danger');
     }
 };
 

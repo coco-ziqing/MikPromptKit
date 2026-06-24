@@ -1,11 +1,20 @@
-// v4.1.1: Composer Word Card Bridge — 加固版 (Phase13.1)
-// 修复: custom_前缀fallback、libraries未加载等待机制、_fieldToDim映射统一
+// v4.2.0: Composer Word Card + Atom Bridge — Phase17 原子→组装器全链路
+// 修复: atom分组映射到seedance字段维度、_pickRightWord自动路由、页面标题显示
 (function(){'use strict';if(!App.seedanceV2)return;
 (function r(){if(!App.seedanceV2.libraries){setTimeout(r,200);return;}else if(App.seedanceV2.libraries.length===0){setTimeout(r,500);return;}_go();})();
 
 function _go(){var S=App.seedanceV2;
 
-// 0. 统一字段映射表 — 覆盖seedance_v2_composer.js中 _F + 音频字段
+// 0. 原子类型 → seedance 字段映射
+var ATOM_FIELD_MAP={
+    'subject':'subject','style':'scene_desc','composition':'composition',
+    'lighting':'lighting','color':'color_grade','quality':'texture',
+    'camera':'focal_length','atmosphere':'emotion','tone':'color_grade',
+    'negative':'filter','constraint':'filter','creative':'particles','action':'action'
+};
+function _atomNameToField(name){var m={'主体描述':'subject','光影效果':'lighting','镜头语言':'focal_length','画质参数':'texture','风格表现':'scene_desc','色调氛围':'color_grade','构图取景':'composition','色彩搭配':'color','创意元素':'particles','限制条件':'filter','动作':'action','情绪':'emotion','天气':'weather','特效':'sfx','自动导入':'scene_desc'};for(var k in m){if(name.indexOf(k)>=0)return m[k];}return'scene_desc';}
+
+// 0. 统一字段映射表
 if(!S._fieldToDim){
     S._fieldToDim={};
     var allFields=S._F||{};
@@ -40,7 +49,12 @@ if(!S._fieldToDim){
 S.__origLL=S.loadLibraries;
 S.loadLibraries=async function(){
 try{var d=await App.fetchJSON('/api/v4/word-cards/groups');if(d&&d.groups){
-var L=[];for(var i=0;i<d.groups.length;i++){var g=d.groups[i];L.push({id:g.id,dimension_key:g.key,dimension_name:g.name,category:g.type==='seedance'?'extended':(g.type==='builtin'?'basic':'custom'),sort_order:i,card_count:g.card_count,description:g.description||'',_is_word_card:true});}
+var L=[];for(var i=0;i<d.groups.length;i++){var g=d.groups[i];
+// atom 分组：根据名称推导 seedance 维度 key
+var dk=g.key;
+if(g.type==='atom'){dk=_atomNameToField(g.name);}
+var cat=g.type==='seedance'?'extended':(g.type==='builtin'?'basic':(g.type==='atom'?'basic':'custom'));
+L.push({id:g.id,dimension_key:dk,dimension_name:g.name,category:cat,sort_order:i,card_count:g.card_count,description:g.description||'',_is_word_card:true,_is_atom:g.type==='atom'});}
 this.libraries=L;return;}}catch(e){console.log('[WC] loadLibraries fallback',e);}return S.__origLL.call(this);};
 
 // 2. 词卡加载
@@ -48,14 +62,24 @@ S.__origLC=S.loadCards;
 S.loadCards=async function(libId){if(this.cardCache[libId])return;
 try{var d=await App.fetchJSON('/api/v4/word-cards?group_id='+libId+'&page_size=200');if(d&&d.items){var C=[];for(var i=0;i<d.items.length;i++){var c=d.items[i];C.push({id:c.id,word_text:c.content||'',definition:c.meaning||'',preview_image:c.thumbnail||'',preview_video:c.preview_media||'',is_system:c.is_builtin?1:0,usage_count:c.usage_count||0,heat_weight:c.heat_weight||0});}this.cardCache[libId]=C;return;}}catch(e){}return S.__origLC.call(this,libId);};
 
-// 3. 选取词卡
+// 3. 选取词卡（atom 自动路由到对应字段）
 S.__origPW=S._pickRightWord;
-S._pickRightWord=function(el){var cid=parseInt(el.getAttribute('data-card-id')),w=el.dataset.word;if(!w||!S.activeSceneId)return;if(!S.activeField){App.showToast('请先点击镜头字段','warning');return;}var sc=S._getCurrentScene();if(!sc)return;
-if(cid&&S.activeSceneId){App.fetchJSON('/api/v4/word-cards/picker/link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_id:S.activeSceneId,card_id:cid})}).catch(function(){});}
-var cv=(sc[S.activeField]||'').trim(),isC=cv.indexOf(',')>=0||cv.length<=20;
-if(isC&&cv.indexOf(w)>=0)cv=cv.replace(w,'').replace(/,\s*,/g,',').replace(/^,|,$/g,'').trim();
-else if(isC&&cv)cv=cv+', '+w;else cv=w;
-sc[S.activeField]=cv;S.updateSceneField(S.activeSceneId,S.activeField,cv);S._refreshRightSelection();S.compose();};
+S._pickRightWord=function(el){
+    var cid=parseInt(el.getAttribute('data-card-id')),w=el.dataset.word;
+    if(!w||!S.activeSceneId)return;
+    var sc=S._getCurrentScene();if(!sc)return;
+    // atom 词卡：自动推导字段
+    var isAtom=el.classList.contains('s2-card-atom');
+    if(isAtom && !S.activeField){
+        var dimKey=el.getAttribute('data-dim')||_atomNameToField(el.getAttribute('data-group')||'');
+        S.activeField=dimKey;
+    }
+    if(!S.activeField){App.showToast('请先点击镜头字段','warning');return;}
+    if(cid&&S.activeSceneId){App.fetchJSON('/api/v4/word-cards/picker/link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_id:S.activeSceneId,card_id:cid})}).catch(function(){});}
+    var cv=(sc[S.activeField]||'').trim(),isC=cv.indexOf(',')>=0||cv.length<=20;
+    if(isC&&cv.indexOf(w)>=0)cv=cv.replace(w,'').replace(/,\s*,/g,',').replace(/^,|,$/g,'').trim();
+    else if(isC&&cv)cv=cv+', '+w;else cv=w;
+    sc[S.activeField]=cv;S.updateSceneField(S.activeSceneId,S.activeField,cv);S._refreshRightSelection();S.compose();};
 
 // 4. 添加词条
 S.__origAP=S._addPanelWord;
@@ -136,9 +160,68 @@ S._openRightPicker=function(sid,field){
 // 7. 预加载
 S.preloadAllCardCaches=async function(){var L=this.libraries||[];for(var i=0;i<Math.min(L.length,10);i++){var lid=L[i].id;if(this.cardCache[lid])continue;try{await this.loadCards(lid);}catch(e){}}};
 
-// 8. 渲染标注+双击编辑
+// 8. 渲染标注+双击编辑 + 底部「⚛ 原子词库」入口
 S.__origRRC=S._renderRightPickerContent;
-S._renderRightPickerContent=function(lib){S.__origRRC.call(this,lib);var t=document.querySelector('.s2-panel-toolbar');if(t&&!t.querySelector('.wc-indicator')){var ind=document.createElement('span');ind.className='wc-indicator';ind.style.cssText='font-size:9px;color:var(--primary);margin-left:4px;opacity:0.5;';ind.textContent=App._t('auto.str_c974d8ec', '🔄 统一词卡');t.appendChild(ind);}document.querySelectorAll('.s2-right-card-item').forEach(function(el){if(el._wcBound)return;el._wcBound=true;el.addEventListener('dblclick',function(){var cid=parseInt(this.getAttribute('data-card-id'));if(cid&&App.wordEditor)App.wordEditor.openFromComposer(cid);});el.title=(el.title||'')+App._t('auto.str_74d4e1a2', ' | 双击编辑');});};
+S._renderRightPickerContent=function(lib){
+    S.__origRRC.call(this,lib);
+    var t=document.querySelector('.s2-panel-toolbar');
+    if(t&&!t.querySelector('.wc-indicator')){
+        var ind=document.createElement('span');
+        ind.className='wc-indicator';
+        ind.style.cssText='font-size:9px;color:var(--primary);margin-left:4px;opacity:0.5;';
+        ind.textContent='🔄 统一词卡';
+        t.appendChild(ind);
+    }
+    document.querySelectorAll('.s2-right-card-item').forEach(function(el){
+        if(el._wcBound)return;el._wcBound=true;
+        el.addEventListener('dblclick',function(){
+            var cid=parseInt(this.getAttribute('data-card-id'));
+            if(cid&&App.wordEditor)App.wordEditor.openFromComposer(cid);
+        });
+        el.title=(el.title||'')+' | 双击编辑';
+    });
+    // 底部：⚛ 原子词库按钮（所有分组下方统一入口）
+    var cardList=document.querySelector('.s2-right-card-list');
+    if(cardList && !cardList.querySelector('.s2-atom-library-bar')){
+        var atomHtml='<div class="s2-atom-library-bar" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border-color);">';
+        atomHtml+='<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">⚛ 原子引擎 - 已归档的原子词卡可在此直接调用</div>';
+        atomHtml+='<div id="s2AtomGroupBtns" style="display:flex;flex-wrap:wrap;gap:4px;"></div></div>';
+        cardList.insertAdjacentHTML('beforeend',atomHtml);
+        var atomLibs=[];
+        for(var i=0;i<S.libraries.length;i++){
+            if(S.libraries[i]._is_atom)atomLibs.push(S.libraries[i]);
+        }
+        var btnContainer=document.getElementById('s2AtomGroupBtns');
+        if(btnContainer && atomLibs.length>0){
+            for(var ai=0;ai<atomLibs.length;ai++){
+                var al=atomLibs[ai];
+                var alName=(al.dimension_name||'').replace('[原子] ','').substring(0,8);
+                var alDim=al.dimension_key||'scene_desc';
+                btnContainer.innerHTML+='<button style="font-size:10px;padding:2px 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;white-space:nowrap;"'+
+                    ' onclick="App.seedanceV2._switchAtomLib('+al.id+',\''+alDim+'\')" title="原子: '+al.dimension_name+' → '+alDim+' ('+al.card_count+'卡)">⚛ '+App._escape(alName)+' ('+al.card_count+')</button>';
+            }
+        }
+    }
+};
 
-console.log('[WC Bridge v4.1.1] ready — libraries='+(S.libraries||[]).length+', fieldToDim='+Object.keys(S._fieldToDim||{}).length);
+// 9. 切换原子词库（自动设置 activeField）
+S._switchAtomLib=async function(libId,dimKey){
+    S.activeField=dimKey;
+    S.activePickerLibId=libId;
+    await S.loadCards(libId);
+    var lib=S.getLibraryById(libId);
+    if(lib){
+        S._renderRightPickerContent(lib);
+        // 原子词卡打标签
+        setTimeout(function(){
+            document.querySelectorAll('.s2-right-card-item').forEach(function(el){
+                el.classList.add('s2-card-atom');
+                el.setAttribute('data-dim',dimKey);
+                if(lib)el.setAttribute('data-group',lib.dimension_name||'');
+            });
+        },50);
+    }
+};
+
+console.log('[WC Bridge v4.2.0] ready - atom-composer bridge, libraries='+(S.libraries||[]).length);
 }})();
