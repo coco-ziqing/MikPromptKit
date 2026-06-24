@@ -15,9 +15,6 @@ App.state.atomIsDecomposing = false;
 // ============ 兼容：App.toast → App.showToast ============
 App.toast = function(msg, type) { App.showToast(msg, type || 'success'); };
 
-// ============ 兼容：App.toast → App.showToast ============
-App.toast = function(msg, type) { App.showToast(msg, type || 'success'); };
-
 // ============ 视图切换 ============
 App._atomOriginSwitchView = App.switchView;
 App.switchView = function(view, ...args) {
@@ -252,7 +249,8 @@ App._atomShowVariations = async function(decomposeId) {
         var d = await this.fetchJSON('/api/v4/atoms/variations', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ decompose_id: decomposeId, atoms_json: JSON.stringify(atoms), count: 3, locked_ids: [] })
+            body: JSON.stringify({ decompose_id: decomposeId, atoms_json: JSON.stringify(atoms), count: 3, locked_ids: [] }),
+            _timeoutMs: 120000
         });
         if (d.ok && d.variations) {
             var msg = '生成 ' + d.count + ' 个变体:\n';
@@ -292,7 +290,7 @@ App._atomDoDecompose = async function() {
             ? { prompt: text, media_type: (mediaType ? mediaType.value : 'image') }
             : { text: text, source_type: 'manual', media_type: (mediaType ? mediaType.value : 'image') };
 
-        var d = await this.fetchJSON(endpoint, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+        var d = await this.fetchJSON(endpoint, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), _timeoutMs: 120000 });
         if (!d || !d.ok) { App._atomSetProgress(0, '请求失败'); App.toast('AI拆解请求失败，请刷新重试', 'danger'); return; }
         App._atomSetProgress(100, '完成！');
 
@@ -389,12 +387,11 @@ App._atomArchive = async function(decomposeId, atomsJsonEncoded) {
     try {
         var d = await this.fetchJSON('/api/v4/atoms/archive-to-group', {
             method: 'POST',
-            body: JSON.stringify({
-                decompose_id: decomposeId || 0,
-                atom_ids: [],
-                create_groups: true
-            })
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ decompose_id: decomposeId || 0, atom_ids: [], create_groups: true }),
+            _timeoutMs: 60000
         });
+        if (!d || !d.ok) { App.toast('归档失败，请检查网络后重试', 'danger'); return; }
         App.toast('已归档 ' + (d.card_count || 0) + ' 个词卡到分组', 'success');
         await App._atomLoadStats();
     } catch(e) {
