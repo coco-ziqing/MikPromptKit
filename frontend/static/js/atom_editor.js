@@ -95,7 +95,7 @@ App._atomRenderHTML = function() {
 '        <span id="atomListCount" style="font-size:11px;color:var(--text-muted);margin-left:auto;"></span>' +
 '      </div>' +
 '      <div id="atomList" class="atom-list">' +
-'        '<div class="atom-empty">输入提示词，点击「AI拆解」开始</div>' +
+'      <div class="atom-empty">输入提示词，点击「AI拆解」开始</div>' +
 '      </div>' +
 '    </div>' +
 
