@@ -183,7 +183,7 @@ def _auto_archive_one(db, decompose_id: int, atoms: list, group_id: int = None) 
     if not group_id:
         g = db.execute("SELECT id FROM word_card_group WHERE group_key='atom_auto_import' AND is_active=1").fetchone()
         if not g:
-            db.execute("INSERT INTO word_card_group (name,group_key,icon,group_type,description,sort_order) VALUES ('[原子] 自动导入','atom_auto_import','📥','atom','AI批量导入原子',9999)")
+            db.execute("INSERT INTO word_card_group (name,group_key,icon,group_type,parent_group_id,description,sort_order) VALUES ('[原子] 自动导入','atom_auto_import','📥','atom',(SELECT id FROM word_card_group WHERE group_key='root_atom_image'),'AI批量导入原子',9999)")
             db.commit()
             group_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
         else:
