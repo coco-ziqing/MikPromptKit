@@ -199,17 +199,29 @@ var _escapeHtml = function(s) {
 
 App._atomRenderDecomposeList = function(items) {
     if (!items || items.length === 0) return '<div class="atom-empty">暂无拆解记录<br><small>输入提示词，点击「AI拆解」开始</small></div>';
+    var self = this;
+    var selCount = this._atomSelectedRecords ? this._atomSelectedRecords.size : 0;
     var html = '';
+    // 批量操作栏
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:6px 10px;background:var(--bg-main);border-radius:8px;font-size:12px;color:var(--text-muted);">' +
+        '<span>' + items.length + ' 条记录</span>' +
+        '<span style="margin-left:auto;">' + (selCount > 0 ? '已选 ' + selCount + ' 条' : '') + '</span>' +
+        (selCount > 0 ? '<button class="btn-atom-primary" onclick="event.stopPropagation();App._atomBatchArchive()" style="font-size:11px;padding:3px 12px;">📥 批量归档(' + selCount + ')</button>' : '') +
+        '</div>';
     items.forEach(function(it, idx) {
         var sourcePreview = _escapeHtml((it.source_prompt || '').slice(0, 80));
         var mediaIcon = it.media_type === 'video' ? '🎬' : '🎨';
         var scoreColor = (it.quality_score||0) >= 0.8 ? 'var(--primary,#4f46e5)' : (it.quality_score||0) >= 0.5 ? '#f59e0b' : '#ef4444';
         var atomCount = (it.atoms || []).length;
+        var isArchived = (it.bridge_count || 0) > 0;
+        var isSelected = self._atomSelectedRecords && self._atomSelectedRecords.has(it.id);
         
-        html += '<div class="atom-record" onclick="App._atomExpandRecord(' + it.id + ')">' +
+        html += '<div class="atom-record' + (isSelected ? ' atom-record-selected' : '') + '" style="' + (isSelected ? 'border-color:var(--primary);background:rgba(79,70,229,0.03);' : '') + '">' +
             '<div class="atom-record-hd">' +
+            '<input type="checkbox" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation();App._atomToggleSelect(' + it.id + ', this)" style="margin-right:4px;flex-shrink:0;cursor:pointer;" title="选择此记录">' +
             '<span class="atom-record-media">' + mediaIcon + '</span>' +
-            '<span class="atom-record-prompt" title="' + _escapeHtml(it.source_prompt||'') + '">' + sourcePreview + '</span>' +
+            '<span class="atom-record-prompt" title="' + _escapeHtml(it.source_prompt||'') + '" onclick="App._atomExpandRecord(' + it.id + ')">' + sourcePreview + '</span>' +
+            (isArchived ? '<span title="已归档" style="flex-shrink:0;font-size:14px;opacity:0.6;">🗄️</span>' : '') +
             '<span class="atom-record-score" style="color:' + scoreColor + ';font-weight:700;">' + (it.quality_score||0).toFixed(1) + '</span>' +
             '<span class="atom-record-count">' + atomCount + ' 原子 | ' + (it.var_count||0) + ' 变异 | ' + (it.bridge_count||0) + ' 卡片</span>' +
             '<span style="font-size:10px;color:var(--text-muted);">' + _escapeHtml((it.created_at||'').slice(0,16)) + '</span>' +
@@ -219,7 +231,6 @@ App._atomRenderDecomposeList = function(items) {
             '<div class="atom-record-atoms">' + App._atomRenderCards(it.atoms || []) + '</div>' +
             '<div class="atom-record-actions">' +
             '<button class="btn-atom-secondary" onclick="event.stopPropagation();App._atomArchive(' + it.id + ',\'' + encodeURIComponent(JSON.stringify(it.atoms||[])) + '\')">📥 归档到词卡</button>' +
-            '<button class="btn-atom-secondary" onclick="event.stopPropagation();App._atomShowVariations(' + it.id + ')">🔄 生成变异</button>' +
             '</div></div></div>';
     });
     return html;
@@ -245,33 +256,58 @@ App._atomDeleteRecord = async function(id) {
     }
 };
 
-// ============ 变异生成弹窗 ============
-App._atomShowVariations = async function(decomposeId) {
-    var atoms = [];
-    var record = (this.state.atomDecomposes || []).find(function(r) { return r.id === decomposeId; });
-    if (record) atoms = record.atoms || [];
-    if (!atoms.length) { App.toast('无原子数据', 'danger'); return; }
-    App.toast('变异生成中，请等待约30-60秒...', 'info');
-    try {
-        var d = await this.fetchJSON('/api/v4/atoms/variations', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ decompose_id: decomposeId, atoms_json: JSON.stringify(atoms), count: 3, locked_ids: [] }),
-            _timeoutMs: 180000
-        });
-        if (!d) { App.toast('变异请求超时，Ollama 可能正忙，请稍后重试', 'danger'); return; }
-        if (!d.ok) { App.toast('变异生成失败：' + (d.error || '未知错误'), 'danger'); return; }
-        if (d.variations && d.variations.length > 0) {
-            var msg = '生成 ' + d.count + ' 个变体提示词：\n\n';
-            d.variations.forEach(function(v, i) { msg += (i+1) + '. ' + (v.text||'').slice(0, 100) + '\n\n'; });
-            alert(msg);
-            await this._atomLoadList();
-            await this._atomLoadStats();
-        } else {
-            App.toast('变异生成完成，但未返回有效变体', 'warning');
-        }
-    } catch(e) { App.toast('变异失败: ' + e.message, 'danger'); }
+// ============ 批量选择 ============
+App._atomToggleSelect = function(id, checkbox) {
+    if (!this._atomSelectedRecords) this._atomSelectedRecords = new Set();
+    if (checkbox.checked) {
+        this._atomSelectedRecords.add(id);
+    } else {
+        this._atomSelectedRecords.delete(id);
+    }
+    // 局部刷新列表（保留展开状态）
+    var list = document.getElementById('atomDecomposeList');
+    if (list && this.state.atomDecomposes) {
+        list.innerHTML = this._atomRenderDecomposeList(this.state.atomDecomposes);
+    }
 };
+
+// ============ 批量归档 ============
+App._atomBatchArchive = async function() {
+    if (!this._atomSelectedRecords || this._atomSelectedRecords.size === 0) {
+        App.toast('请先选择要归档的记录', 'warning');
+        return;
+    }
+    var ids = Array.from(this._atomSelectedRecords);
+    if (!confirm('批量归档 ' + ids.length + ' 条拆解记录到词卡分组？\\n已归档的记录会自动跳过。')) return;
+    
+    App.toast('批量归档中...', 'info');
+    var success = 0, skip = 0, fail = 0;
+    for (var i = 0; i < ids.length; i++) {
+        var did = ids[i];
+        try {
+            var d = await this.fetchJSON('/api/v4/atoms/archive-to-group', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ decompose_id: did, atom_ids: [], create_groups: true }),
+                _timeoutMs: 30000
+            });
+            if (d && d.ok) {
+                success += (d.card_count || 0);
+            } else if (d && d.error && d.error.indexOf('已归档') >= 0) {
+                skip++;
+            } else {
+                fail++;
+            }
+        } catch(e) {
+            fail++;
+        }
+    }
+    App.toast('归档完成: ' + success + ' 卡片 / ' + skip + ' 跳过 / ' + fail + ' 失败', fail > 0 ? 'warning' : 'success');
+    this._atomSelectedRecords.clear();
+    await this._atomLoadList();
+    await this._atomLoadStats();
+};
+
 // ============ 核心操作：AI拆解 ============
 App._atomDoDecompose = async function() {
     var input = document.getElementById('atomInput');
@@ -367,7 +403,7 @@ App._atomRenderCards = function(atoms) {
 
         html += '<div class="atom-card">' +
             '<span class="atom-card-type" style="background:'+_escapeHtml(typeColor)+';">' + _escapeHtml(typeLabel) + '</span>' +
-            '<span class="atom-card-text">' + _escapeHtml((a.text||'').slice(0, 60)) + '</span>' +
+            '<span class="atom-card-text" title="' + _escapeHtml(a.text||'') + '">' + _escapeHtml((a.text||'').slice(0, 60)) + '</span>' +
             '<span class="atom-card-weight">w:' + (a.weight||0).toFixed(1) + '</span>' +
             (a.keywords && a.keywords.length ? '<span class="atom-card-kw">' + _escapeHtml(a.keywords.slice(0,3).join(', ')) + '</span>' : '') +
             '</div>';

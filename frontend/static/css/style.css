@@ -2949,4 +2949,5 @@ body.dark-theme .atom-quality { background: rgba(79,70,229,0.12); }
 .atom-record-expand { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color,#e2e8f0); }
 .atom-record-atoms { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .atom-record-actions { display: flex; gap: 6px; }
+.atom-record-selected { border-color: var(--primary,#4f46e5) !important; background: rgba(79,70,229,0.03) !important; }
 
