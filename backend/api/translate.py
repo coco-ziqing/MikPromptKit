@@ -106,9 +106,15 @@ def update_config(data: ConfigUpdate):
 
 @router.get("/{prompt_id}")
 async def translate_single(prompt_id: int, target_lang: str = "zh"):
-    """翻译单条提示词"""
+    """翻译单条提示词（兼容 prompts 和 word_card 两表）"""
     db = get_db()
-    row = db.execute("SELECT id, content FROM prompts WHERE id=?", [prompt_id]).fetchone()
+    # 先查 word_card（v4.1+ 统一词卡）
+    row = db.execute("SELECT id, content FROM word_card WHERE id=? AND is_deleted=0", [prompt_id]).fetchone()
+    table = "word_card"
+    if not row:
+        # 回退到旧 prompts 表
+        row = db.execute("SELECT id, content FROM prompts WHERE id=?", [prompt_id]).fetchone()
+        table = "prompts"
     if not row:
         raise HTTPException(404, "提示词不存在")
 
@@ -198,7 +204,10 @@ async def translate_batch(data: BatchTranslateRequest):
             try:
                 # 直接调内部逻辑，避免 HTTP 开销
                 db = get_db()
-                row = db.execute("SELECT id, content FROM prompts WHERE id=?", [pid]).fetchone()
+                # 先查 word_card（v4.1+ 统一词卡）
+                row = db.execute("SELECT id, content FROM word_card WHERE id=? AND is_deleted=0", [pid]).fetchone()
+                if not row:
+                    row = db.execute("SELECT id, content FROM prompts WHERE id=?", [pid]).fetchone()
                 if not row or not row["content"]:
                     return {"prompt_id": pid, "ok": False, "error": "提示词不存在或为空"}
 
