@@ -517,6 +517,148 @@ async def archive_to_group(req: ArchiveReq):
             "created_cards": created if req.create_groups and not req.group_id else None}
 
 
+class MatchModelReq(BaseModel):
+    """智能模型匹配请求"""
+    prompt: str
+    aspect_ratio: str = "16:9"
+    resolution: str = "4K"
+    duration: int = 15
+    shot_count: int = 1
+
+
+@router.post("/match-model")
+async def match_model(req: MatchModelReq):
+    """
+    智能模型匹配：分析提示词结构 + 项目参数，推荐最佳视频生成模型
+    - 分析维度：提示词长度、语言复杂度、画质需求、时长、镜头数
+    - 输出 Top5 推荐模型及评分理由
+    """
+    # 模型知识库（评分权重：复杂度40% + 时长适配30% + 画质20% + 镜头适配10%）
+    MODELS = [
+        {"model": "Seedance 1.0 (文生视频)", "platform": "Seedance / 即梦", "tags": ["文生视频", "中长镜头", "16:9"],
+         "max_duration": 16, "max_shot": 8, "ideal_duration": 8, "quality_desc": "影视级4K",
+         "strengths": ["AI原生理解力强", "中文语义精准", "镜头连续性高"],
+         "cost_per_second": "免费/会员", "best_for": "多镜头故事短剧、创意广告"},
+        {"model": "Kling 2.5 (图生视频)", "platform": "可灵 / Kuaishou", "tags": ["图生视频", "高画质", "写实"],
+         "max_duration": 10, "max_shot": 1, "ideal_duration": 5, "quality_desc": "超写实4K",
+         "strengths": ["运动幅度大", "拟真光影", "物理一致"],
+         "cost_per_second": "~2元/秒", "best_for": "单镜头高画质写实场景"},
+        {"model": "Runway Gen-4", "platform": "Runway", "tags": ["图生视频", "创意特效", "多画幅"],
+         "max_duration": 16, "max_shot": 1, "ideal_duration": 4, "quality_desc": "1080p-4K",
+         "strengths": ["创意特效强", "风格迁移", "唇形同步"],
+         "cost_per_second": "$0.05-0.20/秒", "best_for": "创意特效短片、概念艺术"},
+        {"model": "Pika 2.0", "platform": "Pika Labs", "tags": ["文生视频", "快速原型", "社交媒体"],
+         "max_duration": 10, "max_shot": 1, "ideal_duration": 3, "quality_desc": "1080p",
+         "strengths": ["出图极快", "社交媒体适配", "文本响应度高"],
+         "cost_per_second": "$0.01-0.05/秒", "best_for": "短视频快速迭代、社交媒体内容"},
+        {"model": "Hailuo/Minimax", "platform": "海螺 / Minimax", "tags": ["文生视频", "超长镜头", "9:16"],
+         "max_duration": 60, "max_shot": 1, "ideal_duration": 15, "quality_desc": "1080p-2K",
+         "strengths": ["超长时长", "人物表情丰富", "中文理解"],
+         "cost_per_second": "~1元/秒", "best_for": "长镜头叙事、人物对话场景"},
+        {"model": "Sora", "platform": "OpenAI", "tags": ["文生视频", "物理世界", "长时序"],
+         "max_duration": 60, "max_shot": 1, "ideal_duration": 20, "quality_desc": "1080p-4K",
+         "strengths": ["物理规律最准确", "长时序连贯", "世界模型"],
+         "cost_per_second": "$1-3/秒", "best_for": "复杂物理交互、纪录片风格"},
+        {"model": "Luma Dream Machine", "platform": "Luma AI", "tags": ["图生视频", "3D", "多视角"],
+         "max_duration": 5, "max_shot": 1, "ideal_duration": 3, "quality_desc": "1080p",
+         "strengths": ["3D空间理解", "多视角一致", "材质逼真"],
+         "cost_per_second": "$0.05/秒", "best_for": "产品360展示、3D场景"},
+        {"model": "Vidu 2.0", "platform": "Vidu / 生数科技", "tags": ["图生视频", "中国风", "动漫"],
+         "max_duration": 8, "max_shot": 1, "ideal_duration": 4, "quality_desc": "1080p",
+         "strengths": ["中国风适配", "动漫风格强", "主体一致性"],
+         "cost_per_second": "~1元/秒", "best_for": "国风动漫、二次元创作"},
+    ]
+
+    prompt = req.prompt
+    # 评分计算
+    text_len = len(prompt)
+    has_cn = bool(re.search(r'[\u4e00-\u9fff]', prompt))
+    # 复杂度评分：长文本 + 多关键词 → 适合AI理解强的模型
+    complexity = min(1.0, max(0.2, text_len / 500))  # 200字≈0.4, 500字≈1.0
+    # 镜头数评分
+    multi_shot = req.shot_count > 1
+
+    scored = []
+    for m in MODELS:
+        score = 0.7  # baseline
+
+        # 1) 时长适配 (30%)
+        dur_over = max(0, req.duration - m["max_duration"])
+        if dur_over == 0:
+            if req.duration <= m["ideal_duration"] * 1.5:
+                score += 0.15  # 理想范围内
+            else:
+                score += 0.05
+        else:
+            score -= dur_over * 0.05  # 超出越多扣越多
+
+        # 2) 复杂度适配 (40%)
+        if has_cn and "中文" in str(m["strengths"]):
+            score += 0.12  # 中文提示词 → 中文理解强的模型加分
+        if complexity > 0.5 and "多镜头" in m.get("best_for", ""):
+            score += 0.1
+
+        # 3) 画质适配 (20%)
+        if req.resolution in ("4K", "6K", "8K") and "4K" in str(m.get("quality_desc", "")):
+            score += 0.08
+        if req.aspect_ratio == "9:16" and "9:16" in str(m.get("tags", [])):
+            score += 0.05
+        if req.aspect_ratio == "16:9" and "16:9" in str(m.get("tags", [])):
+            score += 0.03
+
+        # 4) 镜头数适配 (10%)
+        if multi_shot and m["max_shot"] >= req.shot_count:
+            score += 0.1
+        elif multi_shot:
+            score -= 0.1  # 不支持多镜头扣分
+        if not multi_shot and m["max_shot"] == 1:
+            score += 0.03  # 单镜头场景不扣分
+
+        # 5) 复杂度相关性
+        if complexity > 0.4 and req.shot_count <= m["max_shot"] and req.duration <= m["max_duration"]:
+            score += 0.05
+
+        score = max(0.1, min(1.0, score))
+        reason_parts = []
+        if req.duration <= m["ideal_duration"] * 1.5:
+            reason_parts.append(f"时长适配")
+        if has_cn and "中文" in str(m["strengths"]):
+            reason_parts.append("中文语义精准")
+        if multi_shot and m["max_shot"] >= req.shot_count:
+            reason_parts.append(f"支持{req.shot_count}镜头")
+        if req.resolution in ("4K", "6K", "8K") and "4K" in str(m.get("quality_desc", "")):
+            reason_parts.append(f"原生{req.resolution}")
+        reason = "，".join(reason_parts[:3]) if reason_parts else "通用兼容"
+
+        # 预估时间
+        est_sec = m["ideal_duration"] * req.shot_count * 2  # 2x系数
+        est_min = max(1, round(est_sec / 60))
+        est_time = f"~{est_min}分钟"
+
+        scored.append({
+            "model": m["model"], "platform": m["platform"],
+            "score": round(score, 2),
+            "reason": reason,
+            "estimated_time": est_time,
+            "estimated_cost": m["cost_per_second"],
+            "tags": m.get("tags", []),
+            "strengths": m.get("strengths", []),
+            "quality_desc": m.get("quality_desc", ""),
+            "best_for": m.get("best_for", ""),
+        })
+
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    for i, s in enumerate(scored):
+        s["rank"] = i + 1
+
+    top = scored[:6]
+    summary = f"基于 {req.shot_count}镜头·{req.resolution}·{req.duration}s·{req.aspect_ratio} 参数，首推 {top[0]['model']} ({top[0]['reason']})"
+
+    return {"ok": True, "recommendations": top, "summary": summary,
+            "params": {"aspect_ratio": req.aspect_ratio, "resolution": req.resolution,
+                        "duration": req.duration, "shot_count": req.shot_count}}
+
+
 @router.get("/stats")
 async def get_atom_stats():
     """资产溯源统计（P15.3）

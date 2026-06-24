@@ -583,6 +583,7 @@
         h+='<button class="btn btn-sm btn-success" onclick="App.seedanceV2.copyText()"> 复制提示词</button>';
         h+='<button class="btn btn-sm btn-info" onclick="App.seedanceV2.copyJSON()"> 复制JSON</button>';
         h+='<button class="btn btn-sm btn-outline" onclick="App.seedanceV2.copyLibTV()"> 填入LibTV</button>';
+        h+='<button class="btn btn-sm btn-warning" style="background:#8b5cf6;color:#fff;border:1px solid #7c3aed;" onclick="App.seedanceV2.matchModel()" title="AI 智能分析提示词并推荐最佳视频生成模型">🧠 智能匹配</button>';
         h+='<button class="btn btn-sm btn-secondary" onclick="App.seedanceV2.resetProject()"> 重置</button>';
         h+='</div>';
         h+='<textarea id="s2Output" class="s2-output-text" readonly placeholder="切换镜头字段后实时合成…"></textarea>';
@@ -1866,7 +1867,58 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
     };
     App.seedanceV2.copyText=function(){var el=document.getElementById('s2Output');if(!el||!el.value){App.showToast(App._t('auto.str_6e1aa7df', '无输出可复制'),'warning');return;}navigator.clipboard.writeText(el.value).then(function(){App.showToast(App._t('common.notice', '提示词已复制'),'success');});};
     App.seedanceV2.copyJSON=function(){var obj=this.outputJson;if(!obj||!Object.keys(obj).length){App.showToast(App._t('auto.str_2df89e22', '无数据可复制'),'warning');return;}navigator.clipboard.writeText(JSON.stringify(obj,null,2)).then(function(){App.showToast(App._t('auto.str_aac758c6', 'JSON已复制'),'success');});};
-    App.seedanceV2.copyLibTV=function(){var t=this.outputText||'';if(!t){App.showToast(App._t('auto.str_6e1aa7df', '无输出可复制'),'warning');return;}window.open('https://libtv.ai/create?prompt='+encodeURIComponent(t),'_blank');};
+    App.seedanceV2.copyLibTV=function(){var t=this.outputText||'';if(!t){App.showToast('无输出可复制','warning');return;}window.open('https://libtv.ai/create?prompt='+encodeURIComponent(t),'_blank');};
+    // ============ 智能模型匹配 ============
+    App.seedanceV2.matchModel=async function(){
+        var t=this.outputText||'';
+        if(!t){App.showToast('请先组装提示词，输出预览非空后即可匹配','warning');return;}
+        var p=this.currentProject||{};
+        var ar=p.aspect_ratio||'16:9';var res=p.resolution||'4K';var dur=p.total_duration||15;
+        App.showToast('AI 正在分析提示词结构...','info');
+        try{
+            var d=await App.fetchJSON('/api/v4/atoms/match-model',{
+                method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({
+                    prompt:t, aspect_ratio:ar, resolution:res, duration:Number(dur),
+                    shot_count:this.scenes.length
+                }),
+                _timeoutMs:60000
+            });
+            if(!d||!d.ok){App.showToast('匹配失败: '+(d?d.error:'网络错误'),'danger');return;}
+            // 弹出结果面板
+            var old=document.getElementById('s2MatchResult');
+            if(old)old.remove();
+            var ov=document.createElement('div');ov.id='s2MatchResult';
+            ov.className='modal-overlay';
+            ov.style.cssText='display:flex;z-index:750;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
+            ov.onclick=function(e){if(e.target===this)this.remove();};
+            var items='';
+            var recs=d.recommendations||[];
+            for(var i=0;i<recs.length;i++){
+                var r=recs[i];
+                var star=r.rank===1?'⭐':'';
+                items+='<tr style="'+(r.rank===1?'background:rgba(139,92,246,0.06);font-weight:700;':'')+'">';
+                items+='<td style="padding:6px 8px;font-size:14px;">'+star+(r.rank||(i+1))+'</td>';
+                items+='<td style="padding:6px 8px;"><strong>'+App._escape(r.model||'')+'</strong><br><span style="font-size:11px;color:var(--text-muted);">'+App._escape(r.platform||'')+'</span></td>';
+                items+='<td style="padding:6px 8px;text-align:center;"><span style="display:inline-block;width:50px;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;"><span style="display:block;height:100%;width:'+(r.score*100||0)+'%;background:#8b5cf6;border-radius:3px;"></span></span><br><span style="font-size:10px;color:var(--text-muted);">'+(r.score*100).toFixed(0)+'%</span></td>';
+                items+='<td style="padding:6px 8px;font-size:11px;color:var(--text-muted);">'+App._escape(r.reason||'')+'</td>';
+                items+='<td style="padding:6px 8px;font-size:11px;color:var(--text-muted);">'+(r.estimated_time||'N/A')+' / '+(r.estimated_cost||'N/A')+'</td>';
+                items+='</tr>';
+            }
+            ov.innerHTML='<div class="modal-content" style="max-width:800px;max-height:80vh;overflow-y:auto;" onclick="event.stopPropagation()">'+
+                '<div class="modal-header"><h5>🧠 智能模型匹配</h5><button class="header-btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>'+
+                '<div class="modal-body">'+
+                '<p style="font-size:12px;color:var(--text-muted);">基于提示词复杂度、画质参数、时长、镜头数综合分析</p>'+
+                '<div style="border:1px solid var(--border-color);border-radius:8px;overflow:hidden;">'+
+                '<table style="width:100%;font-size:13px;border-collapse:collapse;">'+
+                '<thead><tr style="background:var(--hover-bg);text-align:left;">'+
+                '<th style="padding:8px;width:40px;">#</th><th style="padding:8px;">推荐模型</th><th style="padding:8px;width:80px;text-align:center;">评分</th><th style="padding:8px;width:200px;">理由</th><th style="padding:8px;width:120px;">预估</th>'+
+                '</tr></thead><tbody>'+items+'</tbody></table></div>'+
+                '<p style="margin-top:8px;font-size:11px;color:var(--text-muted);">⚡ '+(d.summary||'')+'</p>'+
+                '</div></div>';
+            document.body.appendChild(ov);
+        }catch(e){App.showToast('匹配失败: '+e.message,'danger');}
+    };
     App.seedanceV2.resetProject=function(){if(!confirm(App._t('common.ok', '确定重置此项目？')))return;var self=this;App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes',{method:'GET'}).then(function(d){if(!d||!d.items)return;var ids=d.items.map(function(s){return s.id;});(async function(){for(var j=0;j<ids.length;j++)await App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+ids[j],{method:'DELETE'});self.openProject(self.currentProjectId);App.showToast(App._t('auto.str_44b0f6c8', '项目已重置'),'info');})();});};
 
     // ============ Chip hover preview ============
