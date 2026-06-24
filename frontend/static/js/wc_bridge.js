@@ -191,6 +191,31 @@ App._showShowcase = function() {
                 }
                 html += '</div>'; // close sub container
             }
+            
+            // Phase17: atom 分组（root 直接叶子，无 sub 中间层）
+            var atomLeaves = [];
+            for (var a = 0; a < root.children.length; a++) {
+                if (root.children[a].group_type === 'atom') atomLeaves.push(root.children[a]);
+            }
+            if (atomLeaves.length > 0) {
+                var atomTotal = atomLeaves.reduce(function(sum,g){return sum+(g.card_count||0);},0);
+                html += '<div style="border-left:2px solid var(--border-color);margin-left:8px;margin-bottom:6px;padding:6px 0 6px 12px;border-radius:0 8px 8px 0;">';
+                html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;color:var(--text-muted);font-weight:600;">';
+                html += '<span style="font-size:15px;">⚛</span><span>原子分组</span>';
+                html += '<span style="font-size:11px;margin-left:auto;">' + atomTotal + ' 条</span></div>';
+                html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+                for (var g = 0; g < atomLeaves.length; g++) {
+                    var grp = atomLeaves[g];
+                    html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
+                    html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
+                    html += ' onmouseenter="this.style.borderColor=var(--primary);this.style.background=var(--hover-bg)" onmouseleave="this.style.borderColor=var(--border-color);this.style.background=var(--bg-card)"';
+                    html += '>';
+                    html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
+                    html += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
+                    html += '</button>';
+                }
+                html += '</div></div>';
+            }
         }
         html += '</div></div>';
     }
@@ -1070,5 +1095,5 @@ App._updatePageTitle = function() {
     };
 })();
 
-console.log('[wc-bridge] Phase15 分组导航交互重构已激活');
+console.log('[wc-bridge] v10 atom-leaf OK');
 })();
