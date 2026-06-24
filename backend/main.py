@@ -539,9 +539,9 @@ def _get_local_ip() -> str:
 if __name__ == "__main__":
     import sys as _sys
     base_port = int(os.environ.get("PORT", 8080))
-    # 预探测可用端口（自兜底 +0..+9）
+    # 预探测可用端口（自兜底 0..19）
     port = base_port
-    for offset in range(10):
+    for offset in range(20):
         candidate = base_port + offset
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(1)
@@ -553,21 +553,11 @@ if __name__ == "__main__":
         except Exception:
             sock.close()
             if offset < 9:
-                print("[启动] 端口 %d 被占用，尝试 %d..." % (candidate, candidate + 1))
+                print("[start] port %d busy, trying %d..." % (candidate, candidate + 1))
             else:
-                print("[启动] ❌ 端口 %d~%d 均被占用" % (base_port, base_port + 9))
-                try:
-                    _sys.stdout.flush()
-                    print("[启动] 按任意键退出...")
-                    try:
-                        import msvcrt  # Windows only
-                        msvcrt.getch()
-                    except ImportError:
-                        input()  # macOS/Linux fallback
-                except Exception:
-                    pass
+                print("[start] FAIL: all ports %d~%d busy" % (base_port, base_port + 9))
                 _sys.exit(1)
-    print("[启动] 服务启动中 (端口: %d)..." % port)
+    print("[start] server starting on port %d..." % port)
     # 更新全局端口号（lifespan 中打印用）
     globals()['ACTUAL_PORT'] = port
     uvicorn.run(app, host="0.0.0.0", port=port, reload=False, log_level="info")
