@@ -206,7 +206,7 @@ App._atomRenderDecomposeList = function(items) {
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:6px 10px;background:var(--bg-main);border-radius:8px;font-size:12px;color:var(--text-muted);">' +
         '<span>' + items.length + ' 条记录</span>' +
         '<span style="margin-left:auto;">' + (selCount > 0 ? '已选 ' + selCount + ' 条' : '') + '</span>' +
-        (selCount > 0 ? '<button class="btn-atom-primary" onclick="event.stopPropagation();App._atomBatchArchive()" style="font-size:11px;padding:3px 12px;">📥 批量归档(' + selCount + ')</button>' : '') +
+        '<button class="btn-atom-primary" onclick="event.stopPropagation();App._atomBatchArchive()" style="font-size:11px;padding:3px 12px;' + (selCount === 0 ? 'opacity:0.4;cursor:not-allowed;' : '') + '"' + (selCount === 0 ? ' title="勾选拆解记录后可批量归档"' : '') + '>📥 批量归档' + (selCount > 0 ? '(' + selCount + ')' : '') + '</button>' +
         '</div>';
     items.forEach(function(it, idx) {
         var sourcePreview = _escapeHtml((it.source_prompt || '').slice(0, 80));
@@ -216,11 +216,11 @@ App._atomRenderDecomposeList = function(items) {
         var isArchived = (it.bridge_count || 0) > 0;
         var isSelected = self._atomSelectedRecords && self._atomSelectedRecords.has(it.id);
         
-        html += '<div class="atom-record' + (isSelected ? ' atom-record-selected' : '') + '" style="' + (isSelected ? 'border-color:var(--primary);background:rgba(79,70,229,0.03);' : '') + '">' +
+        html += '<div class="atom-record' + (isSelected ? ' atom-record-selected' : '') + '" style="' + (isSelected ? 'border-color:var(--primary);background:rgba(79,70,229,0.03);' : '') + '" onclick="App._atomExpandRecord(' + it.id + ')">' +
             '<div class="atom-record-hd">' +
             '<input type="checkbox" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation();App._atomToggleSelect(' + it.id + ', this)" style="margin-right:4px;flex-shrink:0;cursor:pointer;" title="选择此记录">' +
             '<span class="atom-record-media">' + mediaIcon + '</span>' +
-            '<span class="atom-record-prompt" title="' + _escapeHtml(it.source_prompt||'') + '" onclick="App._atomExpandRecord(' + it.id + ')">' + sourcePreview + '</span>' +
+            '<span class="atom-record-prompt" title="' + _escapeHtml(it.source_prompt||'') + '">' + sourcePreview + '</span>' +
             (isArchived ? '<span title="已归档" style="flex-shrink:0;font-size:14px;opacity:0.6;">🗄️</span>' : '') +
             '<span class="atom-record-score" style="color:' + scoreColor + ';font-weight:700;">' + (it.quality_score||0).toFixed(1) + '</span>' +
             '<span class="atom-record-count">' + atomCount + ' 原子 | ' + (it.var_count||0) + ' 变异 | ' + (it.bridge_count||0) + ' 卡片</span>' +
@@ -265,7 +265,7 @@ App._atomToggleSelect = function(id, checkbox) {
         this._atomSelectedRecords.delete(id);
     }
     // 局部刷新列表（保留展开状态）
-    var list = document.getElementById('atomDecomposeList');
+    var list = document.getElementById('atomList');
     if (list && this.state.atomDecomposes) {
         list.innerHTML = this._atomRenderDecomposeList(this.state.atomDecomposes);
     }
