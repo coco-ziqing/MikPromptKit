@@ -266,6 +266,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ============ 静态资源缓存控制中间件（防浏览器顽固缓存） ============
+@app.middleware("http")
+async def cache_control_middleware(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    # HTML 和 JS/CSS 静态资源禁止缓存（开发阶段频繁更新）
+    if path == "/" or path.endswith((".html", ".js", ".css", ".json")):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 # ============ HTTP 请求记录中间件（v16: 接入日志引擎） ============
 @app.middleware("http")
 async def record_request_middleware(request: Request, call_next):
