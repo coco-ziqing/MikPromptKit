@@ -251,6 +251,7 @@ App._atomShowVariations = async function(decomposeId) {
     try {
         var d = await this.fetchJSON('/api/v4/atoms/variations', {
             method: 'POST',
+            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ decompose_id: decomposeId, atoms_json: JSON.stringify(atoms), count: 3, locked_ids: [] })
         });
         if (d.ok && d.variations) {
