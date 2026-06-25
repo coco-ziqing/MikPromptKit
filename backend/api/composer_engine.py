@@ -213,6 +213,41 @@ def compose_full(scenes: list, proj: dict, fmt: str = "seedance",
 
         scene_desc = make_structured_description(scd, density)
 
+        # ===== 角色注入（视觉）：有 character_id 时，自动嵌入角色外观/人格到主提示词 =====
+        char_id_for_visual = scd.get("character_id")
+        if char_id_for_visual and db:
+            try:
+                char_vis = db.execute(
+                    "SELECT name, appearance, personality, age_range, gender, occupation "
+                    "FROM character_profiles WHERE id=?", [char_id_for_visual]
+                ).fetchone()
+                if char_vis:
+                    char_inject = []
+                    cname = (char_vis["name"] or "").strip()
+                    capp = (char_vis["appearance"] or "").strip()
+                    cp = (char_vis["personality"] or "").strip()
+                    cocc = (char_vis["occupation"] or "").strip()
+                    cage = (char_vis["age_range"] or "").strip()
+                    cgend = (char_vis["gender"] or "").strip()
+                    # 主体描述优先用 appearance；无则拼 gender+age_range+personality
+                    if capp:
+                        char_inject.append(capp)
+                    else:
+                        if cgend: char_inject.append(cgend)
+                        if cage: char_inject.append(cage)
+                        if cp: char_inject.append(cp)
+                    if cocc: char_inject.append(cocc)
+                    if cname: char_inject.append(f"名为{cname}")
+                    if char_inject:
+                        # 将角色描述追加到镜头描述末尾（不破坏已有结构）
+                        char_text = "，".join(char_inject)
+                        if scene_desc:
+                            scene_desc = scene_desc + "，" + char_text
+                        else:
+                            scene_desc = char_text
+            except Exception:
+                pass  # 角色查询失败不阻塞组装
+
         # 音频四要素
         if include_audio and scd.get("audio_enabled"):
             audio_parts = []
