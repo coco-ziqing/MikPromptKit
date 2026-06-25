@@ -20,6 +20,7 @@ var App = window.App || {
         isLoading: false,
         stats: { total_prompts: 0, total_usage: 0 },
         batchSelected: new Set(),
+        _batchSelections: {},   // { groupId_or_"__all__": Set(id1,id2,...) } 分组选择态持久化
         editMode: false,
         _searchMode: 'keyword',  // 'keyword' | 'semantic'
         _editFilterQuery: '',
@@ -48,7 +49,7 @@ var App = window.App || {
         theme: 'dark',
         columns: 3,  // 卡片列数
         // Seedance
-        seedanceView: 'templates',
+        seedanceView: 'composer',
         seedanceCategory: null,
         seedanceTemplates: [],
         seedanceTotal: 0,
@@ -69,6 +70,25 @@ var App = window.App || {
         html += '</div>';
         var pl = document.getElementById('promptList');
         if (pl) pl.innerHTML = html;
+    },
+
+    // ============ 分组批量选择持久化 ============
+    // 获取当前分组的 batchSelected Set（自动创建）
+    _getBatchKey: function() { return this.state.currentGroupId || '__all__'; },
+
+    // 保存当前分组的选中态 → 切换到目标分组
+    _swapBatchSet: function(targetGroupId) {
+        var oldKey = this.state.currentGroupId || '__all__';
+        var newKey = targetGroupId || '__all__';
+        // 保存当前选中态
+        if (this.state.batchSelected.size > 0) {
+            this.state._batchSelections[oldKey] = new Set(this.state.batchSelected);
+        } else {
+            delete this.state._batchSelections[oldKey];
+        }
+        // 恢复目标分组选中态
+        var saved = this.state._batchSelections[newKey];
+        this.state.batchSelected = saved ? new Set(saved) : new Set();
     },
 
     _safeFetch: async function(url, options) {
@@ -200,7 +220,7 @@ var App = window.App || {
                 if (!savedSeedanceTab && hash.indexOf('/composer') > 0) {
                     savedSeedanceTab = 'composer';
                 }
-                if (!savedSeedanceTab) savedSeedanceTab = 'templates';
+                if (!savedSeedanceTab) savedSeedanceTab = 'composer';
                 setTimeout(function() { App.switchSeedanceTab(savedSeedanceTab); }, 100);
             } else if (savedView === 'collections' || savedView === 'wordpacks' || savedView === 'history' || savedView === 'trash') {
                 this.switchView(savedView);
@@ -335,6 +355,9 @@ var App = window.App || {
             this._collapseSidebar();  // 组装器不需要功能模块侧边栏，自动折叠
             this.loadSeedanceCategories();
             this.loadSeedanceTemplates();
+            // 默认切到组装器（index.html 已将 composer 面板设为可见）
+            var activeTab = localStorage.getItem('promptkit_seedance_tab') || 'composer';
+            this.switchSeedanceTab(activeTab);
         } else if (view === 'wcmanager') {
             // v4.1.0: 词卡管理面板
             var wp = document.getElementById('viewWCManager');
@@ -351,6 +374,21 @@ var App = window.App || {
             this._showSidebar();
             this._collapseSidebar();
             if (App.wordCards && App.wordCards.load) App.wordCards.load();
+        } else if (view === 'atom_editor' || view === 'character_composer' || view === 'scene_composer' || view === 'unified_composer') {
+            // Phase16+: 猴补丁安全网 — 通用视图切换清理 + 导航高亮
+            var _navMap2 = {
+                'atom_editor': 'navAtomEditor',
+                'character_composer': 'navCharacterComposer',
+                'scene_composer': 'navSceneComposer',
+                'unified_composer': 'navUnifiedComposer'
+            };
+            var _navId2 = _navMap2[view];
+            var _navEl2 = document.getElementById(_navId2);
+            if (_navEl2) _navEl2.classList.add('active');
+            this._hideSearchBox();
+            this._showSidebar();
+            this._collapseSidebar();
+            // 猴补丁负责具体面板渲染；这里仅做通用清理 + 导航高亮
         }
 
         // 关闭推荐面板

@@ -313,10 +313,10 @@ Object.assign(App, {
                             <div class="card-actions">
                                 <span style="font-size:11px;color:#94a3b8;">使用 ${p.usage_count} 次</span>
                                 <div style="display:flex;gap:4px;align-items:center;margin-left:auto;">
-                                <button class="btn-copy" onclick="App.toggleTranslation(${p.id})" title="中英文翻译 — 点击自动翻译并在卡片下方显示" style="border-color:#6366f1;color:#6366f1;">🌐</button>
+                                <button class="btn-copy" onclick="App.toggleTranslation(${p.id})" title="中英文翻译 — 自动检测语言方向" style="border-color:#6366f1;color:#6366f1;">${/[\u4e00-\u9fff]/.test(p.content) ? '🌐 英文' : '🌐 中文'}</button>
                                 ${App.state.editMode ? '<button class="btn-copy" style="border-color:#8b5cf6;color:#8b5cf6;" onclick="event.stopPropagation();App._wcShowMovePicker(' + p.id + ')" title="移动到其他分组">📦</button>' : ''}
                                 ${App.state.editMode ? '<button class="btn-copy" style="border-color:#eab308;color:#eab308;" onclick="App.openEditModal(' + p.id + ')" title="编辑词卡内容">✏</button>' : ''}
-                                <button class="btn-copy" onclick="App.handleCopy(${p.id}, '${this._escape(p.content).replace(/'/g, "\\'")}')" title="复制提示词到剪贴板">📋</button>
+                                <button class="btn-copy" onclick="App.handleCopyLang(${p.id})" title="复制当前语言提示词">📋</button>
                                 ${App.state.editMode ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.trashPrompt(' + p.id + ', this)" title="删除词卡">🗑</button>' : ''}
                                 </div>
                             </div>
@@ -449,8 +449,13 @@ Object.assign(App, {
         if (tab === 'gallery') this.loadGallery();
         if (tab === 'glossary') this.loadGlossary();
         if (tab === 'templates') this.loadSeedanceTemplates();
-        if (tab === 'composer' && App.seedanceV2 && !App.seedanceV2._skipSwitchInit) {
-            App.seedanceV2.init();
+        if (tab === 'composer') {
+            // 确保组装器可见后再初始化（避免 DOM offsetWidth=0 跳过渲染）
+            var cp = document.getElementById('seedanceComposer');
+            if (cp) cp.style.display = 'block';
+            if (App.seedanceV2) {
+                setTimeout(function() { App.seedanceV2.init(); }, 50);
+            }
         }
     },
 

@@ -322,22 +322,47 @@ def _check_pillow() -> dict:
 
 
 def _check_database() -> dict:
-    """检测数据库读写"""
-    try:
-        from database import get_db, safe_commit
-        db = get_db()
-        # 读测试
-        cnt = db.execute("SELECT COUNT(*) as c FROM prompts").fetchone()
-        # 写测试（用临时表）
-        db.execute("CREATE TABLE IF NOT EXISTS _health_check (id INTEGER PRIMARY KEY, ts TEXT)")
-        db.execute("INSERT INTO _health_check (ts) VALUES (datetime('now'))")
-        row = db.execute("SELECT ts FROM _health_check ORDER BY id DESC LIMIT 1").fetchone()
-        db.execute("DELETE FROM _health_check")
-        safe_commit()
-        return {"ok": True, "path": db.execute("PRAGMA database_list").fetchone()["file"],
-                "wal": True, "prompt_count": cnt["c"] if cnt else 0}
-    except Exception as e:
-        return {"ok": False, "error": str(e)[:100], "hint": "数据库不可用，服务无法正常运行"}
+    """检测数据库读写 — 使用独立连接避免与主服务连接冲突"""
+    import sqlite3, time, os
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'prompts.db')
+    if not os.path.exists(db_path):
+        return {"ok": False, "error": "数据库文件不存在", "hint": "数据库不可用，服务无法正常运行"}
+
+    # 独立连接 + 重试机制，避免与主服务 WAL 写锁冲突
+    for attempt in range(3):
+        conn = None
+        try:
+            conn = sqlite3.connect(db_path, timeout=15)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=10000")
+            # 读测试
+            cnt = conn.execute("SELECT COUNT(*) as c FROM prompts").fetchone()
+            # 写测试 — 独立连接避免锁冲突
+            conn.execute("CREATE TABLE IF NOT EXISTS _health_check (id INTEGER PRIMARY KEY, ts TEXT)")
+            conn.execute("INSERT INTO _health_check (ts) VALUES (datetime('now'))")
+            conn.execute("SELECT ts FROM _health_check ORDER BY id DESC LIMIT 1")
+            conn.execute("DELETE FROM _health_check")
+            conn.commit()
+            return {
+                "ok": True,
+                "path": db_path,
+                "wal": True,
+                "prompt_count": cnt["c"] if cnt else 0
+            }
+        except sqlite3.OperationalError as e:
+            if 'locked' in str(e).lower() and attempt < 2:
+                time.sleep(0.3 * (attempt + 1))
+                continue
+            return {"ok": False, "error": str(e)[:100], "hint": "数据库不可用，服务无法正常运行"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:100], "hint": "数据库不可用，服务无法正常运行"}
+        finally:
+            if conn:
+                try: conn.close()
+                except: pass
+
+    return {"ok": False, "error": "数据库忙（重试3次后仍锁）", "hint": "数据库不可用，服务无法正常运行"}
 
 
 def _check_disk() -> dict:
@@ -421,16 +446,24 @@ def _check_self_reachable() -> dict:
 
 
 def _check_wal_integrity() -> dict:
-    """检测 SQLite WAL 完整性"""
+    """检测 SQLite WAL 完整性 — 独立连接，避免与主服务锁冲突"""
+    import sqlite3, os
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'prompts.db')
+    conn = None
     try:
-        from database import get_db
-        db = get_db()
-        wal = db.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+        conn = sqlite3.connect(db_path, timeout=5)
+        conn.execute("PRAGMA busy_timeout=3000")
+        # PASSIVE 模式不阻塞读写，仅合并已提交的 WAL 页
+        wal = conn.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchall()
         pages = wal[0][2] if len(wal) > 0 and len(wal[0]) > 2 else -1
         return {"ok": True, "wal_pages_remaining": pages,
             "hint": f"WAL {pages} pages pending" if pages > 100 else None}
     except Exception as e:
         return {"ok": True, "skipped": True, "reason": str(e)[:80]}
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
 
 
 def _check_playground_llm() -> dict:

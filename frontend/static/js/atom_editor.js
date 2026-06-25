@@ -18,33 +18,37 @@ App.toast = function(msg, type) { App.showToast(msg, type || 'success'); };
 // ============ 视图切换 ============
 App._atomOriginSwitchView = App.switchView;
 App.switchView = function(view, ...args) {
+    // H2: 统一清理所有面板的 inline display（与其他 composer 对齐）
+    document.querySelectorAll('.view-panel').forEach(function(el) { el.style.display = ''; });
+    // 先让链式调用更新导航状态 + localStorage + CSS 类
+    this._atomOriginSwitchView(view, ...args);
+    
     if (view === 'atom_editor') {
-        this._showAtomEditor();
+        // H1: try-catch 错误边界，防止 async 异常变 Unhandled Rejection
+        try {
+            this._showAtomEditor().catch(function(e) {
+                console.error('[atom_editor] _showAtomEditor failed:', e);
+                App.showToast('原子引擎加载失败: ' + (e.message || '未知错误'), 'danger');
+            });
+        } catch(e) {
+            console.error('[atom_editor] sync error:', e);
+            App.showToast('原子引擎渲染失败', 'danger');
+        }
         return;
     }
-    // 从原子编辑器切出时，移除原子面板，恢复其他视图
+    // 从原子编辑器切出
     var atomPanel = document.getElementById('viewAtomEditor');
-    if (atomPanel) atomPanel.style.display = 'none';
-    // 恢复所有被隐藏的 view-panel（去掉 atom_editor 设置的 inline display:none）
-    var allViews = document.querySelectorAll('.view-panel');
-    allViews.forEach(function(v) { v.style.display = ''; });
-    // 委托给原始 switchView
-    return this._atomOriginSwitchView(view, ...args);
+    if (atomPanel) {
+        atomPanel.classList.remove('active-view');
+    }
 };
-
-// ============ 兼容：App.toast → App.showToast ============
-App.toast = function(msg, type) { App.showToast(msg, type || 'success'); };
 
 // ============ 主入口 ============
 App._showAtomEditor = async function() {
     var mc = document.getElementById('mainContent');
     if (!mc) return;
 
-    // 隐藏所有视图面板
-    var allViews = mc.querySelectorAll('.view-panel');
-    allViews.forEach(function(v) { v.style.display = 'none'; });
-
-    // 创建/显示原子编辑器面板
+    // 创建/显示原子编辑器面板（链式调用已通过 CSS 类隐藏其他面板）
     var panel = document.getElementById('viewAtomEditor');
     if (!panel) {
         panel = document.createElement('div');
@@ -52,7 +56,8 @@ App._showAtomEditor = async function() {
         panel.className = 'view-panel';
         mc.appendChild(panel);
     }
-    panel.style.display = 'block';
+    // M1: 统一使用 active-view 类控制显示，与 CSS 规则一致
+    panel.classList.add('active-view');
     panel.innerHTML = App._atomRenderHTML();
 
     // 加载数据
@@ -71,7 +76,7 @@ App._atomRenderHTML = function() {
 '  <div class="atom-header">' +
 '    <h3 style="margin:0;display:flex;align-items:center;gap:8px;">' +
 '      <span style="font-size:24px;">⚛️</span> 原子引擎' +
-'      <small style="color:var(--text-muted);font-size:13px;font-weight:400;">v5.0 Phase15</small>' +
+'      <small style="color:var(--text-muted);font-size:13px;font-weight:400;">v5.0 Phase16</small>' +
 '    </h3>' +
 '    <span id="atomStatsBar" style="font-size:12px;color:var(--text-muted);">加载中...</span>' +
 '  </div>' +
@@ -123,6 +128,12 @@ App._atomRenderHTML = function() {
 '        <button class="btn-atom-secondary" onclick="App._atomImportJSON()"><i class="bi bi-filetype-json"></i> JSON 导入</button>' +
 '        <button class="btn-atom-secondary" onclick="App._atomImportTXT()"><i class="bi bi-filetype-txt"></i> TXT 导入</button>' +
 '      </div>' +
+'      <hr style="margin:12px 0;border-color:var(--border-color);">' +
+'      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">📦 模板市场</div>' +
+'      <div id="atomTemplateList" class="atom-tpl-list">' +
+'        <div class="atom-empty" style="font-size:11px;">加载中...</div>' +
+'      </div>' +
+'      <button class="btn-atom-secondary" onclick="App._atomShowTplCreate()" style="margin-top:6px;width:100%;">+ 新建模板</button>' +
 '    </div>' +
 '  </div>' +
 '</div>';
@@ -571,7 +582,241 @@ App._atomBindEvents = function() {
     }
 };
 
+// ==================== P0-1: 模板市场 + 使用统计 ====================
+
+App._atomTemplates = [];
+
+// 加载模板列表
+App._atomLoadTemplates = async function() {
+    try {
+        var d = await this.fetchJSON('/api/v4/atoms/templates?page_size=20');
+        this._atomTemplates = d.items || [];
+        var el = document.getElementById('atomTemplateList');
+        if (el) el.innerHTML = this._atomRenderTemplates(this._atomTemplates);
+    } catch(e) { console.warn('template load:', e); }
+};
+
+App._atomRenderTemplates = function(templates) {
+    if (!templates.length) return '<div class="atom-empty" style="font-size:11px;">暂无模板<br><small>创建可复用的原子组合模板</small></div>';
+    var h = '';
+    templates.forEach(function(t) {
+        var badge = t.is_published ? '<span style="color:#22c55e;">已发布</span>' : '<span style="color:#f59e0b;">草稿</span>';
+        var stars = '';
+        for (var s = 0; s < 5; s++) stars += s < Math.round(t.rating||0) ? '★' : '☆';
+        h += '<div class="atom-tpl-card" style="padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;margin-bottom:4px;cursor:pointer;font-size:11px;" onclick="App._atomShowTplDetail(' + t.id + ')">' +
+            '<div style="font-weight:600;">' + _escapeHtml((t.title||'').slice(0,30)) + '</div>' +
+            '<div style="color:var(--text-muted);font-size:10px;">' + badge + ' | ⬇' + (t.downloads||0) + ' | ' + stars + '</div>' +
+            '</div>';
+    });
+    return h;
+};
+
+// 创建模板弹窗
+App._atomShowTplCreate = function() {
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = '<div class="modal-content" style="max-width:500px;background:var(--bg-card);border-radius:12px;padding:20px;" onclick="event.stopPropagation()">' +
+        '<h5 style="margin:0 0 12px;">📦 新建原子模板</h5>' +
+        '<input id="_tplTitle" class="modal-input" placeholder="模板名称 (如: 赛博朋克角色套装)" style="margin-bottom:8px;">' +
+        '<textarea id="_tplDesc" class="modal-input" placeholder="模板描述..." style="height:60px;margin-bottom:8px;"></textarea>' +
+        '<textarea id="_tplAtoms" class="modal-input" placeholder="粘贴 JSON 原子数组 (如: [{type:&quot;style&quot;,text:&quot;赛博朋克&quot;},...])" style="height:80px;margin-bottom:8px;font-size:11px;"></textarea>' +
+        '<input id="_tplTags" class="modal-input" placeholder="标签 (逗号分隔)" style="margin-bottom:12px;">' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+        '<button class="btn btn-sm btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>' +
+        '<button class="btn btn-sm btn-primary" onclick="App._atomDoCreateTpl()">创建</button>' +
+        '</div></div>';
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+};
+
+App._atomDoCreateTpl = async function() {
+    var title = document.getElementById('_tplTitle').value.trim();
+    var desc = document.getElementById('_tplDesc').value.trim();
+    var atomsRaw = document.getElementById('_tplAtoms').value.trim();
+    var tagsRaw = document.getElementById('_tplTags').value.trim();
+    if (!title) { App.toast('请输入模板名称', 'warning'); return; }
+    if (!atomsRaw) { App.toast('请输入原子 JSON', 'warning'); return; }
+    
+    var atoms;
+    try { atoms = JSON.parse(atomsRaw); } catch(e) { App.toast('JSON 格式错误', 'danger'); return; }
+    
+    var tags = tagsRaw ? tagsRaw.split(/[,，]/).map(function(s){return s.trim();}).filter(Boolean) : [];
+    
+    try {
+        var d = await this.fetchJSON('/api/v4/atoms/template', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ title: title, description: desc, atoms_json: atomsRaw, tags: tags, params_json: '{}' })
+        });
+        if (d && d.ok) {
+            App.toast('模板已创建', 'success');
+            document.querySelectorAll('.modal-overlay').forEach(function(o) { o.remove(); });
+            await App._atomLoadTemplates();
+        }
+    } catch(e) { App.toast('创建失败: ' + e.message, 'danger'); }
+};
+
+// 模板详情弹窗
+App._atomShowTplDetail = async function(tid) {
+    try {
+        var d = await this.fetchJSON('/api/v4/atoms/template/' + tid);
+        if (!d || !d.template) return;
+        var t = d.template;
+        var overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;';
+        var atoms = t.atoms || [];
+        var stars = '';
+        for (var s = 0; s < 5; s++) stars += s < Math.round(t.rating||0) ? '★' : '☆';
+        overlay.innerHTML = '<div class="modal-content" style="max-width:540px;max-height:80vh;overflow-y:auto;background:var(--bg-card);border-radius:12px;padding:20px;" onclick="event.stopPropagation()">' +
+            '<h5 style="margin:0 0 4px;">' + _escapeHtml(t.title) + '</h5>' +
+            '<div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">' +
+            (t.is_published ? '✅ 已发布' : '📝 草稿') + ' | ⬇ ' + (t.downloads||0) + ' | ' + stars + ' (' + (t.rating_count||0) + '评)</div>' +
+            (t.description ? '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">' + _escapeHtml(t.description) + '</div>' : '') +
+            '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">⚛ 原子 (' + atoms.length + ')</div>' +
+            '<div style="max-height:200px;overflow-y:auto;margin-bottom:12px;">' +
+            atoms.map(function(a, i) {
+                return '<div style="display:flex;gap:6px;padding:4px 6px;border:1px solid var(--border-color);border-radius:4px;margin-bottom:3px;font-size:11px;">' +
+                    '<span style="color:var(--primary);min-width:60px;">[' + (a.type||'?') + ']</span>' +
+                    '<span>' + _escapeHtml((a.text||'').slice(0,60)) + '</span>' +
+                    '<span style="color:var(--text-muted);margin-left:auto;">w:' + (a.weight||0).toFixed(1) + '</span></div>';
+            }).join('') + '</div>' +
+            '<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;">' +
+            '<button class="btn btn-sm btn-outline" onclick="App._atomTplRate(' + tid + ')">⭐ 评分</button>' +
+            '<button class="btn btn-sm btn-success" onclick="App._atomTplDownload(' + tid + ')">📥 下载 (' + (t.downloads||0) + ')</button>' +
+            (!t.is_published ? '<button class="btn btn-sm btn-primary" onclick="App._atomTplPublish(' + tid + ')">📢 发布</button>' : '<button class="btn btn-sm btn-outline" onclick="App._atomTplUnpublish(' + tid + ')">⬇ 下架</button>') +
+            '<button class="btn btn-sm btn-danger" onclick="App._atomTplDelete(' + tid + ')">🗑 删除</button>' +
+            '</div></div>';
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+    } catch(e) { App.toast('加载模板失败: ' + e.message, 'danger'); }
+};
+
+App._atomTplPublish = async function(tid) {
+    try {
+        await this.fetchJSON('/api/v4/atoms/template/' + tid, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ is_published: 1 }) });
+        App.toast('模板已发布', 'success');
+        document.querySelectorAll('.modal-overlay').forEach(function(o) { o.remove(); });
+        await App._atomLoadTemplates();
+    } catch(e) { App.toast('操作失败: ' + e.message, 'danger'); }
+};
+
+App._atomTplUnpublish = async function(tid) {
+    try {
+        await this.fetchJSON('/api/v4/atoms/template/' + tid, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ is_published: 0 }) });
+        App.toast('模板已下架', 'info');
+        document.querySelectorAll('.modal-overlay').forEach(function(o) { o.remove(); });
+        await App._atomLoadTemplates();
+    } catch(e) { App.toast('操作失败: ' + e.message, 'danger'); }
+};
+
+App._atomTplDownload = async function(tid) {
+    try {
+        // 获取模板 atoms 用于统计
+        var d = await this.fetchJSON('/api/v4/atoms/template/' + tid);
+        await this.fetchJSON('/api/v4/atoms/template/' + tid + '/download', { method: 'POST' });
+        
+        // 导出 JSON 文件
+        var blob = new Blob([d.template.atoms_json], {type: 'application/json'});
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = (d.template.title||'template') + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        App.toast('模板已下载', 'success');
+        document.querySelectorAll('.modal-overlay').forEach(function(o) { o.remove(); });
+        await App._atomLoadTemplates();
+    } catch(e) { App.toast('下载失败: ' + e.message, 'danger'); }
+};
+
+App._atomTplRate = async function(tid) {
+    var score = parseInt(prompt('评分 (1-5):', '5'));
+    if (!score || score < 1 || score > 5) return;
+    try {
+        await this.fetchJSON('/api/v4/atoms/template/' + tid + '/rate', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ score: score }) });
+        App.toast('已评分 ' + '★'.repeat(score), 'success');
+        document.querySelectorAll('.modal-overlay').forEach(function(o) { o.remove(); });
+        await App._atomLoadTemplates();
+    } catch(e) { App.toast('评分失败: ' + e.message, 'danger'); }
+};
+
+App._atomTplDelete = async function(tid) {
+    if (!confirm('确定删除此模板？')) return;
+    try {
+        await this.fetchJSON('/api/v4/atoms/template/' + tid, { method: 'DELETE' });
+        App.toast('模板已删除', 'info');
+        document.querySelectorAll('.modal-overlay').forEach(function(o) { o.remove(); });
+        await App._atomLoadTemplates();
+    } catch(e) { App.toast('删除失败: ' + e.message, 'danger'); }
+};
+
+// 使用统计上报（在关键词复制/调用时触发）
+App._atomTrackUsage = async function(atomText, atomType, action) {
+    try {
+        await this.fetchJSON('/api/v4/atoms/stats/track', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ atom_text: atomText, atom_type: atomType || 'unknown', action: action || 'copy' })
+        });
+    } catch(e) {} // 静默失败，不阻塞主流程
+};
+
+// 使用统计面板（资产溯源增强版）
+App._atomLoadUsageStats = async function() {
+    try {
+        var d = await this.fetchJSON('/api/v4/atoms/stats/usage?days=30&limit=15');
+        if (!d) return;
+        var overview = d.overview || {};
+        var el = document.getElementById('atomStatsPanel');
+        if (!el) return;
+        
+        var h = '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">📊 使用概览 (30天)</div>';
+        h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px;margin-bottom:8px;">';
+        h += '<div>总追踪: <b>' + (overview.total_tracked||0) + '</b></div><div>活跃原子: <b style="color:#22c55e;">' + (overview.active_atoms||0) + '</b></div>';
+        h += '<div>总使用: <b>' + (overview.total_usage||0) + '</b></div><div>组合: <b>' + (overview.total_combo||0) + '</b></div>';
+        h += '</div>';
+        
+        var hot = d.hot_atoms || [];
+        if (hot.length > 0) {
+            h += '<div style="font-size:12px;font-weight:600;margin:8px 0 4px;">🔥 热门原子</div>';
+            hot.slice(0,8).forEach(function(a, i) {
+                h += '<div class="atom-stat-row"><span class="atom-stat-rank">#'+(i+1)+'</span> ' +
+                    '<span class="atom-stat-type">['+a.atom_type+']</span> ' +
+                    '<span class="atom-stat-text">' + _escapeHtml((a.atom_text||'').slice(0,18)) + '</span> ' +
+                    '<span class="atom-stat-count">x'+a.usage_count+'</span></div>';
+            });
+        }
+        
+        if (d.cold_atoms_count > 0) {
+            h += '<div style="font-size:11px;color:#ef4444;margin-top:6px;">💀 冷门原子: ' + d.cold_atoms_count + ' (7天未使用)</div>';
+        }
+        
+        // 合并原有 stats 信息（死码检测）
+        var oldStats = this.state.atomStats || {};
+        var dead = oldStats.dead_atoms || [];
+        if (dead.length > 0) {
+            h += '<div style="font-size:11px;color:#ef4444;margin-top:4px;">⚠ 死码: ' + dead.length + ' (无复用引用)</div>';
+        }
+        
+        el.innerHTML = h;
+    } catch(e) { console.warn('usage stats:', e); }
+};
+
+// 重写 _atomLoadStats 以合并使用统计
+var _origAtomLoadStats = App._atomLoadStats;
+App._atomLoadStats = async function() {
+    await _origAtomLoadStats.call(this);
+    await this._atomLoadUsageStats();
+};
+
+// 模板加载 hook 到 _showAtomEditor
+var _origShowAtomEditor = App._showAtomEditor;
+App._showAtomEditor = async function() {
+    await _origShowAtomEditor.call(this);
+    await this._atomLoadTemplates();
+    await this._atomLoadUsageStats();
+};
+
 // 初始化完成
-console.log('[atom_editor] Phase16 原子编辑器已就绪 (v5.0)');
+console.log('[atom_editor] Phase17 模板+统计已就绪 (v5.5)');
 
 })();

@@ -479,51 +479,97 @@ Object.assign(App, {
         return this.fetchJSON('/api/translate/' + promptId + '?target_lang=' + (this.state._cardTranslations[promptId] ? 'en' : 'zh'));
     },
 
+    // ============ 语言切换（双向中英 + 手动切换显示）============
     async toggleTranslation(promptId) {
         var el = document.getElementById('cc_' + promptId);
-        if (!el) return;
-        // 查看卡片是否已有中英对照（检查是否有 .card-translation 子元素）
-        var existingTrans = el.querySelector('.card-translation');
-        if (existingTrans) {
-            // 已显示翻译 → 移除翻译，恢复原文
-            el.textContent = el.getAttribute('data-original') || el.textContent.replace(/\s*<div class="card-translation">.*$/s, '');
-            delete this.state._cardTranslations[promptId];
-            this._updateTranslateBtn(promptId);
-            return;
-        }
-        // 保存原始内容
-        var originalContent = el.textContent;
-        el.setAttribute('data-original', originalContent);
-        el.innerHTML = originalContent + '<div class="card-translation" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-color,#e2e8f0);color:#6366f1;font-size:13px;">翻译中...</div>';
-        try {
-            var data = await this.fetchJSON('/api/translate/' + promptId + '?target_lang=zh');
-            if (data && data.ok && data.translated && data.translated !== data.original) {
-                var transHtml = this._escape(data.translated);
-                el.innerHTML = App._escape(originalContent) + '<div class="card-translation" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-color,#e2e8f0);color:#6366f1;font-size:13px;">' + transHtml + '</div>';
-                this.state._cardTranslations[promptId] = true;
-            } else if (data && data.note) {
-                el.innerHTML = App._escape(originalContent);
-                this.state._cardTranslations[promptId] = true;
-            } else {
-                el.innerHTML = App._escape(originalContent);
-                this.showToast(App._t('auto.str_31ff785e', '翻译失败: ') + (data ? data.error : App._t('common.unknown_error', '未知错误')), 'error');
-            }
-        } catch(e) {
-            el.innerHTML = App._escape(originalContent);
-            this.showToast(App._t('auto.str_31ff785e', '翻译失败: ') + e.message, 'error');
+        if (!el) { this.showToast('卡片元素未找到，请刷新', 'error'); return; }
+        var currentLang = el.getAttribute('data-lang') || 'original';
+        var cardData = this._findCardData(promptId);
+        var original = cardData ? cardData.content : (el.getAttribute('data-original') || el.textContent);
+        var zh = cardData ? (cardData.content_zh || '') : '';
+        var en = cardData ? (cardData.content_en || '') : '';
+        var isCN = /[\u4e00-\u9fff]/.test(original);
+
+        if (currentLang === 'original') {
+            // 原文→翻译：优先用已存储的翻译，否则触发 Ollama
+            if (isCN && en) { this._setCardLang(el, promptId, 'en', en, original); }
+            else if (!isCN && zh) { this._setCardLang(el, promptId, 'zh', zh, original); }
+            else { await this._doTranslateCard(el, promptId, original, isCN ? 'en' : 'zh'); }
+        } else if (currentLang === 'zh') {
+            // 中文翻译→英文翻译 or 原文
+            if (en) { this._setCardLang(el, promptId, 'en', en, original); }
+            else { this._setCardLang(el, promptId, 'original', original, original); }
+        } else if (currentLang === 'en') {
+            // 英文翻译→中文翻译 or 原文
+            if (zh) { this._setCardLang(el, promptId, 'zh', zh, original); }
+            else { this._setCardLang(el, promptId, 'original', original, original); }
         }
         this._updateTranslateBtn(promptId);
+    },
+
+    _setCardLang(el, promptId, lang, text, original) {
+        if (!el.getAttribute('data-original')) el.setAttribute('data-original', original);
+        el.setAttribute('data-lang', lang);
+        el.textContent = text;
+        if (!this.state._cardLang) this.state._cardLang = {};
+        this.state._cardLang[promptId] = lang;
+    },
+
+    async _doTranslateCard(el, promptId, original, targetLang) {
+        el.innerHTML = original + '<div class="card-translation" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-color);color:#6366f1;font-size:13px;">翻译中...</div>';
+        try {
+            var data = await this.fetchJSON('/api/translate/' + promptId + '?target_lang=' + targetLang);
+            if (data && data.ok && data.translated && data.translated !== data.original) {
+                var card = this._findCardData(promptId);
+                if (card) { if (targetLang === 'zh') card.content_zh = data.translated; else card.content_en = data.translated; }
+                this._setCardLang(el, promptId, targetLang, data.translated, original);
+                this.showToast('翻译完成(' + (targetLang === 'zh' ? '英→中' : '中→英') + ')', 'success');
+            } else if (data && data.note) {
+                el.innerHTML = App._escape(original); this.showToast(data.note, 'info');
+            } else {
+                el.innerHTML = App._escape(original); this.showToast('翻译失败: ' + (data ? (data.error || '未知') : '服务未响应'), 'error');
+            }
+        } catch(e) { el.innerHTML = App._escape(original); this.showToast('翻译失败: ' + e.message, 'error'); }
+    },
+
+    _findCardData(pid) { var ps = this.state.prompts || []; for (var i = 0; i < ps.length; i++) { if (ps[i].id === pid) return ps[i]; } return null; },
+
+    getCardDisplayContent(promptId) {
+        var card = this._findCardData(promptId); if (!card) return null;
+        var lang = (this.state._cardLang && this.state._cardLang[promptId]) || 'original';
+        if (lang === 'zh' && card.content_zh) return { text: card.content_zh, lang: 'zh' };
+        if (lang === 'en' && card.content_en) return { text: card.content_en, lang: 'en' };
+        return { text: card.content, lang: 'original' };
+    },
+
+    // 复制当前语言版本（语言感知复制）
+    handleCopyLang(promptId) {
+        var card = this._findCardData(promptId);
+        if (!card) { this.showToast('卡片数据未加载', 'error'); return; }
+        var result = this.getCardDisplayContent(promptId);
+        var content = result ? result.text : card.content;
+        this.copyText(content);
+        this.trackUsage(promptId);
+        var langLabel = result && result.lang !== 'original' ? (' (' + result.lang + ')') : '';
+        this.showToast('已复制' + langLabel, 'success');
+        // 推荐面板
+        this.showRecommend(promptId);
     },
 
     _updateTranslateBtn(promptId) {
         var cards = document.querySelectorAll('#promptList .prompt-card');
         cards.forEach(function(card) {
-            if (parseInt(card.getAttribute('data-id')) === promptId) {
-                var btn = card.querySelector('.btn-copy[onclick*="toggleTranslation"]');
-                if (btn) {
-                    btn.textContent = App.state._cardTranslations[promptId] ? App._t('auto.str_da36e10d', '🌐 中文') : App._t('auto.str_8682d301', '🌐 英文');
-                }
-            }
+            if (parseInt(card.getAttribute('data-id')) !== promptId) return;
+            var btn = card.querySelector('.btn-copy[onclick*="toggleTranslation"]');
+            if (!btn) return;
+            var contentEl = card.querySelector('.card-content');
+            var rawText = contentEl ? (contentEl.getAttribute('data-original') || contentEl.textContent) : '';
+            var isCN = /[\u4e00-\u9fff]/.test(rawText);
+            var lang = (App.state._cardLang && App.state._cardLang[promptId]) || 'original';
+            if (lang === 'zh') btn.textContent = '中文';
+            else if (lang === 'en') btn.textContent = 'English';
+            else btn.textContent = isCN ? 'English' : '中文';
+            btn.style.color = lang !== 'original' ? '#22c55e' : '#6366f1';
         });
     },
 
@@ -952,7 +998,7 @@ Object.assign(App, {
                     '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">使用 ' + p.usage_count + ' 次 · 删除于 ' + (p.deleted_at || '') + '</div>' +
                     '<div class="card-actions" style="margin-top:6px;">' +
                     '<button class="btn-copy" onclick="App.restoreFromTrash(' + p.id + ')" style="border-color:#10b981;color:#10b981;">↩ 恢复</button>' +
-                    '<button class="btn-copy" onclick="App.permanentDelete(' + p.id + ')" style="border-color:#ef4444;color:#ef4444;">🗑 永久删除</button>' +
+                    (p.is_builtin ? '<span style="font-size:11px;color:var(--text-muted);padding:4px 8px;">🔒 内置词条</span>' : '<button class="btn-copy" onclick="App.permanentDelete(' + p.id + ')" style="border-color:#ef4444;color:#ef4444;">🗑 永久删除</button>') +
                     '</div></div></div></div>';
             }
             html += '</div>';
@@ -1003,9 +1049,25 @@ Object.assign(App, {
 
     async permanentDelete(pid) {
         if (!confirm(App._t('auto.str_3e79ede2', '永久删除后无法恢复，确认删除？'))) return;
-        await this.fetchJSON('/api/v2/trash/' + pid, { method: 'DELETE' });
-        this.showToast(App._t('auto.str_968c6dbf', '已永久删除'), 'info');
-        this.loadTrash();
+        try {
+            this.showToast('删除中...', 'info');
+            var res = await fetch('/api/v2/trash/' + pid, { method: 'DELETE' });
+            if (!res.ok) {
+                var errData = null;
+                try { errData = await res.json(); } catch(_) {}
+                var errMsg = (errData && errData.detail) || '删除失败（HTTP ' + res.status + '）';
+                // 内置词条不可永久删除，提示恢复
+                if (res.status === 403) {
+                    errMsg = '内置词条不可永久删除，请使用「恢复」按钮还原';
+                }
+                this.showToast(errMsg, 'danger');
+                return;
+            }
+            this.showToast(App._t('auto.str_968c6dbf', '已永久删除'), 'info');
+            this.loadTrash();
+        } catch(e) {
+            this.showToast('删除失败: ' + (e.message || '网络错误'), 'danger');
+        }
     },
 
     async emptyTrash() {

@@ -50,6 +50,24 @@ metadata:
 - 仅 config.json 中 1 行 entry 解析 ≈ 3 tokens 开销
 - 不影响任何 WebUI 开发、提示词管理、局域网部署其他路由
 
+## 统一入口与命令行调用（与 6 技能矩阵同构）
+
+```bash
+cd skills/code-project-analyze/scripts
+python project_analyze_runner.py ../tests/sample_project --input "/analyze-code"      # 完整解析(PRO)
+python project_analyze_runner.py ../tests/sample_project --input "/code-stack-only"  # 技术栈快照(FLASH)
+python project_analyze_runner.py ../tests/sample_project                              # 自动路由
+python project_analyze_runner.py ../tests/sample_project --json                       # 机读JSON
+```
+
+| 能力 | 实现脚本 |
+|---|---|
+| 技术栈/目录分层/接口流转扫描 | `scripts/stack_scanner.py` |
+| 双模型分层路由 + Token 控制 | `scripts/model_router_dispatch.py` |
+| 编排入口 + quick/full 渲染 | `scripts/project_analyze_runner.py` |
+
+目录结构：`SKILL.md / README.md / scripts/(3) / tests/sample_project/`
+
 ## 核心执行流水线（代码分析6步标准SOP）
 
 ### Step 1: 文件读取分层（先配置后源码）

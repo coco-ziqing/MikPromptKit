@@ -108,4 +108,132 @@ App.wordCards.filterGroup = function() { this._groupId = parseInt((document.getE
 App.wordCards._chip = function(gid) { this._groupId=gid; this._page=1; var s=document.getElementById('wcGroupFilter'); if(s)s.value=gid||''; this.load(); };
 App.wordCards._go = function(p) { this._page=p; this.load(); };
 
+// ============ P0-5: AI 批量录入 ============
+
+App.wordCards._showBatchCreate = function() {
+    var old = document.getElementById('wcBatchCreateModal');
+    if (old) old.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'wcBatchCreateModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML =
+        '<div class="modal-content" style="max-width:620px;width:90%;max-height:90vh;overflow-y:auto;background:var(--bg-card);border-radius:12px;padding:20px;" onclick="event.stopPropagation()">' +
+        '<h5 style="margin:0 0 4px;">🤖 AI 批量录入</h5>' +
+        '<p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">用自然语言描述要录入的词条，AI 自动拆解+匹配分组+入库</p>' +
+        '<textarea id="wcBatchText" class="modal-input" rows="6" placeholder="例如：&#10;录入8个科幻概念：量子纠缠通讯、星际跃迁引擎、暗物质收割者、时间晶体重构器、纳米集群殖民地、戴森球矩阵、反物质催化炉、维度折叠舱" style="font-size:13px;width:100%;margin-bottom:10px;"></textarea>' +
+        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;">' +
+        '<label style="font-size:11px;">目标分组(可选):</label>' +
+        '<select id="wcBatchGroup" class="modal-input" style="flex:1;font-size:11px;"><option value="">自动匹配</option></select>' +
+        '<label style="font-size:11px;display:flex;align-items:center;gap:4px;"><input type="checkbox" id="wcBatchPreview" checked> 预览</label>' +
+        '</div>' +
+        '<div id="wcBatchResult" style="display:none;max-height:300px;overflow-y:auto;margin-bottom:12px;border:1px solid var(--border-color);border-radius:8px;padding:10px;"></div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+        '<button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'wcBatchCreateModal\').remove()">取消</button>' +
+        '<button class="btn btn-sm btn-primary" id="wcBatchBtn" onclick="App.wordCards._doBatchCreate()">🤖 AI 拆解</button>' +
+        '</div></div>';
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    
+    // 加载分组选项
+    var sel = document.getElementById('wcBatchGroup');
+    try {
+        var groups = App.wordCards._groups || [];
+        groups.forEach(function(g) {
+            var opt = document.createElement('option');
+            opt.value = g.id;
+            opt.textContent = (g.icon||'') + ' ' + (g.name||'').substring(0,25) + ' (' + (g.card_count||0) + ')';
+            sel.appendChild(opt);
+        });
+    } catch(e) {}
+};
+
+App.wordCards._doBatchCreate = async function() {
+    var text = document.getElementById('wcBatchText').value.trim();
+    if (!text) { App.showToast('请输入文本', 'warning'); return; }
+    
+    var btn = document.getElementById('wcBatchBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ AI 解析中...';
+    
+    var isPreview = document.getElementById('wcBatchPreview').checked;
+    var gid = parseInt(document.getElementById('wcBatchGroup').value) || null;
+    
+    try {
+        var d = await App.fetchJSON('/api/v4/word-cards/batch-create', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ text: text, group_id: gid, auto_archive: !isPreview }),
+            _timeoutMs: 120000
+        });
+        
+        var resultEl = document.getElementById('wcBatchResult');
+        resultEl.style.display = 'block';
+        
+        if (isPreview) {
+            // 预览模式：显示解析结果
+            var items = d.items || [];
+            var h = '<div style="font-size:12px;font-weight:600;margin-bottom:8px;">📋 AI 解析结果 (' + items.length + ' 条)</div>';
+            h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">';
+            items.forEach(function(it, i) {
+                h += '<div style="border:1px solid var(--border-color);border-radius:6px;padding:6px 8px;font-size:11px;">' +
+                    '<div style="font-weight:600;">' + (i+1) + '. ' + App._escape((it.content||'').substring(0,40)) + '</div>' +
+                    '<div style="color:var(--text-muted);font-size:10px;">' + App._escape((it.meaning||'').substring(0,30)) + '</div>' +
+                    '<div style="color:var(--primary);font-size:10px;">→ ' + App._escape(it.group_name||'自动') + '</div>' +
+                    '</div>';
+            });
+            h += '</div>';
+            h += '<button class="btn btn-sm btn-success" onclick="App.wordCards._confirmBatchCreate()" style="margin-top:10px;">✅ 确认入库 (' + items.length + ' 条)</button>';
+            resultEl.innerHTML = h;
+            // 缓存解析结果
+            App.wordCards._batchParsed = items;
+        } else {
+            // 直接入库模式
+            var created = d.created || [];
+            resultEl.innerHTML = '<div style="color:#22c55e;font-size:12px;">✅ 已入库 ' + d.created_count + ' 条词卡</div>' +
+                '<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">AI模型: ' + (d.ai_model||'') + '</div>';
+            App.showToast('已入库 ' + d.created_count + ' 条', 'success');
+            await App.wordCards.load();
+            try { await App.loadGroupTree(); } catch(e) {}
+            setTimeout(function() { var m = document.getElementById('wcBatchCreateModal'); if (m) m.remove(); }, 1500);
+        }
+    } catch(e) {
+        var resultEl = document.getElementById('wcBatchResult');
+        resultEl.style.display = 'block';
+        resultEl.innerHTML = '<div style="color:#ef4444;">❌ ' + App._escape(e.message) + '</div>';
+        App.showToast('AI 解析失败: ' + e.message, 'danger');
+    }
+    btn.disabled = false;
+    btn.textContent = '🤖 AI 拆解';
+};
+
+App.wordCards._confirmBatchCreate = async function() {
+    if (!this._batchParsed) return;
+    var text = document.getElementById('wcBatchText').value.trim();
+    var gid = parseInt(document.getElementById('wcBatchGroup').value) || null;
+    
+    var btn = document.getElementById('wcBatchBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ 入库中...';
+    
+    try {
+        var d = await App.fetchJSON('/api/v4/word-cards/batch-create', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ text: text, group_id: gid, auto_archive: true }),
+            _timeoutMs: 60000
+        });
+        if (d && d.ok) {
+            App.showToast('已入库 ' + d.created_count + ' 条', 'success');
+            await App.wordCards.load();
+            try { await App.loadGroupTree(); } catch(e) {}
+            var m = document.getElementById('wcBatchCreateModal');
+            if (m) m.remove();
+        }
+    } catch(e) {
+        App.showToast('入库失败: ' + e.message, 'danger');
+    }
+    btn.disabled = false;
+    btn.textContent = '🤖 AI 拆解';
+};
+
 console.log('[word_card_manager] ready — App.wordCards.load()');

@@ -148,8 +148,11 @@ S._openRightPicker=function(sid,field){
     }
     
     if(!foundLib){
-        App.showToast('未找到词库: '+field,'warning');
-        console.warn('[WC Bridge] 未匹配字段:', field, 'dimKey:', dimKey, '可用词库:', S.libraries.map(function(l){return l.dimension_key;}));
+        // 抑制已知缺失字段的 console 噪音（仅静默跳过，不影响 toast 提示）
+        var _quiet = ['camera_move','subject'];
+        if (_quiet.indexOf(field) < 0 && _quiet.indexOf(dimKey) < 0) {
+            console.debug('[WC Bridge] 未匹配字段:', field, 'dimKey:', dimKey);
+        }
         return;
     }
     

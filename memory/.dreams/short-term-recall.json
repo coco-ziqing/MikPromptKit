@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-22T08:56:53.017Z",
+  "updatedAt": "2026-06-25T12:33:22.606Z",
   "entries": {
     "memory:memory/2026-05-29.md:88:118": {
       "key": "memory:memory/2026-05-29.md:88:118",
@@ -276,19 +276,21 @@
       "endLine": 29,
       "source": "memory",
       "snippet": "## Session: 2026-05-31 14:00-14:40 — .pt 提示词包系统 ### 新增功能：.pt 包导出/导入（提示词卡 + 缩略图 + 视频） - 后端 API： - `GET /api/v2/pt/export?prompt_ids=1,2,3` — 打包导出 .pt - `POST /api/v2/pt/preview` — 预览 .pt 内容（metadata.json 解析） - `POST /api/v2/pt/import` — 导入 .pt（写数据库 + 还原缩略图/视频文件） - 文件结构：ZIP 打包，扩展名 `.pt`（PromptKit 缩写） - `metadata.json` — prompts 数组 - `thumbnails/` — 缩略图文件 - `videos/` — 视频文件 - 前端入口： - 批量模式栏新增「导出 .pt」按钮 - 编辑模式栏新增「导出 .pt」按钮 - 导入面板 `ieFileInput` 增加 `.pt` 扩展名支持 - 拖拽导入同时支持 `.json` + `.pt` - 文件名规则：`内容前12字_等N条_时间.pt` ### 本次会话其他改动 1. 导出文件名优化：JSON/TXT 导出文件名使用第一条内容前12字 2. 拖拽导入颜色修复：深色/浅色主题适配 3. 导入模块改为下拉列表：自动读取已有功能模块，默认选 JSON 记录的值 4. 新建词条自动归属当前模块修复 5. 导入后不切换到全部词库",
-      "recallCount": 2,
+      "recallCount": 3,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 2,
+      "totalScore": 3,
       "maxScore": 1,
       "firstRecalledAt": "2026-06-03T00:48:56.146Z",
-      "lastRecalledAt": "2026-06-03T02:04:14.297Z",
+      "lastRecalledAt": "2026-06-25T05:08:58.376Z",
       "queryHashes": [
         "7156695d5008",
-        "d79035dcea12"
+        "d79035dcea12",
+        "9a79c6ba9fe8"
       ],
       "recallDays": [
-        "2026-06-03"
+        "2026-06-03",
+        "2026-06-25"
       ],
       "conceptTags": [
         "00-14",
@@ -375,20 +377,23 @@
       "endLine": 57,
       "source": "memory",
       "snippet": "- 视频播放器（时间轴滑块 + 逐帧控制 ±0.1s） ### 查看器分栏改造 (20:00-21:00) - 原图/原视频查看器改为左右分栏 - 右栏显示：模块名 + 提示词内容 + 释义 + 标签 + 复制按钮 + 收藏按钮 ### 收藏勾选 + 编辑模式 (21:00-22:30) - 查看器右栏收藏勾选列表，勾选即添加/取消即移除 - 收藏分组列表实时同步到卡片徽标 - 编辑模式（顶部 ✏ 按钮），卡片编辑+删除弹窗 ### 缩略图自适应 (22:30) - 1-6 列缩略图尺寸自适应（1列485×323 → 6列85×57） ## 关键修复记录 - 汉字乱码 → UTF-8 无 BOM 重写 index.html - 查看器右栏不显示 → 补回 `_renderViewerRight` / `_fillViewerPanel` - 收藏勾选不工作 → 修复 `_refreshViewerPanels` 模态框 ID 拼写公式 - 重复函数定义 → `dedup` 清理后补回缺失函数 - 查看器弹窗被遮挡 → z-index 调整 - 收藏 popover 监听器残留 → 命名函数 + `removeEventListener` ## 最终统计数据 | 指标 | 数据 | |------|------| | 词条总数 | 151 条 | | JS 代码行数 | ~2200 行 | | CSS 代码行数 | ~780 行 | | 后端 API 数 | 30+ | | 数据库表 | 8 张 | | 功能总数 | 20+ | | 中间修复脚本 | 30+ (已全部清",
-      "recallCount": 2,
+      "recallCount": 4,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 2,
+      "totalScore": 4,
       "maxScore": 1,
       "firstRecalledAt": "2026-06-03T00:48:56.146Z",
-      "lastRecalledAt": "2026-06-06T04:16:58.935Z",
+      "lastRecalledAt": "2026-06-25T12:33:22.606Z",
       "queryHashes": [
         "7156695d5008",
-        "99688f0cb941"
+        "99688f0cb941",
+        "a9f9d2f83188",
+        "c82c2635fea8"
       ],
       "recallDays": [
         "2026-06-03",
-        "2026-06-06"
+        "2026-06-06",
+        "2026-06-25"
       ],
       "conceptTags": [
         "0.1s",
@@ -474,18 +479,21 @@
       "endLine": 134,
       "source": "memory",
       "snippet": "## 2026-05-30 23:07 — 导出优化需求初步分析 ### 已检查的代码 - `backend/exporter.py` — PNG 导出引擎（Pillow 绘制卡片 + tEXt 元数据），`import_prompt_from_png` 完备 - `backend/api/exporter.py` — 5 endpoints（单条导出、批量导出 ZIP、预览、单条导入、批量导入）+ JSON 导入 - 前端 `frontend/index.html` — `modalImportExport` 含导入/导出/格式切换 - 前端 `frontend/static/js/app.js` — `renderSidebar` 底部有「导入」「导出」按钮 ### 用户需求分析 1. **不同分类批量导出为可重新识别导入的压缩文件** —— 已有 ZIP 批量导出+导入，但缺少按模块筛选导出 2. **单条 PNG 拖拽导入** —— 已有 PNG 导出+导入（通过弹窗选择文件），但缺少拖拽 PNG 到列表区域自动识别 3. **优化建议** —— 需整体评估 ### 待完成 - 下轮：定位 `showImportModal`/`showExportModal`/`doImport`/`doExport` 方法，实施拖拽导入 + 按模块批量导出 import sys; sys.stdout.reconfigure(encoding='utf-8') fn = r'C:\\Users\\ASUS\\.openclaw\\workspace\\prompt-tool-dev\\fr",
-      "recallCount": 1,
+      "recallCount": 3,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 1,
+      "totalScore": 3,
       "maxScore": 1,
       "firstRecalledAt": "2026-06-03T02:04:14.297Z",
-      "lastRecalledAt": "2026-06-03T02:04:14.297Z",
+      "lastRecalledAt": "2026-06-25T09:09:46.437Z",
       "queryHashes": [
-        "d79035dcea12"
+        "d79035dcea12",
+        "9a79c6ba9fe8",
+        "8cea43b96a79"
       ],
       "recallDays": [
-        "2026-06-03"
+        "2026-06-03",
+        "2026-06-25"
       ],
       "conceptTags": [
         "backend/exporter.py",
@@ -603,18 +611,20 @@
       "endLine": 32,
       "source": "memory",
       "snippet": "# 2026-06-07 开发会话总结 — Seedance V2 组装器阶段 ## 时间 - 开始: 2026-06-07 12:00 (GMT+8) - 结束: 2026-06-07 14:54 (GMT+8) - 历时: ~3 小时 ## Git 标签 - `v3.10.30` — Seedance V2 组装器多项修复 ## 本次完成事项 ### Phase 4 — 高级功能重建 (15:50-15:56) - [x] Home 视图数据源切换: `/api/prompts` → `/api/v4/cards` - [x] 结构化字段编辑面板: 编辑弹窗中嵌入15个字段网格编辑 - [x] 版本管理: 卡片详情弹窗中嵌入「版本历史」+「编辑卡片」按钮 - [x] 版本回滚 API: `POST /api/v4/cards/{id}/rollback` - [x] 保存时自动同步结构化字段到 prompt_cards - [x] Git 打标 `v4.0.0-phase4` ### Phase 5 — 前端卡片统一 + CSS优化 (16:04-16:10) - [x] 卡片类型徽标 (image/video 双色显示) - [x] CSS 优化: `.card-type-image` + `.card-type-video` - [x] 旧 JSON 文件删除 (seedance_styles + negative_prompts) - [x] Git 打标 `v4.0.0-phase5` ### Phase 6 — 组装器 v3 卡片编排 (16:10-1",
-      "recallCount": 1,
+      "recallCount": 2,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 1,
+      "totalScore": 2,
       "maxScore": 1,
       "firstRecalledAt": "2026-06-11T02:26:31.852Z",
-      "lastRecalledAt": "2026-06-11T02:26:31.852Z",
+      "lastRecalledAt": "2026-06-23T02:39:37.317Z",
       "queryHashes": [
-        "c252f2b854ec"
+        "c252f2b854ec",
+        "e0d07e7c2b3c"
       ],
       "recallDays": [
-        "2026-06-11"
+        "2026-06-11",
+        "2026-06-23"
       ],
       "conceptTags": [
         "v3.10.30",
@@ -634,18 +644,20 @@
       "endLine": 23,
       "source": "memory",
       "snippet": "# 会话记忆 — 2026-06-14 (Phase 9.3.1) ## 本次目标 - 修复封装版 EXE 数据封装：种子数据（151 prompts + 233 library_assets）在首次启动时自动写入 - 修复新建项目报错（`user_project` 缺列） - Composition 模块中文名显示 - 端口自兜底 - 跨机迁移方案 ## 关键发现 1. **依赖注入时机**：`_migrate_v4` 必须在 Seedance V2 数据初始化之后执行，否则 `library_assets` 为空 2. **PyInstaller 模块丢失**：`seed_migrate.py` 未自动打包 → 改为内联到 `main.py` 3. **CREATE TABLE 不幂等**：使用 `CREATE TABLE IF NOT EXISTS` 后，旧表中缺失的列需通过 `ALTER TABLE` 补丁 4. **前端模块名翻译**：4 处直接显示 `card.module` 原始 ID，需加 `_moduleDisplayName()` 翻译 ## 修复清单 | 文件 | 修改内容 | |------|---------| | `backend/main.py` | `_migrate_v4()` 内联 + 执行顺序修复 + 端口自兜底 + 启动失败 pause | | `backend/database.py` | `user_project` 补 4 列 + `user_project_scene` 补 3 列 + ALTER TABLE 迁移 | |",
-      "recallCount": 1,
+      "recallCount": 2,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 1,
+      "totalScore": 2,
       "maxScore": 1,
       "firstRecalledAt": "2026-06-15T03:12:52.916Z",
-      "lastRecalledAt": "2026-06-15T03:12:52.916Z",
+      "lastRecalledAt": "2026-06-25T09:09:46.437Z",
       "queryHashes": [
-        "e8bfb7b9de6c"
+        "e8bfb7b9de6c",
+        "8cea43b96a79"
       ],
       "recallDays": [
-        "2026-06-15"
+        "2026-06-15",
+        "2026-06-25"
       ],
       "conceptTags": [
         "9.3.1",
@@ -696,18 +708,21 @@
       "endLine": 29,
       "source": "memory",
       "snippet": "# 会话记忆 — 2026-06-15 (macOS 适配 + 跨平台封装规则制定) ## 背景 用户需要 PromptKit 在 macOS Catalina (10.15.8, Intel iMac 2013) 上纯本地运行，不要开发环境，只需双击启动、浏览器操作。 ## 会话目标 1. 将 Windows 项目封装为 macOS 可运行的交付件 2. 修正在 macOS 上暴露的所有跨平台兼容性 bug 3. 总结 Windows ↔ macOS 封装规则，写入长期记忆 ## 遇到的 6 个关键问题及修复 ### 1. ZIP 路径分隔符问题 → 目录结构全毁 - **现象**：Windows 用 PowerShell `Compress-Archive` 打包 → 反斜杠 `\\` → macOS 解压后 `backend\\main.py` 变成扁平文件名，非文件夹 - **修复**：改用 Python `zipfile` + `as_posix()` 正斜杠路径 - **规则**：跨平台 ZIP 必须用 Python zipfile ### 2. macOS 隔离标记 + 执行权限 - **现象**：双击 `.command` 报 \"没有正确的访问权限\" - **原因**：① `chmod` 未加执行权限 ② macOS Gatekeeper `com.apple.quarantine` 标记 - **修复**：`chmod +x` + `xattr -cr` 两步 ### 3. `requirements.txt` 缺包 - **现象**：`Runtime",
-      "recallCount": 1,
+      "recallCount": 3,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 1,
+      "totalScore": 3,
       "maxScore": 1,
       "firstRecalledAt": "2026-06-15T03:17:39.563Z",
-      "lastRecalledAt": "2026-06-15T03:17:39.563Z",
+      "lastRecalledAt": "2026-06-25T12:33:22.606Z",
       "queryHashes": [
-        "e44e1dc1ad22"
+        "e44e1dc1ad22",
+        "a9f9d2f83188",
+        "c82c2635fea8"
       ],
       "recallDays": [
-        "2026-06-15"
+        "2026-06-15",
+        "2026-06-25"
       ],
       "conceptTags": [
         "10.15.8",
@@ -820,18 +835,20 @@
       "endLine": 111,
       "source": "memory",
       "snippet": "# -*- coding: utf-8 -*- import sys; sys.stdout.reconfigure(encoding='utf-8') fn = r'C:\\Users\\ASUS\\.openclaw\\workspace\\prompt-tool-dev\\frontend\\static\\js\\app.js' with open(fn, encoding='utf-8') as f: c = f.read() for kw in ['doImport', 'doExport', 'showImportExport', 'switchIETab', '_populateModuleOptions']: i = c.rfind(kw) if i >= 0: print(f'--- {kw} at {i} ---') print(c[i:i+500]) print('---') python -c \"fn = r'C:\\Users\\ASUS\\.openclaw\\workspace\\prompt-tool-dev\\frontend\\static\\js\\app.js'; c = open(fn, encoding='utf-8').read(); slots = ['doImport', 'doExport', 'showImportExport', 'switchIETab', '_populateModuleOptions']; [ (print('--- ' + kw + ' ---'), print",
-      "recallCount": 1,
+      "recallCount": 2,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 1,
+      "totalScore": 2,
       "maxScore": 1,
       "firstRecalledAt": "2026-06-22T01:50:14.840Z",
-      "lastRecalledAt": "2026-06-22T01:50:14.840Z",
+      "lastRecalledAt": "2026-06-25T05:08:58.376Z",
       "queryHashes": [
-        "da8eed96712e"
+        "da8eed96712e",
+        "9a79c6ba9fe8"
       ],
       "recallDays": [
-        "2026-06-22"
+        "2026-06-22",
+        "2026-06-25"
       ],
       "conceptTags": [
         "utf-8",
@@ -913,18 +930,20 @@
       "endLine": 28,
       "source": "memory",
       "snippet": "# 2026-06-22 会话记忆 ## 1. Skills 部署 (3个新Skill) ### 1.1 token-opt-admin — DeepSeek Token配置自动运维 - 路径: `skills/token-opt-admin/SKILL.md` - config: `openclaw.json` skills.entries 43→44 (+1) - 调用: `/token-opt {target}`, `/token-check {target}` - 路由: deepseek-v4-pro(复杂诊断) / deepseek-v4-flash(轻量巡检) - lazy_load=true, Cache Boundary动态下层挂载 ### 1.2 code-project-analyze — 源码工程结构化解析 - 路径: `skills/code-project-analyze/SKILL.md` - config: skills.entries 44→45 (+1) - 调用: `/analyze-code`(V4 Pro), `/code-stack-only`(V4 Flash) - 验证: 对Mika词库执行完整10模块分析 → analysis_report_promptkit_v4.2.0.md (29.6KB/516行) - 10模块: ①技术栈②架构分层③交互逻辑④业务流程⑤风险建议⑥DB Schema⑦前端拓扑⑧构建部署⑨安全审计⑩Git演进 ### 1.3 code-review-audit — 标准化代码审查 - 路径: `s",
-      "recallCount": 1,
+      "recallCount": 2,
       "dailyCount": 0,
       "groundedCount": 0,
-      "totalScore": 1,
+      "totalScore": 2,
       "maxScore": 1,
       "firstRecalledAt": "2026-06-22T08:56:53.017Z",
-      "lastRecalledAt": "2026-06-22T08:56:53.017Z",
+      "lastRecalledAt": "2026-06-25T09:09:46.437Z",
       "queryHashes": [
-        "5611ac02ac94"
+        "5611ac02ac94",
+        "8cea43b96a79"
       ],
       "recallDays": [
-        "2026-06-22"
+        "2026-06-22",
+        "2026-06-25"
       ],
       "conceptTags": [
         "1.1",
@@ -935,6 +954,444 @@
         "token-opt",
         "token-check",
         "deepseek-v4-pro"
+      ]
+    },
+    "memory:memory/2026-06-21.md:154:181": {
+      "key": "memory:memory/2026-06-21.md:154:181",
+      "path": "memory/2026-06-21.md",
+      "startLine": 154,
+      "endLine": 181,
+      "source": "memory",
+      "snippet": "修复迭代时需频繁升级版本号（`v=8→9.0→9.1→...→9.6→10.0`），否则浏览器坚持加载旧 JS。 ### 7. 诊断面板比 F12 Console 快 排查阶段可在页面底部注入可见的 `#_wcDebug` 面板，绕过控制台过滤。 ### 8. try-catch 是所有动态渲染函数的标配 200行的 `renderSidebar` 应从一开始就包裹 try-catch，否则任意中间异常导致整个侧边栏空白。 ## 技术要点 ### ComfyUI 桌面版特点 - 官方桌面版端口不固定（8000/8188/8743 等） - 服务名为 `ComfyUI`（任务管理器可见） - 默认绑定 `127.0.0.1`（仅本机可访问） ### 服务管理 - 杀进程：`Get-Process python \\| Stop-Process -Force` - 清残留连接：等待 TIME_WAIT 自然过期（~60秒）即可重新绑定端口 - 启动：`start-process -WindowStyle Hidden` 在 PowerShell 中启动后台进程 ### 当前版本信息 - 项目: PromptKit / 咪卡Mik词库 v4.2.1-phase14.1-complete - 后端: Python 3.14 / FastAPI / Uvicorn / SQLite WAL+FTS5 - 前端: 22 JS 模块 ≈ 15,000 行 / CSS 2,600+ 行 - 数据: 694 词卡 / 62 分组 / 151 v4卡 / 233 library_asse",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-23T02:39:37.317Z",
+      "lastRecalledAt": "2026-06-23T02:39:37.317Z",
+      "queryHashes": [
+        "e0d07e7c2b3c"
+      ],
+      "recallDays": [
+        "2026-06-23"
+      ],
+      "conceptTags": [
+        "9.0",
+        "9.1",
+        "9.6",
+        "10.0",
+        "try-catch",
+        "8000/8188/8743",
+        "127.0.0.1",
+        "get-process"
+      ]
+    },
+    "memory:memory/2026-06-07.md:53:77": {
+      "key": "memory:memory/2026-06-07.md:53:77",
+      "path": "memory/2026-06-07.md",
+      "startLine": 53,
+      "endLine": 77,
+      "source": "memory",
+      "snippet": "| 前端 JS 模块 (新) | 4 个 (v4_library + v4_cards + v4_editor + composer) | | Git tags (今日) | 5 个 (v3.10.30 + v4 phase1-4) | ### 安装的 ClawHub 技能 - `page-builder` (v2.0.2) — WebUI 页面生成 - `api-tester` (v1.0.0) — API 自动化测试 - `log-analyzer` (v1.0.0) — 日志/报错分析 - `bug-fixer` (v1.0.0) — Bug 自动修复 ## 当前项目状态 | 指标 | 数据 | |------|------| | 数据库词条 | 213 条 | | 画风词库 | 8 类 58 种 | | 负面词库 | 10 类 74 条 | | 后端 API 端点 | ~115 个 | | 前端 JS 源码 | ~5,700 行 (app.js) + 354 行 (seedance_v2_composer.js) | | 最新备份 | prompts_20260607_145634.db | ## 下次打开建议 1. 读取 `MEMORY.md` + `HEARTBEAT.md` 恢复上下文 2. 启动服务：`.\\QUICK_START.bat` 3. 如需完整 .pkb 备份，运行同步面板导出 4. 关注：组装器 UI 响应式优化、多项目切换流畅度",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-24T02:46:24.962Z",
+      "lastRecalledAt": "2026-06-24T02:46:24.962Z",
+      "queryHashes": [
+        "1d576880fccd"
+      ],
+      "recallDays": [
+        "2026-06-24"
+      ],
+      "conceptTags": [
+        "备份",
+        "v4-library",
+        "v4-cards",
+        "v4-editor",
+        "v3.10.30",
+        "phase1-4",
+        "page-builder",
+        "v2.0.2"
+      ]
+    },
+    "memory:memory/2026-06-21.md:1:41": {
+      "key": "memory:memory/2026-06-21.md:1:41",
+      "path": "memory/2026-06-21.md",
+      "startLine": 1,
+      "endLine": 41,
+      "source": "memory",
+      "snippet": "# 2026-06-21 会话记录 ## 时间线 ### 09:00-10:00 | Phase14 侧边栏空白 — 7层问题链排查与修复 #### 症状 - 页面左侧侧边栏完全空白，折叠按钮消失 - F12 Console: `Init error, fallback to home: this.loadGroupTree is not a function` - F12 Console: `[app_core] loadGroupTree 等待超时 (10s), 降级为空白侧边栏` #### 根因链（7层联动） ``` Layer 1: app_core.js 用 const App = {...} 声明 → const 是块级作用域，不设置 window.App → wc_bridge.js 检测 if (!window.App || !App.fetchJSON) → window.App 永远 undefined → IIFE 永不进入体 → App.loadGroupTree 永远不被覆盖 ↓ Layer 2: 空安全桩用 self.loadGroupTree != App.loadGroupTree 比对 → self === App（同一个对象引用）→ !== 永远为 false → 桩函数 10s 超时 → 侧边栏空白 ↓ Layer 3: arguments.callee 在 'use strict' 下抛 TypeError → retry 延迟调用也崩溃 ↓ Layer 4: _injectSidebar",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-24T02:46:24.962Z",
+      "lastRecalledAt": "2026-06-24T02:46:24.962Z",
+      "queryHashes": [
+        "1d576880fccd"
+      ],
+      "recallDays": [
+        "2026-06-24"
+      ],
+      "conceptTags": [
+        "00-10",
+        "this.loadgrouptree",
+        "app-core",
+        "app-core.js",
+        "window.app",
+        "wc-bridge.js",
+        "app.fetchjson",
+        "app.loadgrouptree"
+      ]
+    },
+    "memory:memory/2026-06-21.md:31:57": {
+      "key": "memory:memory/2026-06-21.md:31:57",
+      "path": "memory/2026-06-21.md",
+      "startLine": 31,
+      "endLine": 57,
+      "source": "memory",
+      "snippet": "Layer 5: _escape 可能在 renderSidebar 调用时未定义 ↓ Layer 6: signal_lights.js 在 app_core 之前执行，直接引用 App → ReferenceError ↓ Layer 7: renderSidebar 无 try-catch，任意中间异常 → 侧边栏完全空白 ``` #### 修复清单（8项） | # | 根因 | 文件 | 修复 | |---|------|------|------| | 1 | `const App` 不挂 window | app_core.js v12.4 | `const App` → `var App = window.App \\|\\| {...}` | | 2 | `self === App` 同引用 | app_core.js v12.4 | 命名函数 `_loadGroupTreeStub` 独立捕获引用 | | 3 | `arguments.callee` 严格模式 | wc_bridge.js v9.6 | → 命名函数 `initWCBridge` | | 4 | `_injectSidebarToggle` 缺失 | wc_bridge.js v9.6 | 补全30行 + 兄弟元素注入（CSS ~选择器） | | 5 | `_escape` 未定义风险 | wc_bridge.js v9.6 | renderSidebar 内自动补全安全垫 | | 6 | signal_lights 抢占 | signal_lights.js v5 | IIFE 加",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-24T02:46:24.962Z",
+      "lastRecalledAt": "2026-06-24T02:46:24.962Z",
+      "queryHashes": [
+        "1d576880fccd"
+      ],
+      "recallDays": [
+        "2026-06-24"
+      ],
+      "conceptTags": [
+        "signal-lights.js",
+        "app-core",
+        "try-catch",
+        "app-core.js",
+        "v12.4",
+        "window.app",
+        "arguments.callee",
+        "wc-bridge.js"
+      ]
+    },
+    "memory:memory/2026-06-21.md:133:159": {
+      "key": "memory:memory/2026-06-21.md:133:159",
+      "path": "memory/2026-06-21.md",
+      "startLine": 133,
+      "endLine": 159,
+      "source": "memory",
+      "snippet": "跨 `<script>` 标签共享对象必须用 `var` 或显式 `window.App = ...`。`const` 是块级作用域，不设置 `window` 属性。 ### 2. `self === this` 引用陷阱 `self.prop !== App.prop` 在 `self === App` 时永远为假。应使用命名函数表达式独立捕获引用。 ### 3. IIFE 等待条件要用 try-catch `if (!window.App)` 在 `App` 未定义时可能抛 ReferenceError（取决于上下文）。安全写法： ```javascript (function check() { try { if (typeof App !== 'undefined' && App.fetchJSON) { ... } } catch(e) { setTimeout(check, 200); } })(); ``` ### 4. `'use strict'` + `arguments.callee` 不兼容 严格模式下 `arguments.callee` 抛 TypeError。重试循环必须用命名函数。 ### 5. 模块加载顺序决定生死 被依赖者必须在依赖者之前加载。`wc_bridge.js` 定义 `loadGroupTree`，`app_core.js` 调用它 — wc_bridge 必须排前面。 ### 6. 浏览器缓存 + 版本号 = 双刃剑 修复迭代时需频繁升级版本号（`v=8→9.0→9.1→...→9.6→10.0`），否则",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-24T02:46:24.962Z",
+      "lastRecalledAt": "2026-06-24T02:46:24.962Z",
+      "queryHashes": [
+        "1d576880fccd"
+      ],
+      "recallDays": [
+        "2026-06-24"
+      ],
+      "conceptTags": [
+        "window.app",
+        "self.prop",
+        "app.prop",
+        "try-catch",
+        "app.fetchjson",
+        "arguments.callee",
+        "wc-bridge.js",
+        "app-core.js"
+      ]
+    },
+    "memory:memory/2026-06-21.md:51:82": {
+      "key": "memory:memory/2026-06-21.md:51:82",
+      "path": "memory/2026-06-21.md",
+      "startLine": 51,
+      "endLine": 82,
+      "source": "memory",
+      "snippet": "#### 临时诊断工具（已清理） - 底部 `#_wcDebug` 绿字面板：用于绕过 F12 Console 直接查看运行时日志 - `renderSidebar` 中添加的详细 console.log / _wcLog 调用 - 3秒自愈注入逻辑 - 以上均在确认修复后清理 #### 当前版本 - wc_bridge.js v9.6 | app_core.js v12.4 | signal_lights.js v5 | index.html (wc_bridge 置顶) ### 10:00-10:30 | 进程清理 + 服务重启 - 使用 `Get-Process python` 定位所有 Python 进程 - `Stop-Process -Force` 强制终止 - 确认端口 8080 释放（netstat 验证无 LISTENING） - 重新启动：`python backend/main.py` (PID 23716 → 后被 61432 替换 → 最终被 56568 替换) ### 10:30-12:00 | Phase14.2 分组管理功能开发 #### 变更清单 | 文件 | 内容 | 变动 | |------|------|------| | wc_bridge.js v10.0 | 重写分组 CRUD — `gmRefresh` / `gmCreate` / `gmEdit` / `gmDelete` | +80行 | | index.html | 新增 `modalGroupManager` 弹窗（创建/列表/重命名/删除） | +40行 |",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-25T09:09:46.437Z",
+      "lastRecalledAt": "2026-06-25T09:09:46.437Z",
+      "queryHashes": [
+        "8cea43b96a79"
+      ],
+      "recallDays": [
+        "2026-06-25"
+      ],
+      "conceptTags": [
+        "console.log",
+        "wc-bridge.js",
+        "v9.6",
+        "app-core.js",
+        "v12.4",
+        "signal-lights.js",
+        "index.html",
+        "wc-bridge"
+      ]
+    },
+    "memory:memory/2026-06-21.md:76:106": {
+      "key": "memory:memory/2026-06-21.md:76:106",
+      "path": "memory/2026-06-21.md",
+      "startLine": 76,
+      "endLine": 106,
+      "source": "memory",
+      "snippet": "| style.css | 新增 `.gm-row` / `.gm-indent` 等管理弹窗样式 | +15行 | #### 功能清单 - 查看所有62个分组列表，缩进展示嵌套层级 - 创建分组：名称 + icon emoji + 父级下拉 - 重命名分组（仅自定义组） - 删除分组（仅自定义组，词卡自动移至未分类） - 双 emoji 修复：名称开头去掉 icon emoji 避免重复 ### 12:00-12:30 | ComfyUI 自动发现 + 配置同步 #### 变更 | 文件 | 内容 | |------|------| | health.py | 重写 `_check_comfyui` — 三层发现策略 | | health.py | 新增 `_autodetect_comfyui()` — netstat 扫描 + 特征探测 | | health.py | 新增 `_probe_comfy_url()` — `/system_stats` → `/` (关键词) → `/api/queue` | | health.py | 新增 `_save_comfy_url()` — 自动发现后同步到 `comfyui_config` | | health.py | `_ping_comfyui` 后台监听也走自动发现 + config 同步 | #### 三层发现策略 | 层级 | 方法 | 覆盖 | |------|------|------| | 1. 配置优先 | 读取 `comfyui_config.server_url` | 用户手动设置 | |",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-25T09:09:46.437Z",
+      "lastRecalledAt": "2026-06-25T09:09:46.437Z",
+      "queryHashes": [
+        "8cea43b96a79"
+      ],
+      "recallDays": [
+        "2026-06-25"
+      ],
+      "conceptTags": [
+        "style.css",
+        "gm-row",
+        "gm-indent",
+        "00-12",
+        "health.py",
+        "check-comfyui",
+        "autodetect-comfyui",
+        "probe-comfy-url"
+      ]
+    },
+    "memory:memory/2026-06-15.md:24:52": {
+      "key": "memory:memory/2026-06-15.md:24:52",
+      "path": "memory/2026-06-15.md",
+      "startLine": 24,
+      "endLine": 52,
+      "source": "memory",
+      "snippet": "- **现象**：`RuntimeError: Form data requires python-multipart` - **修复**：加 `python-multipart==0.0.9` - **规则**：requirements.txt 必须完整，FastAPI UploadFile 依赖此包 ### 4. NumPy 2.x 兼容性崩溃 - **现象**：`_ARRAY_API not found` + `NumPy 2.4.6 cannot run with modules compiled for NumPy 1.x` - **根因**：macOS 老 PyTorch (2.2.2) 编译时链接 NumPy 1.x，与 NumPy 2.x 二进制不兼容 - **修复**：`numpy<2` - **规则**：macOS 非 GPU 环境必须 `numpy<2` ### 5. semantic.py 异常捕获过窄 - **现象**：`NameError: name 'nn' is not defined` 崩溃，但 `except ImportError` 没兜住 - **根因**：sentence-transformers 导入链深处报 `NameError`，不是 `ImportError` - **修复**：`except ImportError` → `except Exception` - **规则**：ML 模块导入必须 `except Exception` 宽捕获 ### 6. msvcrt Windows 专有模块 - **现象**：`mai",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 2,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-25T09:09:46.442Z",
+      "lastRecalledAt": "2026-06-25T12:33:22.606Z",
+      "queryHashes": [
+        "a9f9d2f83188",
+        "c82c2635fea8"
+      ],
+      "recallDays": [
+        "2026-06-25"
+      ],
+      "conceptTags": [
+        "python-multipart",
+        "0.0.9",
+        "requirements.txt",
+        "2.x",
+        "array-api",
+        "2.4.6",
+        "1.x",
+        "2.2.2"
+      ]
+    },
+    "memory:memory/2026-06-19.md:1:30": {
+      "key": "memory:memory/2026-06-19.md:1:30",
+      "path": "memory/2026-06-19.md",
+      "startLine": 1,
+      "endLine": 30,
+      "source": "memory",
+      "snippet": "# Session Memory — 2026-06-19 Phase 12 开发会话 ## 完成内容 本次会话从 09:30 ~ 13:55，跨越两个阶段： ### 阶段1：服务启动监测仪表盘 (09:30-10:00) - 新增 `backend/api/monitor.py`: 运行时监控(CPU/内存/网络/uptime/请求统计) + 统一dashboard API - 新增 `frontend/static/js/monitor_dashboard.js`: 弹窗仪表盘(自动刷新/健康灯/请求历史) - main.py: HTTP请求记录中间件 + monitor路由挂载 - 修复 health.py 磁盘检测路径(3→2层dirname) - 修复 translate.py 翻译模型 phi3:mini→qwen3.5:9b (已在Phase12统一处理) ### 阶段2：AI功能全栈升级 — 分析→设计→实施 (10:00-13:55) **分析阶段**: - 盘点16个Ollama本地模型 + 5个外部依赖功能 - 识别最大瓶颈: phi3:mini(2.2GB最弱)做翻译, ComfyUI常离线, 语义搜索缺LLM增强 - 制定6 Tier升级方案 **实施阶段**: Phase 12.1 — 翻译引擎升级 - 重写 `backend/api/translate.py`: phi3:mini→qwen3.5:9b, 批量翻译(5并发), 质量评估 - 新增 PT翻译Prompt模板 Phase 12.2 — AI提示词优化器 - 新增 `bac",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 2,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-25T09:09:46.442Z",
+      "lastRecalledAt": "2026-06-25T12:33:22.606Z",
+      "queryHashes": [
+        "a9f9d2f83188",
+        "c82c2635fea8"
+      ],
+      "recallDays": [
+        "2026-06-25"
+      ],
+      "conceptTags": [
+        "网络",
+        "30-10",
+        "backend/api/monitor.py",
+        "cpu/内存/网络/uptime/请求统计",
+        "自动刷新/健康灯/请求历史",
+        "main.py",
+        "health.py",
+        "translate.py"
+      ]
+    },
+    "memory:memory/2026-06-01-v3.4.1.md:1:19": {
+      "key": "memory:memory/2026-06-01-v3.4.1.md:1:19",
+      "path": "memory/2026-06-01-v3.4.1.md",
+      "startLine": 1,
+      "endLine": 19,
+      "source": "memory",
+      "snippet": "# 2026-06-01 会话记忆（补充） ## v3.4.1 — 卡片拖拽上传缩略图 ### 新增功能 - 编辑模式下拖拽图片/视频到任意提示词卡片上 → 自动上传并关联 - 拖拽时卡片高亮（紫色虚线边框 + 半透明遮罩 + 松开放置提示） - 图片复用 `/api/thumbnails/upload` + `/assign` - 视频复用 `/api/thumbnails/upload-video` + `/assign-video` ### 修复 - 编辑模式下拖拽图片不再弹出全局导入遮罩（冲突解决） - 非编辑模式所有拖拽行为不变 - zone 的 dragenter/dragover/drop 全部增加编辑模式 skip 检查 - bindCardDragDrop 在 renderPrompts 末尾调用 ### 已知 - 编辑模式下拖 JSON/.pt/PNG 到**空白区**，遮罩会被卡片代码阻止（编辑模式下 zone dragenter 完全 return），需要拖到遮罩区才能导入。后续可优化。",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 2,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-25T09:09:46.442Z",
+      "lastRecalledAt": "2026-06-25T12:33:22.606Z",
+      "queryHashes": [
+        "a9f9d2f83188",
+        "c82c2635fea8"
+      ],
+      "recallDays": [
+        "2026-06-25"
+      ],
+      "conceptTags": [
+        "2026-06-01-v3.4.1.md",
+        "v3.4.1",
+        "编辑模式下拖拽图片/视频到任意提示词卡片上",
+        "api/thumbnails/upload",
+        "api/thumbnails/upload-video",
+        "assign-video",
+        "dragenter/dragover/drop",
+        "pt/png"
+      ]
+    },
+    "memory:memory/2026-06-11.md:106:136": {
+      "key": "memory:memory/2026-06-11.md:106:136",
+      "path": "memory/2026-06-11.md",
+      "startLine": 106,
+      "endLine": 136,
+      "source": "memory",
+      "snippet": "| 导出文件命名规范 | `项目名_20260611_1044_3s_运镜.json` | ## Phase 7.3 — 拓展单元选词即时跳转 (50e589d) | 操作 | 旧行为 | 新行为 | |------|--------|--------| | 下拉切换分组字段 | ❌ 只改字段名 | ✅ 右侧面板自动打开对应词库 | | 点击 `+` 新增单元 | ❌ 仅加空字段 | ✅ 自动打开词库词卡列表 | ## Phase 7.4 — 词卡缩略图预览系统 (50fa644) | 层面 | 内容 | |------|------| | 后端新端点 | POST /cards/{id}/thumbnail (Pillow 3:2→100×67) + DELETE + GET /thumbnails/file | | 前端渲染 | 右侧面板卡片: 左 100×67 缩略图 + 右文字 | | 拖拽上传 | .s2-card-thumb-zone 区域 dragover/drop → FormData POST | | 目录 | data/wordcard_thumbs/ | ## Phase 7.4-hotfix — JS 运行时崩溃修复 (7548be1) | 故障 | 根因 | |------|------| | 组装器页面全部功能丢失，只显示搜索框 | onerror=\"this.style.display=\\\\'none\\\\'\" 转义链断裂 | | 修复 | 移除 onerror，改用 CSS 自然降级 + 无图时 `<span>+</span>` 占位 | |",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 2,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-25T09:09:46.442Z",
+      "lastRecalledAt": "2026-06-25T12:33:22.606Z",
+      "queryHashes": [
+        "a9f9d2f83188",
+        "c82c2635fea8"
+      ],
+      "recallDays": [
+        "2026-06-25"
+      ],
+      "conceptTags": [
+        "项目名-20260611-1044-3s-运镜.json",
+        "7.3",
+        "7.4",
+        "thumbnails/file",
+        "s2-card-thumb-zone",
+        "dragover/drop",
+        "data/wordcard-thumbs",
+        "7.4-hotfix"
+      ]
+    },
+    "memory:memory/2026-06-24.md:1:28": {
+      "key": "memory:memory/2026-06-24.md:1:28",
+      "path": "memory/2026-06-24.md",
+      "startLine": 1,
+      "endLine": 28,
+      "source": "memory",
+      "snippet": "# 2026-06-24 会话记忆 ## 会话概要 - 日期: 2026-06-24 (周三) - 时间段: 11:00 - 15:00 (Asia/Shanghai) - 主线: PromptKit v5.0 原子化提示词工业化平台 Phase15-17 开发 - 版本: v4.2.0-phase14-arch → v5.0.0-phase16-atom-editor --- ## 核心成果 ### Phase15: 后端原子引擎加固 (已完成) - **atoms.py**: 5→12 端点 (OCR图片提取/文本拆解/归档分组/列表/桥接/删除/统计) - **atoms_import.py**: 新建 — CSV/JSON/TXT 三格式批量导入中间件 - **migrate_atom_tables.py**: 新增 atom_word_bridge 表 + 6 个索引 - **关键修复**: qwen3.5 思维模型 token 预算 (600→4000)、JSON 鲁棒提取、英文 system prompt - **main.py**: 版本号 v5.0.0-phase15-atom-engine, 加载 atoms_import 路由 - **真实 Ollama 验证**: 通过 — 6 原子拆解, 质量分 1.0, MD5 缓存命中 0.01s ### Phase16: 前端原子编辑器 (已完成) - **atom_editor.js**: 420+ 行 — AI拆解面板/进度条/原子卡片/展开折叠/列表/删除/变异生成/归档 - **style.cs",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-25T09:10:01.100Z",
+      "lastRecalledAt": "2026-06-25T09:10:01.100Z",
+      "queryHashes": [
+        "15313a79c8dd"
+      ],
+      "recallDays": [
+        "2026-06-25"
+      ],
+      "conceptTags": [
+        "asia/shanghai",
+        "v5.0",
+        "phase15-17",
+        "v4.2.0-phase14-arch",
+        "v5.0.0-phase16-atom-editor",
+        "atoms.py",
+        "ocr图片提取/文本拆解/归档分组/列表/桥接/删除/统计",
+        "atoms-import.py"
+      ]
+    },
+    "memory:memory/2026-06-24.md:44:86": {
+      "key": "memory:memory/2026-06-24.md:44:86",
+      "path": "memory/2026-06-24.md",
+      "startLine": 44,
+      "endLine": 86,
+      "source": "memory",
+      "snippet": "3. 修复: max_tokens=4000, 路由 decompose 到 qwen3.5:4b(更快) 4. 英文 system prompt 产生更稳定 JSON 输出 5. fallback: `_extract_json_array()` 鲁棒解析 (去代码块 + 重新定位数组) --- ## P0-P1 问题修复计划 (待执行) - [ ] P0-1: MAX(id) → last_insert_rowid() (4 处) - [ ] P0-2: HTML 转义函数 + 6 处调用 - [ ] P1-1: archive-to-group 去重 - [ ] P1-2: N+1 commit 合并 - [ ] P1-3: safe_count_dict 验证 - [ ] P1-5: 删除 DECOMPOSE_SYS 死代码 - [ ] P1-6: 导入并发 asyncio.gather --- ## Git 里程碑 - `8fa345c` — v5.0.0-phase15-atom-engine - `fbb9ae8` — v5.0.0-phase16-atom-editor - 当前 HEAD: v5.0.0-phase16-atom-editor ## 数据库状态 (49 表, 5 原子表) - atom_decompose: 有数据 (真实 Ollama 拆解) - atom_variation: 有数据 - atom_template: 0 行 - atom_stats: 0 行 - atom_word_bridge: 0 行 (待归档) ## 端",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-25T09:10:01.100Z",
+      "lastRecalledAt": "2026-06-25T09:10:01.100Z",
+      "queryHashes": [
+        "15313a79c8dd"
+      ],
+      "recallDays": [
+        "2026-06-25"
+      ],
+      "conceptTags": [
+        "max-tokens",
+        "qwen3.5",
+        "extract-json-array",
+        "p0-p1",
+        "p0-1",
+        "last-insert-rowid",
+        "p0-2",
+        "p1-1"
+      ]
+    },
+    "memory:memory/2026-06-24.md:23:51": {
+      "key": "memory:memory/2026-06-24.md:23:51",
+      "path": "memory/2026-06-24.md",
+      "startLine": 23,
+      "endLine": 51,
+      "source": "memory",
+      "snippet": "- **style.css**: +40+ 规则 (三栏布局/卡片/进度条/统计行/深色适配) - **index.html**: 导航按钮「⚛ 原子引擎」+ 脚本加载 + 版本号 5.0.0 - **Git tag**: v5.0.0-phase16-atom-editor ### Phase17: 全链路贯通 (已完成) - **atoms.py**: 新增 GET /list, GET /decompose/{did}/bridge, DELETE /decompose/{did} - **atom_editor.js**: 列表分页渲染, 展开折叠, 删除确认, 变异生成弹窗 - 路径修复: 路由顺序 `GET /list` → `GET /decompose/{did}` 避免冲突 - 级联删除: DELETE 同时清理 variation + bridge + stats ### 代码审查 (已完成) - 范围: 4 核心文件 ~1,800 行 - P0 (2): MAX(id) 竞态 → last_insert_rowid(), XSS innerHTML 转义 - P1 (6): archive-to-group 去重, N+1 commit, 死代码 DECOMPOSE_SYS, 导入串行 - P2 (7): inner import re, alert() → 模态框, CSV 解析脆弱, 颜色对比度 --- ## Ollama 故障诊断实录 (重要经验) 1. `qwen3.5:9b` 是思维模型, `num_predict` = thinking",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-25T09:10:01.100Z",
+      "lastRecalledAt": "2026-06-25T09:10:01.100Z",
+      "queryHashes": [
+        "15313a79c8dd"
+      ],
+      "recallDays": [
+        "2026-06-25"
+      ],
+      "conceptTags": [
+        "style.css",
+        "三栏布局/卡片/进度条/统计行/深色适配",
+        "index.html",
+        "5.0.0",
+        "v5.0.0-phase16-atom-editor",
+        "atoms.py",
+        "atom-editor.js",
+        "last-insert-rowid"
       ]
     }
   }

@@ -864,3 +864,256 @@ def _archive_atoms_to_group(db, decompose_id: int, atoms: list, group_id: int) -
         created += 1
     db.commit()
     return {"group_id": group_id, "cards_created": created}
+
+
+# ==================== 模板系统 (P0-1) ====================
+
+class TemplateCreateReq(BaseModel):
+    variation_id: int = 0          # 0=手动创建，不绑定变异
+    title: str
+    description: str = ""
+    atoms_json: str                # JSON string of atom array
+    tags: list[str] = []
+    params_json: str = "{}"        # 平台参数 (seedance/kling/comfyui etc)
+
+class TemplateUpdateReq(BaseModel):
+    title: str = None
+    description: str = None
+    atoms_json: str = None
+    tags: list[str] = None
+    params_json: str = None
+    is_published: int = None
+
+@router.post("/template")
+async def create_template(req: TemplateCreateReq):
+    """发布原子模板：将一组原子 + 参数保存为可复用模板"""
+    db = get_db()
+    db.execute(
+        """INSERT INTO atom_template (variation_id, title, description, atoms_json, tags_json, params_json, is_published, downloads, rating, rating_count)
+           VALUES (?,?,?,?,?,?,0,0,0,0)""",
+        [req.variation_id, req.title[:120], req.description[:500],
+         req.atoms_json, json.dumps(req.tags, ensure_ascii=False),
+         req.params_json]
+    )
+    db.commit()
+    tid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    return {"ok": True, "id": tid, "title": req.title}
+
+
+@router.get("/templates")
+async def list_templates(page: int = 1, page_size: int = 20, search: str = None, published_only: bool = False):
+    """列出已发布/草稿模板"""
+    db = get_db()
+    where = []; params = []
+    if published_only:
+        where.append("is_published=1")
+    if search:
+        where.append("(title LIKE ? OR description LIKE ?)")
+        params.extend([f"%{search}%", f"%{search}%"])
+    w = " AND ".join(where) if where else "1=1"
+    total = db.execute(f"SELECT COUNT(*) FROM atom_template WHERE {w}", params).fetchone()[0]
+    rows = db.execute(
+        f"SELECT * FROM atom_template WHERE {w} ORDER BY downloads DESC, rating DESC, created_at DESC LIMIT ? OFFSET ?",
+        params + [page_size, (page-1)*page_size]
+    ).fetchall()
+    items = []
+    for r in rows:
+        it = dict(r)
+        try: it["tags"] = json.loads(it["tags_json"]) if isinstance(it["tags_json"], str) else (it["tags_json"] or [])
+        except: it["tags"] = []
+        try: it["atoms"] = json.loads(it["atoms_json"]) if isinstance(it["atoms_json"], str) else []
+        except: it["atoms"] = []
+        try: it["params"] = json.loads(it["params_json"]) if isinstance(it["params_json"], str) else {}
+        except: it["params"] = {}
+        items.append(it)
+    return {"ok": True, "items": items, "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/template/{tid}")
+async def get_template(tid: int):
+    """获取单个模板详情"""
+    db = get_db()
+    r = db.execute("SELECT * FROM atom_template WHERE id=?", [tid]).fetchone()
+    if not r:
+        raise HTTPException(404, "模板不存在")
+    it = dict(r)
+    try: it["tags"] = json.loads(it["tags_json"]) if isinstance(it["tags_json"], str) else (it["tags_json"] or [])
+    except: it["tags"] = []
+    try: it["atoms"] = json.loads(it["atoms_json"]) if isinstance(it["atoms_json"], str) else []
+    except: it["atoms"] = []
+    try: it["params"] = json.loads(it["params_json"]) if isinstance(it["params_json"], str) else {}
+    except: it["params"] = {}
+    return {"ok": True, "template": it}
+
+
+@router.put("/template/{tid}")
+async def update_template(tid: int, req: TemplateUpdateReq):
+    """更新模板（编辑/发布/下架）"""
+    db = get_db()
+    r = db.execute("SELECT id FROM atom_template WHERE id=?", [tid]).fetchone()
+    if not r:
+        raise HTTPException(404, "模板不存在")
+    fields = []; params = []
+    if req.title is not None:
+        fields.append("title=?"); params.append(req.title[:120])
+    if req.description is not None:
+        fields.append("description=?"); params.append(req.description[:500])
+    if req.atoms_json is not None:
+        fields.append("atoms_json=?"); params.append(req.atoms_json)
+    if req.tags is not None:
+        fields.append("tags_json=?"); params.append(json.dumps(req.tags, ensure_ascii=False))
+    if req.params_json is not None:
+        fields.append("params_json=?"); params.append(req.params_json)
+    if req.is_published is not None:
+        fields.append("is_published=?"); params.append(req.is_published)
+        if req.is_published == 1:
+            fields.append("published_at=datetime('now','localtime')")
+    if fields:
+        params.append(tid)
+        db.execute(f"UPDATE atom_template SET {', '.join(fields)} WHERE id=?", params)
+        db.commit()
+    return {"ok": True, "id": tid}
+
+
+@router.delete("/template/{tid}")
+async def delete_template(tid: int):
+    """删除模板"""
+    db = get_db()
+    r = db.execute("SELECT id FROM atom_template WHERE id=?", [tid]).fetchone()
+    if not r:
+        raise HTTPException(404, "模板不存在")
+    db.execute("DELETE FROM atom_template WHERE id=?", [tid])
+    db.commit()
+    return {"ok": True, "deleted_id": tid}
+
+
+@router.post("/template/{tid}/download")
+async def download_template(tid: int):
+    """记录模板下载（downloads+1）"""
+    db = get_db()
+    db.execute("UPDATE atom_template SET downloads=downloads+1 WHERE id=?", [tid])
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/template/{tid}/rate")
+async def rate_template(tid: int, data: dict):
+    """模板评分 (1-5星)"""
+    score = min(5, max(1, int(data.get("score", 5))))
+    db = get_db()
+    current = db.execute("SELECT rating, rating_count FROM atom_template WHERE id=?", [tid]).fetchone()
+    if not current:
+        raise HTTPException(404, "模板不存在")
+    new_count = current["rating_count"] + 1
+    new_rating = round((current["rating"] * current["rating_count"] + score) / new_count, 2)
+    db.execute("UPDATE atom_template SET rating=?, rating_count=? WHERE id=?", [new_rating, new_count, tid])
+    db.commit()
+    return {"ok": True, "rating": new_rating, "rating_count": new_count}
+
+
+# ==================== 使用统计落地 (P0-1) ====================
+
+class StatTrackReq(BaseModel):
+    atom_text: str
+    atom_type: str = "unknown"
+    decompose_id: int = 0
+    action: str = "copy"  # copy | compose | export | view
+
+@router.post("/stats/track")
+async def track_atom_usage(req: StatTrackReq):
+    """记录原子使用事件（每次复制/调用/导出时前端调用）"""
+    db = get_db()
+    text_hash = hashlib.md5(req.atom_text.encode()).hexdigest()
+    
+    existing = db.execute(
+        "SELECT atom_id, usage_count, combo_count, export_count FROM atom_stats WHERE text_hash=? AND atom_type=?",
+        [text_hash, req.atom_type]
+    ).fetchone()
+    
+    if existing:
+        # 增量更新
+        extra = ""
+        extra_params = []
+        if req.action == "compose":
+            extra = ", combo_count=combo_count+1"
+        elif req.action == "export":
+            extra = ", export_count=export_count+1"
+        db.execute(
+            f"UPDATE atom_stats SET usage_count=usage_count+1, last_used_at=datetime('now','localtime'){extra} WHERE atom_id=?",
+            [existing["atom_id"]]
+        )
+    else:
+        # 新建
+        atom_id = hashlib.md5((req.atom_text + str(time.time())).encode()).hexdigest()[:16]
+        extra_count = 1 if req.action == "compose" else 0
+        exp_count = 1 if req.action == "export" else 0
+        db.execute(
+            """INSERT INTO atom_stats (atom_id, decompose_id, text_hash, atom_type, usage_count, combo_count, export_count, last_used_at)
+               VALUES (?,?,?,?,1,?,?,datetime('now','localtime'))""",
+            [atom_id, req.decompose_id, text_hash, req.atom_type, extra_count, exp_count]
+        )
+    db.commit()
+    return {"ok": True, "text_hash": text_hash, "action": req.action}
+
+
+@router.get("/stats/usage")
+async def get_usage_stats(days: int = 30, limit: int = 20):
+    """获取使用统计详情（热门/冷门/趋势）"""
+    db = get_db()
+    
+    # 热门原子 Top N
+    hot = db.execute("""
+        SELECT atom_type, text_hash, usage_count, combo_count, export_count, last_used_at
+        FROM atom_stats
+        WHERE last_used_at > datetime('now','localtime',?)
+        ORDER BY usage_count DESC
+        LIMIT ?
+    """, [f'-{days} days', limit]).fetchall()
+    
+    # 从 bridge 表还原 atom_text
+    hot_items = []
+    for r in hot:
+        bridge = db.execute(
+            "SELECT atom_text FROM atom_word_bridge WHERE atom_hash=? LIMIT 1",
+            [r["text_hash"]]
+        ).fetchone()
+        hot_items.append({
+            "atom_type": r["atom_type"],
+            "atom_text": bridge["atom_text"] if bridge else "(已删除)",
+            "usage_count": r["usage_count"],
+            "combo_count": r["combo_count"],
+            "export_count": r["export_count"],
+            "last_used_at": r["last_used_at"],
+        })
+    
+    # 冷门原子（usage_count=0 且创建 >7天）
+    cold = db.execute("""
+        SELECT COUNT(*) as c FROM atom_stats
+        WHERE usage_count=0 AND last_used_at IS NULL
+          AND created_at < datetime('now','localtime','-7 days')
+    """).fetchone()
+    
+    # 总览
+    overview = db.execute("""
+        SELECT
+            COUNT(*) as total_tracked,
+            SUM(usage_count) as total_usage,
+            SUM(combo_count) as total_combo,
+            SUM(export_count) as total_export,
+            COUNT(CASE WHEN usage_count > 0 THEN 1 END) as active_atoms
+        FROM atom_stats
+    """).fetchone()
+    
+    return {
+        "ok": True,
+        "overview": {
+            "total_tracked": overview["total_tracked"] or 0,
+            "total_usage": overview["total_usage"] or 0,
+            "total_combo": overview["total_combo"] or 0,
+            "total_export": overview["total_export"] or 0,
+            "active_atoms": overview["active_atoms"] or 0,
+        },
+        "hot_atoms": hot_items,
+        "cold_atoms_count": cold["c"] if cold else 0,
+        "period_days": days,
+    }

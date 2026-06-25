@@ -73,7 +73,10 @@ App.wordEditor._ensureModal = function() {
     '<div style="padding:12px 18px;">' +
     // 分组选择
     '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">所属分组</label>' +
-    '<select id="wcEditGroup" class="modal-input" style="font-size:12px;margin-bottom:10px;"></select>' +
+    '<div style="display:flex;gap:6px;margin-bottom:10px;">' +
+    '<select id="wcEditGroup" class="modal-input" style="font-size:12px;flex:1;"></select>' +
+    '<button class="btn btn-xs ai-inline-btn" onclick="App.wordEditor._suggestGroup()" title="AI 智能推荐分组" style="flex-shrink:0;font-size:10px;padding:4px 8px;">🤖 建议分组</button>' +
+    '</div>' +
 
     // 名称
     '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">词卡名称</label>' +
@@ -149,6 +152,7 @@ App.wordEditor._ensureModal = function() {
     // Footer
     '<div style="padding:10px 18px;border-top:1px solid var(--border-color);display:flex;gap:6px;justify-content:flex-end;">' +
     '<button class="btn btn-danger btn-sm" id="wcEditDeleteBtn" onclick="App.wordEditor._delete()" style="margin-right:auto;display:none;">删除</button>' +
+    '<button class="btn btn-outline btn-sm" onclick="App.wordEditor._showVersions()" style="font-size:11px;">📜 历史版本</button>' +
     '<button class="btn btn-secondary btn-sm" onclick="App.wordEditor.close()">取消</button>' +
     '<button class="btn btn-primary btn-sm" id="wcEditSaveBtn" onclick="App.wordEditor._save()">💾 保存</button>' +
     '</div></div>';
@@ -651,6 +655,138 @@ App.wordPicker._renderCards = function(group) {
         });
         cards[i].title = (cards[i].title || '') + App._t('auto.str_74d4e1a2', ' | 双击编辑');
     }
+};
+
+// ============ P0-2: AI 智能分组建议 ============
+
+App.wordEditor._suggestGroup = async function() {
+    var content = document.getElementById('wcEditContent').value.trim();
+    var name = document.getElementById('wcEditName').value.trim();
+    var meaning = document.getElementById('wcEditMeaning').value.trim();
+    if (!content && !name) { App.showToast('请先输入词卡内容或名称', 'warning'); return; }
+    
+    var btn = document.querySelector('#wcEditGroup + .ai-inline-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
+    
+    try {
+        var d = await App.fetchJSON('/api/v4/word-cards/suggest-group', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ content: content, name: name, meaning: meaning })
+        });
+        if (!d || !d.ok) { App.showToast('建议失败', 'warning'); return; }
+        
+        var suggestions = d.suggestions || [];
+        if (!suggestions.length) {
+            App.showToast('未找到匹配分组，请手动选择', 'info');
+            return;
+        }
+        
+        // 自动选首推
+        var top = suggestions[0];
+        var sel = document.getElementById('wcEditGroup');
+        if (sel) sel.value = top.group_id;
+        
+        // 显示所有建议
+        var tip = '✅ 已选: ' + top.group_name + ' (' + (top.score*100).toFixed(0) + '% 匹配)';
+        if (suggestions.length > 1) {
+            tip += '\n其他建议: ' + suggestions.slice(1, 4).map(function(s) {
+                return s.group_name + ' (' + (s.score*100).toFixed(0) + '%)';
+            }).join(', ');
+        }
+        App.showToast(tip, top.confidence === 'high' ? 'success' : 'info');
+    } catch(e) {
+        App.showToast('建议失败: ' + e.message, 'danger');
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '🤖 建议分组'; }
+};
+
+// ============ P0-3: 版本历史 ============
+
+App.wordEditor._cardId = null;
+
+App.wordEditor._showVersions = async function() {
+    var cid = this._cardId;
+    if (!cid) { App.showToast('请先保存词卡', 'warning'); return; }
+    
+    var old = document.getElementById('wcVersionModal');
+    if (old) old.remove();
+    
+    var overlay = document.createElement('div');
+    overlay.id = 'wcVersionModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = '<div class="modal-content" style="max-width:700px;width:90%;max-height:80vh;overflow-y:auto;background:var(--bg-card);border-radius:12px;padding:20px;" onclick="event.stopPropagation()">' +
+        '<h5 style="margin:0 0 4px;">📜 版本历史</h5>' +
+        '<p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">词卡 #' + cid + ' | 加载中...</p>' +
+        '<div id="wcVersionList" style="max-height:55vh;overflow-y:auto;"></div>' +
+        '<div style="text-align:right;margin-top:12px;"><button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'wcVersionModal\').remove()">关闭</button></div>' +
+        '</div>';
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    
+    // 加载版本列表
+    try {
+        var d = await App.fetchJSON('/api/v4/word-cards/' + cid + '/versions', { _timeoutMs: 8000 });
+        if (!d || !d.versions) throw new Error('无版本数据');
+        var list = document.getElementById('wcVersionList');
+        var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">当前版本: v' + d.current_version + ' | 共 ' + d.total + ' 个快照</div>';
+        h += '<table style="width:100%;font-size:11px;border-collapse:collapse;">';
+        h += '<tr style="border-bottom:1px solid var(--border-color);text-align:left;"><th style="padding:6px;">版本</th><th>编辑者</th><th>时间</th><th>操作</th></tr>';
+        (d.versions || []).forEach(function(v) {
+            var badge = v.is_current ? ' <span style="color:#22c55e;font-size:10px;">当前</span>' : '';
+            h += '<tr style="border-bottom:1px solid var(--border-color);' + (v.is_current ? 'background:rgba(34,197,94,0.05);' : '') + '">';
+            h += '<td style="padding:6px;">v' + v.version + badge + '</td>';
+            h += '<td style="padding:6px;">' + (v.editor || 'manual') + '</td>';
+            h += '<td style="padding:6px;font-size:10px;color:var(--text-muted);">' + ((v.created_at||'').substring(0,16)) + '</td>';
+            h += '<td style="padding:6px;">';
+            h += '<button class="btn btn-xs btn-outline" onclick="App.wordEditor._viewVersion(' + cid + ',' + v.id + ')" style="font-size:10px;">查看</button> ';
+            h += '<button class="btn btn-xs btn-outline" onclick="App.wordEditor._rollback(' + cid + ',' + v.id + ')" style="font-size:10px;' + (v.is_current ? 'opacity:0.3;pointer-events:none;' : '') + '">回滚</button>';
+            h += '</td></tr>';
+        });
+        h += '</table>';
+        list.innerHTML = h;
+    } catch(e) {
+        var list = document.getElementById('wcVersionList');
+        if (list) list.innerHTML = '<div style="color:var(--text-muted);padding:20px;text-align:center;">暂无版本历史<br><small>每次保存词卡后自动生成版本快照</small></div>';
+    }
+};
+
+App.wordEditor._viewVersion = async function(cid, vid) {
+    try {
+        var d = await App.fetchJSON('/api/v4/word-cards/' + cid + '/versions/' + vid, { _timeoutMs: 5000 });
+        if (!d || !d.snapshot) { App.showToast('版本加载失败', 'warning'); return; }
+        var s = d.snapshot;
+        var h = '<div style="font-size:12px;font-weight:600;margin-bottom:10px;">📋 版本 v' + s.version + '</div>';
+        h += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">内容:</div>';
+        h += '<textarea readonly style="width:100%;height:100px;font-size:12px;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-main);color:var(--text-main);resize:none;">' + App._escape(s.content || '') + '</textarea>';
+        if (s.meaning) h += '<div style="margin-top:8px;font-size:11px;"><span style="color:var(--text-muted);">释义:</span> ' + App._escape(s.meaning) + '</div>';
+        if (s.name) h += '<div style="font-size:11px;"><span style="color:var(--text-muted);">名称:</span> ' + App._escape(s.name) + '</div>';
+        if (s.tags) {
+            var tags = typeof s.tags === 'string' ? s.tags : (Array.isArray(s.tags) ? s.tags.join(', ') : '');
+            if (tags) h += '<div style="font-size:11px;"><span style="color:var(--text-muted);">标签:</span> ' + App._escape(tags) + '</div>';
+        }
+        h += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">分组: ' + App._escape(s.group_name || '未分类') + ' | 模块: ' + App._escape(s.module || '') + '</div>';
+        h += '<div style="text-align:right;margin-top:10px;"><button class="btn btn-sm btn-primary" onclick="App.wordEditor._rollback(' + cid + ',' + vid + ')">↩ 回滚到此版本</button></div>';
+        var list = document.getElementById('wcVersionList');
+        if (list) list.innerHTML = h;
+    } catch(e) { App.showToast('加载版本失败: ' + e.message, 'danger'); }
+};
+
+App.wordEditor._rollback = async function(cid, vid) {
+    if (!confirm('确定回滚到此版本？当前修改将被保存为历史版本。')) return;
+    try {
+        var d = await App.fetchJSON('/api/v4/word-cards/' + cid + '/rollback', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ version_id: vid }),
+            _timeoutMs: 8000
+        });
+        if (d && d.ok) {
+            App.showToast('已回滚到 v' + d.rolled_to_version, 'success');
+            this.close();
+            // 通知刷新
+            if (this._onSaved) this._onSaved();
+            if (App.wordCards && App.wordCards.load) App.wordCards.load();
+        }
+    } catch(e) { App.showToast('回滚失败: ' + e.message, 'danger'); }
 };
 
 })();

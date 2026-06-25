@@ -45,6 +45,9 @@ App.switchGroup = async function(groupId, groupName) {
     this.state.currentGroupName = groupName || '';
     this.state.searchQuery = '';
     this.state.page = 1;
+    // 切换分组时保存当前选择 → 恢复目标分组选择
+    this._swapBatchSet(groupId);
+    // 按钮状态在 _wcLoadPrompts 数据加载完成后自动更新
     var si = document.getElementById('searchInput');
     if (si) si.value = '';
     try { localStorage.setItem('promptkit_group_id', String(groupId)); } catch(e) {}
@@ -63,6 +66,9 @@ App.switchAllGroups = function() {
     this.state.currentGroupName = '';
     this.state.searchQuery = '';
     this.state.page = 1;
+    // 回到陈列架时保存当前选择 → 清空（陈列架无批量操作）
+    this._swapBatchSet(null);
+    // 陈列架不显示批量栏，无需 updateBatchCount
     var si = document.getElementById('searchInput');
     if (si) si.value = '';
     try { localStorage.removeItem('promptkit_group_id'); } catch(e) {}
@@ -101,7 +107,9 @@ App.switchAllModules = function() { this.switchAllGroups(); };
 App._showShowcase = function() {
     var container = document.getElementById('promptList');
     if (!container) return;
-    
+
+    // 陈列架视图无批量操作，隐藏批量栏
+    this._hideBatchBar();
     // 陈列架/查找词组页面：隐藏 AI 工具栏、面包屑、编辑工具栏
     App._aiToolbarSuppressed = true;
     if (App.aiTools) App.aiTools.hideToolbar();
@@ -792,6 +800,8 @@ App._wcLoadPrompts = async function() {
             return {
                 id: item.id,
                 content: item.content,
+                content_en: item.content_en || '',
+                content_zh: item.content_zh || '',
                 meaning: item.meaning || '',
                 module: item.module || '',
                 category: item.category || '',
@@ -815,6 +825,7 @@ App._wcLoadPrompts = async function() {
         s.totalPages = d.total_pages || 1;
         this.renderPrompts();
         this.renderPagination();
+        this.updateBatchCount();  // 切换分组后：根据当前分组数据更新按钮状态
         document.getElementById('countInfo').textContent = '共 ' + d.total + ' 条词卡';
         document.getElementById('pageTitle').textContent = s.currentGroupName || '词卡列表';
         // 侧边栏滚动到当前分组（首次加载/刷新时也触发）
@@ -823,6 +834,7 @@ App._wcLoadPrompts = async function() {
     } catch(e) {
         s.isLoading = false;
         this.renderPrompts();
+        this.updateBatchCount();  // 错误降级也要刷新按钮状态
     }
 };
 
@@ -1092,10 +1104,72 @@ App._updatePageTitle = function() {
             return;
         }
         _origRP.call(this);
-        // 编辑模式：注入移动按钮到每张词卡
         if (this.state.editMode) this._wcInjectMoveButtons();
+        // P0-6: 拖拽词卡到侧边栏分组
+        this._wcSetupCardDrag();
     };
 })();
 
 console.log('[wc-bridge] v10 atom-leaf OK');
+
+// ============ P0-6: 拖拽词卡移动到分组 ============
+
+App._wcSetupCardDrag = function() {
+    var self = this;
+    // 为所有 prompt-card 添加 draggable
+    var cards = document.querySelectorAll('.prompt-card');
+    cards.forEach(function(card) {
+        if (card.dataset.dragBound) return;
+        card.dataset.dragBound = '1';
+        card.setAttribute('draggable', 'true');
+        card.addEventListener('dragstart', function(e) {
+            var cid = parseInt(card.dataset.promptId || card.dataset.cardId || this.getAttribute('data-id'));
+            if (!cid) return;
+            e.dataTransfer.setData('text/plain', String(cid));
+            e.dataTransfer.effectAllowed = 'move';
+            this.style.opacity = '0.4';
+        });
+        card.addEventListener('dragend', function(e) {
+            this.style.opacity = '';
+        });
+    });
+    
+    // 侧边栏分组节点作为 drop target
+    var sideNodes = document.querySelectorAll('#sidebar [data-gid], #sidebar .tree-node');
+    sideNodes.forEach(function(node) {
+        if (node.dataset.dropBound) return;
+        node.dataset.dropBound = '1';
+        node.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            this.style.background = 'rgba(79,70,229,0.08)';
+            this.style.outline = '2px dashed var(--primary)';
+        });
+        node.addEventListener('dragleave', function(e) {
+            this.style.background = '';
+            this.style.outline = '';
+        });
+        node.addEventListener('drop', async function(e) {
+            e.preventDefault();
+            this.style.background = '';
+            this.style.outline = '';
+            var cid = parseInt(e.dataTransfer.getData('text/plain'));
+            var gid = parseInt(this.dataset.gid);
+            if (!cid || !gid) return;
+            try {
+                await self.fetchJSON('/api/v4/word-cards/' + cid, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ group_id: gid })
+                });
+                self.showToast('已移动词卡到分组', 'success');
+                await self._wcLoadPrompts();
+                await self.loadGroupTree();
+            } catch(e) {
+                self.showToast('移动失败: ' + e.message, 'danger');
+            }
+        });
+    });
+};
+
 })();
