@@ -909,8 +909,21 @@
         }
         h+='<div class="s2-field-group s2-char-group">';
         h+='<span class="s2-field-label" style="color:#8b5cf6;">角色</span>';
-        h+='<span class="s2-char-selector" onclick="App.characterLib.openScenePicker('+s.id+')" title="选择/更换出演角色" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px dashed '+(charName?'#8b5cf6':'var(--border-color)')+';border-radius:6px;cursor:pointer;font-size:11px;color:'+(charName?'#8b5cf6':'var(--text-muted)')+';background:'+(charName?'rgba(139,92,246,0.06)':'')+';transition:0.12s;min-width:60px;">';
+        h+='<span class="s2-char-selector" onclick="App.characterLib.openScenePicker('+s.id+')" onmouseenter="App.seedanceV2._showCharPreview('+(s.character_id||0)+',this)" onmouseleave="App.seedanceV2._hideCharPreview()" title="选择/更换出演角色" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px dashed '+(charName?'#8b5cf6':'var(--border-color)')+';border-radius:6px;cursor:pointer;font-size:11px;color:'+(charName?'#8b5cf6':'var(--text-muted)')+';background:'+(charName?'rgba(139,92,246,0.06)':'')+';transition:0.12s;min-width:60px;">';
         h+='<span>'+(charName?'🎭 '+App._escape(charName.substring(0,14)):App._t('auto.str_82a32516', '🎭 选择角色'))+'</span>';
+        h+='<span style="font-size:9px;">▾</span></span>';
+        h+='</div>';
+        // == Phase17: 场景模板选择器（从场景设定组装器加载） ==
+        var sceneProfileName = '';
+        if (s.scene_profile_id && App.seedanceV2._sceneProfileCache) {
+            for (var spi = 0; spi < (App.seedanceV2._sceneProfileCache||[]).length; spi++) {
+                if (App.seedanceV2._sceneProfileCache[spi].id == s.scene_profile_id) { sceneProfileName = App.seedanceV2._sceneProfileCache[spi].name; break; }
+            }
+        }
+        h+='<div class="s2-field-group s2-scene-group">';
+        h+='<span class="s2-field-label" style="color:#10b981;">场景</span>';
+        h+='<span class="s2-char-selector" onclick="App.seedanceV2._openSceneProfilePicker('+s.id+')" title="加载场景设定模板" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px dashed '+(sceneProfileName?'#10b981':'var(--border-color)')+';border-radius:6px;cursor:pointer;font-size:11px;color:'+(sceneProfileName?'#10b981':'var(--text-muted)')+';background:'+(sceneProfileName?'rgba(16,185,129,0.06)':'')+';transition:0.12s;min-width:60px;">';
+        h+='<span>'+(sceneProfileName?'🏞 '+App._escape(sceneProfileName.substring(0,14)):'🏞 加载场景模板')+'</span>';
         h+='<span style="font-size:9px;">▾</span></span>';
         h+='</div>';
         // == v4.0.0-phase10: 音频四要素区 ==
@@ -2012,4 +2025,64 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;if(this._isLastUnloc
         }
         return null;
     };
+
+    // ============ 角色头像悬停预览 ============
+    var _charHoverTimer = null;
+    var _charHoverPreview = null;
+
+    function _makeCharPreviewEl() {
+        var el = document.createElement('div');
+        el.id = 's2CharPreview';
+        el.style.cssText = 'display:none;position:fixed;z-index:1000;width:180px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,0.25);padding:10px;pointer-events:none;';
+        document.body.appendChild(el);
+        return el;
+    }
+
+    App.seedanceV2._showCharPreview = function(charId, btnEl) {
+        if (!charId) return;
+        if (_charHoverTimer) clearTimeout(_charHoverTimer);
+        var self = this;
+        _charHoverTimer = setTimeout(function() {
+            // 从 characterLib._cache 中查找角色
+            var ch = null;
+            var cache = (App.characterLib && App.characterLib._cache) || [];
+            for (var i = 0; i < cache.length; i++) {
+                if (cache[i].id == charId) { ch = cache[i]; break; }
+            }
+            if (!ch) return;
+
+            if (!_charHoverPreview) _charHoverPreview = _makeCharPreviewEl();
+            var html = '';
+            // 头像或预览图
+            var imgUrl = ch.avatar ? ('/api/characters/images/' + ch.avatar) : (ch.preview_image ? ('/api/characters/images/' + ch.preview_image) : '');
+            if (imgUrl) {
+                html += '<img src="' + imgUrl + '" style="width:100%;height:auto;max-height:160px;border-radius:8px;object-fit:cover;margin-bottom:6px;" onerror="this.style.display=\'none\'">';
+            } else {
+                html += '<div style="width:100%;height:80px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:32px;font-weight:700;margin-bottom:6px;">' + App._escape((ch.name || '?').charAt(0)) + '</div>';
+            }
+            // 信息行
+            html += '<div style="font-size:13px;font-weight:700;color:var(--text-main);">' + App._escape(ch.name || '??') + '</div>';
+            var meta = [];
+            if (ch.gender) meta.push(ch.gender);
+            if (ch.age_range) meta.push(ch.age_range);
+            if (ch.occupation) meta.push(ch.occupation);
+            if (meta.length) html += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">' + meta.join(' ?? ') + '</div>';
+            if (ch.personality) html += '<div style="font-size:10px;color:var(--text-muted);margin-top:3px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">' + App._escape(ch.personality.substring(0,60)) + '</div>';
+
+            var rect = btnEl.getBoundingClientRect();
+            _charHoverPreview.innerHTML = html;
+            // 定位在按钮右侧或下方
+            var left = Math.min(rect.right + 6, window.innerWidth - 190);
+            var top = Math.min(rect.top, window.innerHeight - 260);
+            _charHoverPreview.style.left = left + 'px';
+            _charHoverPreview.style.top = top + 'px';
+            _charHoverPreview.style.display = 'block';
+        }, 500);
+    };
+
+    App.seedanceV2._hideCharPreview = function() {
+        if (_charHoverTimer) clearTimeout(_charHoverTimer);
+        if (_charHoverPreview) _charHoverPreview.style.display = 'none';
+    };
+
 })();
