@@ -483,7 +483,8 @@ Object.assign(App, {
     async toggleTranslation(promptId) {
         var el = document.getElementById('cc_' + promptId);
         if (!el) { this.showToast('卡片元素未找到，请刷新', 'error'); return; }
-        var currentLang = el.getAttribute('data-lang') || 'original';
+        // 优先读 _cardLang（切换分组后 DOM 丢失，_cardLang 存活）
+        var currentLang = (this.state._cardLang && this.state._cardLang[promptId]) || el.getAttribute('data-lang') || 'original';
         var cardData = this._findCardData(promptId);
         var original = cardData ? cardData.content : (el.getAttribute('data-original') || el.textContent);
         var zh = cardData ? (cardData.content_zh || '') : '';
@@ -491,16 +492,16 @@ Object.assign(App, {
         var isCN = /[\u4e00-\u9fff]/.test(original);
 
         if (currentLang === 'original') {
-            // 原文→翻译：优先用已存储的翻译，否则触发 Ollama
+            // 原文→翻译：如果原文中文且有英文翻译 → 显示英文；原文英文且有中文翻译 → 显示中文
             if (isCN && en) { this._setCardLang(el, promptId, 'en', en, original); }
             else if (!isCN && zh) { this._setCardLang(el, promptId, 'zh', zh, original); }
             else { await this._doTranslateCard(el, promptId, original, isCN ? 'en' : 'zh'); }
         } else if (currentLang === 'zh') {
-            // 中文翻译→英文翻译 or 原文
+            // 当前显示中文翻译 → 切到英文或原文
             if (en) { this._setCardLang(el, promptId, 'en', en, original); }
             else { this._setCardLang(el, promptId, 'original', original, original); }
         } else if (currentLang === 'en') {
-            // 英文翻译→中文翻译 or 原文
+            // 当前显示英文翻译 → 切到中文或原文
             if (zh) { this._setCardLang(el, promptId, 'zh', zh, original); }
             else { this._setCardLang(el, promptId, 'original', original, original); }
         }
@@ -566,9 +567,9 @@ Object.assign(App, {
             var rawText = contentEl ? (contentEl.getAttribute('data-original') || contentEl.textContent) : '';
             var isCN = /[\u4e00-\u9fff]/.test(rawText);
             var lang = (App.state._cardLang && App.state._cardLang[promptId]) || 'original';
-            if (lang === 'zh') btn.textContent = '中文';
-            else if (lang === 'en') btn.textContent = 'English';
-            else btn.textContent = isCN ? 'English' : '中文';
+            // 辨当前实际显示语言 → 按钮显示对立面（点击后切到哪个语言）
+            var currentDisplay = lang === 'zh' ? 'zh' : (lang === 'en' ? 'en' : (isCN ? 'zh' : 'en'));
+            btn.textContent = currentDisplay === 'zh' ? '🌐 英文' : '🌐 中文';
             btn.style.color = lang !== 'original' ? '#22c55e' : '#6366f1';
         });
     },

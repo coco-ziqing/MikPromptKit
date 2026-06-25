@@ -21,6 +21,7 @@ var App = window.App || {
         stats: { total_prompts: 0, total_usage: 0 },
         batchSelected: new Set(),
         _batchSelections: {},   // { groupId_or_"__all__": Set(id1,id2,...) } 分组选择态持久化
+        _cardLang: {},          // { promptId: 'original'|'zh'|'en' } 卡片当前显示语言
         editMode: false,
         _searchMode: 'keyword',  // 'keyword' | 'semantic'
         _editFilterQuery: '',
@@ -89,6 +90,30 @@ var App = window.App || {
         // 恢复目标分组选中态
         var saved = this.state._batchSelections[newKey];
         this.state.batchSelected = saved ? new Set(saved) : new Set();
+    },
+
+    // 翻译按钮渲染辅助：按钮显示「点击后切换到的目标语言」（对立面）
+    // 卡片显示中文 → 按钮="🌐 英文"；显示英文 → 按钮="🌐 中文"
+    _transBtnLabel: function(p) {
+        var lang = (this.state._cardLang || {})[p.id] || 'original';
+        var isCN = /[\u4e00-\u9fff]/.test(p.content || '');
+        // 当前实际显示的语言
+        var current = lang === 'zh' ? 'zh' : (lang === 'en' ? 'en' : (isCN ? 'zh' : 'en'));
+        // 按钮显示对立面
+        return current === 'zh' ? '🌐 英文' : '🌐 中文';
+    },
+
+    _transBtnStyle: function(pid, prop) {
+        var lang = (this.state._cardLang || {})[pid] || 'original';
+        return lang !== 'original' ? '#22c55e' : '#6366f1';
+    },
+
+    // 卡片内容：根据当前语言返回原文/中文/英文
+    _transContent: function(p) {
+        var lang = (this.state._cardLang || {})[p.id] || 'original';
+        if (lang === 'zh' && p.content_zh) return p.content_zh;
+        if (lang === 'en' && p.content_en) return p.content_en;
+        return p.content || '';
     },
 
     _safeFetch: async function(url, options) {
