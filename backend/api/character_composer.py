@@ -2,10 +2,10 @@
 v5.1.0: 角色设定提示词组装器 — 人物提示词工业化装配
 从 word_card 词库中各维度选取词条，自动拼接为完整角色提示词
 """
-import json, re
+import json, re, sqlite3
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from database import get_db
+from database import get_db, safe_commit
 from typing import Optional
 
 router = APIRouter(prefix="/api/character-composer", tags=["character-composer"])
@@ -55,9 +55,84 @@ class CharacterComposeReq(BaseModel):
     language: str = "zh"       # zh/en
 
 # ==================== 角色 CRUD ====================
+
+# 字段映射：settings_json → character_profiles 富字段（双向互通角色库）
+_SETTINGS_FIELD_MAP = [
+    ("gender", "gender"),
+    ("age", "age_range"),
+    ("personality", "personality"),
+    ("backstory", "backstory"),
+    ("voice_type", "voice_type"),
+]
+
+def _derive_library_fields(settings: dict) -> dict:
+    """从 Composer settings_json 派生 character_profiles 富字段
+    
+    settings 示例:
+      {gender:"女性", age:"20岁", hairstyle:"长发", facial:"大眼",
+       expression:"微笑", clothing:"水手服", pose:"站立",
+       style:"吉卜力风格", background:"海边", lighting:"柔光",
+       color_scheme:"暖色调", quality:"8K", negative:"丑陋"}
+    → {gender:"女性", age_range:"20岁",
+       personality:"微笑，吉卜力风格", occupation:"",
+       appearance:"女性，20岁，长发，大眼，水手服，站立",
+       backstory:"在海边，柔光包围", voice_type:""}
+    """
+    fields = {}
+    # 1:1 映射
+    for sk, fk in _SETTINGS_FIELD_MAP:
+        val = (settings.get(sk) or "").strip()
+        if val:
+            fields[fk] = val
+    # personality: expression + style
+    parts_pers = []
+    if settings.get("expression"): parts_pers.append(settings["expression"])
+    if settings.get("style"): parts_pers.append(settings["style"])
+    if settings.get("pose"): parts_pers.append(settings["pose"])
+    if not fields.get("personality") and parts_pers:
+        fields["personality"] = "，".join(parts_pers)
+    # appearance: gender + age + hairstyle + facial + clothing + pose
+    parts_app = []
+    for k in ["gender", "age", "hairstyle", "facial", "clothing", "pose"]:
+        v = (settings.get(k) or "").strip()
+        if v:
+            parts_app.append(v)
+    if parts_app:
+        fields["appearance"] = "，".join(parts_app)
+    # backstory: background + lighting
+    parts_bg = []
+    if settings.get("background"): parts_bg.append(settings["background"])
+    if settings.get("lighting"): parts_bg.append(settings["lighting"])
+    if parts_bg:
+        fields["backstory"] = "，".join(parts_bg)
+    # occupation — 从 settings 中直接取
+    occ = (settings.get("occupation") or settings.get("occupation_custom") or "").strip()
+    if occ:
+        fields["occupation"] = occ
+    return fields
+
+
+def _save_derived_fields(db, char_id: int, settings: dict):
+    """将派生字段写入 character_profiles"""
+    fields = _derive_library_fields(settings)
+    if not fields:
+        return
+    set_parts = []
+    vals = []
+    for k, v in fields.items():
+        set_parts.append(f"{k}=?")
+        vals.append(v)
+    set_parts.append("updated_at=datetime('now','localtime')")
+    vals.append(char_id)
+    sql = f"UPDATE character_profiles SET {', '.join(set_parts)} WHERE id=?"
+    db.execute(sql, vals)
+    try: db.commit()
+    except sqlite3.OperationalError: pass
+    else: return
+    safe_commit()
 @router.get("/characters")
 def list_characters(page: int = 1, page_size: int = 20):
-    """列出已保存的角色"""
+    """列出已保存的角色（含 rich 字段，供种子舞角色选择器调用）"""
     db = get_db()
     total = db.execute("SELECT COUNT(*) FROM character_profiles").fetchone()[0]
     rows = db.execute(
@@ -92,8 +167,10 @@ def create_character(data: CharacterCreate):
         "INSERT INTO character_profiles (name, settings_json) VALUES (?,?)",
         [data.name, json.dumps(data.settings, ensure_ascii=False)]
     )
-    db.commit()
+    safe_commit()
     cid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    # 同步派生字段到 character_profiles 富字段（角色库互通）
+    _save_derived_fields(db, cid, data.settings)
     return {"ok": True, "id": cid, "name": data.name}
 
 
@@ -106,7 +183,10 @@ def update_character(char_id: int, data: CharacterUpdate):
     if data.settings is not None:
         db.execute("UPDATE character_profiles SET settings_json=?, updated_at=datetime('now','localtime') WHERE id=?",
                    [json.dumps(data.settings, ensure_ascii=False), char_id])
-    db.commit()
+    safe_commit()
+    # 同步派生字段到 character_profiles 富字段（角色库互通）
+    if data.settings is not None:
+        _save_derived_fields(db, char_id, data.settings)
     return {"ok": True}
 
 
