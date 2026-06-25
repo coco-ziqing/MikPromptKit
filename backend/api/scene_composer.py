@@ -3,9 +3,9 @@ v5.1.0: 场景设定组装器 — 环境/场景提示词工业化装配
 从 word_card 词库中各维度选取词条，自动拼接为完整场景提示词
 """
 import json, re
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
-from database import get_db
+from database import get_db, safe_commit
 from typing import Optional
 
 router = APIRouter(prefix="/api/scene-composer", tags=["scene-composer"])
@@ -75,6 +75,56 @@ def _ensure_scene_table():
 
 
 # ==================== 场景 CRUD ====================
+
+# 字段映射：settings_json → scene_profiles 富字段（双向互通提示词组装器）
+_SETTINGS_TO_FIELDS = {
+    "location": "location_desc",
+    "atmosphere": "atmosphere",
+    "architecture": "architecture",
+    "lighting": "lighting_desc",
+    "time": "time_period",
+    "weather": "weather_desc",
+    "color_scheme": "color_scheme",
+    "style": "architecture",  # 画风→建筑（可覆盖）
+}
+
+
+def _derive_scene_fields(settings: dict) -> dict:
+    """从 settings_json 派生 scene_profiles 富字段"""
+    fields = {}
+    for sk, fk in _SETTINGS_TO_FIELDS.items():
+        val = (settings.get(sk) or "").strip()
+        if val:
+            fields[fk] = val
+    # atmosphere 降级：如果没传 atmosphere 但有 lighting + weather + time 则拼接
+    if not fields.get("atmosphere"):
+        parts = []
+        for k in ["weather", "time", "lighting", "composition"]:
+            v = (settings.get(k) or "").strip()
+            if v: parts.append(v)
+        if parts:
+            fields["atmosphere"] = "，".join(parts)
+    return fields
+
+
+def _save_scene_rich_fields(db, scene_id: int, settings: dict):
+    """将派生字段写入 scene_profiles"""
+    fields = _derive_scene_fields(settings)
+    if not fields:
+        return
+    set_parts = []
+    vals = []
+    for k, v in fields.items():
+        set_parts.append(f"{k}=?")
+        vals.append(v)
+    set_parts.append("updated_at=datetime('now','localtime')")
+    vals.append(scene_id)
+    sql = f"UPDATE scene_profiles SET {', '.join(set_parts)} WHERE id=?"
+    db.execute(sql, vals)
+    try:
+        db.commit()
+    except:
+        safe_commit()
 @router.get("/scenes")
 def list_scenes(page: int = 1, page_size: int = 20):
     _ensure_scene_table()
@@ -116,6 +166,8 @@ def create_scene(data: SceneCreate):
     )
     db.commit()
     sid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    # 同步派生字段（场景库互通）
+    _save_scene_rich_fields(db, sid, data.settings)
     return {"ok": True, "id": sid, "name": data.name}
 
 
@@ -130,6 +182,9 @@ def update_scene(scene_id: int, data: SceneUpdate):
         db.execute("UPDATE scene_profiles SET settings_json=?, updated_at=datetime('now','localtime') WHERE id=?",
                    [json.dumps(data.settings, ensure_ascii=False), scene_id])
     db.commit()
+    # 同步派生字段
+    if data.settings is not None:
+        _save_scene_rich_fields(db, scene_id, data.settings)
     return {"ok": True}
 
 
@@ -370,3 +425,77 @@ PRESET_TEMPLATES = {
 @router.get("/presets")
 def get_presets():
     return {"ok": True, "presets": PRESET_TEMPLATES}
+
+
+# ============================================================
+# 场景模板 → 提示词组装器 桥接（种子舞镜头选取场景档案）
+# ============================================================
+
+@router.put("/scenes/{scene_id}/apply-to-shot")
+def apply_scene_to_shot(scene_id: int, data: dict = Body(...)):
+    """将场景模板应用到提示词组装器的镜头
+
+    入参: { shot_id: int }
+    动作:
+      1. 读 scene_profiles.settings_json
+      2. 将维度字段映射到 user_project_scene 对应列
+      3. UPDATE user_project_scene SET ... WHERE id=?
+    返回: { ok, shot_id, applied_fields }
+    """
+    shot_id = data.get("shot_id")
+    if not shot_id:
+        raise HTTPException(400, "shot_id 必填")
+
+    db = get_db()
+    scene = db.execute("SELECT * FROM scene_profiles WHERE id=?", [scene_id]).fetchone()
+    if not scene:
+        raise HTTPException(404, "场景模板不存在")
+
+    try:
+        settings = json.loads(scene["settings_json"] or "{}")
+    except:
+        settings = {}
+
+    # 字段映射：scene_composer dimension key → user_project_scene column
+    FIELD_MAP = {
+        "location": "scene_desc",
+        "atmosphere": "emotion",
+        "lighting": "lighting",
+        "weather": "weather",
+        "color_scheme": "color_grade",
+        "perspective": "perspective",
+        "composition": "composition",
+        "details": "environment_detail",
+        "style": "filter",
+        "time": "emotion",  # time_period → emotion 附加
+    }
+
+    applied = {}
+    set_parts = []
+    vals = []
+    for dim_key, col in FIELD_MAP.items():
+        val = (settings.get(dim_key) or "").strip()
+        if not val:
+            continue
+        # 如果目标列已有值且不覆盖同名列则追加
+        if col in applied:
+            existing = db.execute(f"SELECT {col} FROM user_project_scene WHERE id=?", [shot_id]).fetchone()
+            if existing and existing[0]:
+                val = str(existing[0]) + "，" + val
+        set_parts.append(f"{col}=?")
+        vals.append(val)
+        applied[col] = val
+
+    if not set_parts:
+        return {"ok": True, "shot_id": shot_id, "applied_fields": {}, "note": "场景模板无有效字段"}
+
+    vals.append(shot_id)
+    db.execute(f"UPDATE user_project_scene SET {', '.join(set_parts)} WHERE id=?", vals)
+    safe_commit()
+
+    # 同时设置 scene_profile_id 外键
+    db.execute("UPDATE user_project_scene SET scene_profile_id=? WHERE id=?", [scene_id, shot_id])
+    safe_commit()
+
+    return {"ok": True, "shot_id": shot_id, "applied_fields": applied,
+            "scene_name": scene["name"], "field_count": len(applied)}
