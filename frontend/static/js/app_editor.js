@@ -306,14 +306,14 @@ Object.assign(App, {
                                 <span class="card-badge">${this._escape(p.category)}</span>
                                 ${p.subcategory ? `<span style="font-size:10px;color:#94a3b8;">${this._escape(p.subcategory)}</span>` : ''}
                             </div>
-                            <div class="card-content" id="cc_${p.id}">${this._escape(p.content)}</div>
+                            <div class="card-content" id="cc_${p.id}">${this._escape(App._transContent(p))}</div>
                             ${p.meaning ? `<div class="card-meaning">${this._escape(p.meaning)}</div>` : ''}
                             ${p.scene ? `<div class="card-scene">🎯 ${this._escape(p.scene)}</div>` : ''}
                             <div style="font-size:10px;color:#cbd5e1;margin-bottom:6px;">${tagHtml}</div>
                             <div class="card-actions">
                                 <span style="font-size:11px;color:#94a3b8;">使用 ${p.usage_count} 次</span>
                                 <div style="display:flex;gap:4px;align-items:center;margin-left:auto;">
-                                <button class="btn-copy" onclick="App.toggleTranslation(${p.id})" title="中英文翻译 — 自动检测语言方向" style="border-color:#6366f1;color:#6366f1;">${/[\u4e00-\u9fff]/.test(p.content) ? '🌐 英文' : '🌐 中文'}</button>
+                                <button class="btn-copy" onclick="App.toggleTranslation(${p.id})" title="中英文翻译 — 自动检测语言方向" style="border-color:${App._transBtnStyle(p.id,'color')};color:${App._transBtnStyle(p.id,'color')};">${App._transBtnLabel(p)}</button>
                                 ${App.state.editMode ? '<button class="btn-copy" style="border-color:#8b5cf6;color:#8b5cf6;" onclick="event.stopPropagation();App._wcShowMovePicker(' + p.id + ')" title="移动到其他分组">📦</button>' : ''}
                                 ${App.state.editMode ? '<button class="btn-copy" style="border-color:#eab308;color:#eab308;" onclick="App.openEditModal(' + p.id + ')" title="编辑词卡内容">✏</button>' : ''}
                                 <button class="btn-copy" onclick="App.handleCopyLang(${p.id})" title="复制当前语言提示词">📋</button>
