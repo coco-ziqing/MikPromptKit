@@ -926,11 +926,21 @@ def batch_trash(data: dict):
 
 @router.get("/recommend/{prompt_id}")
 def recommend_prompts(prompt_id: int, limit: int = Query(6, ge=1, le=20)):
-    """基于标签匹配的智能推荐"""
+    """基于标签匹配的智能推荐 — 同时查 word_card + prompts 表"""
     db = get_db()
-    # 获取当前词条的标签
-    row = db.execute("SELECT module, category, tags, content FROM prompts WHERE id=?",
-                     [prompt_id]).fetchone()
+
+    # 先查 word_card (v4 主表，id 范围大)，再查 prompts (旧表)
+    row = db.execute(
+        "SELECT module, category, tags, content FROM word_card WHERE id=? AND is_deleted=0",
+        [prompt_id]
+    ).fetchone()
+    table_name = "word_card"
+    if not row:
+        row = db.execute(
+            "SELECT module, category, tags, content FROM prompts WHERE id=? AND deleted_at IS NULL",
+            [prompt_id]
+        ).fetchone()
+        table_name = "prompts"
     if not row:
         raise HTTPException(404, "提示词不存在")
 
@@ -939,30 +949,46 @@ def recommend_prompts(prompt_id: int, limit: int = Query(6, ge=1, le=20)):
     except Exception:
         tags = []
 
+    # partner column 映射 — word_card 用 name，prompts 用 content
+    content_col = "name" if table_name == "word_card" else "content"
+    is_deleted_filter = "is_deleted=0" if table_name == "word_card" else "deleted_at IS NULL"
+
+    # 无标签：同 module + category 推荐
     if not tags:
-        # 无标签时：同模块同类最近似的词条
-        rows = db.execute("""
-            SELECT id, module, category, content, meaning, tags, usage_count
-            FROM prompts
-            WHERE id != ? AND module = ? AND category = ? AND deleted_at IS NULL
+        rows = db.execute(f"""
+            SELECT id, module, category, {content_col} as content, meaning, tags, usage_count
+            FROM {table_name}
+            WHERE id != ? AND module = ? AND category = ? AND {is_deleted_filter}
             ORDER BY usage_count DESC
             LIMIT ?
         """, [prompt_id, row["module"], row["category"], limit]).fetchall()
         return {"items": [dict(r) for r in rows], "reason": "same_category"}
 
-    # 标签匹配：遍历所有其他词条，匹配标签交集数量
-    all_rows = db.execute("""
-        SELECT id, module, category, content, meaning, tags, usage_count
-        FROM prompts WHERE id != ? AND deleted_at IS NULL
+    # 标签匹配：跨表 union all
+    candidates = []
+    # v4 word_card
+    wc_rows = db.execute(f"""
+        SELECT id, module, category, {content_col} as content, meaning, tags, usage_count
+        FROM {table_name} WHERE id != ? AND {is_deleted_filter}
     """, [prompt_id]).fetchall()
+    candidates.extend(wc_rows)
+
+    # 如果当前表是 word_card，也加入 prompts 作为候选池
+    if table_name == "word_card":
+        p_rows = db.execute("""
+            SELECT id, module, category, content, meaning, tags, usage_count
+            FROM prompts WHERE deleted_at IS NULL
+        """).fetchall()
+        # 避免 id 冲突 — prompts 的 id 范围远小于 word_card
+        for pr in p_rows:
+            candidates.append(pr)
 
     scored = []
-    for r in all_rows:
+    for r in candidates:
         try:
             other_tags = set(json.loads(r["tags"]))
         except Exception:
             other_tags = set()
-        # 标签交集数 * 2 + 同module加分 + usage_count加权
         match_count = len(set(tags) & other_tags)
         score = match_count * 10
         if r["module"] == row["module"]:
@@ -1015,7 +1041,8 @@ def list_trash(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=2
     rows = db.execute(f"""
         SELECT p.id, p.module, p.category, p.subcategory, p.content, p.meaning, p.scene, p.tags,
                p.usage_count, p.deleted_at, pt.filename as thumbnail, pv.filename as video_filename,
-               pv.poster as video_poster, pv.fps as video_fps, pv.duration as video_duration
+               pv.poster as video_poster, pv.fps as video_fps, pv.duration as video_duration,
+               p.is_builtin
         {from_clause} {where}
         ORDER BY p.deleted_at DESC LIMIT ? OFFSET ?
     """, [page_size, offset]).fetchall()

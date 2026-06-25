@@ -70,6 +70,7 @@ def log(level: str, message: str, source: str = "system", detail: str = "",
 
     # 写数据库
     try:
+        _ensure_init()
         from database import get_db
         db = get_db()
         db.execute(
@@ -213,9 +214,15 @@ async def stream_generator():
             _listeners.remove(q)
 
 
-# ===== 初始化 =====
-try:
-    _init_table()
-    info("日志引擎已就绪", source="logger")
-except Exception as e:
-    print(f"[Logger] 初始化失败: {e}")
+# ===== 初始化（延迟到首次 log() 调用，避免 sys.path 未就绪时导入失败） =====
+_init_done = False
+
+def _ensure_init():
+    global _init_done
+    if _init_done:
+        return
+    _init_done = True
+    try:
+        _init_table()
+    except Exception as e:
+        print(f"[Logger] 初始化失败: {e}")

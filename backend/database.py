@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 from paths import get_data_dir, get_db_path
+from logger import info as log_info, warn as log_warn, error as log_error
 
 DB_DIR = get_data_dir()
 DB_PATH = get_db_path()
@@ -31,7 +32,7 @@ def get_db():
             conn.execute("PRAGMA busy_timeout=5000")     # 忙等待 5 秒
             _local.conn = conn
         except sqlite3.Error as e:
-            print("[数据库] 连接失败:", e)
+            log_error(f"[DB] 连接失败: {e}", source="database")
             raise
     return _local.conn
 
@@ -66,23 +67,57 @@ def safe_execute(sql, params=None, commit=False):
                 if attempt < _MAX_RETRIES - 1:
                     time.sleep(_RETRY_DELAY * (attempt + 1))
                     continue
-            print("[数据库] 执行失败:", sql[:80], e)
+            log_error(f"[DB] 执行失败: {e}", source="database")
             return None
         except sqlite3.Error as e:
-            print("[数据库] 错误:", e)
+            log_error(f"[DB] 错误: {e}", source="database")
             return None
 
 
 def safe_commit():
-    """安全提交事务"""
-    try:
-        db = get_db()
-        db.commit()
-        return True
-    except sqlite3.Error as e:
-        print("[数据库] 提交失败:", e)
-        return False
+    """安全提交事务（WAL 模式下自动重试锁冲突）"""
+    import time as _time
+    db = get_db()
+    for attempt in range(3):
+        try:
+            db.commit()
+            return True
+        except sqlite3.OperationalError as e:
+            if 'locked' in str(e).lower() and attempt < 2:
+                _time.sleep(0.2 * (attempt + 1))
+                continue
+            log_error(f"[DB] 提交失败: {e}", source="database")
+            return False
+        except sqlite3.Error as e:
+            log_error(f"[DB] 提交失败: {e}", source="database")
+            return False
+    return False
 
+
+
+def safe_fetch_one(sql, params=None):
+    """安全取首条记录：表空返回 None，避免 fetchone()[0] / ['key'] 崩溃"""
+    cur = safe_execute(sql, params)
+    if cur is None:
+        return None
+    row = cur.fetchone()
+    return row if row else None
+
+def safe_count(sql, params=None, default=0):
+    """安全取计数：兜底返回 default"""
+    cur = safe_execute(sql, params)
+    if cur is None:
+        return default
+    row = cur.fetchone()
+    return row[0] if row else default
+
+def safe_count_dict(sql, params=None, key="cnt", default=0):
+    """安全取字典计数：兜底返回 default"""
+    cur = safe_execute(sql, params)
+    if cur is None:
+        return default
+    row = cur.fetchone()
+    return row[key] if row else default
 
 def init_db():
     """建表（幂等 + 事务保护）"""
@@ -595,6 +630,12 @@ def init_db():
             "ALTER TABLE user_project ADD COLUMN audio_enabled INTEGER DEFAULT 1",
             # v4.0.0-phase10.1: character library
             "ALTER TABLE user_project_scene ADD COLUMN character_id INTEGER DEFAULT NULL",
+            # Phase16: character/scene composer settings_json
+            "ALTER TABLE character_profiles ADD COLUMN settings_json TEXT DEFAULT '{}'",
+            "ALTER TABLE scene_profiles ADD COLUMN settings_json TEXT DEFAULT '{}'",
+            # Phase17: 词卡双语翻译字段
+            "ALTER TABLE word_card ADD COLUMN content_en TEXT DEFAULT ''",
+            "ALTER TABLE word_card ADD COLUMN content_zh TEXT DEFAULT ''",
         ]:
             try:
                 conn.execute(sql)
@@ -641,7 +682,7 @@ def init_db():
 
         conn.commit()
     except sqlite3.Error as e:
-        print("[数据库] 建表失败:", e)
+        log_error(f"[DB] 建表失败: {e}", source="database")
         conn.rollback()
         raise
 
@@ -653,4 +694,4 @@ def rebuild_fts():
         db.execute("INSERT INTO prompts_fts(prompts_fts) VALUES('rebuild')")
         db.commit()
     except sqlite3.Error as e:
-        print("[数据库] 全文索引重建失败:", e)
+        log_error(f"[DB] 全文索引重建失败: {e}", source="database")

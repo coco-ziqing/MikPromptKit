@@ -1,5 +1,6 @@
-// v5.1.0: Scene Composer — 场景设定提示词组装器
+// v5.2.0: Scene Composer — 场景设定提示词组装器（媒体预览增强版）
 // 从 word_card 词库选取维度词条，装配为完整场景提示词
+// 新增：词卡缩略图/视频预览 + 拖放上传 + Ctrl+V粘贴 + 悬停预览
 (function() {
 'use strict';
 (function _wait() {
@@ -18,7 +19,9 @@ App.sc = {
     outputText: '',
     activeDim: null,
     activeGroupId: null,
-    _saveTimer: null
+    _saveTimer: null,
+    _hoverTimer: null,
+    _hoverPreview: null
 };
 
 App.sc.loadDimensions = async function() {
@@ -167,16 +170,21 @@ App.sc.renderEditor = function() {
     h += '<button class="btn btn-sm btn-success" onclick="App.sc.saveScene()">💾 保存</button>';
     h += '<button class="btn btn-sm btn-outline" onclick="App.sc.saveScene()">🔄 刷新预览</button></div></div>';
 
-    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">';
+    // 搜索栏（过滤维度字段）
+    h += '<div class="s2-search-box" style="margin-bottom:8px;">';
+    h += '<input class="s2-input" placeholder="🔍 搜索场景维度..." oninput="App.sc._filterFields(this.value)" style="width:100%;">';
+    h += '</div>';
+
+    h += '<div id="scFieldsGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
 
     for (var i = 0; i < dims.length; i++) {
         var dim = dims[i];
         var val = sets[dim.key] || dim.default || '';
         var hasVal = val && val.trim();
 
-        h += '<div style="border:1px solid ' + (hasVal ? 'var(--primary)' : 'var(--border-color)') + ';border-radius:7px;padding:8px;background:' + (hasVal ? 'rgba(79,70,229,0.02)' : 'var(--bg-card)') + ';transition:all 0.15s;">';
+        h += '<div class="sc-field-card" data-dim-key="' + dim.key + '" style="border:1px solid ' + (hasVal ? 'var(--primary)' : 'var(--border-color)') + ';border-radius:7px;padding:8px;background:' + (hasVal ? 'rgba(79,70,229,0.02)' : 'var(--bg-card)') + ';transition:all 0.15s;position:relative;">';
         h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">';
-        h += '<label style="font-size:11px;font-weight:600;color:var(--text-muted);cursor:pointer;" onclick="App.sc._toggleRightPicker(\'' + dim.key + '\')">' + (dim.icon||'') + ' ' + App._escape(dim.label) + '</label>';
+        h += '<label style="font-size:11px;font-weight:600;color:var(--text-muted);cursor:pointer;" onclick="App.sc._toggleRightPicker(\'' + dim.key + '\')" onmouseenter="App.sc._showDimPreview(\'' + dim.key + '\', this)" onmouseleave="App.sc._hideDimPreview()">' + (dim.icon||'') + ' ' + App._escape(dim.label) + '</label>';
         if (dim.groups && dim.groups.length > 0) {
             h += '<select style="font-size:10px;padding:1px 3px;border:1px solid var(--border-color);border-radius:3px;background:var(--bg-main);max-width:120px;" onchange="App.sc._switchDimGroup(\'' + dim.key + '\', this.value)"><option value="">选词库</option>';
             for (var gi = 0; gi < Math.min(dim.groups.length, 4); gi++) {
@@ -191,7 +199,15 @@ App.sc.renderEditor = function() {
         h += '<button class="btn btn-xs btn-outline" onclick="App.sc._toggleRightPicker(\'' + dim.key + '\')" title="浏览词库" style="font-size:10px;padding:2px 6px;">📚</button>';
         h += '</div>';
         if (hasVal) {
-            h += '<div style="margin-top:4px;"><span style="font-size:9px;background:rgba(79,70,229,0.1);color:var(--primary);padding:1px 5px;border-radius:3px;">✦ ' + App._escape(val.substring(0,28)) + '</span></div>';
+            // 预览芯片（可悬停查看预览图/视频）
+            var tokens = val.split(',').filter(function(t){return t.trim();});
+            h += '<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px;">';
+            for (var ti = 0; ti < Math.min(tokens.length, 5); ti++) {
+                var tok = tokens[ti].trim();
+                h += '<span class="sc-field-chip" data-dim="' + dim.key + '" data-word="' + App._escape(tok) + '" style="font-size:9px;background:rgba(79,70,229,0.1);color:var(--primary);padding:1px 5px;border-radius:3px;cursor:pointer;" onclick="App.sc._removeChip(\'' + dim.key + '\',\'' + App._escape(tok) + '\')" onmouseenter="App.sc._chipHoverIn(\'' + dim.key + '\',\'' + App._escape(tok) + '\', this)" onmouseleave="App.sc._chipHoverOut()">✕ ' + App._escape(tok.substring(0,25)) + '</span>';
+            }
+            if (tokens.length > 5) h += '<span style="font-size:9px;color:var(--text-muted);">+' + (tokens.length-5) + '</span>';
+            h += '</div>';
         }
         h += '</div>';
     }
@@ -219,7 +235,41 @@ App.sc.renderEditor = function() {
     this.compose();
 };
 
+// 维度字段搜索过滤
+App.sc._filterFields = function(query) {
+    var q = (query||'').toLowerCase();
+    var cards = document.querySelectorAll('.sc-field-card');
+    cards.forEach(function(card){
+        var dimKey = card.dataset.dimKey || '';
+        var dimLabel = (card.querySelector('label')||{}).textContent || '';
+        if (!q || dimKey.toLowerCase().indexOf(q)>=0 || dimLabel.toLowerCase().indexOf(q)>=0) {
+            card.style.display = '';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+};
+
+// 移除芯片（从字段值中删除该词）
+App.sc._removeChip = function(dimKey, word) {
+    var input = document.querySelector('.sc-field-input[data-dim="' + dimKey + '"]');
+    if (!input) return;
+    var cur = input.value;
+    input.value = cur.replace(word, '').replace(/,\s*,/g, ',').replace(/^,|,$/g, '').trim();
+    this._onFieldChange(input);
+    this._debounceSave();
+    // 刷新编辑器（重绘芯片）
+    this.renderEditor();
+};
+
 // ==================== Right Panel ====================
+App.sc._closeRightPicker = function() {
+    var panel = document.getElementById('scRightPanel');
+    if (panel) panel.style.display = 'none';
+    var view = document.getElementById('viewSceneComposer');
+    if (view) { view.style.marginRight = ''; view.style.paddingRight = ''; }
+};
+
 App.sc._toggleRightPicker = function(dimKey) {
     this.activeDim = dimKey;
     var dim = null;
@@ -231,10 +281,17 @@ App.sc._toggleRightPicker = function(dimKey) {
     var panel = document.getElementById('scRightPanel');
     if (!panel) return;
     panel.style.display = 'block';
+    var view = document.getElementById('viewSceneComposer');
+    if (view) { view.style.marginRight = '320px'; }
 
     var h = '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border-color);">';
     h += '<strong style="font-size:13px;">' + (dim.icon||'') + ' ' + App._escape(dim.label) + ' — 词库</strong>';
-    h += '<button onclick="document.getElementById(\'scRightPanel\').style.display=\'none\'" style="border:none;background:none;cursor:pointer;font-size:18px;">×</button></div>';
+    h += '<button onclick="App.sc._closeRightPicker()" style="border:none;background:none;cursor:pointer;font-size:18px;">×</button></div>';
+
+    // 搜索
+    h += '<div style="padding:6px 8px;">';
+    h += '<input class="s2-input" id="scPickerSearch" placeholder="🔍 搜索词条..." oninput="App.sc._filterRightCards(this.value)" style="width:100%;font-size:12px;padding:5px 8px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-main);color:var(--text-main);">';
+    h += '</div>';
 
     if (dim.groups && dim.groups.length > 0) {
         if (!this.activeGroupId || !dim.groups.find(function(g){return g.id===App.sc.activeGroupId;})) {
@@ -249,8 +306,14 @@ App.sc._toggleRightPicker = function(dimKey) {
         h += '</div>';
     }
 
-    h += '<div id="scPickerCards" style="padding:6px 8px;overflow-y:auto;max-height:calc(100vh - 190px);">';
+    h += '<div id="scPickerCards" style="padding:6px 8px;overflow-y:auto;max-height:calc(100vh - 250px);">';
     h += '<div style="text-align:center;color:var(--text-muted);padding:20px;">加载中...</div></div>';
+
+    // 媒体库选取按钮
+    h += '<div style="padding:6px 8px;border-top:1px solid var(--border-color);text-align:center;">';
+    h += '<button class="btn btn-xs btn-outline" onclick="App.sc._openMediaLibrary()" style="font-size:11px;padding:3px 10px;">📁 从媒体库选取</button>';
+    h += '</div>';
+
     panel.innerHTML = h;
 
     if (this.activeGroupId) this._loadPickerCards(this.activeGroupId);
@@ -260,6 +323,21 @@ App.sc._switchDimGroup = function(dimKey, groupId) {
     this.activeDim = dimKey;
     this.activeGroupId = parseInt(groupId);
     this._loadPickerCards(this.activeGroupId);
+};
+
+// 右侧面板搜索过滤
+App.sc._filterRightCards = function(query) {
+    var q = (query||'').toLowerCase();
+    var items = document.querySelectorAll('#scPickerCards .s2-right-card-item');
+    items.forEach(function(item){
+        var word = (item.dataset.word || '').toLowerCase();
+        var def = (item.querySelector('[style*=\"font-size:9px\"]')||{}).textContent || '';
+        if (!q || word.indexOf(q) >= 0 || def.toLowerCase().indexOf(q) >= 0) {
+            item.style.display = '';
+        } else {
+            item.style.display = 'none';
+        }
+    });
 };
 
 App.sc._loadPickerCards = async function(groupId) {
@@ -276,15 +354,35 @@ App.sc._loadPickerCards = async function(groupId) {
             var card = cards[i];
             var word = card.content||'';
             var def = card.meaning||'';
+            var pt = card.thumbnail ? '/api/v4/word-cards/thumbnails/' + card.thumbnail : '';
+            var vt = card.preview_media ? '/api/v4/word-cards/videos/' + card.preview_media : '';
             var sel = currentVal && word && (currentVal.indexOf(word)>=0||word.indexOf(currentVal)>=0);
-            h += '<div class="s2-right-card-item'+(sel?' selected':'')+'" onclick="App.sc._pickCard(\''+App._escape(word)+'\')" style="display:flex;gap:6px;padding:5px 7px;border:1px solid '+(sel?'#10b981':'var(--border-color)')+';border-radius:5px;margin-bottom:3px;cursor:pointer;'+(sel?'background:rgba(16,185,129,0.08);':'')+'">';
+            h += '<div class="s2-right-card-item'+(sel?' selected':'')+'" data-word="'+App._escape(word)+'" data-card-id="'+card.id+'" data-video="'+(vt||'')+'" data-thumb="'+(pt||'')+'" onclick="App.sc._pickCardWord(\''+App._escape(word)+'\')" style="display:flex;gap:6px;padding:5px 7px;border:1px solid '+(sel?'#10b981':'var(--border-color)')+';border-radius:5px;margin-bottom:3px;cursor:pointer;'+(sel?'background:rgba(16,185,129,0.08);':'')+'" onmouseenter="App.sc._thumbHoverIn(this)" onmouseleave="App.sc._thumbHoverOut(this)">';
+            // 缩略图/视频预览区
+            h += '<div class="wc-card-thumb-zone" data-card-id="'+card.id+'" onclick="event.stopPropagation();" style="width:44px;height:30px;min-width:44px;border-radius:3px;overflow:hidden;position:relative;background:var(--hover-bg);">';
+            if (vt) {
+                h += '<video src="'+vt+'" muted loop preload="metadata" style="width:100%;height:100%;object-fit:cover;display:block;"></video>';
+                h += '<span style="position:absolute;top:1px;right:1px;background:rgba(0,0,0,0.7);color:#fff;font-size:7px;padding:0 2px;border-radius:2px;pointer-events:none;">V</span>';
+            } else if (pt) {
+                h += '<img src="'+pt+'" style="width:100%;height:100%;object-fit:cover;" loading="lazy">';
+            } else {
+                h += '<span onclick="event.stopPropagation();App.sc._pickFileForCard('+card.id+')" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:var(--text-muted);" title="点击/拖入/粘贴上传预览">+</span>';
+            }
+            h += '</div>';
             h += '<div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:600;">'+App._escape(word)+'</div>';
             if (def) h += '<div style="font-size:9px;color:var(--text-muted);margin-top:1px;">'+App._escape(def.substring(0,50))+'</div></div>';
-            if (sel) h += '<span style="color:#10b981;font-weight:700;">✓</span>';
+            if (sel) h += '<span style="color:#10b981;font-weight:700;font-size:12px;">&#10003;</span>';
             h += '</div>';
         }
         container.innerHTML = h||'<div style="text-align:center;padding:20px;color:var(--text-muted);">无匹配词条</div>';
-    } catch(e) { container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--danger);">加载失败</div>'; }
+        // 绑定拖放+粘贴事件
+        setTimeout(function(){ App.sc._setupWCUploadZones(); }, 100);
+    } catch(e) { container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--danger);">加载失败: '+App._escape(e.message)+'</div>'; }
+};
+
+App.sc._pickCardWord = function(word) {
+    // 委托到原_pickCard
+    this._pickCard(word);
 };
 
 App.sc._pickCard = function(word) {
@@ -300,6 +398,8 @@ App.sc._pickCard = function(word) {
     }
     var panel = document.getElementById('scRightPanel');
     if (panel && panel.style.display!=='none') this._loadPickerCards(this.activeGroupId);
+    // 刷新编辑器（重绘芯片）
+    this.renderEditor();
 };
 
 App.sc._onFieldChange = function(input) {
@@ -312,6 +412,277 @@ App.sc._debounceSave = function() {
     var self = this;
     if (this._saveTimer) clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(function(){self.saveScene();},3000);
+};
+
+// ==================== 词卡媒体上传 ====================
+App.sc._pickFileForCard = function(cardId) {
+    var inp = document.createElement('input'); inp.type = 'file';
+    inp.accept = 'image/*,video/mp4,video/webm,video/mov';
+    inp.onchange = function(ev) {
+        var f = ev.target.files[0];
+        if (!f) return;
+        App.sc._dispatchUpload(cardId, f);
+    };
+    inp.click();
+};
+
+App.sc._dispatchUpload = function(cardId, file) {
+    if (!file) return;
+    if (file.type.startsWith('video/')) this._uploadWCVideo(cardId, file);
+    else this._uploadWCThumb(cardId, file);
+};
+
+App.sc._uploadWCThumb = async function(cardId, file) {
+    var fd = new FormData(); fd.append('file', file);
+    try {
+        var r = await fetch('/api/v4/word-cards/' + cardId + '/thumbnail', {method:'POST', body:fd});
+        var d = await r.json();
+        if (d && d.ok) {
+            this._loadPickerCards(this.activeGroupId);
+            App.toast('预览图已上传', 'success');
+        } else { App.toast('上传失败', 'error'); }
+    } catch(e) { App.toast('上传异常: ' + e.message, 'error'); }
+};
+
+App.sc._uploadWCVideo = async function(cardId, file) {
+    var fd = new FormData(); fd.append('file', file);
+    try {
+        var r = await fetch('/api/v4/word-cards/' + cardId + '/video', {method:'POST', body:fd});
+        var d = await r.json();
+        if (d && d.ok) {
+            this._loadPickerCards(this.activeGroupId);
+            App.toast('视频预览已上传', 'success');
+        } else { App.toast('上传失败', 'error'); }
+    } catch(e) { App.toast('上传异常: ' + e.message, 'error'); }
+};
+
+// 拖放上传区域绑定
+App.sc._setupWCUploadZones = function() {
+    var self = this;
+    document.querySelectorAll('#scPickerCards .wc-card-thumb-zone').forEach(function(z) {
+        if (z.dataset.dropBound) return; z.dataset.dropBound = '1';
+        z.addEventListener('dragover', function(e) {
+            e.preventDefault(); e.stopPropagation();
+            this.style.background = 'rgba(16,185,129,0.15)'; this.style.border = '1px dashed #10b981';
+        });
+        z.addEventListener('dragleave', function(e) {
+            this.style.background = ''; this.style.border = '';
+        });
+        z.addEventListener('drop', function(e) {
+            e.preventDefault(); e.stopPropagation();
+            this.style.background = ''; this.style.border = '';
+            var cid = parseInt(this.dataset.cardId);
+            if (!cid || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+            var file = e.dataTransfer.files[0];
+            if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) return;
+            self._dispatchUpload(cid, file);
+        });
+        // 右键菜单
+        var hasMedia = z.querySelector('img, video');
+        if (hasMedia) {
+            z.addEventListener('contextmenu', function(e) {
+                e.preventDefault(); e.stopPropagation();
+                var cid = parseInt(this.dataset.cardId);
+                self._showThumbContextMenu(cid, e.clientX, e.clientY);
+            });
+        }
+    });
+
+    // 全局粘贴: 右侧面板打开时 Ctrl+V 粘贴图片/视频到第一个可见词卡
+    var panel = document.getElementById('scRightPanel');
+    if (panel && !panel.dataset.pasteBound) {
+        panel.dataset.pasteBound = '1';
+        panel.addEventListener('paste', function(e) {
+            if (panel.style.display === 'none') return;
+            var items = e.clipboardData && e.clipboardData.items;
+            if (!items) return;
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].type.startsWith('image/') || items[i].type.startsWith('video/')) {
+                    e.preventDefault();
+                    var f = items[i].getAsFile();
+                    if (!f) continue;
+                    var firstZone = panel.querySelector('.wc-card-thumb-zone');
+                    if (firstZone) {
+                        var cid = parseInt(firstZone.dataset.cardId);
+                        if (cid) {
+                            self._dispatchUpload(cid, f);
+                            App.toast('已粘贴预览', 'success');
+                        }
+                    }
+                    break;
+                }
+            }
+        });
+    }
+};
+
+// 右键菜单: 删除/替换缩略图
+App.sc._showThumbContextMenu = function(cardId, x, y) {
+    var old = document.getElementById('_scContextMenu');
+    if (old) old.remove();
+    var menu = document.createElement('div');
+    menu.id = '_scContextMenu';
+    menu.style.cssText = 'position:fixed;z-index:9999;background:var(--bg-card);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);min-width:120px;left:'+x+'px;top:'+y+'px;padding:4px;';
+    menu.innerHTML = '<div style="padding:6px 10px;cursor:pointer;font-size:12px;border-radius:4px;" onmouseover="this.style.background=\'var(--hover-bg)\'" onmouseout="this.style.background=\'\'" onclick="App.sc._replaceThumb('+cardId+')">🖼 替换预览</div>' +
+        '<div style="padding:6px 10px;cursor:pointer;font-size:12px;color:var(--danger);border-radius:4px;" onmouseover="this.style.background=\'var(--hover-bg)\'" onmouseout="this.style.background=\'\'" onclick="App.sc._deleteThumb('+cardId+')">🗑 删除预览</div>';
+    document.body.appendChild(menu);
+    setTimeout(function() {
+        var fn = function(e) { menu.remove(); document.removeEventListener('click', fn); };
+        document.addEventListener('click', fn);
+    }, 50);
+};
+
+App.sc._replaceThumb = function(cardId) {
+    this._pickFileForCard(cardId);
+    var m = document.getElementById('_scContextMenu'); if (m) m.remove();
+};
+
+App.sc._deleteThumb = async function(cardId) {
+    var m = document.getElementById('_scContextMenu'); if (m) m.remove();
+    try {
+        await App.fetchJSON('/api/v4/word-cards/' + cardId + '/thumbnail', {method:'DELETE'});
+        this._loadPickerCards(this.activeGroupId);
+        App.toast('预览已删除', 'info');
+    } catch(e) { App.toast('删除失败: ' + e.message, 'error'); }
+};
+
+// ==================== 悬停预览（芯片/词卡） ====================
+App.sc._thumbHoverIn = function(el) {
+    var vt = el.dataset.video;
+    var pt = el.dataset.thumb;
+    if (!vt && !pt) return;
+    if (this._hoverTimer) clearTimeout(this._hoverTimer);
+    this._hoverTimer = setTimeout(function() {
+        if (!App.sc._hoverPreview) {
+            App.sc._hoverPreview = document.createElement('div');
+            App.sc._hoverPreview.id = '_scHoverPreview';
+            App.sc._hoverPreview.style.cssText = 'position:fixed;z-index:9998;background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,0.2);padding:4px;display:none;max-width:260px;';
+            document.body.appendChild(App.sc._hoverPreview);
+        }
+        var rect = el.getBoundingClientRect();
+        var html = '';
+        if (vt) {
+            html += '<video src="'+vt+'" style="width:252px;height:auto;border-radius:6px;" autoplay muted loop></video>';
+        } else if (pt) {
+            html += '<img src="'+pt+'" style="width:252px;height:auto;border-radius:6px;">';
+        }
+        html += '<div style="padding:4px 6px;font-size:11px;font-weight:600;color:var(--text-main);">'+App._escape(el.dataset.word||'')+'</div>';
+        App.sc._hoverPreview.innerHTML = html;
+        App.sc._hoverPreview.style.left = Math.min(rect.left, window.innerWidth-270)+'px';
+        App.sc._hoverPreview.style.top = Math.min(rect.bottom+4, window.innerHeight-180)+'px';
+        App.sc._hoverPreview.style.display = 'block';
+    }, 400);
+};
+
+App.sc._thumbHoverOut = function(el) {
+    if (this._hoverTimer) clearTimeout(this._hoverTimer);
+    if (this._hoverPreview) this._hoverPreview.style.display = 'none';
+};
+
+// 芯片悬停预览（编辑器内）
+App.sc._chipHoverIn = function(dimKey, word, el) {
+    if (this._hoverTimer) clearTimeout(this._hoverTimer);
+    this._hoverTimer = setTimeout(async function() {
+        try {
+            // 搜索匹配的词卡
+            var d = await App.fetchJSON('/api/v4/word-cards?search=' + encodeURIComponent(word) + '&page_size=3');
+            if (!d || !d.items || !d.items.length) return;
+            var card = d.items[0];
+            var pt = card.thumbnail ? '/api/v4/word-cards/thumbnails/' + card.thumbnail : '';
+            var vt = card.preview_media ? '/api/v4/word-cards/videos/' + card.preview_media : '';
+            if (!pt && !vt) return;
+            if (!App.sc._hoverPreview) {
+                App.sc._hoverPreview = document.createElement('div');
+                App.sc._hoverPreview.id = '_scHoverPreview';
+                App.sc._hoverPreview.style.cssText = 'position:fixed;z-index:9998;background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,0.2);padding:4px;display:none;max-width:260px;';
+                document.body.appendChild(App.sc._hoverPreview);
+            }
+            var rect = el.getBoundingClientRect();
+            var html = '';
+            if (vt) {
+                html += '<video src="'+vt+'" style="width:252px;height:auto;border-radius:6px;" autoplay muted loop></video>';
+            } else if (pt) {
+                html += '<img src="'+pt+'" style="width:252px;height:auto;border-radius:6px;">';
+            }
+            html += '<div style="padding:4px 6px;font-size:11px;font-weight:600;color:var(--text-main);">'+App._escape(word.substring(0,40))+'</div>';
+            App.sc._hoverPreview.innerHTML = html;
+            App.sc._hoverPreview.style.left = Math.min(rect.left, window.innerWidth-270)+'px';
+            App.sc._hoverPreview.style.top = Math.min(rect.bottom+4, window.innerHeight-180)+'px';
+            App.sc._hoverPreview.style.display = 'block';
+        } catch(e) {}
+    }, 500);
+};
+
+App.sc._chipHoverOut = function() {
+    if (this._hoverTimer) clearTimeout(this._hoverTimer);
+    if (this._hoverPreview) this._hoverPreview.style.display = 'none';
+};
+
+// 维度标签悬停预览
+App.sc._showDimPreview = function(dimKey, el) {
+    // 暂不需要，维度本身无预览；但预留接口
+};
+App.sc._hideDimPreview = function() {};
+
+// ==================== 媒体库选取 ====================
+App.sc._openMediaLibrary = function() {
+    var old = document.getElementById('_scMediaLibModal');
+    if (old) old.remove();
+    var overlay = document.createElement('div');
+    overlay.id = '_scMediaLibModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = '<div class="modal-content" style="max-width:680px;max-height:85vh;background:var(--bg-card);border-radius:12px;overflow:hidden;" onclick="event.stopPropagation()">' +
+        '<div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border-color);">' +
+        '<h5 style="margin:0;">📁 媒体库 — 选择预览图/视频</h5>' +
+        '<button onclick="document.getElementById(\'_scMediaLibModal\').remove()" style="border:none;background:none;cursor:pointer;font-size:20px;">×</button></div>' +
+        '<div class="modal-body" style="max-height:60vh;overflow-y:auto;padding:12px;" id="_scMediaLibGrid">' +
+        '<div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div></div>' +
+        '<div class="modal-footer" style="padding:10px 16px;border-top:1px solid var(--border-color);text-align:right;">' +
+        '<button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'_scMediaLibModal\').remove()">取消</button></div></div>';
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    this._loadMediaLib();
+};
+
+App.sc._loadMediaLib = async function() {
+    var grid = document.getElementById('_scMediaLibGrid');
+    if (!grid) return;
+    try {
+        var d = await App.fetchJSON('/api/thumbnails/library?page_size=120');
+        if (!d || !d.items || !d.items.length) {
+            grid.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);">媒体库为空</div>';
+            return;
+        }
+        var h = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">';
+        for (var i = 0; i < d.items.length; i++) {
+            var item = d.items[i];
+            h += '<div style="border:1px solid var(--border-color);border-radius:6px;overflow:hidden;cursor:pointer;transition:0.12s;" onclick="App.sc._pickFromMediaLib(\''+App._escape(item.filename||'')+'\')" onmouseover="this.style.borderColor=\'var(--primary)\'" onmouseout="this.style.borderColor=\'var(--border-color)\'">';
+            h += '<img src="/api/thumbnails/file/' + App._escape(item.filename) + '" style="width:100%;height:100px;object-fit:cover;" loading="lazy">';
+            h += '</div>';
+        }
+        h += '</div>';
+        grid.innerHTML = h;
+    } catch(e) { grid.innerHTML = '<div style="text-align:center;padding:30px;color:var(--danger);">加载失败</div>'; }
+};
+
+App.sc._pickFromMediaLib = async function(filename) {
+    var overlay = document.getElementById('_scMediaLibModal');
+    if (overlay) overlay.remove();
+    try {
+        // 下载缩略图并上传到当前第一个词卡
+        var resp = await fetch('/api/thumbnails/file/' + filename);
+        var blob = await resp.blob();
+        var file = new File([blob], filename, {type: blob.type || 'image/jpeg'});
+        // 找第一个可见词卡
+        var firstZone = document.querySelector('#scPickerCards .wc-card-thumb-zone');
+        if (firstZone) {
+            var cid = parseInt(firstZone.dataset.cardId);
+            if (cid) {
+                this._dispatchUpload(cid, file);
+                App.toast('媒体已关联到词卡预览', 'success');
+            }
+        }
+    } catch(e) { App.toast('选取失败: ' + e.message, 'error'); }
 };
 
 // ==================== Compose ====================
@@ -360,14 +731,22 @@ App.sc.init = async function() {
 // Hook switchView
 var _origSCSwitchView = App.switchView;
 App.switchView = function(view) {
+    // 清除所有面板 inline display，让 CSS 类控制
+    document.querySelectorAll('.view-panel').forEach(function(el) { el.style.display = ''; });
+    // 关闭词卡面板
+    if (view !== 'scene_composer') {
+        var panel = document.getElementById('scRightPanel');
+        if (panel) panel.style.display = 'none';
+        var vp = document.getElementById('viewSceneComposer');
+        if (vp) { vp.style.marginRight = ''; vp.style.paddingRight = ''; }
+    }
     _origSCSwitchView.call(this, view);
     if (view === 'scene_composer') {
-        document.querySelectorAll('.view-panel').forEach(function(el){el.style.display='none';});
         var vp = document.getElementById('viewSceneComposer');
         if (vp) vp.style.display='block';
         if (App.sc && App.sc.init) App.sc.init();
     }
 };
 
-console.log('[scene_composer] v1.0 ready');
+console.log('[scene_composer] v5.2.0-media ready');
 }})();

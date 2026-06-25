@@ -28,6 +28,7 @@
             <button class="header-btn" onclick="App.switchView('seedance')" id="navSeedance" title="提示词组装器" data-i18n-title="nav.seedance" data-i18n-title-zh="提示词组装器" style="color:#8b5cf6;"><i class="bi bi-tools"></i></button>
             <button class="header-btn" onclick="App.switchView('character_composer')" id="navCharacterComposer" title="角色组装器" data-i18n-title="nav.character" data-i18n-title-zh="角色组装器" style="color:#ec4899;"><i class="bi bi-person-badge"></i></button>
             <button class="header-btn" onclick="App.switchView('scene_composer')" id="navSceneComposer" title="场景组装器" data-i18n-title="nav.scene" data-i18n-title-zh="场景组装器" style="color:#10b981;"><i class="bi bi-image"></i></button>
+            <button class="header-btn" onclick="App.switchView('unified_composer')" id="navUnifiedComposer" title="统一工作台" data-i18n-title="nav.unified" data-i18n-title-zh="统一工作台" style="color:#8b5cf6;"><i class="bi bi-layers"></i></button>
             <button class="header-btn" onclick="App.switchView('wcmanager')" id="navWCManager" title="词卡管理" data-i18n-title="nav.wordcards" data-i18n-title-zh="词卡管理"><i class="bi bi-grid-3x3-gap-fill"></i></button>
             <button class="header-btn" onclick="App.switchView('atom_editor')" id="navAtomEditor" title="原子引擎" data-i18n-title="nav.atom" data-i18n-title-zh="原子引擎" style="color:#f59e0b;"><i class="bi bi-puzzle"></i></button>
             <button class="header-btn" onclick="App.switchView('v4media')" id="navV4Media" title="媒体资产" data-i18n-title="nav.media" data-i18n-title-zh="媒体资产"><i class="bi bi-images"></i></button>
@@ -169,6 +170,7 @@
                     <input id="wcSearch" class="modal-input" placeholder="🔍 搜索..." style="width:160px;font-size:12px;padding:5px 8px;" onkeydown="if(event.key==='Enter')App.wordCards.search()">
                     <select id="wcGroupFilter" class="modal-input" style="width:auto;font-size:11px;padding:5px 8px;" onchange="App.wordCards.filterGroup()"><option value="">全部</option></select>
                     <button class="btn btn-sm btn-primary" onclick="App.wordEditor.openCreate()" style="font-size:11px;padding:4px 10px;">➕ 新建</button>
+                    <button class="btn btn-sm btn-success" onclick="App.wordCards._showBatchCreate()" style="font-size:11px;padding:4px 10px;">⚡ 批量录入</button>
                 </div>
             </div>
             <div id="wcGroupBar" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border-color);"></div>
@@ -179,13 +181,13 @@
         </div>
         <div id="viewSeedance" class="view-panel">
             <div class="seedance-tabs mb-3">
-                <button class="seedance-tab active" onclick="App.switchSeedanceTab('templates')" id="seedanceTabTemplates"><i class="bi bi-collection"></i> 场景模板</button>
-                <button class="seedance-tab" onclick="App.switchSeedanceTab('composer')" id="seedanceTabComposer"><i class="bi bi-tools"></i> 提示词组装器</button>
+                <button class="seedance-tab active" onclick="App.switchSeedanceTab('composer')" id="seedanceTabComposer"><i class="bi bi-tools"></i> 提示词组装器</button>
+                <button class="seedance-tab" onclick="App.switchSeedanceTab('templates')" id="seedanceTabTemplates"><i class="bi bi-collection"></i> 场景模板</button>
                 <button class="seedance-tab" onclick="App.switchSeedanceTab('gallery')" id="seedanceTabGallery"><i class="bi bi-images"></i> 精选画廊</button>
                 <button class="seedance-tab" onclick="App.switchSeedanceTab('glossary')" id="seedanceTabGlossary"><i class="bi bi-book"></i> 镜头语言速查</button>
             </div>
-            <div id="seedanceTemplates" class="seedance-panel"><div id="seedanceCategoryTabs" class="category-tabs mb-3"></div><div id="seedanceTemplateList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载 Seedance 模板库...</p></div></div><div id="seedancePagination" class="pagination-bar"></div></div>
-            <div id="seedanceComposer" class="seedance-panel" style="display:none;">
+            <div id="seedanceTemplates" class="seedance-panel" style="display:none;"><div id="seedanceCategoryTabs" class="category-tabs mb-3"></div><div id="seedanceTemplateList"><div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载 Seedance 模板库...</p></div></div><div id="seedancePagination" class="pagination-bar"></div></div>
+            <div id="seedanceComposer" class="seedance-panel">
                 <!-- Seedance V2 多镜头结构化组装器 三栏布局 -->
                 <div class="s2-layout">
                     <!-- 左栏: 项目列表 + 全局搜索 -->
@@ -929,34 +931,35 @@
         </div>
     </div>
         <!-- Phase15: wc_bridge 必须在 app_core 之前加载，分组导航交互重构 -->
-                            <script src="/static/js/wc_bridge.js?v=14.6"></script>
+                            <script src="/static/js/wc_bridge.js?v=14.11"></script>
     <script src="/static/js/signal_lights.js?v=5"></script>
-    <script src="/static/js/app_core.js?v=13.4"></script>
+    <script src="/static/js/app_core.js?v=13.6"></script>
     <script src="/static/js/app_card_model.js?v=4"></script>
     <!-- Phase15: wc_bridge 已移到上面（分组导航交互重构） -->
     <script src="/static/js/monitor_dashboard.js?v=5"></script>
     <script src="/static/js/health_check.js?v=5"></script>
     <script src="/static/js/app_sync.js?v=9.3"></script>
-    <script src="/static/js/app_editor.js?v=11.6"></script>
-    <script src="/static/js/app_collections.js?v=10.2"></script>
+    <script src="/static/js/app_editor.js?v=11.8"></script>
+    <script src="/static/js/app_collections.js?v=10.6"></script>
     <script src="/static/js/app_tools.js?v=9.3"></script>
     <script src="/static/js/app_media.js?v=9.3"></script>
-    <script src="/static/js/ai_tools.js?v=6"></script>
+    <script src="/static/js/ai_tools.js?v=8"></script>
     <script src="/static/js/word_picker.js?v=5"></script>
-    <script src="/static/js/word_editor.js?v=8"></script>
-    <script src="/static/js/word_card_manager.js?v=7"></script>
+    <script src="/static/js/word_editor.js?v=9"></script>
+    <script src="/static/js/word_card_manager.js?v=8"></script>
     <!-- Phase15: wc_bridge.js 已移至 app_core 之前 -->
     <script src="/static/js/v4_library.js?v=5"></script>
     <script src="/static/js/v4_cards.js?v=5"></script>
     <script src="/static/js/v3_composer.js?v=9.5"></script>
     <script src="/static/js/app_i18n.js?v=10"></script>
     <script src="/static/js/seedance_v2_composer.js?v=73"></script>
-    <script src="/static/js/composer_wc_bridge.js?v=9"></script>
-    <script src="/static/js/character_composer.js?v=1"></script>
-    <script src="/static/js/scene_composer.js?v=1"></script>
+    <script src="/static/js/composer_wc_bridge.js?v=10"></script>
+    <script src="/static/js/character_composer.js?v=4"></script>
+    <script src="/static/js/unified_composer.js?v=2"></script>
+    <script src="/static/js/scene_composer.js?v=4"></script>
     <script src="/static/js/character_library.js?v=5"></script>
     <script src="/static/js/app_search.js?v=5"></script>
-    <script src="/static/js/atom_editor.js?v=14"></script>
+    <script src="/static/js/atom_editor.js?v=18"></script>
     <script src="/static/js/app_theme.js?v=11"></script>
     <script src="/static/js/app_playground.js?v=15"></script>
     <script src="/static/js/log_viewer.js?v=16"></script>

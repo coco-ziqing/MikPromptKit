@@ -3,12 +3,28 @@ v4.1.0: 统一词卡 API
 /api/v4/word-cards — 词卡 CRUD + 分组管理 + 多端选取
 单一路由前缀，所有模块共享同一数据源
 """
-import json, re, hashlib, os
+import json, re, hashlib, os, uuid, io
 from fastapi import APIRouter, Query, HTTPException, UploadFile, File
-from fastapi.responses import Response
-from database import get_db, safe_count, safe_count_dict, safe_fetch_one, safe_fetch_one, safe_count, safe_count_dict, safe_commit
+from fastapi.responses import Response, FileResponse
+from database import get_db, safe_count, safe_count_dict, safe_fetch_one, safe_commit
 
 router = APIRouter(prefix="/api/v4/word-cards", tags=["word-cards"])
+
+# 媒体存储目录：backend/api/ → backend/ → 项目根 → data/wc_media/
+WC_MEDIA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "wc_media")
+WC_THUMB_DIR = os.path.join(WC_MEDIA_DIR, "thumbs")
+WC_VIDEO_DIR = os.path.join(WC_MEDIA_DIR, "videos")
+for d in [WC_THUMB_DIR, WC_VIDEO_DIR]:
+    os.makedirs(d, exist_ok=True)
+
+def _safe_remove_media(thumbnail, preview_media):
+    """安全清理旧媒体文件"""
+    for fname, directory in [(thumbnail, WC_THUMB_DIR), (preview_media, WC_VIDEO_DIR)]:
+        if fname:
+            p = os.path.join(directory, os.path.basename(fname))
+            if os.path.exists(p):
+                try: os.remove(p)
+                except: pass
 
 # ⚠️ 路由顺序必须: 静态路径 → 动态路径 → 根路径
 
@@ -144,6 +160,84 @@ def unlink_card(scene_id: int = Query(...), card_id: int = Query(...)):
     safe_commit()
     return {"ok":True}
 
+# ==================== AI 智能分组推荐 (P0-2) ====================
+
+@router.post("/suggest-group")
+def suggest_group(data: dict):
+    """根据词卡内容，AI 推荐最匹配的分组（关键词+样本匹配）"""
+    content = (data.get("content") or "").strip()
+    name = (data.get("name") or "").strip()
+    meaning = (data.get("meaning") or "").strip()
+    text = content or name
+    if not text:
+        raise HTTPException(400, "请提供词卡内容或名称")
+    search_text = f"{name} {content} {meaning}"[:300]
+    db = get_db()
+    groups = db.execute("""
+        SELECT wg.id, wg.name, wg.group_key, wg.group_type, wg.icon,
+               (SELECT COUNT(*) FROM word_card wc WHERE wc.group_id=wg.id AND wc.is_deleted=0) as card_count,
+               COALESCE((SELECT GROUP_CONCAT(content, ' | ') FROM (
+                   SELECT wc2.content FROM word_card wc2
+                   WHERE wc2.group_id=wg.id AND wc2.is_deleted=0
+                   ORDER BY wc2.usage_count DESC LIMIT 5
+               )), '') as sample_cards
+        FROM word_card_group wg
+        WHERE wg.is_active=1 AND wg.group_type NOT IN ('root','sub')
+          AND (SELECT COUNT(*) FROM word_card wc WHERE wc.group_id=wg.id AND wc.is_deleted=0) > 0
+        ORDER BY wg.group_type, wg.sort_order
+    """).fetchall()
+    if not groups:
+        return {"ok": True, "suggestions": [], "message": "暂无可用分组"}
+    suggestions = []
+    text_lower = search_text.lower()
+    for g in groups:
+        score = 0.0
+        reasons = []
+        group_name = (g["name"] or "").lower()
+        group_key = (g["group_key"] or "").lower()
+        samples = (g["sample_cards"] or "").lower()
+        # 1) 分组名关键词匹配
+        name_words = re.split(r'[\s\-_\.·,/，]+', group_name)
+        for w in name_words:
+            if len(w) >= 2 and w in text_lower:
+                score += 0.15
+                reasons.append(f'关键词: "{w}"')
+                break
+        # 2) 分组 key 匹配
+        if len(group_key) >= 3 and group_key in text_lower:
+            score += 0.10
+            reasons.append('标识匹配')
+        # 3) 样本词卡相似度
+        if samples:
+            sample_words = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', samples))
+            text_words = set(re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', text_lower))
+            overlap = len(sample_words & text_words)
+            if overlap > 0:
+                score += min(0.35, overlap * 0.04)
+                if overlap >= 3:
+                    reasons.append(f'样本匹配 ({overlap}词)')
+        # 4) 热度加成
+        if g["card_count"] > 10:
+            score += 0.10
+            reasons.append('热门分组')
+        elif g["card_count"] > 5:
+            score += 0.05
+        score = min(1.0, round(score, 2))
+        if score > 0.03:
+            suggestions.append({
+                "group_id": g["id"],
+                "group_name": g["name"],
+                "group_key": g["group_key"],
+                "group_type": g["group_type"],
+                "icon": g["icon"],
+                "card_count": g["card_count"],
+                "score": score,
+                "confidence": "high" if score >= 0.5 else "medium" if score >= 0.2 else "low",
+                "reasons": reasons[:3]
+            })
+    suggestions.sort(key=lambda x: x["score"], reverse=True)
+    return {"ok": True, "query": search_text[:100], "suggestions": suggestions[:5]}
+
 @router.get("/picker/scene-cards/{scene_id}")
 def get_scene_cards(scene_id: int):
     db = get_db()
@@ -183,7 +277,225 @@ def batch_operation(data: dict):
     safe_commit()
     return {"ok":True,"action":action,"count":len(ids)}
 
-# ==================== 单条 CRUD (动态路径) ====================
+# ==================== 缩略图/视频上传（必须在 /{card_id} 之前注册，避免被通配吞掉）====================
+
+# ==================== P0-5: 自然语言批量录入 ====================
+
+@router.post("/batch-create")
+async def batch_create_from_text(data: dict):
+    """
+    自然语言批量录入：用户输入描述文本，AI 自动拆解为多条词卡
+    示例输入: "录入5个赛博朋克场景：霓虹雨夜、全息街市、废弃工厂、",
+    "数据洪流、地下黑市", AI 解析为 5 条词卡 + 自动匹配分组
+    """
+    text = (data.get("text") or "").strip()
+    target_group_id = data.get("group_id")  # 可选：强制指定分组
+    auto_archive = data.get("auto_archive", True)  # 自动入库
+    
+    if not text:
+        raise HTTPException(400, "请输入文本")
+    db = get_db()
+
+    # 获取分组列表供关键词匹配
+    group_options = db.execute("""
+        SELECT wg.id, wg.name, wg.group_type, wg.group_key,
+               (SELECT COUNT(*) FROM word_card wc WHERE wc.group_id=wg.id AND wc.is_deleted=0) as card_count
+        FROM word_card_group wg
+        WHERE wg.is_active=1 AND wg.group_type NOT IN ('root','sub')
+        ORDER BY wg.group_type, wg.sort_order
+    """).fetchall()
+    all_groups = [{"id": g["id"], "name": g["name"], "type": g["group_type"], "key": g["group_key"]} for g in group_options]
+
+    # 纯规则引擎拆解：按中文标点 + 换行分词条
+    clean = text.replace('\n', '，').replace('\r', '').replace(';', '，').replace('；', '，')
+    # 去掉前缀描述
+    clean = re.sub(r'^[^，,、]*?[:：]\s*', '', clean)
+    clean = re.sub(r'录入\s*\d*\s*[个条项张]*\s*[:：]?\s*', '', clean)
+    clean = re.sub(r'添加\s*\d*\s*[个条项张]*\s*[:：]?\s*', '', clean)
+    clean = re.sub(r'新增\s*\d*\s*[个条项张]*\s*[:：]?\s*', '', clean)
+    # 统一分隔符为逗号再拆
+    clean = re.sub(r'[、，,]', ',', clean)
+    segs = [s.strip() for s in clean.split(',')]
+    items = []
+    seen = set()
+    for s in segs:
+        if not s or len(s) < 2 or len(s) > 80:
+            continue
+        # 去编号前缀
+        s = re.sub(r'^\d+[\.\)、，]\s*', '', s)
+        s = s.strip(' \'"\u201c\u201d')
+        if s in seen:
+            continue
+        seen.add(s)
+        # 关键词匹配分组
+        best_gid, best_name, best_score = target_group_id, "", 0
+        if not best_gid:
+            sl = s.lower()
+            for g in all_groups:
+                gn = (g["name"] or "").lower()
+                score = 0
+                for w in re.split(r'[\s\-_·/]+', gn):
+                    if len(w) >= 2 and w in sl:
+                        score += 1
+                kw_map = {"style":["风格","画风","美术"],"color":["色","调色","配色"],"lighting":["光","影","光影"],"composition":["构图","取景","视角"],"camera":["镜头","运镜","焦段"],"quality":["画质","4k","细节"],"atmosphere":["氛围","环境","场景"],"subject":["人","角色","人物","主体"],"negative":["不要","排除","禁止"],"tone":["色调","影调","滤镜"],"action":["动作","动态","运动"]}
+                for kt, kws in kw_map.items():
+                    if g["type"] == kt or kt in (g["key"] or ""):
+                        for kw in kws:
+                            if kw in sl:
+                                score += 1
+                if score > best_score:
+                    best_score, best_gid, best_name = score, g["id"], g["name"]
+        items.append({"content": s, "meaning": s[:30], "group_id": best_gid or None, "group_name": best_name or "自动", "tags": []})
+
+    if not items:
+        raise HTTPException(400, "未识别出有效词条，请用逗号/顿号/换行分隔")
+
+    if not auto_archive:
+        return {"ok": True, "preview": True, "items": items, "count": len(items)}
+
+    created = []
+    errors = []
+    for it in items:
+        try:
+            content = (it.get("content") or "").strip()
+            if not content:
+                continue
+            gid = target_group_id or it.get("group_id")
+            if gid and not db.execute("SELECT id FROM word_card_group WHERE id=? AND is_active=1", [gid]).fetchone():
+                gid = None
+            name = content[:60]
+            meaning = it.get("meaning", "")[:200]
+            max_sort = db.execute("SELECT COALESCE(MAX(sort_order),0) FROM word_card WHERE group_id=?", [gid]).fetchone()[0]
+            db.execute(
+                "INSERT INTO word_card (group_id,name,content,meaning,tags,module,card_role,media_type,structured,version,sort_order,is_builtin,source) VALUES (?,?,?,?,?,?,?,?,?,1,?,0,'batch_create')",
+                [gid, name, content, meaning, "[]", "custom", "batch", "image", "{}", max_sort + 1]
+            )
+            cid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            created.append({"id": cid, "content": content[:60], "name": name[:30], "group_id": gid, "group_name": it.get("group_name", ""), "meaning": meaning[:40]})
+        except Exception as e:
+            errors.append({"content": it.get("content", "")[:40], "error": str(e)[:100]})
+    db.commit()
+    return {"ok": True, "created": created, "created_count": len(created), "errors": errors, "total_parsed": len(items)}
+
+
+# ==================== 缩略图/视频上传（必须在 /{card_id} 之前注册，避免被通配吞掉）====================
+
+@router.post("/{card_id}/thumbnail")
+async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
+    """为词卡上传缩略图（自动裁剪为 100x67 JPEG）"""
+    db = get_db()
+    card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"):
+        raise HTTPException(400, "仅支持 jpg/png/gif/webp/bmp 格式")
+    try:
+        from PIL import Image
+        data = await file.read()
+        img = Image.open(io.BytesIO(data))
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        TW, TH = 100, 67
+        sw, sh = img.size
+        target_ratio = TW / TH
+        src_ratio = sw / sh
+        if src_ratio > target_ratio:
+            new_w = int(sh * target_ratio)
+            img = img.crop(((sw - new_w) // 2, 0, (sw + new_w) // 2, sh))
+        else:
+            new_h = int(sw / target_ratio)
+            img = img.crop((0, (sh - new_h) // 2, sw, (sh + new_h) // 2))
+        img = img.resize((TW, TH), Image.LANCZOS)
+        filename = f"{uuid.uuid4().hex}.jpg"
+        dest = os.path.join(WC_THUMB_DIR, filename)
+        img.save(dest, "JPEG", quality=82)
+    except ImportError:
+        raise HTTPException(500, "Pillow 未安装")
+    except Exception as e:
+        raise HTTPException(500, f"缩略图处理失败: {str(e)}")
+    _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
+    db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', updated_at=datetime('now','localtime') WHERE id=?", [filename, card_id])
+    safe_commit()
+    return {"ok": True, "filename": filename}
+
+
+@router.delete("/{card_id}/thumbnail")
+def delete_card_thumbnail(card_id: int):
+    """删除词卡缩略图"""
+    db = get_db()
+    card = safe_fetch_one("SELECT thumbnail FROM word_card WHERE id=?", [card_id])
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    if card["thumbnail"]:
+        p = os.path.join(WC_THUMB_DIR, os.path.basename(card["thumbnail"]))
+        if os.path.exists(p):
+            os.remove(p)
+        db.execute("UPDATE word_card SET thumbnail='', updated_at=datetime('now','localtime') WHERE id=?", [card_id])
+        safe_commit()
+    return {"ok": True}
+
+
+@router.get("/thumbnails/{filename}")
+def serve_card_thumbnail(filename: str):
+    """返回词卡缩略图文件"""
+    path = os.path.join(WC_THUMB_DIR, os.path.basename(filename))
+    if not os.path.exists(path):
+        raise HTTPException(404, "缩略图不存在")
+    return FileResponse(path, media_type="image/jpeg")
+
+
+@router.post("/{card_id}/video")
+async def upload_card_video(card_id: int, file: UploadFile = File(...)):
+    """为词卡上传预览视频（mp4/webm/mov，最大50MB）"""
+    db = get_db()
+    card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in (".mp4", ".webm", ".mov"):
+        raise HTTPException(400, "仅支持 mp4/webm/mov 格式")
+    data = await file.read()
+    if len(data) > 50 * 1024 * 1024:
+        raise HTTPException(400, "视频不能超过50MB")
+    filename = f"{uuid.uuid4().hex}{ext}"
+    dest = os.path.join(WC_VIDEO_DIR, filename)
+    with open(dest, "wb") as f:
+        f.write(data)
+    _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
+    db.execute("UPDATE word_card SET thumbnail='', preview_media=?, media_type='video', updated_at=datetime('now','localtime') WHERE id=?", [filename, card_id])
+    safe_commit()
+    return {"ok": True, "filename": filename}
+
+
+@router.delete("/{card_id}/video")
+def delete_card_video(card_id: int):
+    """删除词卡预览视频"""
+    db = get_db()
+    card = safe_fetch_one("SELECT preview_media FROM word_card WHERE id=?", [card_id])
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    if card["preview_media"]:
+        p = os.path.join(WC_VIDEO_DIR, os.path.basename(card["preview_media"]))
+        if os.path.exists(p):
+            os.remove(p)
+        db.execute("UPDATE word_card SET preview_media='', updated_at=datetime('now','localtime') WHERE id=?", [card_id])
+        safe_commit()
+    return {"ok": True}
+
+
+@router.get("/videos/{filename}")
+def serve_card_video(filename: str):
+    """返回词卡预览视频文件（支持Range请求）"""
+    path = os.path.join(WC_VIDEO_DIR, os.path.basename(filename))
+    if not os.path.exists(path):
+        raise HTTPException(404, "视频不存在")
+    ext = os.path.splitext(filename)[1].lower()
+    media_map = {".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime"}
+    return FileResponse(path, media_type=media_map.get(ext, "video/mp4"))
+
+
+# ==================== 单条 CRUD (动态路径 — 必须放在媒体端点之后) ====================
 
 @router.get("/{card_id}")
 def get_card(card_id: int):
@@ -197,11 +509,104 @@ def get_card(card_id: int):
     except: item["structured"] = {}
     return {"ok":True,"card":item}
 
+# ==================== P0-3: 版本管理 ====================
+
+def _ensure_version_table(db):
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS word_card_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            card_id INTEGER NOT NULL,
+            version INTEGER NOT NULL,
+            snapshot TEXT NOT NULL,
+            changed_fields TEXT DEFAULT '',
+            editor TEXT DEFAULT 'manual',
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (card_id) REFERENCES word_card(id)
+        )
+    """)
+    db.execute("CREATE INDEX IF NOT EXISTS idx_wcv_card ON word_card_versions(card_id)")
+
+
+def _save_version_snapshot(db, card_id: int):
+    """保存当前词卡完整快照作为版本记录"""
+    _ensure_version_table(db)
+    row = db.execute("SELECT * FROM word_card WHERE id=?", [card_id]).fetchone()
+    if not row:
+        return
+    data = dict(row)
+    snapshot = json.dumps(data, ensure_ascii=False, default=str)
+    ver = data.get("version", 1)
+    db.execute(
+        "INSERT INTO word_card_versions (card_id, version, snapshot, editor) VALUES (?,?,?,?)",
+        [card_id, ver, snapshot, "manual"]
+    )
+    # 保留最近 20 个版本
+    db.execute("""
+        DELETE FROM word_card_versions WHERE card_id=?
+        AND id NOT IN (
+            SELECT id FROM word_card_versions WHERE card_id=?
+            ORDER BY id DESC LIMIT 20
+        )
+    """, [card_id, card_id])
+
+
+@router.get("/{card_id}/versions")
+def get_card_versions(card_id: int):
+    """获取词卡版本历史"""
+    db = get_db()
+    _ensure_version_table(db)
+    current = db.execute("SELECT id, version FROM word_card WHERE id=?", [card_id]).fetchone()
+    if not current:
+        raise HTTPException(404, "词卡不存在")
+    rows = db.execute(
+        "SELECT id, card_id, version, editor, changed_fields, created_at FROM word_card_versions WHERE card_id=? ORDER BY id DESC",
+        [card_id]
+    ).fetchall()
+    versions = []
+    for r in rows:
+        v = dict(r)
+        v["is_current"] = v["version"] == current["version"]
+        versions.append(v)
+    return {"ok": True, "card_id": card_id, "current_version": current["version"], "versions": versions, "total": len(versions)}
+
+
+@router.get("/{card_id}/versions/{ver_id}")
+def get_version_detail(card_id: int, ver_id: int):
+    """获取某个版本快照的详细内容"""
+    db = get_db()
+    row = db.execute("SELECT * FROM word_card_versions WHERE id=? AND card_id=?", [ver_id, card_id]).fetchone()
+    if not row:
+        raise HTTPException(404, "版本不存在")
+    snapshot = json.loads(row["snapshot"])
+    return {"ok": True, "card_id": card_id, "version_id": ver_id, "snapshot": snapshot}
+
+
+@router.post("/{card_id}/rollback")
+def rollback_card(card_id: int, data: dict):
+    """回滚到指定版本"""
+    ver_id = data.get("version_id")
+    if not ver_id:
+        raise HTTPException(400, "请提供 version_id")
+    db = get_db()
+    row = db.execute("SELECT * FROM word_card_versions WHERE id=? AND card_id=?", [ver_id, card_id]).fetchone()
+    if not row:
+        raise HTTPException(404, "版本不存在")
+    snapshot = json.loads(row["snapshot"])
+    _save_version_snapshot(db, card_id)
+    fields = ["name", "content", "meaning", "scene", "module", "category", "tags", "icon", "group_id", "sort_order", "card_role", "structured"]
+    for k in fields:
+        if k in snapshot and snapshot[k] is not None:
+            db.execute(f"UPDATE word_card SET {k}=?, updated_at=datetime('now','localtime'), version=version+1 WHERE id=?", [snapshot[k], card_id])
+    safe_commit()
+    return {"ok": True, "card_id": card_id, "rolled_to_version": row["version"]}
+
+
 @router.put("/{card_id}")
 def update_card(card_id: int, data: dict):
     db = get_db()
     if not db.execute("SELECT id FROM word_card WHERE id=?", [card_id]).fetchone():
         raise HTTPException(404,"词卡不存在")
+    _save_version_snapshot(db, card_id)
     fields = []; params = []
     for k in ["name","content","meaning","scene","module","category","icon","thumbnail","preview_media","media_type","group_id","sort_order","card_role"]:
         if data.get(k) is not None: fields.append(f"{k}=?"); params.append(data[k])

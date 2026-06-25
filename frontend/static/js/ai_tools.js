@@ -368,7 +368,8 @@ App.aiTools._ensureTranslateModal = function() {
     '<div style="margin-bottom:10px;display:flex;gap:10px;align-items:center;">' +
     '<span id="aiTransCount" style="font-size:13px;"></span>' +
     '<select id="aiTransLang" style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-main);">' +
-    '<option value="zh">翻译成中文</option><option value="en">翻译成英文</option></select>' +
+    '<option value="auto" selected>自动检测 (中→英 / 英→中)</option>' +
+    '<option value="zh">全部翻译成中文</option><option value="en">全部翻译成英文</option></select>' +
     '</div>' +
     '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
     '<button id="aiTransStartBtn" class="btn btn-primary btn-sm" onclick="App.aiTools._runTranslate()">🚀 开始翻译</button>' +
@@ -385,6 +386,7 @@ App.aiTools._runTranslate = async function() {
     if (ids.length === 0) return;
 
     var lang = document.getElementById('aiTransLang').value;
+    var useAutoDetect = (lang === 'auto');  // auto → 不传 target_lang
     document.getElementById('aiTransStartBtn').disabled = true;
     document.getElementById('aiTransProgress').style.display = 'inline';
 
@@ -392,25 +394,47 @@ App.aiTools._runTranslate = async function() {
     resultEl.innerHTML = '';
 
     try {
+        var body = { prompt_ids: ids.slice(0, 20), quality_check: false };
+        if (!useAutoDetect) body.target_lang = lang;
+
+        // 批量翻译耗时可能很长（每条 3-15s Ollama），设置 5 分钟超时
         var data = await App.fetchJSON('/api/translate/batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt_ids: ids.slice(0, 20), target_lang: lang, quality_check: false })
+            body: JSON.stringify(body),
+            _timeoutMs: 300000  // 5min
         });
 
-        var html = '<div style="margin-bottom:8px;font-weight:600;">✅ ' + data.success + App._t('common.success', '成功 / ') + data.failed + App._t('common.failed', '失败 / ') + (data.cached || 0) + '缓存命中</div>';
+        if (!data) {
+            resultEl.innerHTML = '<span style="color:#ef4444;">翻译失败: 请求超时或 Ollama 未响应<br><small>提示: 检查 Ollama 是否运行 → 终端输入 ollama serve<br>如已运行，刷新页面重试</small></span>';
+            App.showToast('翻译超时，请检查 Ollama', 'error');
+            return;
+        }
+
+        var s = data.success || 0;
+        var f = data.failed || 0;
+        var c = data.cached || 0;
+        var html = '<div style="margin-bottom:8px;font-weight:600;">' +
+            '<span style="color:#10b981;">OK ' + s + '</span> / ' +
+            '<span style="color:#ef4444;">失败 ' + f + '</span> / ' +
+            '<span style="color:#6366f1;">缓存 ' + c + '</span>' +
+            (data.auto_detect ? ' <span style="font-size:10px;color:var(--text-muted);">(自动检测)</span>' : '') +
+            '</div>';
         for (var i = 0; i < (data.results || []).length; i++) {
             var r = data.results[i];
             var style = r.ok ? 'color:#10b981;' : 'color:#ef4444;';
-            html += '<div style="padding:4px 0;border-bottom:1px solid var(--border-color);">';
-            html += '<span style="' + style + '">#' + r.prompt_id + '</span> ';
-            html += '<span style="color:var(--text-muted);">' + App._escape((r.translated || r.error || '').substring(0, 80)) + '</span>';
+            var dir = r.direction || '';
+            html += '<div style="padding:4px 0;border-bottom:1px solid var(--border-color);display:flex;gap:6px;align-items:center;">';
+            html += '<span style="' + style + ';min-width:50px;">#' + r.prompt_id + '</span>';
+            html += '<span style="font-size:10px;color:var(--text-muted);min-width:50px;">' + dir + '</span>';
+            html += '<span style="flex:1;color:var(--text-main);">' + App._escape((r.translated || r.error || '').substring(0, 80)) + '</span>';
             html += '</div>';
         }
         resultEl.innerHTML = html;
-        App.showToast(App._t('auto.str_6578de1a', '翻译完成: ') + data.success + '/' + ids.length, 'success');
+        App.showToast('翻译完成: ' + s + '/' + ids.length, 'success');
     } catch(e) {
-        resultEl.innerHTML = '<span style="color:#ef4444;">翻译失败: ' + e.message + '</span>';
+        resultEl.innerHTML = '<span style="color:#ef4444;">翻译失败: ' + App._escape(e.message) + '</span>';
+        App.showToast('翻译失败: ' + (e.message || '网络错误'), 'error');
     }
 
     document.getElementById('aiTransStartBtn').disabled = false;

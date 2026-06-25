@@ -12,6 +12,9 @@ import sqlite3
 import threading
 from database import get_db
 
+# ---- 网络加速：优先使用国内 HuggingFace 镜像 ----
+if not os.environ.get("HF_ENDPOINT"):
+    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 # ---- ML 依赖检测，EXE 环境下优雅降级 ----
 try:
@@ -45,7 +48,11 @@ def _get_model():
             if _model is None:
                 print("[语义搜索] 加载模型 all-MiniLM-L6-v2...")
                 t0 = time.time()
-                _model = SentenceTransformer('all-MiniLM-L6-v2')
+                # 使用本地缓存优先，避免 HuggingFace 超时阻塞启动
+                _model = SentenceTransformer(
+                    'all-MiniLM-L6-v2',
+                    cache_folder=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'models', 'semantic')
+                )
                 print("[语义搜索] 模型加载完成 (%.1fs)" % (time.time() - t0))
     return _model
 
