@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-25T12:33:22.606Z",
+  "updatedAt": "2026-06-25T23:28:01.742Z",
   "entries": {
     "memory:memory/2026-05-29.md:88:118": {
       "key": "memory:memory/2026-05-29.md:88:118",
@@ -1392,6 +1392,68 @@
         "atoms.py",
         "atom-editor.js",
         "last-insert-rowid"
+      ]
+    },
+    "memory:memory/2026-06-25.md:15:39": {
+      "key": "memory:memory/2026-06-25.md:15:39",
+      "path": "memory/2026-06-25.md",
+      "startLine": 15,
+      "endLine": 39,
+      "source": "memory",
+      "snippet": "| 7 | 词卡写入/删除 `database is locked` | `safe_commit()` 遇锁直接失败，无重试 | `database.py` | — | | 8 | 中英文翻译 500 | `translate_single` 持DB连接等Ollama(5-30s)，全程阻塞其他写入 | `translate.py` | — | ## 关键技术决策 ### DB 锁问题三类根因 → 统一修复模式 1. **健康检测** → 独立 `sqlite3.connect`（不共用 `get_db()`） 2. **safe_commit** → 3次重试 + 递增等待(50ms/150ms/400ms) 3. **翻译端点** → 三段短连接（读→close→Ollama→独立连接写缓存） ### 猴补丁链缺陷（长期风险） 4 个 composer 模块各自猴补丁 `switchView`，链式嵌套： `atom_editor → scene_composer → unified_composer → character_composer → 原始 app_core.js` **缓解**：`app_core.js` 新增统一 `else if` 分支做 `_hideSearchBox + _showSidebar + _collapseSidebar + 导航高亮`，猴补丁变为增强非唯一通道。 ## 验证状态 - 健康自检: 10/10 ✅ - 核心 API 19端点: 全部 200 ✅ - E2E 流程 (场景/角色/词卡/翻译): 5/5 通过 ✅",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-25T23:28:01.742Z",
+      "lastRecalledAt": "2026-06-25T23:28:01.742Z",
+      "queryHashes": [
+        "14242560704f"
+      ],
+      "recallDays": [
+        "2026-06-26"
+      ],
+      "conceptTags": [
+        "词卡写入/删除",
+        "safe-commit",
+        "database.py",
+        "translate-single",
+        "5-30s",
+        "translate.py",
+        "sqlite3.connect",
+        "get-db"
+      ]
+    },
+    "memory:memory/2026-06-18.md:1:24": {
+      "key": "memory:memory/2026-06-18.md:1:24",
+      "path": "memory/2026-06-18.md",
+      "startLine": 1,
+      "endLine": 24,
+      "source": "memory",
+      "snippet": "# 2026-06-18 会话记忆 ## 完成的工作 ### Phase10.1: 角色库系统 - 新建 `character_profiles` 表 (22列: 姓名/性别/年龄/职业/性格/外貌/声线/旁白/角色定位/背景故事/头像/设定预览图) - 新建 `character_images` 表 (角色参考图集, 级联删除) - `user_project_scene` 新增 `character_id` FK 列 - 8个内置种子角色 (主角·李明/女主·苏雨晴/反派·暗影/导师·老陈/少女·小铃/硬汉·雷哥/神秘人·白/宠物·小橘) - 完整 CRUD API: `GET/POST/PUT/DELETE /api/characters` - 图片上传 API: `POST /api/characters/{id}/images` + `GET /api/characters/images/{filename}` - 角色分配镜头 API: `PUT /api/characters/{id}/assign-scene` (自动注入声线+旁白) - 旁白风格枚举: `GET /api/characters/narration-styles` (16种) - 前端 `character_library.js` (570行): 角色库管理面板 + 档案查看器 + 编辑器 + 镜头选择器 - compose 引擎升级: 镜头输出自动注入 `[角色:主角·李明(年轻男声)] [旁白:内心独白]` ### Phase10.2: 头像裁剪上传 - 裁剪弹窗: 拖拽选框调整区域",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-06-25T23:28:01.742Z",
+      "lastRecalledAt": "2026-06-25T23:28:01.742Z",
+      "queryHashes": [
+        "14242560704f"
+      ],
+      "recallDays": [
+        "2026-06-26"
+      ],
+      "conceptTags": [
+        "phase10.1",
+        "character-profiles",
+        "character-images",
+        "user-project-scene",
+        "character-id",
+        "李明/女主",
+        "苏雨晴/反派",
+        "暗影/导师"
       ]
     }
   }
