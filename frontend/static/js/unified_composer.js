@@ -80,7 +80,7 @@ App.uc._render = function() {
     if (!vp) return;
 
     var h = '';
-    h += '<div class="page-header"><h2>🎯 图片提示词组装器</h2><span class="count-info">场景 + 角色 + 提示词 三合一画布</span></div>';
+    h += '<div class="page-header"><h2>🎯 图片分镜组装器</h2><span class="count-info">场景 + 角色 + 镜头 三合一画布</span></div>';
 
     // 三栏主布局
     h += '<div style="display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:10px;height:calc(100vh - 220px);min-height:500px;margin-top:8px;">';
