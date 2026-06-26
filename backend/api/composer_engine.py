@@ -1,7 +1,9 @@
-"""
+﻿"""
 共享组装引擎 — 提取自 seedance_v2.py，供 v2 和 v3 组装器共用
 Phase 14.1: 从 seedance_v2.py 提取 6 个核心函数 + 2 个映射表
+Phase 16: 集成 atom_asset_library 智能原子填充
 """
+import re
 
 # ==================== 分辨率映射表 ====================
 RESOLUTION_MAP = {
@@ -213,15 +215,16 @@ def compose_full(scenes: list, proj: dict, fmt: str = "seedance",
 
         scene_desc = make_structured_description(scd, density)
 
-        # ===== 角色注入（视觉）：有 character_id 时，自动嵌入角色外观/人格到主提示词 =====
+        # ===== Phase16 角色注入：有 character_id 时，自动填充原子化词卡 =====
         char_id_for_visual = scd.get("character_id")
         if char_id_for_visual and db:
             try:
                 char_vis = db.execute(
-                    "SELECT name, appearance, personality, age_range, gender, occupation "
+                    "SELECT id, name, appearance, personality, age_range, gender, occupation "
                     "FROM character_profiles WHERE id=?", [char_id_for_visual]
                 ).fetchone()
                 if char_vis:
+                    char_vis = dict(char_vis)
                     char_inject = []
                     cname = (char_vis["name"] or "").strip()
                     capp = (char_vis["appearance"] or "").strip()
@@ -229,7 +232,15 @@ def compose_full(scenes: list, proj: dict, fmt: str = "seedance",
                     cocc = (char_vis["occupation"] or "").strip()
                     cage = (char_vis["age_range"] or "").strip()
                     cgend = (char_vis["gender"] or "").strip()
-                    # 主体描述优先用 appearance；无则拼 gender+age_range+personality
+
+                    # Phase16: 从原子库智能填充关联词卡
+                    media_cat = "image" if scd.get("media_type", "image") == "image" else "video"
+                    atom_fill = _fill_atoms_from_library(char_vis=char_vis, db=db,
+                                                         media_category=media_cat, limit=5)
+                    if atom_fill:
+                        char_inject.extend(atom_fill[:3])
+
+                    # 主体描述优先用 appearance
                     if capp:
                         char_inject.append(capp)
                     else:
@@ -237,16 +248,15 @@ def compose_full(scenes: list, proj: dict, fmt: str = "seedance",
                         if cage: char_inject.append(cage)
                         if cp: char_inject.append(cp)
                     if cocc: char_inject.append(cocc)
-                    if cname: char_inject.append(f"名为{cname}")
+                    if cname: char_inject.append(cname)
                     if char_inject:
-                        # 将角色描述追加到镜头描述末尾（不破坏已有结构）
                         char_text = "，".join(char_inject)
                         if scene_desc:
                             scene_desc = scene_desc + "，" + char_text
                         else:
                             scene_desc = char_text
             except Exception:
-                pass  # 角色查询失败不阻塞组装
+                pass
 
         # 音频四要素
         if include_audio and scd.get("audio_enabled"):
@@ -383,3 +393,78 @@ def compose_full(scenes: list, proj: dict, fmt: str = "seedance",
         "density": density,
         "pixel_res": pix,
     }
+
+# ==================== Phase16-v5.2.0: 原子化词库智能填充 ====================
+
+def _fill_atoms_from_library(char_vis=None, scene_id=None, db=None,
+                             media_category="image", limit=8):
+    """Phase16: 从 atom_asset_library 智能填充原子词卡"""
+    import re
+    if not db:
+        return []
+    keywords = []
+    linked_type = None
+    linked_id = None
+
+    if char_vis:
+        appearance = (char_vis.get("appearance") or "").strip()
+        personality = (char_vis.get("personality") or "").strip()
+        occupation = (char_vis.get("occupation") or "").strip()
+        desc = f"{appearance} {personality} {occupation}"
+        keywords.extend(re.findall(r'[\u4e00-\u9fff]{2,}', desc))
+        linked_type = "character"
+        linked_id = char_vis.get("id")
+    elif scene_id:
+        linked_type = "scene"
+        linked_id = scene_id
+
+    if not keywords and not linked_type:
+        return []
+
+    stop_words = {"一个","一种","这是","就是","可以","非常","特别","比较","没有","什么","这个","那个"}
+    keywords = [w for w in set(keywords) if w not in stop_words][:8]
+
+    conditions = ["is_active=1"]
+    params = []
+    if linked_type:
+        conditions.append("linked_type=?")
+        params.append(linked_type)
+    if linked_id:
+        conditions.append("linked_id=?")
+        params.append(linked_id)
+    if media_category:
+        conditions.append("(media_category=? OR media_category='both')")
+        params.append(media_category)
+
+    kw_conds = []
+    for kw in keywords:
+        if len(kw) >= 2:
+            kw_conds.append("atom_text LIKE ?")
+            params.append(f"%{kw}%")
+    if kw_conds:
+        conditions.append(f"({' OR '.join(kw_conds)})")
+    elif not linked_id:
+        return []
+
+    where = " AND ".join(conditions)
+    params.append(limit * 2)
+    try:
+        rows = db.execute(
+            f"SELECT atom_text, usage_count FROM atom_asset_library WHERE {where} ORDER BY usage_count DESC, combo_count DESC LIMIT ?",
+            params
+        ).fetchall()
+        seen = set()
+        result = []
+        for r in rows:
+            text = (r["atom_text"] or "").strip()
+            if text and text not in seen:
+                seen.add(text)
+                result.append(text)
+        return result[:limit]
+    except Exception:
+        return []
+
+
+def _fill_atoms_by_character(char_vis, db):
+    """Phase16: 角色->原子库查询"""
+    return _fill_atoms_from_library(char_vis=char_vis, db=db, media_category="image")

@@ -1,4 +1,4 @@
-// v5.3.0: Unified Composer — 三合一工作台 (场景 + 角色 + 镜头 联合作画布)
+﻿// v5.3.0: Unified Composer — 三合一工作台 (场景 + 角色 + 镜头 联合作画布)
 // P0-4: 打破三个孤立组装器，在同一界面串联录入→组合→输出
 (function() {
 'use strict';
@@ -303,7 +303,31 @@ App.uc._compose = async function() {
                 method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({settings: this.characterSettings, density: this.density})
             });
-            if (cd && cd.text) parts.push('【角色】\\n' + cd.text);
+            if (cd && cd.text) parts.push('【角色】\n' + cd.text);
+        } catch(e) {}
+    }
+
+    // Phase16: 原子化词卡智能填充
+    var atomSug = document.getElementById('ucAtomSuggestions');
+    if (atomSug && (this.sceneId || this.characterId)) {
+        try {
+            var af = await App.fetchJSON('/api/composer/fill/assemble', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    character_id: this.characterId || null,
+                    scene_id: this.sceneId || null,
+                    camera_fields: {},
+                    media_category: this.mediaType || 'image',
+                    limit_per_domain: 5
+                })
+            });
+            if (af && af.ok) {
+                App.uc._renderAtomSuggestions(af);
+                if (af.merged_atoms && af.merged_atoms.length > 0) {
+                    var atomsText = af.merged_atoms.slice(0, 8).map(function(a) { return a.atom_text; }).join('，');
+                    if (atomsText) parts.push('【原子推荐】\n' + atomsText);
+                }
+            }
         } catch(e) {}
     }
     
@@ -321,6 +345,48 @@ App.uc._compose = async function() {
     
     out.value = fullPrompt || '填写场景和角色维度后自动生成...';
     this.promptText = fullPrompt;
+};
+
+
+// Phase16: 原子推荐面板渲染
+App.uc._renderAtomSuggestions = function(af) {
+    var el = document.getElementById('ucAtomSuggestions');
+    if (!el) return;
+    if (!af || !af.merged_atoms || af.merged_atoms.length === 0) {
+        el.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:4px 0;">暂无匹配原子词卡</div>';
+        return;
+    }
+    var h = '<div style="font-size:11px;font-weight:600;margin-bottom:4px;color:var(--accent);">' +
+        '\u269B 智能推荐原子词卡 (' + af.total_atoms + '条)</div>';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
+    af.merged_atoms.slice(0, 10).forEach(function(a) {
+        var typeLabel = a.atom_type || 'general';
+        h += '<span class="uc-atom-tag" data-text="' + App._escape(a.atom_text) +
+            '" onclick="App.uc._injectAtom(this)" style="cursor:pointer;font-size:10px;padding:2px 6px;' +
+            'background:var(--tag-bg);color:var(--text-main);border-radius:10px;' +
+            'border:1px solid var(--border-color);white-space:nowrap;' +
+            'transition:all .15s;" ' +
+            'onmouseover="this.style.background=\'var(--accent)\';this.style.color=\'#fff\'" ' +
+            'onmouseout="this.style.background=\'var(--tag-bg)\';this.style.color=\'var(--text-main)\'">' +
+            App._escape(a.atom_text.substring(0, 20)) + '</span>';
+    });
+    h += '</div>';
+    el.innerHTML = h;
+};
+
+// Phase16: 点击原子标签注入到输出
+App.uc._injectAtom = function(tag) {
+    var text = tag.dataset.text;
+    if (!text) return;
+    var out = document.getElementById('ucOutputText');
+    if (!out) return;
+    if (out.value && out.value !== '填写场景和角色维度后自动生成...') {
+        out.value = out.value + '，' + text;
+    } else {
+        out.value = text;
+    }
+    this.promptText = out.value;
+    App.showToast('\u2713 已注入: ' + text.substring(0, 15), 'success');
 };
 
 App.uc._copyOutput = function() {
