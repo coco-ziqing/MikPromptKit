@@ -59,6 +59,7 @@ from api.atoms import router as atoms_router
 from api.atoms_import import router as atoms_import_router
 from api.character_composer import router as character_composer_router
 from api.scene_composer import router as scene_composer_router
+from api.atom_filler import router as atom_filler_router
 from sync import (
     export_package, restore_package, import_package,
     list_packages, delete_package, get_package_info,
@@ -331,6 +332,7 @@ app.include_router(atoms_router)
 app.include_router(atoms_import_router)
 app.include_router(character_composer_router)
 app.include_router(scene_composer_router)
+app.include_router(atom_filler_router)
 
 
 # ============ 数据同步 API (.pkb 包系统) ============
