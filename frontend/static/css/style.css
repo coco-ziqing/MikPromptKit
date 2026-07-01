@@ -453,7 +453,28 @@ body.dark-theme .icon-select-wrap { border-top-color: #475569; }
 body.dark-theme .card-action-btn { color: #94a3b8; }
 body.dark-theme .card-action-btn:hover { background: #334155; border-color: #475569; }
 body.dark-theme .card-action-btn[title="删除分组"]:hover { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); color: #fca5a5; }
-body.dark-theme .card-action-btn[title="复制分组"]:hover { background: rgba(34,197,94,0.1); border-color: rgba(34,197,94,0.3); color: #86efac; }
+/* ============ 诊断控制台右侧滑出面板 ============ */
+.diag-panel {
+    position: fixed; top: var(--nav-height, 48px); right: 0; bottom: 0;
+    width: 420px; max-width: 90vw;
+    background: #0f172a;
+    border-left: 1px solid var(--border-color);
+    z-index: 99;
+    display: none;
+    flex-direction: column;
+    box-shadow: -4px 0 20px rgba(0,0,0,0.3);
+}
+.diag-panel.open { display: flex; }
+.diag-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 14px; border-bottom: 1px solid var(--border-color);
+    color: #e2e8f0; font-size: 13px; font-weight: 600;
+    background: #1e293b; flex-shrink: 0; gap: 8px;
+}
+.diag-header .header-btn-sm { color: #94a3b8; background: none; border: none; font-size: 18px; cursor: pointer; }
+.diag-header .header-btn-sm:hover { color: #e2e8f0; }
+body.dark-theme .diag-panel { background: #0a0e1a; }
+body.dark-theme .diag-header { background: #111827; }
 
 /* ============ 智能推荐面板 ============ */
 .recommend-panel {
@@ -726,13 +747,13 @@ body.dark-theme .seedance-tab:hover { background: #334155; }
     position: absolute;
     bottom: -6px;
     right: -6px;
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
     background: var(--primary);
     color: #fff;
-    font-size: 12px;
-    line-height: 22px;
+    font-size: 13px;
+    line-height: 24px;
     text-align: center;
     cursor: pointer;
     z-index: 5;
@@ -747,7 +768,7 @@ body.dark-theme .seedance-tab:hover { background: #334155; }
     pointer-events: auto;
 }
 .prompt-card .card-thumb .thumb-zoom-btn:hover {
-    transform: scale(1.2);
+    transform: scale(1.25);
 }
 
 .prompt-card .card-thumb .thumb-clear-btn {

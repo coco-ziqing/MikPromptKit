@@ -1,6 +1,6 @@
 // ============================================================
-// v4.3.0-phase16: Runtime Log Viewer — 实时日志监测面板
-// SSE 实时流 + 级别筛选 + 关键词搜索 + 前端错误自动上报
+// v4.3.0-phase17: Runtime Log Viewer — 右侧面板 + 全屏弹窗 双模式
+// SSE 实时流 + 级别筛选 + 关键词搜索 + 一键复制错误
 // ============================================================
 (function initLogViewer(){
 'use strict';
@@ -10,28 +10,92 @@ App.logs = {
     _panel: null,
     _list: null,
     _status: null,
+    _toolbar: null,
     _es: null,
     _filter: { level: '', search: '' },
     _maxLines: 300,
     _lines: [],
     _connected: false,
+    _mode: 'panel', // 'panel' | 'modal'
 
-    // ===== 打开面板 =====
+    // ===== 打开右侧面板（默认） =====
     open: function() {
+        // 优先打开右侧面板
+        var panel = document.getElementById('diagPanel');
+        if (panel) {
+            panel.style.display = 'flex';
+            this._panel = panel;
+            this._list = document.getElementById('diagList');
+            this._status = document.getElementById('diagStatus');
+            this._toolbar = document.getElementById('diagToolbar');
+            this._mode = 'panel';
+            if (!this._connected) this._connect();
+            this._renderToolbar();
+            // ESC 关闭
+            this._escHandler = function(e) { if (e.key === 'Escape') { App.logs.closeAny(); } };
+            document.addEventListener('keydown', this._escHandler);
+            var self = this;
+            App.fetchJSON('/api/logs/stats').then(function(s) {
+                if (s && s.stats) self._updateStats(s.stats);
+            });
+        }
+    },
+
+    // ===== 打开全屏弹窗 =====
+    openModal: function() {
         var panel = document.getElementById('modalLogViewer');
         if (!panel) { App.showToast('日志面板未加载', 'error'); return; }
+        // 关闭右侧面板
+        var diag = document.getElementById('diagPanel');
+        if (diag) diag.style.display = 'none';
         panel.style.display = 'flex';
         this._panel = panel;
         this._list = document.getElementById('logList');
         this._status = document.getElementById('logStatus');
+        this._toolbar = document.getElementById('logToolbar');
+        this._mode = 'modal';
         if (!this._connected) this._connect();
         this._renderToolbar();
+        // ESC 关闭
+        this._escHandler = function(e) { if (e.key === 'Escape') { App.logs.closeAny(); } };
+        document.addEventListener('keydown', this._escHandler);
+        var self = this;
+        App.fetchJSON('/api/logs/stats').then(function(s) {
+            if (s && s.stats) self._updateStats(s.stats);
+        });
     },
 
-    // ===== 关闭 =====
+    // ===== 关闭右侧面板 =====
+    closeDiag: function() {
+        var panel = document.getElementById('diagPanel');
+        if (panel) panel.style.display = 'none';
+        if (this._escHandler) { document.removeEventListener('keydown', this._escHandler); this._escHandler = null; }
+    },
+
+    // ===== 关闭全屏弹窗 =====
     close: function() {
         var panel = document.getElementById('modalLogViewer');
         if (panel) panel.style.display = 'none';
+        if (this._escHandler) { document.removeEventListener('keydown', this._escHandler); this._escHandler = null; }
+    },
+
+    // ===== 关闭当前打开的面板（面板或弹窗）=====
+    closeAny: function() {
+        var diag = document.getElementById('diagPanel');
+        if (diag && diag.style.display === 'flex') { this.closeDiag(); return; }
+        var modal = document.getElementById('modalLogViewer');
+        if (modal && modal.style.display === 'flex') { this.close(); return; }
+    },
+
+    // ===== 切换模式 =====
+    toggleMode: function() {
+        if (this._mode === 'panel') {
+            this.closeDiag();
+            this.openModal();
+        } else {
+            this.close();
+            this.open();
+        }
     },
 
     // ===== SSE 连接 =====
@@ -78,17 +142,14 @@ App.logs = {
             div.setAttribute('data-text', (entry.message || '').toLowerCase());
             this._list.appendChild(div);
             this._lines.push(div);
-            // 限行
             while (this._lines.length > this._maxLines) {
                 var old = this._lines.shift();
                 if (old && old.parentNode) old.parentNode.removeChild(old);
             }
-            // 自动滚动
             this._list.scrollTop = this._list.scrollHeight;
         }
     },
 
-    // ===== 过滤匹配 =====
     _matchFilter: function(entry) {
         var f = this._filter;
         if (f.level && entry.level !== f.level) return false;
@@ -99,33 +160,33 @@ App.logs = {
         return true;
     },
 
-    // ===== 渲染过滤工具栏 =====
     _renderToolbar: function() {
-        var bar = document.getElementById('logToolbar');
+        var bar = this._toolbar;
         if (!bar) return;
         var self = this;
         bar.innerHTML = '' +
-            '<select id="logFilterLevel" onchange="App.logs._applyFilter()" style="font-size:11px;padding:2px 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-main);">' +
-                '<option value="">全部级别</option>' +
+            '<select onchange="App.logs._applyFilter()" style="font-size:10px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-main);">' +
+                '<option value="">全部</option>' +
                 '<option value="debug">DEBUG</option>' +
                 '<option value="info">INFO</option>' +
                 '<option value="warn">WARN</option>' +
                 '<option value="error">ERROR</option>' +
                 '<option value="fatal">FATAL</option>' +
             '</select>' +
-            '<input type="text" id="logFilterSearch" placeholder="搜索..." oninput="App.logs._applyFilter()" style="font-size:11px;padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-main);width:120px;">' +
-            '<button onclick="App.logs._loadHistory()" style="font-size:10px;padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;">加载历史</button>' +
-            '<button onclick="App.logs._copyErrors()" style="font-size:10px;padding:2px 8px;border:1px solid #ef4444;border-radius:4px;background:rgba(239,68,68,0.08);color:#ef4444;cursor:pointer;" title="复制所有错误到剪贴板">📋 复制错误</button>' +
-            '<button onclick="App.logs.clear()" style="font-size:10px;padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;">清空</button>' +
-            '<span id="logStats" style="font-size:10px;color:var(--text-muted);margin-left:auto;"></span>';
+            '<input type="text" placeholder="搜索..." oninput="App.logs._applyFilter()" style="font-size:10px;padding:2px 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-main);width:80px;">' +
+            '<button onclick="App.logs._loadHistory()" style="font-size:10px;padding:2px 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;">历史</button>' +
+            '<button onclick="App.logs._copyErrors()" style="font-size:10px;padding:2px 6px;border:1px solid #ef4444;border-radius:4px;background:rgba(239,68,68,0.1);color:#ef4444;cursor:pointer;" title="复制所有错误">📋</button>' +
+            '<button onclick="App.logs.toggleMode()" style="font-size:10px;padding:2px 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;" title="切换全屏/侧边">🔲</button>' +
+            '<button onclick="App.logs.clear()" style="font-size:10px;padding:2px 6px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;">✕</button>';
     },
 
-    // ===== 应用过滤 =====
     _applyFilter: function() {
-        var levelEl = document.getElementById('logFilterLevel');
-        var searchEl = document.getElementById('logFilterSearch');
-        this._filter.level = levelEl ? levelEl.value : '';
-        this._filter.search = searchEl ? searchEl.value.trim() : '';
+        var bar = this._toolbar;
+        if (!bar) return;
+        var sel = bar.querySelector('select');
+        var inp = bar.querySelector('input');
+        this._filter.level = sel ? sel.value : '';
+        this._filter.search = inp ? inp.value.trim() : '';
         for (var i = 0; i < this._lines.length; i++) {
             var div = this._lines[i];
             var entry = { level: div.getAttribute('data-level') };
@@ -133,13 +194,23 @@ App.logs = {
         }
     },
 
-    // ===== 清空面板 =====
     clear: function() {
         if (this._list) this._list.innerHTML = '';
         this._lines = [];
     },
 
-    // ===== 复制错误（一键提取所有 ERROR/FATAL 日志）=====
+    _updateStats: function(stats) {
+        var toolbar = this._toolbar;
+        if (!toolbar) return;
+        var existing = toolbar.querySelector('.log-stats');
+        if (existing) existing.remove();
+        var span = document.createElement('span');
+        span.className = 'log-stats';
+        span.style.cssText = 'font-size:9px;color:#94a3b8;margin-left:auto;white-space:nowrap;';
+        span.textContent = 'E' + (stats.error || 0) + '/W' + (stats.warn || 0) + '/I' + (stats.info || 0);
+        toolbar.appendChild(span);
+    },
+
     _copyErrors: async function() {
         try {
             App.showToast('正在获取错误日志...', 'info');
@@ -151,11 +222,12 @@ App.logs = {
             for (var i = 0; i < d.items.length; i++) {
                 var e = d.items[i];
                 lines.push('--- #' + (i+1) + ' [' + (e.source || '?') + '] ' + (e.level || 'ERROR') + ' ---');
+                lines.push('ID: ' + (e.request_id || e.seq || '?'));
                 lines.push('Time: ' + (e.created_at || '?'));
                 lines.push('Path: ' + (e.path || '?'));
                 lines.push('Message: ' + (e.message || '?'));
                 if (e.detail) lines.push('Detail: ' + e.detail);
-                if (e.stack) lines.push('Stack: ' + e.stack);
+                if (e.stack) lines.push('Stack: ' + e.stack.substring(0, 3000));
                 lines.push('');
             }
             App.copyText(lines.join('\n'), '已复制 ' + d.items.length + ' 条错误');
@@ -164,68 +236,20 @@ App.logs = {
         }
     },
 
-    // ===== 加载历史 =====
     _loadHistory: async function() {
         try {
             var d = await App.fetchJSON('/api/logs/query?limit=200');
             if (!d || !d.items) return;
             if (this._list) this._list.innerHTML = '';
             this._lines = [];
-            // 倒序插入
             for (var i = d.items.length - 1; i >= 0; i--) {
                 this._push(d.items[i]);
             }
-            // 更新统计
-            var statsEl = document.getElementById('logStats');
-            if (statsEl) {
-                var s = await App.fetchJSON('/api/logs/stats');
-                if (s && s.stats) {
-                    var parts = [];
-                    for (var k in s.stats) parts.push(k + ':' + s.stats[k]);
-                    statsEl.textContent = '📊 ' + parts.join(' | ');
-                }
-            }
+            var s = await App.fetchJSON('/api/logs/stats');
+            if (s && s.stats) this._updateStats(s.stats);
         } catch(e) {}
     }
 };
 
-// ===== 全局 JS 错误捕获 → 上报后端 =====
-window.addEventListener('error', function(e) {
-    var msg = e.message || 'Unknown runtime error';
-    if (msg.indexOf('Script error') === 0) return; // 跨域忽略
-    try {
-        fetch('/api/logs/report', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                message: msg,
-                source: 'frontend',
-                stack: (e.error && e.error.stack) || '',
-                url: e.filename || location.href,
-                line: e.lineno || 0,
-                col: e.colno || 0
-            })
-        }).catch(function(){});
-    } catch(ignore) {}
-});
-
-// Promise rejection
-window.addEventListener('unhandledrejection', function(e) {
-    var msg = (e.reason && e.reason.message) || String(e.reason);
-    try {
-        fetch('/api/logs/report', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                message: 'Unhandled Rejection: ' + msg,
-                source: 'frontend',
-                stack: (e.reason && e.reason.stack) || '',
-                url: location.href
-            })
-        }).catch(function(){});
-    } catch(ignore) {}
-    e.preventDefault();
-});
-
-console.log('[Log Viewer v16] ready — SSE实时日志 + 前端错误上报已激活');
+console.log('[Log Viewer v18] ready — SSE实时日志 + 右侧面板 + 全屏弹窗双模式');
 })();

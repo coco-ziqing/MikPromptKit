@@ -11,7 +11,7 @@
     <title>咪卡Mik词库</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-    <link href="/static/css/style.css?v=12.12" rel="stylesheet">
+    <link href="/static/css/style.css?v=12.13" rel="stylesheet">
 </head>
 <body>
     <header class="navbar-tool">
@@ -964,8 +964,8 @@
     <script src="/static/js/atom_editor.js?v=18"></script>
     <script src="/static/js/app_theme.js?v=11"></script>
     <script src="/static/js/app_playground.js?v=15"></script>
-    <script src="/static/js/diag_capture.js?v=3"></script>
-    <script src="/static/js/log_viewer.js?v=18"></script>
+    <script src="/static/js/diag_capture.js?v=4"></script>
+    <script src="/static/js/log_viewer.js?v=20"></script>
 
 
 <div class="modal-overlay" id="sceneReviewModal" style="display:none;z-index:700;align-items:center;justify-content:center;" onclick="if(event.target===this)App.seedanceV2.closeSceneReview()">
@@ -987,7 +987,7 @@
     <div class="modal-overlay" id="modalLogViewer" style="display:none;z-index:700;" onclick="if(event.target===this)App.logs.close()">
         <div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:900px;max-height:85vh;display:flex;flex-direction:column;">
             <div class="modal-header">
-                <h5><i class="bi bi-terminal"></i> 运行日志 <span style="font-size:11px;color:var(--text-muted);">— SSE 实时推送</span></h5>
+                <h5><i class="bi bi-terminal"></i> 运行日志 <span style="font-size:11px;color:var(--text-muted);">— 全屏模式</span></h5>
                 <div style="display:flex;gap:8px;align-items:center;" id="logToolbar"></div>
                 <button class="header-btn-sm" onclick="App.logs.close()">&times;</button>
             </div>
@@ -999,6 +999,21 @@
                     <div style="padding:20px;text-align:center;color:#64748b;font-size:12px;">等待日志...</div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Phase17: 诊断控制台 — 右侧滑出面板 -->
+    <div id="diagPanel" class="diag-panel" style="display:none;">
+        <div class="diag-header">
+            <span><i class="bi bi-terminal"></i> 诊断控制台</span>
+            <div style="display:flex;gap:6px;align-items:center;" id="diagToolbar"></div>
+            <button class="header-btn-sm" onclick="App.logs.closeDiag()">&times;</button>
+        </div>
+        <div id="diagStatus" style="padding:4px 12px;font-size:11px;border-bottom:1px solid var(--border-color);background:var(--hover-bg);flex-shrink:0;">
+            <span style="color:#94a3b8;">● 连接中...</span>
+        </div>
+        <div id="diagList" style="flex:1;overflow-y:auto;background:#0f172a;font-family:Consolas,monospace;padding:4px 0;">
+            <div style="padding:20px;text-align:center;color:#64748b;font-size:12px;">等待日志...</div>
         </div>
     </div>
 
