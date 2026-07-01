@@ -436,7 +436,15 @@ async def backup_now():
 # ============ 全局异常处理器 (v16: 接入日志引擎) ============
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    capture_exception(exc, source="api", path=request.url.path)
+    # Phase17: 捕获请求体辅助排错
+    body = ""
+    try:
+        if request.method in ("POST", "PUT", "PATCH"):
+            raw = await request.body()
+            body = raw.decode("utf-8", errors="replace")[:2000]
+    except Exception:
+        body = "[unreadable]"
+    capture_exception(exc, source="api", path=request.url.path, status_code=500, request_body=body)
     return JSONResponse(
         status_code=500,
         content={"ok": False, "error": "服务器内部错误", "detail": str(exc)[:200]}

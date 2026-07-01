@@ -114,8 +114,9 @@ App.logs = {
                 '<option value="fatal">FATAL</option>' +
             '</select>' +
             '<input type="text" id="logFilterSearch" placeholder="搜索..." oninput="App.logs._applyFilter()" style="font-size:11px;padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-main);width:120px;">' +
-            '<button onclick="App.logs.clear()" style="font-size:10px;padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;">清空面板</button>' +
             '<button onclick="App.logs._loadHistory()" style="font-size:10px;padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;">加载历史</button>' +
+            '<button onclick="App.logs._copyErrors()" style="font-size:10px;padding:2px 8px;border:1px solid #ef4444;border-radius:4px;background:rgba(239,68,68,0.08);color:#ef4444;cursor:pointer;" title="复制所有错误到剪贴板">📋 复制错误</button>' +
+            '<button onclick="App.logs.clear()" style="font-size:10px;padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;">清空</button>' +
             '<span id="logStats" style="font-size:10px;color:var(--text-muted);margin-left:auto;"></span>';
     },
 
@@ -136,6 +137,31 @@ App.logs = {
     clear: function() {
         if (this._list) this._list.innerHTML = '';
         this._lines = [];
+    },
+
+    // ===== 复制错误（一键提取所有 ERROR/FATAL 日志）=====
+    _copyErrors: async function() {
+        try {
+            App.showToast('正在获取错误日志...', 'info');
+            var d = await App.fetchJSON('/api/logs/query?level=error&limit=50');
+            if (!d || !d.items || d.items.length === 0) {
+                App.showToast('暂无错误日志', 'info'); return;
+            }
+            var lines = ['=== PromptKit Error Report ===', 'Time: ' + new Date().toISOString(), 'Total errors: ' + d.total, ''];
+            for (var i = 0; i < d.items.length; i++) {
+                var e = d.items[i];
+                lines.push('--- #' + (i+1) + ' [' + (e.source || '?') + '] ' + (e.level || 'ERROR') + ' ---');
+                lines.push('Time: ' + (e.created_at || '?'));
+                lines.push('Path: ' + (e.path || '?'));
+                lines.push('Message: ' + (e.message || '?'));
+                if (e.detail) lines.push('Detail: ' + e.detail);
+                if (e.stack) lines.push('Stack: ' + e.stack);
+                lines.push('');
+            }
+            App.copyText(lines.join('\n'), '已复制 ' + d.items.length + ' 条错误');
+        } catch(e) {
+            App.showToast('复制失败: ' + e.message, 'error');
+        }
     },
 
     // ===== 加载历史 =====

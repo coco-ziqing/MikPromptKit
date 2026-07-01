@@ -151,6 +151,55 @@
     });
 
     console.log('[Phase17] Action tracker active');
+
+// Phase17: 注入行为埋点 — 等 App 就绪后包裹关键方法
+(function injectTracking() {
+    try { if (!App || !App.switchGroup) { setTimeout(injectTracking, 500); return; } } catch(e) { setTimeout(injectTracking, 500); return; }
+
+    var T = _ActionTracker;
+    var A = App;
+
+    // 异步包装器：执行原函数后自动埋点
+    function _wrap(fn, action, category, getTarget) {
+        if (!fn) return fn;
+        return function() {
+            var target = getTarget ? getTarget.apply(this, arguments) : '';
+            var detail = '';
+            try { detail = JSON.stringify(arguments[0] || '').substring(0, 200); } catch(e) {}
+            try { T.track(action, category, target, detail); } catch(e) {}
+            return fn.apply(this, arguments);
+        };
+    }
+
+    // --- 分组导航 ---
+    if (A.switchGroup) A.switchGroup = _wrap(A.switchGroup, 'switch_group', 'nav', function(gid) { return '分组ID=' + gid; });
+    if (A.switchAllGroups) A.switchAllGroups = _wrap(A.switchAllGroups, 'switch_all_groups', 'nav', function() { return '全部词组'; });
+
+    // --- 词卡操作 ---
+    if (A.toggleSelect) A.toggleSelect = _wrap(A.toggleSelect, 'toggle_select_card', 'click', function(cid) { return '词卡#' + cid; });
+    if (A.handleCopyLang) A.handleCopyLang = _wrap(A.handleCopyLang, 'copy_card', 'click', function(cid) { return '词卡#' + cid; });
+
+    // --- 编辑模式 ---
+    var origToggleEdit = A.toggleEditMode;
+    if (origToggleEdit) {
+        A.toggleEditMode = function() {
+            T.track('toggle_edit_mode', 'edit', '编辑模式', this.state.editMode ? '关闭' : '开启');
+            return origToggleEdit.apply(this, arguments);
+        };
+    }
+
+    // --- 搜索 ---
+    if (A._wcDoSearch) {
+        var origSearch = A._wcDoSearch;
+        A._wcDoSearch = function() {
+            var q = (document.getElementById('searchInput') || {}).value || '';
+            T.track('search', 'search', q.substring(0, 50), '');
+            return origSearch.apply(this, arguments);
+        };
+    }
+
+    console.log('[Phase17] Tracking hooks injected: switchGroup, toggleSelect, handleCopyLang, toggleEditMode, search');
+})();
 })();
 
 

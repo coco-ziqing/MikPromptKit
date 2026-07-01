@@ -59,9 +59,9 @@ def log(level: str, message: str, source: str = "system", detail: str = "",
         "level": level,
         "source": source,
         "message": message[:500],
-        "detail": detail[:2000] if detail else "",
-        "stack": stack[:3000] if stack else "",
-        "path": path[:300] if path else "",
+        "detail": detail[:4000] if detail else "",
+        "stack": stack[:8000] if stack else "",
+        "path": path[:500] if path else "",
         "status_code": status_code,
         "elapsed_ms": round(elapsed_ms, 1),
         "created_at": ts,
@@ -105,20 +105,24 @@ def error(msg, source="system", **kwargs): log("error", msg, source, **kwargs)
 def fatal(msg, source="system", **kwargs): log("fatal", msg, source, **kwargs)
 
 
-def capture_exception(e: Exception, source: str = "system", path: str = ""):
-    """捕获异常并记录完整调用栈"""
+def capture_exception(e: Exception, source: str = "system", path: str = "", status_code: int = 500, request_body: str = ""):
+    """捕获异常并记录完整调用栈 + 请求体"""
     msg = f"{type(e).__name__}: {e}"
     stack = traceback.format_exc()
-    error(msg, source=source, detail=str(e)[:1000], stack=stack, path=path)
+    detail_parts = [str(e)[:1500]]
+    if request_body and len(request_body) < 4000:
+        detail_parts.append(f"[Request Body]: {request_body}")
+    error(msg, source=source, detail=" | ".join(detail_parts), stack=stack, path=path, status_code=status_code)
 
 
-def api_log(method: str, path: str, status: int, elapsed_ms: float, source: str = "api"):
+def api_log(method: str, path: str, status: int, elapsed_ms: float, source: str = "api", request_body: str = ""):
     """记录 API 调用"""
     level = "error" if status >= 500 else ("warn" if status >= 400 else "info")
-    if level == "info" and elapsed_ms < 100:
-        return  # 正常的快响应不记日志（减少噪音）
+    detail_parts = [f"{method} {path} → {status} ({elapsed_ms:.0f}ms)"]
+    if request_body and len(request_body) < 2000:
+        detail_parts.append(f"[Body]: {request_body}")
     log(level, f"{method} {path} → {status} ({elapsed_ms:.0f}ms)", source=source,
-        path=path, status_code=status, elapsed_ms=elapsed_ms)
+        path=path, status_code=status, elapsed_ms=elapsed_ms, detail=" | ".join(detail_parts))
 
 
 def query(level: str = None, source: str = None, search: str = None,
