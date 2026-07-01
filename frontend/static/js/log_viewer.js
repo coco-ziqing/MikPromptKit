@@ -79,12 +79,27 @@ App.logs = {
         if (this._escHandler) { document.removeEventListener('keydown', this._escHandler); this._escHandler = null; }
     },
 
-    // ===== 关闭当前打开的面板（面板或弹窗）=====
+    // ===== 关闭当前打开的面板（面板或弹窗）—— 只关最顶层 =====
     closeAny: function() {
+        // Phase17: 按 z-index 优先级 — 先关最高层的弹窗
+        var modalImage = document.getElementById('modalImageViewer');
+        if (modalImage && modalImage.style.display === 'flex') { modalImage.style.display = 'none'; return; }
+        var modalVideo = document.getElementById('modalVideoViewer');
+        if (modalVideo && modalVideo.style.display === 'flex') { modalVideo.style.display = 'none'; return; }
+        var modalEdit = document.getElementById('modalEditPrompt');
+        if (modalEdit && modalEdit.style.display === 'flex') { modalEdit.style.display = 'none'; return; }
+        var modalWord = document.getElementById('modalWordEdit');
+        if (modalWord && modalWord.style.display === 'flex') { App.wordEditor.close(); return; }
+        var modalThumb = document.getElementById('modalThumbnail');
+        if (modalThumb && modalThumb.style.display === 'flex') { modalThumb.style.display = 'none'; return; }
+        var modalGroup = document.getElementById('modalGroupManager');
+        if (modalGroup && modalGroup.style.display === 'flex') { modalGroup.style.display = 'none'; return; }
+        var modalCreate = document.getElementById('modalCreateCollection');
+        if (modalCreate && modalCreate.style.display === 'flex') { modalCreate.style.display = 'none'; return; }
+        var modalLog = document.getElementById('modalLogViewer');
+        if (modalLog && modalLog.style.display === 'flex') { this.close(); return; }
         var diag = document.getElementById('diagPanel');
         if (diag && diag.style.display === 'flex') { this.closeDiag(); return; }
-        var modal = document.getElementById('modalLogViewer');
-        if (modal && modal.style.display === 'flex') { this.close(); return; }
     },
 
     // ===== 切换模式 =====

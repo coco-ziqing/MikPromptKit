@@ -394,7 +394,9 @@ Object.assign(App, {
         }
         this.renderCollectionItems();
         // 初始化拖拽排序
-        setTimeout(function() { App._initCollectionSort(); }, 100);
+        if (typeof App._initCollectionSort === 'function') {
+            setTimeout(function() { App._initCollectionSort(); }, 100);
+        }
     },
 
     renderCollectionItems() {

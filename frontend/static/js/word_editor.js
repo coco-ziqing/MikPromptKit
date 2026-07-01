@@ -43,7 +43,7 @@ App.wordEditor.open = async function(options) {
     m.style.display = 'flex';
 
     // Phase17: ESC 关闭弹窗
-    this._escHandler = function(e) { if (e.key === 'Escape') App.wordEditor.close(); };
+    this._escHandler = function(e) { if (e.key === 'Escape') { e.stopPropagation(); App.wordEditor.close(); } };
     document.addEventListener('keydown', this._escHandler);
 };
 
