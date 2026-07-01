@@ -464,7 +464,7 @@ Object.assign(App, {
         }
         html += '</div>';
         container.innerHTML = html;
-        this.bindVideoHover();
+        if (typeof this.bindVideoHover === 'function') this.bindVideoHover();
     },
 
     async removeFromCollection(cid, pid) {
@@ -1006,7 +1006,7 @@ Object.assign(App, {
         }
         grid.innerHTML = html;
         // 绑定视频悬停播放
-        this.bindVideoHover();
+        if (typeof this.bindVideoHover === 'function') this.bindVideoHover();
         // _onDropPng 已由 _initDropZone 统一管理（viewHomeScroll 容器），此处不再重复绑定
 
         var pbar = document.getElementById('trashPagination');

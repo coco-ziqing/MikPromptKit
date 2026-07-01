@@ -270,16 +270,21 @@ Object.assign(App, {
             }
             // coll-add-btn 已移动到 card-thumb 底部右下角
 
+            // Phase17: 统一视频字段 — 兼容 video_filename(旧prompts) + preview_media(新word_card)
+            var videoFile = p.video_filename || p.preview_media || '';
+            var videoFps = p.video_fps || '';
+            var isWordCard = p._source === 'word_card';
+
             html += `
                 <div class="prompt-card ${batchClass} ${selectedClass} ${editClass}" data-id="${p.id}">
                     <div class="card-body">
                         <div class="card-thumb">
-                            <div class="card-thumb-inner" onclick="App.showThumbnailPicker(${p.id})">
+                            <div class="card-thumb-inner" onclick="${isWordCard ? 'App.wordEditor.open({cardId:' + p.id + ',source:\'cards\',onSaved:function(){App.loadPrompts()}})' : 'App.showThumbnailPicker(' + p.id + ')'}">
                                 ${p.thumbnail
-                                    ? (p.video_filename
+                                    ? (videoFile
                                         ? `<div class="thumb-video-wrap-preview">`
                                           + `<img class="thumb-video-poster" src="/api/thumbnails/file/${p.thumbnail}" alt="" loading="lazy">`
-                                          + `<video class="thumb-video" src="/api/thumbnails/video/${p.video_filename}" loop muted playsinline preload="none"></video>`
+                                          + `<video class="thumb-video" src="/api/thumbnails/video/${videoFile}" loop muted playsinline preload="none"></video>`
                                           + `</div>`
                                         : `<img src="/api/thumbnails/file/${p.thumbnail}" alt="缩略图">`
                                       )
@@ -289,7 +294,7 @@ Object.assign(App, {
                                 }
                             </div>
                             ${p.thumbnail && App.state.editMode ? '<span class="thumb-clear-btn" onclick="event.stopPropagation();App.clearCardThumbnail(' + p.id + ')" title="清除缩略图">✕</span>' : ''}
-                            ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (p.video_filename ? 'App.openVideoViewer(\'' + p.video_filename + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (p.video_filename ? App._t('auto.view_原视频', '查看原视频') : App._t('auto.view_原图', '查看原图')) + '">' + (p.video_filename ? '▶' : '🔍') + '</span>' : ''}
+                            ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (videoFile ? 'App.openVideoViewer(\'' + videoFile + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + videoFps + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (videoFile ? App._t('auto.view_原视频', '查看原视频') : App._t('auto.view_原图', '查看原图')) + '">' + (videoFile ? '▶' : '🔍') + '</span>' : ''}
                         </div>
                         <div class="card-add-row">
                             <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title=App._t('auto.add_到收藏分组', '添加到收藏分组')>+</span>
@@ -328,8 +333,8 @@ Object.assign(App, {
         html += '</div>';
         container.innerHTML = html;
         this.applyColumns();
-        // 绑定视频悬停播放
-        this.bindVideoHover();
+        // 绑定视频悬停播放（app_media.js提供，可能未加载）
+        if (typeof this.bindVideoHover === 'function') this.bindVideoHover();
         // 编辑模式下应用客户端筛选
         if (this.state.editMode) {
             this._updateFilteredDisplay();
@@ -629,12 +634,13 @@ Object.assign(App, {
     _undoThumbnailState: {},
 
     async _replaceAndSaveUndo(file, promptId) {
-        // 1. 保存当前缩略图以便 Ctrl+Z 恢复
+        // Phase17: 检测数据源 — word_card 走词卡API，old prompts 走旧API
         var p = this.state.prompts.find(function(x) { return x.id === promptId; });
+        var isWc = p && p._source === 'word_card';
+        // 1. 保存当前缩略图以便 Ctrl+Z 恢复
         if (p && p.thumbnail) {
             this._undoThumbnailState[promptId] = p.thumbnail;
         } else {
-            // 无旧缩略图则存空标记
             this._undoThumbnailState[promptId] = null;
         }
 
@@ -642,20 +648,30 @@ Object.assign(App, {
         var formData = new FormData();
         formData.append('file', file);
         try {
+            if (isWc) {
+                var res = await fetch('/api/v4/word-cards/' + promptId + '/thumbnail', { method: 'POST', body: formData });
+                var data = await res.json();
+                if (data && data.ok) {
+                    this.showToast('縮略圖已替換 (Ctrl+Z 可撤銷)', 'success');
+                    await this.loadPrompts();
+                } else {
+                    this.showToast('上傳失敗: ' + (data.detail || data.error || 'unknown'), 'error');
+                }
+                return;
+            }
             var res = await fetch('/api/thumbnails/upload', { method: 'POST', body: formData });
             var data = await res.json();
             if (!data || !data.ok) {
                 this.showToast(App._t('auto.upload_失败__', '上传失败: ') + (data ? data.error : App._t('common.unknown_error', '未知错误')), 'error');
                 return;
             }
-            // 3. 关联到提示词
             var assignRes = await this.fetchJSON('/api/thumbnails/assign', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ prompt_id: promptId, filename: data.filename })
             });
             if (assignRes && assignRes.ok) {
-                this.showToast('✅ 缩略图已替换 (Ctrl+Z 可撤销)', 'success');
+                this.showToast('縮略圖已替換 (Ctrl+Z 可撤銷)', 'success');
                 await this.loadPrompts();
                 await this.loadThumbLibrary();
             } else {

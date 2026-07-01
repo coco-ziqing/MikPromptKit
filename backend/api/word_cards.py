@@ -264,8 +264,8 @@ def batch_operation(data: dict):
         for idx, cid in enumerate(ids):
             db.execute("UPDATE word_card SET group_id=?,sort_order=?,updated_at=datetime('now','localtime') WHERE id=?", [tg, max_sort+1+idx, cid])
     elif action == "delete":
-        db.execute(f"UPDATE word_card SET is_deleted=1,deleted_at=datetime('now','localtime') WHERE id IN ({ph}) AND is_builtin=1", ids)
-        db.execute(f"DELETE FROM word_card WHERE id IN ({ph}) AND is_builtin=0", ids)
+        # Phase17: 统一软删除 — 防止自定义词卡永久丢失
+        db.execute(f"UPDATE word_card SET is_deleted=1,deleted_at=datetime('now','localtime') WHERE id IN ({ph})", ids)
     elif action == "copy":
         tg = data.get("group_id")
         for cid in ids:
@@ -380,6 +380,56 @@ async def batch_create_from_text(data: dict):
 
 # ==================== 缩略图/视频上传（必须在 /{card_id} 之前注册，避免被通配吞掉）====================
 
+# ============ 缩略图（路由顺序: 静态 > 动态） ============
+
+@router.post("/{card_id}/thumbnail-from-library")
+def copy_thumbnail_from_library(card_id: int, data: dict):
+    """从图库复制图片到词卡缩略图（避免前端 blob 中转）"""
+    source = (data.get("source_filename") or "").strip()
+    if not source:
+        raise HTTPException(400, "请提供 source_filename")
+    db = get_db()
+    card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    # 源文件路径: data/thumbnails/（缩略图库）
+    THUMB_LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "thumbnails")
+    src_path = os.path.join(THUMB_LIB_DIR, os.path.basename(source))
+    if not os.path.exists(src_path):
+        raise HTTPException(404, f"图库文件不存在: {source}")
+    try:
+        from PIL import Image
+        img = Image.open(src_path)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        TW, TH = 100, 67
+        sw, sh = img.size
+        target_ratio = TW / TH
+        src_ratio = sw / sh
+        if src_ratio > target_ratio:
+            new_w = int(sh * target_ratio)
+            img = img.crop(((sw - new_w) // 2, 0, (sw + new_w) // 2, sh))
+        else:
+            new_h = int(sw / target_ratio)
+            img = img.crop((0, (sh - new_h) // 2, sw, (sh + new_h) // 2))
+        img = img.resize((TW, TH), Image.LANCZOS)
+        dest_name = f"{uuid.uuid4().hex}.jpg"
+        dest_path = os.path.join(WC_THUMB_DIR, dest_name)
+        img.save(dest_path, "JPEG", quality=82)
+    except ImportError:
+        # Pillow 不可用时直接复制
+        import shutil
+        dest_name = f"{uuid.uuid4().hex}{os.path.splitext(source)[1] or '.jpg'}"
+        dest_path = os.path.join(WC_THUMB_DIR, dest_name)
+        shutil.copy2(src_path, dest_path)
+    except Exception as e:
+        raise HTTPException(500, f"文件处理失败: {str(e)}")
+    _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
+    db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', updated_at=datetime('now','localtime') WHERE id=?", [dest_name, card_id])
+    safe_commit()
+    return {"ok": True, "filename": dest_name, "source": source}
+
+
 @router.post("/{card_id}/thumbnail")
 async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
     """为词卡上传缩略图（自动裁剪为 100x67 JPEG）"""
@@ -443,6 +493,39 @@ def serve_card_thumbnail(filename: str):
     if not os.path.exists(path):
         raise HTTPException(404, "缩略图不存在")
     return FileResponse(path, media_type="image/jpeg")
+
+
+@router.post("/{card_id}/video-from-library")
+def copy_video_from_library(card_id: int, data: dict):
+    """从视频库复制到词卡预览视频"""
+    source = (data.get("source_filename") or "").strip()
+    if not source:
+        raise HTTPException(400, "请提供 source_filename")
+    db = get_db()
+    card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    # 源路径: data/videos/ or data/thumbnails/video/
+    import shutil
+    VIDEO_LIB_DIRS = [
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "videos"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "thumbnails", "videos"),
+    ]
+    src_path = None
+    for d in VIDEO_LIB_DIRS:
+        p = os.path.join(d, os.path.basename(source))
+        if os.path.exists(p):
+            src_path = p
+            break
+    if not src_path:
+        raise HTTPException(404, f"视频文件不存在: {source}")
+    dest_name = f"{uuid.uuid4().hex}{os.path.splitext(source)[1] or '.mp4'}"
+    dest_path = os.path.join(WC_VIDEO_DIR, dest_name)
+    shutil.copy2(src_path, dest_path)
+    _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
+    db.execute("UPDATE word_card SET thumbnail='', preview_media=?, media_type='video', updated_at=datetime('now','localtime') WHERE id=?", [dest_name, card_id])
+    safe_commit()
+    return {"ok": True, "filename": dest_name, "source": source}
 
 
 @router.post("/{card_id}/video")

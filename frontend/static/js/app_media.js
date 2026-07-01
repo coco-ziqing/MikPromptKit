@@ -92,29 +92,41 @@ Object.assign(App, {
     _thumbEditMode: false,   // 图库/视频库编辑模式
     _thumbBatchSelected: {}, // 已选中的文件名（编辑模式下）
     _thumbnailCollectionId: null, // 设置收藏夹缩略图时的分组ID
+    _onThumbnailSelected: null,  // 选中缩略图后的回调(filename) → Promise，用完即清
+    _onVideoSelected: null,      // 选中视频后的回调(filename) → Promise，用完即清
+
+    // ============ 打开缩略图选取器（统一入口）============
+
+    _openThumbnailModal(tab) {
+        // Phase17: 不再清空回调 — 由调用者在调用前自行设置
+        // （word_editor._openThumbLibrary 在调用此函数前已设置 _onThumbnailSelected/_onVideoSelected）
+        this._thumbnailPromptId = null;
+        this._thumbnailCollectionId = null;
+        this._thumbnailPage = 1;
+        if (this._thumbEditMode) this.toggleThumbEditMode();
+        document.getElementById('modalThumbnail').style.display = 'flex';
+        this.switchThumbTab(tab || 'images');
+    },
 
     // ============ 编辑弹窗缩略图管理 ============
 
-    _editThumbnailMode: false,  // 是否在编辑弹窗中选择缩略图
-
     openEditThumbnailPicker() {
-        this._editThumbnailMode = true;
-        this._thumbnailPromptId = null;
-        this._thumbnailCollectionId = null;
-        this._thumbnailPage = 1;
-        if (this._thumbEditMode) this.toggleThumbEditMode();
-        document.getElementById('modalThumbnail').style.display = 'flex';
-        this.switchThumbTab('images');
+        // Phase17: 先设回调再打开（_openThumbnailModal不再清空回调）
+        this._onThumbnailSelected = async function(filename) {
+            App._editThumbFilename = filename;
+            App._editVideoFilename = null;
+            App.updateEditThumbDisplay();
+        };
+        this._openThumbnailModal('images');
     },
 
     openEditVideoPicker() {
-        this._editThumbnailMode = true;
-        this._thumbnailPromptId = null;
-        this._thumbnailCollectionId = null;
-        this._thumbnailPage = 1;
-        if (this._thumbEditMode) this.toggleThumbEditMode();
-        document.getElementById('modalThumbnail').style.display = 'flex';
-        this.switchThumbTab('videos');
+        this._onVideoSelected = async function(videoFilename) {
+            App._editVideoFilename = videoFilename;
+            App._editThumbFilename = null;
+            App.updateEditThumbDisplay();
+        };
+        this._openThumbnailModal('videos');
     },
 
     updateEditThumbDisplay() {
@@ -145,7 +157,15 @@ Object.assign(App, {
 
     async clearCardThumbnail(promptId) {
         if (!confirm(App._t('common.confirm', '确认清除此提示词的缩略图？'))) return;
-        var data = await this.fetchJSON('/api/thumbnails/assign/' + promptId, { method: 'DELETE' });
+        // Phase17: 检测数据源，分发到正确的API端点
+        var p = this.state.prompts.find(function(x) { return x.id === promptId; });
+        var isWc = p && p._source === 'word_card';
+        var data;
+        if (isWc) {
+            data = await this.fetchJSON('/api/v4/word-cards/' + promptId + '/thumbnail', { method: 'DELETE' });
+        } else {
+            data = await this.fetchJSON('/api/thumbnails/assign/' + promptId, { method: 'DELETE' });
+        }
         if (data && data.ok) {
             this.showToast(App._t('auto.str_00cadfcb', '缩略图已清除'), 'info');
             await this.loadPrompts();
@@ -159,12 +179,17 @@ Object.assign(App, {
     },
 
     async showThumbnailPicker(promptId) {
+        // Phase17: 检测数据源，word_card 词卡分发到 wordEditor
+        var p = this.state.prompts.find(function(x) { return x.id === promptId; });
+        if (p && p._source === 'word_card') {
+            App.wordEditor.open({cardId: promptId, source: 'cards', onSaved: function() { App.loadPrompts(); }});
+            return;
+        }
+        // 旧模式：先清回调再设 thumbnailPromptId（_openThumbnailModal 不再自动清空）
+        this._onThumbnailSelected = null;
+        this._onVideoSelected = null;
         this._thumbnailPromptId = promptId;
-        this._thumbnailCollectionId = null;
-        this._thumbnailPage = 1;
-        if (this._thumbEditMode) this.toggleThumbEditMode();
-        document.getElementById('modalThumbnail').style.display = 'flex';
-        this.switchThumbTab('images');
+        this._openThumbnailModal('images');
     },
 
     // ============ 图库/视频库批量操作 ============
@@ -410,13 +435,12 @@ Object.assign(App, {
     },
 
     async selectVideoThumbnail(videoFilename) {
-        // 编辑弹窗缩略图模式：暂存不提交
-        if (this._editThumbnailMode) {
-            this._editVideoFilename = videoFilename;
-            this._editThumbFilename = null;
-            this._editThumbnailMode = false;
+        // 回调模式：调用方预先设置 _onVideoSelected
+        if (this._onVideoSelected) {
+            var cb = this._onVideoSelected;
+            this._onVideoSelected = null;  // 一次性，防重复
             document.getElementById('modalThumbnail').style.display = 'none';
-            this.updateEditThumbDisplay();
+            try { await cb(videoFilename); } catch(e) { console.error('selectVideo cb error:', e); }
             return;
         }
         // 收藏夹缩略图模式：提取视频封面设为分组缩略图
@@ -441,14 +465,20 @@ Object.assign(App, {
             }
             return;
         }
-        var data = await this.fetchJSON('/api/thumbnails/assign-video-from-library', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt_id: this._thumbnailPromptId, video_filename: videoFilename })
-        });
-        if (data) {
-            document.getElementById('modalThumbnail').style.display = 'none';
-            this.showToast(App._t('auto.str_7a1f2937', '视频已关联'), 'success');
+        // 兼容旧模式：prompt 关联视频
+        if (this._thumbnailPromptId) {
+            var resp = await this.fetchJSON('/api/thumbnails/assign-video-from-library', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_id: this._thumbnailPromptId, video_filename: videoFilename })
+            });
+            if (resp) {
+                document.getElementById('modalThumbnail').style.display = 'none';
+                this.showToast(App._t('auto.str_7a1f2937', '视频已关联'), 'success');
+                await this.loadPrompts();
+            }
+        }
+    },
             await this.loadPrompts();
         } else {
             this.showToast(App._t('auto.str_6d973dbe', '关联失败'), 'error');
@@ -856,40 +886,42 @@ Object.assign(App, {
     },
 
     async selectThumbnail(filename) {
-        // 编辑弹窗缩略图模式：暂存不提交
-        if (this._editThumbnailMode) {
-            this._editThumbFilename = filename;
-            this._editVideoFilename = null;
-            this._editThumbnailMode = false;
+        // 回调模式：调用方预先设置 _onThumbnailSelected
+        if (this._onThumbnailSelected) {
+            var cb = this._onThumbnailSelected;
+            this._onThumbnailSelected = null;  // 一次性，防重复
             document.getElementById('modalThumbnail').style.display = 'none';
-            this.updateEditThumbDisplay();
+            try { await cb(filename); } catch(e) { console.error('selectThumbnail cb error:', e); }
             return;
         }
-        // 如果是在设置收藏夹缩略图
+        // 兼容旧模式：prompt 关联
+        if (this._thumbnailPromptId) {
+            var data = await this.fetchJSON('/api/thumbnails/assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_id: this._thumbnailPromptId, filename: filename })
+            });
+            if (data) {
+                document.getElementById('modalThumbnail').style.display = 'none';
+                this.showToast(App._t('auto.str_b519a039', '缩略图已设置'), 'success');
+                await this.loadPrompts();
+            }
+            return;
+        }
+        // 收藏夹模式
         if (this._thumbnailCollectionId) {
-            var data = await this.fetchJSON('/api/v2/collections/' + this._thumbnailCollectionId, {
+            var data2 = await this.fetchJSON('/api/v2/collections/' + this._thumbnailCollectionId, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ thumbnail: filename, video_filename: '' })
             });
-            if (data) {
+            if (data2) {
                 document.getElementById('modalThumbnail').style.display = 'none';
                 this.showToast(App._t('nav.collections', '收藏夹缩略图已设置'), 'success');
                 this._thumbnailCollectionId = null;
                 await this.loadCollections();
                 this.renderCollections();
             }
-            return;
-        }
-        var data = await this.fetchJSON('/api/thumbnails/assign', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt_id: this._thumbnailPromptId, filename: filename })
-        });
-        if (data) {
-            document.getElementById('modalThumbnail').style.display = 'none';
-            this.showToast(App._t('auto.str_b519a039', '缩略图已设置'), 'success');
-            await this.loadPrompts();
         }
     },
 

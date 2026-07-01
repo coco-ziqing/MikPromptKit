@@ -259,9 +259,9 @@ App._renderShowcaseCard = function(grp) {
     var icon = grp.icon || '📄';
     var cardName = grp.name || '';
     if (icon && cardName.indexOf(icon) === 0) cardName = cardName.substring(icon.length).trim();
-    var badge = grp.group_type === 'builtin' ? '<span style="font-size:10px;background:var(--bg-primary);color:var(--text-muted);padding:1px 6px;border-radius:4px;">内置</span>' :
-                grp.group_type === 'custom' ? '<span style="font-size:10px;background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:4px;">自定义</span>' :
-                grp.group_type === 'atom' ? '<span style="font-size:10px;background:#fff3e0;color:#e65100;padding:1px 6px;border-radius:4px;">⚛ 原子</span>' : '';
+    var badge = grp.group_type === 'builtin' ? '<span style="font-size:10px;background:var(--badge-builtin-bg,#6366f115);color:var(--badge-builtin-text,#6366f1);padding:1px 6px;border-radius:4px;">内置</span>' :
+                grp.group_type === 'custom' ? '<span style="font-size:10px;background:var(--badge-custom-bg,#e8f5e9);color:var(--badge-custom-text,#2e7d32);padding:1px 6px;border-radius:4px;">自定义</span>' :
+                grp.group_type === 'atom' ? '<span style="font-size:10px;background:var(--badge-atom-bg,#fff3e0);color:var(--badge-atom-text,#e65100);padding:1px 6px;border-radius:4px;">⚛ 原子</span>' : '';
     return '<div class="showcase-card" data-gid="' + grp.id + '" data-gname="' + (grp.name||'').replace(/"/g,'&quot;') + '" onclick="App._showcaseClick(this)" style="cursor:pointer;border:1px solid var(--border-color);border-radius:12px;padding:16px;background:var(--bg-card);transition:all 0.2s;display:flex;align-items:center;gap:12px;">' +
         '<div style="font-size:28px;flex-shrink:0;">' + icon + '</div>' +
         '<div style="flex:1;min-width:0;">' +
@@ -331,7 +331,6 @@ App.renderSidebar = function() {
         };
     }
     
-    var tree = this.state.groupTree;
     var tree = this.state.groupTree;
     if (!tree || tree.length === 0) {
         sidebar.innerHTML = '<div style="padding:20px;color:var(--text-muted);font-size:13px;">📡 加载词库中...</div>';
@@ -815,9 +814,7 @@ App._wcLoadPrompts = async function() {
                 scene: item.scene || '',
                 subcategory: item.subcategory || '',
                 card_role: item.card_role || '',
-                meaning: item.meaning || '',
-                video_filename: item.video_filename || '',
-                video_fps: item.video_fps || '',
+                preview_media: item.preview_media || '',
                 _source: 'word_card'
             };
         });
@@ -856,10 +853,11 @@ App._wcDoSearch = function() {
     this.state.page = 1;
     this.state.searchQuery = document.getElementById('searchInput').value.trim();
     if (!this.state.searchQuery) {
-        this.state.currentGroupId = null;
-        this._showShowcase();
+        // Phase17: 清空搜索词时恢复当前分组视图（不是陈列架）
+        this._wcLoadPrompts();
         return;
     }
+    // Phase17: 搜索在分组内进行（currentGroupId 保持不变）
     this._wcLoadPrompts();
 };
 

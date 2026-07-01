@@ -135,13 +135,18 @@ App.wordEditor._ensureModal = function() {
     '<span id="wcEditHeatLabel" style="font-size:10px;color:var(--text-muted);margin-left:4px;">0.5</span>' +
     '</div></div>' +
 
-    // 缩略图预览 (Phase13.5)
-    '<div id="wcEditThumbRow" style="display:none;margin-bottom:10px;gap:8px;align-items:center;">' +
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">缩略图</label>' +
-    '<div style="display:flex;gap:8px;align-items:center;">' +
-    '<img id="wcEditThumbPreview" src="" style="width:60px;height:40px;border-radius:6px;object-fit:cover;border:1px solid var(--border-color);display:none;">' +
-    '<span id="wcEditThumbName" style="font-size:10px;color:var(--text-muted);"></span>' +
-    '</div></div>' +
+    // 缩略图上传/选择 (Phase16.2: 始终可见 + 按钮修复)
+    '<div id="wcEditThumbRow" style="margin-bottom:10px;padding:8px;border-radius:8px;background:var(--hover-bg);">' +
+    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">缩略图预览</label>' +
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+    '<img id="wcEditThumbPreview" src="" style="width:80px;height:53px;border-radius:6px;object-fit:cover;border:1px solid var(--border-color);display:none;background:var(--bg-card);">' +
+    '<span id="wcEditThumbName" style="font-size:11px;color:var(--text-muted);min-width:60px;">未设置</span>' +
+    '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
+    '<input type="file" id="wcEditThumbInput" accept="image/*" style="display:none;" onchange="App.wordEditor._uploadThumb(event)">' +
+    '<button type="button" class="btn btn-xs" onclick="document.getElementById(\'wcEditThumbInput\').click()" style="font-size:11px;padding:4px 10px;border:1px solid #6366f1;color:#6366f1;border-radius:6px;background:transparent;cursor:pointer;">📤 上传图片</button>' +
+    '<button type="button" class="btn btn-xs" onclick="App.wordEditor._openThumbLibrary()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border-color);color:var(--text-muted);border-radius:6px;background:transparent;cursor:pointer;">🖼 从图库选</button>' +
+    '<button type="button" class="btn btn-xs" id="wcEditThumbClearBtn" onclick="App.wordEditor._clearThumb()" style="display:none;font-size:11px;padding:4px 10px;border:1px solid #ef4444;color:#ef4444;border-radius:6px;background:transparent;cursor:pointer;">✕ 清除</button>' +
+    '</div></div></div>' +
 
     // 内置/自定义标记 (Phase13.5)
     '<div id="wcEditBuiltinRow" style="display:none;margin-bottom:10px;">' +
@@ -346,19 +351,27 @@ App.wordEditor._loadCard = async function() {
         var heatLabel = document.getElementById('wcEditHeatLabel');
         if (heatLabel) heatLabel.textContent = heat;
 
-        // 缩略图预览
+        // 缩略图预览 (Phase16.1: 修复显示)
         var thumbRow = document.getElementById('wcEditThumbRow');
         var thumbImg = document.getElementById('wcEditThumbPreview');
         var thumbName = document.getElementById('wcEditThumbName');
+        var clearBtn = document.getElementById('wcEditThumbClearBtn');
         if (c.thumbnail && thumbRow && thumbImg && thumbName) {
-            thumbRow.style.display = 'flex';
-            thumbImg.src = '/api/seedance/v2/thumbnails/' + c.thumbnail;
+            thumbRow.style.display = 'block';
+            thumbImg.src = '/api/v4/word-cards/thumbnails/' + c.thumbnail;
             thumbImg.style.display = 'inline-block';
-            thumbName.textContent = c.thumbnail;
+            thumbName.textContent = c.thumbnail.substring(0, 20) + (c.thumbnail.length > 20 ? '...' : '');
+            if (clearBtn) clearBtn.style.display = 'inline-block';
         } else if (c.preview_media && thumbRow && thumbImg && thumbName) {
-            thumbRow.style.display = 'flex';
+            thumbRow.style.display = 'block';
             thumbImg.style.display = 'none';
-            thumbName.textContent = '🎬 ' + c.preview_media;
+            thumbName.textContent = '🎬 ' + c.preview_media.substring(0, 30);
+            if (clearBtn) clearBtn.style.display = 'inline-block';
+        } else if (thumbRow) {
+            thumbRow.style.display = 'block';
+            if (thumbImg) thumbImg.style.display = 'none';
+            if (thumbName) thumbName.textContent = '未设置';
+            if (clearBtn) clearBtn.style.display = 'none';
         }
 
         // 内置标记
@@ -407,7 +420,15 @@ App.wordEditor._resetForm = function() {
     var heatLabel = document.getElementById('wcEditHeatLabel');
     if (heatLabel) heatLabel.textContent = '0.5';
     var thumbRow = document.getElementById('wcEditThumbRow');
-    if (thumbRow) thumbRow.style.display = 'none';
+    if (thumbRow) {
+        thumbRow.style.display = 'block';
+        var thumbImg = document.getElementById('wcEditThumbPreview');
+        var thumbName = document.getElementById('wcEditThumbName');
+        var clearBtn = document.getElementById('wcEditThumbClearBtn');
+        if (thumbImg) thumbImg.style.display = 'none';
+        if (thumbName) thumbName.textContent = '未设置';
+        if (clearBtn) clearBtn.style.display = 'none';
+    }
     var builtinRow = document.getElementById('wcEditBuiltinRow');
     if (builtinRow) builtinRow.style.display = 'none';
     document.getElementById('wcEditTags').value = '';
@@ -787,6 +808,80 @@ App.wordEditor._rollback = async function(cid, vid) {
             if (App.wordCards && App.wordCards.load) App.wordCards.load();
         }
     } catch(e) { App.showToast('回滚失败: ' + e.message, 'danger'); }
+};
+
+// ============ 缩略图管理 (Phase16.1) ============
+
+App.wordEditor._uploadThumb = async function(event) {
+    var file = (event.target.files||[])[0];
+    if (!file || !this._cardId) { event.target.value = ''; return; }
+    var formData = new FormData();
+    formData.append('file', file);
+    try {
+        var resp = await fetch('/api/v4/word-cards/' + this._cardId + '/thumbnail', { method: 'POST', body: formData });
+        var d = await resp.json();
+        if (d.ok) {
+            App.showToast('缩略图上传成功', 'success');
+            await this._loadCard();
+            // Phase17: 刷新卡片列表使缩略图可见
+            try { await App.loadPrompts(); } catch(e) {}
+        } else {
+            App.showToast('上传失败: ' + (d.detail || d.error || 'unknown'), 'error');
+        }
+    } catch(e) { App.showToast('上传出错: ' + e.message, 'error'); }
+    event.target.value = '';
+};
+
+App.wordEditor._openThumbLibrary = function() {
+    var self = this;
+    // Phase17: 先设置回调（必须在 _openThumbnailModal 之前，因为它会清空回调）
+    App._onThumbnailSelected = async function(filename) {
+        App.showToast('正在设置缩略图...', 'info');
+        var d = await App.fetchJSON('/api/v4/word-cards/' + self._cardId + '/thumbnail-from-library', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source_filename: filename })
+        });
+        if (d && d.ok) {
+            App.showToast('缩略图已设置', 'success');
+            // Phase17: 刷新编辑器内预览 + 卡片列表
+            await self._loadCard();
+            try { await App.loadPrompts(); } catch(e) {}
+        } else {
+            App.showToast('设置失败: ' + ((d && d.detail) || '服务器错误'), 'error');
+        }
+    };
+    App._onVideoSelected = async function(videoFilename) {
+        App.showToast('正在设置视频...', 'info');
+        var d = await App.fetchJSON('/api/v4/word-cards/' + self._cardId + '/video-from-library', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source_filename: videoFilename })
+        });
+        if (d && d.ok) {
+            App.showToast('视频已设置', 'success');
+            await self._loadCard();
+            try { await App.loadPrompts(); } catch(e) {}
+        } else {
+            App.showToast('设置失败: ' + ((d && d.detail) || '服务器错误'), 'error');
+        }
+    };
+    // 打开缩略图模态（在设置回调之后，因为内部会清空）
+    App._openThumbnailModal('images');
+};
+
+App.wordEditor._clearThumb = async function() {
+    if (!this._cardId) return;
+    if (!confirm(App._t('common.confirm', '确认清除此词卡的缩略图？'))) return;
+    try {
+        var d = await App.fetchJSON('/api/v4/word-cards/' + this._cardId + '/thumbnail', { method: 'DELETE' });
+        if (d && d.ok) {
+            App.showToast('缩略图已清除', 'info');
+            await this._loadCard();
+            // Phase17: 刷新卡片列表
+            try { await App.loadPrompts(); } catch(e) {}
+        }
+    } catch(e) { App.showToast('清除失败: ' + e.message, 'error'); }
 };
 
 })();
