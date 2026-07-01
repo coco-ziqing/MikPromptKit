@@ -810,7 +810,7 @@ App._wcLoadPrompts = async function() {
                 media_type: item.media_type || 'image',
                 usage_count: item.usage_count || 0,
                 is_builtin: item.is_builtin || false,
-                collections: [],
+                collections: [],  // 延迟填充：下方批量查询收藏归属
                 group_name: item.group_name || '',
                 scene: item.scene || '',
                 subcategory: item.subcategory || '',
@@ -819,6 +819,23 @@ App._wcLoadPrompts = async function() {
                 _source: 'word_card'
             };
         });
+
+        // Phase17: 批量查询所有词卡的收藏归属，注入到每张卡的 collections 字段
+        var ids = s.prompts.map(function(p) { return p.id; });
+        if (ids.length > 0) {
+            try {
+                var collMap = await this.fetchJSON('/api/v2/collections/prompt-batch?ids=' + ids.join(','), { _timeoutMs: 5000 });
+                if (collMap) {
+                    for (var pi = 0; pi < s.prompts.length; pi++) {
+                        var pid = s.prompts[pi].id;
+                        s.prompts[pi].collections = collMap[String(pid)] || collMap[pid] || [];
+                    }
+                }
+            } catch(e) {
+                console.warn('[wc-bridge] 收藏归属查询失败:', e.message);
+            }
+        }
+
         s.totalItems = d.total;
         s.totalPages = d.total_pages || 1;
         this.renderPrompts();
@@ -1109,7 +1126,7 @@ App._updatePageTitle = function() {
     };
 })();
 
-console.log('[wc-bridge] v10 atom-leaf OK');
+console.log('[wc-bridge] v14.14 collection-badge OK');
 
 // ============ P0-6: 拖拽词卡移动到分组 ============
 
