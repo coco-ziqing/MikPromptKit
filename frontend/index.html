@@ -248,7 +248,7 @@
     <div class="modal-overlay" id="modalCreateModule" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5>新建提示词分组</h5><button class="header-btn-sm" onclick="document.getElementById('modalCreateModule').style.display='none'">&times;</button></div><div class="modal-body"><label>分组名称</label><input type="text" id="inputModuleName" class="modal-input" placeholder="如：AI绘图模板"></div><div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalCreateModule').style.display='none'">取消</button><button class="btn btn-primary btn-sm" onclick="App.createCustomModule()">创建</button></div></div></div>
     <div class="modal-overlay" id="modalAddToWordpack" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content" onclick="event.stopPropagation()"><div class="modal-header"><h5 id="modalAddToTitle">添加到词包</h5><button class="header-btn-sm" onclick="document.getElementById('modalAddToWordpack').style.display='none'">&times;</button></div><div class="modal-body" id="wordpackSelectList"><div style="color:#94a3b8;text-align:center;padding:20px;">加载中...</div></div></div></div>
     <div class="modal-overlay" id="modalBatchResult" style="display:none;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content modal-wide" onclick="event.stopPropagation()"><div class="modal-header"><h5>批量复制结果</h5><button class="header-btn-sm" onclick="document.getElementById('modalBatchResult').style.display='none'">&times;</button></div><div class="modal-body"><textarea id="batchResultText" class="modal-input" rows="10" readonly></textarea></div><div class="modal-footer"><button class="btn btn-primary btn-sm" onclick="App.copyBatchResult()"><i class="bi bi-clipboard"></i> 复制全部</button><button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalBatchResult').style.display='none'">关闭</button></div></div></div>
-    <div class="modal-overlay" id="modalThumbnail" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content modal-wide" onclick="event.stopPropagation()"><div class="modal-header"><h5>设置缩略图</h5><button class="header-btn-sm" onclick="document.getElementById('modalThumbnail').style.display='none'">&times;</button></div><div class="modal-body"><div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+    <div class="modal-overlay" id="modalThumbnail" style="display:none;z-index:600;" onclick="if(event.target===this)this.style.display='none'"><div class="modal-content modal-wide" onclick="event.stopPropagation()"><div class="modal-header"><h5>设置缩略图</h5><button class="header-btn-sm" onclick="document.getElementById('modalThumbnail').style.display='none'">&times;</button></div><div class="modal-body"><div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
         <button class="btn btn-primary btn-sm" id="btnThumbUpload" style="display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:6px;padding:8px 16px;background:#10b981;color:#fff;border:1px solid #059669;transition:all 0.2s;" onmousedown="this.style.background='#059668';this.style.transform='scale(0.98)';" onmouseup="this.style.background='#10b981';this.style.transform='scale(1)';" onmouseleave="this.style.background='#10b981';this.style.transform='scale(1)';" onclick="document.getElementById('thumbUploadInput').click()"><i class="bi bi-cloud-upload"></i> 上传图片...</button>
         <button class="btn btn-primary btn-sm" id="btnVideoUpload" style="display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:6px;padding:8px 16px;background:#8b5cf6;color:#fff;border:1px solid #7c3aed;transition:all 0.2s;" onmousedown="this.style.background='#7c3aed';this.style.transform='scale(0.98)';" onmouseup="this.style.background='#8b5cf6';this.style.transform='scale(1)';" onmouseleave="this.style.background='#8b5cf6';this.style.transform='scale(1)';" onclick="document.getElementById('videoUploadInput').click()"><i class="bi bi-film"></i> 上传视频...</button>
         <button class="btn btn-sm" id="btnEditMode" onclick="App.toggleThumbEditMode()" style="display:inline-flex;align-items:center;gap:4px;padding:6px 14px;border:1px solid #64748b;border-radius:6px;background:transparent;color:#94a3b8;cursor:pointer;font-size:12px;"><i class="bi bi-pencil"></i> 编辑</button>
@@ -933,21 +933,21 @@
         </div>
     </div>
         <!-- Phase15: wc_bridge 必须在 app_core 之前加载，分组导航交互重构 -->
-                            <script src="/static/js/wc_bridge.js?v=14.11"></script>
+                            <script src="/static/js/wc_bridge.js?v=14.13"></script>
     <script src="/static/js/signal_lights.js?v=5"></script>
-    <script src="/static/js/app_core.js?v=13.8"></script>
+    <script src="/static/js/app_core.js?v=13.9"></script>
     <script src="/static/js/app_card_model.js?v=4"></script>
     <!-- Phase15: wc_bridge 已移到上面（分组导航交互重构） -->
     <script src="/static/js/monitor_dashboard.js?v=5"></script>
     <script src="/static/js/health_check.js?v=5"></script>
     <script src="/static/js/app_sync.js?v=9.3"></script>
-    <script src="/static/js/app_editor.js?v=11.10"></script>
-    <script src="/static/js/app_collections.js?v=10.7"></script>
+    <script src="/static/js/app_editor.js?v=11.12"></script>
+    <script src="/static/js/app_collections.js?v=10.8"></script>
     <script src="/static/js/app_tools.js?v=9.3"></script>
-    <script src="/static/js/app_media.js?v=9.3"></script>
+    <script src="/static/js/app_media.js?v=10.2"></script>
     <script src="/static/js/ai_tools.js?v=8"></script>
     <script src="/static/js/word_picker.js?v=5"></script>
-    <script src="/static/js/word_editor.js?v=9"></script>
+    <script src="/static/js/word_editor.js?v=11.1"></script>
     <script src="/static/js/word_card_manager.js?v=8"></script>
     <!-- Phase15: wc_bridge.js 已移至 app_core 之前 -->
     <script src="/static/js/v4_library.js?v=5"></script>

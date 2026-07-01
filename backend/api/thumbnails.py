@@ -219,10 +219,17 @@ def list_thumbnails(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1,
 
 @router.get("/file/{filename}")
 def serve_thumbnail(filename: str):
-    """提供缩略图文件"""
+    """提供缩略图文件 — 主目录 data/thumbnails/ → fallback 词卡目录 data/wc_media/thumbs/"""
     safe_name = os.path.basename(filename)
     fpath = os.path.join(THUMB_DIR, safe_name)
     if not os.path.exists(fpath):
+        # Phase17: 统一媒体服务 — 回退到词卡缩略图目录
+        wc_thumb_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "data", "wc_media", "thumbs", safe_name
+        )
+        if os.path.exists(wc_thumb_path):
+            return FileResponse(wc_thumb_path, media_type="image/jpeg")
         raise HTTPException(404, "文件不存在")
     return FileResponse(fpath, media_type="image/jpeg")
 
@@ -255,6 +262,13 @@ def serve_original(filename: str):
         # 回退到缩略图
         fpath = os.path.join(THUMB_DIR, safe_name)
         if not os.path.exists(fpath):
+            # Phase17: 再回退到词卡缩略图目录
+            wc_thumb_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                "data", "wc_media", "thumbs", safe_name
+            )
+            if os.path.exists(wc_thumb_path):
+                return FileResponse(wc_thumb_path)
             raise HTTPException(404, "文件不存在")
     return FileResponse(fpath)
 
@@ -466,11 +480,19 @@ def get_video_info(filename: str):
 
 @router.get("/video/{filename}")
 def serve_video(filename: str):
-    """提供视频文件"""
+    """提供视频文件 — 主目录 data/thumbnails/ → fallback 词卡目录 data/wc_media/videos/"""
     safe_name = os.path.basename(filename)
     fpath = os.path.join(VIDEO_DIR, safe_name)
     if not os.path.exists(fpath):
-        raise HTTPException(404, "视频不存在")
+        # Phase17: 统一媒体服务 — 回退到词卡视频目录
+        wc_video_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "data", "wc_media", "videos", safe_name
+        )
+        if os.path.exists(wc_video_path):
+            fpath = wc_video_path
+        else:
+            raise HTTPException(404, "视频不存在")
     # 根据扩展名设置正确 mime
     ext = os.path.splitext(safe_name)[1].lower()
     mime = {
