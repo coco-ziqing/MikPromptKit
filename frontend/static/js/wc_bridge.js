@@ -806,6 +806,7 @@ App._wcLoadPrompts = async function() {
                 category: item.category || '',
                 tags: JSON.stringify(tags),
                 thumbnail: item.thumbnail || '',
+                original_ref: item.original_ref || '',
                 media_type: item.media_type || 'image',
                 usage_count: item.usage_count || 0,
                 is_builtin: item.is_builtin || false,

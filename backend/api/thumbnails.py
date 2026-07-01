@@ -262,11 +262,17 @@ def serve_original(filename: str):
         # 回退到缩略图
         fpath = os.path.join(THUMB_DIR, safe_name)
         if not os.path.exists(fpath):
-            # Phase17: 再回退到词卡缩略图目录
+            # Phase17: 再回退到词卡缩略图目录 + 词卡原图目录
             wc_thumb_path = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                 "data", "wc_media", "thumbs", safe_name
             )
+            wc_orig_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                "data", "wc_media", "originals", safe_name
+            )
+            if os.path.exists(wc_orig_path):
+                return FileResponse(wc_orig_path)
             if os.path.exists(wc_thumb_path):
                 return FileResponse(wc_thumb_path)
             raise HTTPException(404, "文件不存在")

@@ -274,6 +274,8 @@ Object.assign(App, {
             var videoFile = p.video_filename || p.preview_media || '';
             var videoFps = p.video_fps || '';
             var isWordCard = p._source === 'word_card';
+            // 原图：word_card 用 original_ref（真原图UUID），旧prompts用缩略图
+            var origFile = (isWordCard && p.original_ref) ? p.original_ref : p.thumbnail;
 
             html += `
                 <div class="prompt-card ${batchClass} ${selectedClass} ${editClass}" data-id="${p.id}">
@@ -294,7 +296,7 @@ Object.assign(App, {
                                 }
                             </div>
                             ${p.thumbnail && App.state.editMode ? '<span class="thumb-clear-btn" onclick="event.stopPropagation();App.clearCardThumbnail(' + p.id + ')" title="清除缩略图">✕</span>' : ''}
-                            ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (videoFile ? 'App.openVideoViewer(\'' + videoFile + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + videoFps + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (videoFile ? App._t('auto.view_原视频', '查看原视频') : App._t('auto.view_原图', '查看原图')) + '">' + (videoFile ? '▶' : '🔍') + '</span>' : ''}
+                            ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (videoFile ? 'App.openVideoViewer(\'' + videoFile + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + videoFps + '\')' : 'App.openImageViewer(\'' + origFile + '\', \'' + p.id + '\')') + '" title="' + (videoFile ? App._t('auto.view_原视频', '查看原视频') : App._t('auto.view_原图', '查看原图')) + '">' + (videoFile ? '▶' : '🔍') + '</span>' : ''}
                         </div>
                         <div class="card-add-row">
                             <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title=App._t('auto.add_到收藏分组', '添加到收藏分组')>+</span>
