@@ -235,8 +235,8 @@ def init_db():
                 prompt_id     INTEGER NOT NULL DEFAULT 0,
                 note          TEXT    DEFAULT '',
                 added_at      TEXT    DEFAULT (datetime('now','localtime')),
+                sort_order    INTEGER DEFAULT 0,
                 FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
-                FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE,
                 UNIQUE(collection_id, prompt_id)
             );
 
