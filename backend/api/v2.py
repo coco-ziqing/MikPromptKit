@@ -31,23 +31,33 @@ def list_collections():
     # 每个分组从数据库取缩略图字段，无则取最新收藏的词条缩略图
     for item in items:
         if item.get("thumbnail"):
-            # 检查文件是否存在
             pass
         else:
+            # Phase17: 先查 prompts 缩略图，再查 word_card 缩略图
             thumb = db.execute("""
                 SELECT pt.filename FROM collection_items ci
                 LEFT JOIN prompt_thumbnails pt ON pt.prompt_id = ci.prompt_id
                 WHERE ci.collection_id = ? AND pt.filename IS NOT NULL
-                ORDER BY ci.sort_order ASC, ci.id DESC LIMIT 1
+                ORDER BY ci.id DESC LIMIT 1
             """, [item["id"]]).fetchone()
-            item["thumbnail"] = thumb["filename"] if thumb else None
-        # 补充 video_filename：从最新关联的词条取
+            if thumb and thumb["filename"]:
+                item["thumbnail"] = thumb["filename"]
+            else:
+                wc_thumb = db.execute("""
+                    SELECT wc.thumbnail FROM collection_items ci
+                    JOIN word_card wc ON wc.id = ci.prompt_id AND wc.is_deleted=0
+                    WHERE ci.collection_id = ? AND wc.thumbnail IS NOT NULL AND wc.thumbnail != ''
+                    ORDER BY ci.id DESC LIMIT 1
+                """, [item["id"]]).fetchone()
+                if wc_thumb:
+                    item["thumbnail"] = wc_thumb["thumbnail"]
+        # 补充 video_filename
         if not item.get("video_filename"):
             vrow = db.execute("""
                 SELECT pv.filename FROM collection_items ci
                 LEFT JOIN prompt_videos pv ON pv.prompt_id = ci.prompt_id
                 WHERE ci.collection_id = ? AND pv.filename IS NOT NULL
-                ORDER BY ci.sort_order ASC, ci.id DESC LIMIT 1
+                ORDER BY ci.id DESC LIMIT 1
             """, [item["id"]]).fetchone()
             if vrow:
                 item["video_filename"] = vrow["filename"]
@@ -135,14 +145,15 @@ def delete_collection(cid: int):
 
 @router.get("/collections/{cid}/items")
 def list_collection_items(cid: int, page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200)):
-    """查询收藏分组内的词条"""
+    """查询收藏分组内的词条 — 兼容 prompts + word_card 双数据源"""
     db = get_db()
     total = db.execute(
         "SELECT COUNT(*) as cnt FROM collection_items WHERE collection_id=?", [cid]
     ).fetchone()["cnt"]
 
     offset = (page - 1) * page_size
-    rows = db.execute("""
+    # Phase17: 先查 prompts，再查 word_card，合并结果
+    rows_p = db.execute("""
         SELECT p.id, p.module, p.category, p.subcategory, p.content,
                p.meaning, p.scene, p.tags, p.usage_count,
                pt.filename as thumbnail, pv.filename as video_filename, pv.poster as video_poster,
@@ -153,13 +164,26 @@ def list_collection_items(cid: int, page: int = Query(1, ge=1), page_size: int =
         LEFT JOIN prompt_thumbnails pt ON pt.prompt_id = p.id
         LEFT JOIN prompt_videos pv ON pv.prompt_id = p.id
         WHERE ci.collection_id = ?
-        ORDER BY ci.added_at DESC
-        LIMIT ? OFFSET ?
-    """, [cid, page_size, offset]).fetchall()
+    """, [cid]).fetchall()
 
-    items = [dict(r) for r in rows]
+    rows_wc = db.execute("""
+        SELECT wc.id, wc.module, wc.category, '' as subcategory, wc.content,
+               wc.meaning, wc.scene, wc.tags, wc.usage_count,
+               wc.thumbnail, wc.preview_media as video_filename, '' as video_poster,
+               '' as video_fps, '' as video_duration,
+               ci.note, ci.added_at as collected_at
+        FROM collection_items ci
+        JOIN word_card wc ON wc.id = ci.prompt_id AND wc.is_deleted=0
+        WHERE ci.collection_id = ?
+    """, [cid]).fetchall()
+
+    all_rows = list(rows_p) + list(rows_wc)
+    # 按收藏时间排序
+    all_rows.sort(key=lambda r: r["collected_at"] or "", reverse=True)
+    items = [dict(r) for r in all_rows]
+
     # 为每条词条补充收藏归属信息
-    prompt_ids = [r["id"] for r in rows]
+    prompt_ids = [r["id"] for r in all_rows]
     if prompt_ids:
         placeholders = ",".join(["?"] * len(prompt_ids))
         coll_map = db.execute(f"""
@@ -174,7 +198,7 @@ def list_collection_items(cid: int, page: int = Query(1, ge=1), page_size: int =
             by_prompt.setdefault(row["prompt_id"], []).append({
                 "id": row["id"],
                 "name": row["name"],
-                "icon": row["icon"]
+                "icon": row["icon"] or "⭐"
             })
         for item in items:
             item["collections"] = by_prompt.get(item["id"], [])
@@ -182,12 +206,14 @@ def list_collection_items(cid: int, page: int = Query(1, ge=1), page_size: int =
         for item in items:
             item["collections"] = []
 
+    # 分页
+    paged = items[offset:offset + page_size]
     return {
         "total": total,
         "page": page,
         "page_size": page_size,
         "total_pages": max(1, (total + page_size - 1) // page_size),
-        "items": items
+        "items": paged
     }
 
 
