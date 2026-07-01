@@ -281,24 +281,40 @@ async def cache_control_middleware(request: Request, call_next):
         response.headers["Expires"] = "0"
     return response
 
-# ============ HTTP 请求记录中间件（v16: 接入日志引擎） ============
+# ============ HTTP 请求记录中间件（v17: request_id + breadcrumb + body capture）============
 @app.middleware("http")
 async def record_request_middleware(request: Request, call_next):
-    import time as _time
+    import time as _time, uuid
     t0 = _time.time()
+    # Phase17: 生成请求ID — 关联前端行为 + 后端日志 + 错误面包屑
+    request_id = request.headers.get("X-Request-ID", "") or uuid.uuid4().hex[:12]
+    request.state.request_id = request_id
     try:
         response = await call_next(request)
         duration = (_time.time() - t0) * 1000
         from api.monitor import record_request
         record_request(request.method, request.url.path, response.status_code, duration)
-        # 慢请求 + 错误请求记录日志
         if response.status_code >= 400 or duration > 500:
-            api_log(request.method, request.url.path, response.status_code, duration)
+            body = ""
+            try:
+                if request.method in ("POST", "PUT", "PATCH") and hasattr(request, '_body'):
+                    body = request._body.decode("utf-8", errors="replace")[:2000]
+            except: pass
+            api_log(request.method, request.url.path, response.status_code, duration, request_body=body)
+        response.headers["X-Request-ID"] = request_id
         return response
-    except Exception:
+    except Exception as exc:
         duration = (_time.time() - t0) * 1000
         from api.monitor import record_request
         record_request(request.method, request.url.path, 500, duration)
+        from logger import capture_exception
+        body = ""
+        try:
+            if request.method in ("POST", "PUT", "PATCH"):
+                raw = await request.body()
+                body = raw.decode("utf-8", errors="replace")[:2000]
+        except: pass
+        capture_exception(exc, source="api", path=request.url.path, status_code=500, request_body=body)
         raise
 
 app.include_router(prompts_router)
@@ -436,18 +452,26 @@ async def backup_now():
 # ============ 全局异常处理器 (v16: 接入日志引擎) ============
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    # Phase17: 捕获请求体辅助排错
+    # Phase17: 捕获请求体 + session_id + request_id + 刷面包屑
     body = ""
+    request_id = getattr(request.state, "request_id", "unknown")
+    session_id = getattr(request.state, "session_id", "")
     try:
         if request.method in ("POST", "PUT", "PATCH"):
             raw = await request.body()
             body = raw.decode("utf-8", errors="replace")[:2000]
     except Exception:
         body = "[unreadable]"
+    # 刷入面包屑
+    if session_id:
+        try:
+            from breadcrumb_logger import flush_breadcrumbs
+            flush_breadcrumbs(session_id)
+        except: pass
     capture_exception(exc, source="api", path=request.url.path, status_code=500, request_body=body)
     return JSONResponse(
         status_code=500,
-        content={"ok": False, "error": "服务器内部错误", "detail": str(exc)[:200]}
+        content={"ok": False, "error": "服务器内部错误", "detail": str(exc)[:200], "request_id": request_id}
     )
 
 
