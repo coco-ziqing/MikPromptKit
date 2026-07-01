@@ -41,12 +41,18 @@ App.wordEditor.open = async function(options) {
     }
 
     m.style.display = 'flex';
+
+    // Phase17: ESC 关闭弹窗
+    this._escHandler = function(e) { if (e.key === 'Escape') App.wordEditor.close(); };
+    document.addEventListener('keydown', this._escHandler);
 };
 
 App.wordEditor.close = function() {
     var m = document.getElementById('modalWordEdit');
     if (m) m.style.display = 'none';
     this._cardId = null;
+    // Phase17: 移除 ESC 监听
+    if (this._escHandler) { document.removeEventListener('keydown', this._escHandler); this._escHandler = null; }
     // Phase17: 清理暂存缩略图
     if (this._pendingThumbBlobUrl && this._pendingThumbBlobUrl.startsWith('blob:')) {
         URL.revokeObjectURL(this._pendingThumbBlobUrl);

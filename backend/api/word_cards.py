@@ -486,7 +486,7 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
         if os.path.exists(orig_path): os.remove(orig_path)
         raise HTTPException(404, "词卡不存在")
     _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
-    db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, updated_at=datetime('now','localtime') WHERE id=?", [filename, TW, TH, card_id])
+    db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, original_ref=?, updated_at=datetime('now','localtime') WHERE id=?", [filename, TW, TH, orig_name, card_id])
     safe_commit()
     return {"ok": True, "filename": filename, "original": orig_name}
 
@@ -495,15 +495,19 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
 def delete_card_thumbnail(card_id: int):
     """删除词卡缩略图"""
     db = get_db()
-    card = safe_fetch_one("SELECT thumbnail FROM word_card WHERE id=?", [card_id])
+    card = safe_fetch_one("SELECT thumbnail, original_ref FROM word_card WHERE id=?", [card_id])
     if not card:
         raise HTTPException(404, "词卡不存在")
     if card["thumbnail"]:
         p = os.path.join(WC_THUMB_DIR, os.path.basename(card["thumbnail"]))
         if os.path.exists(p):
             os.remove(p)
-        db.execute("UPDATE word_card SET thumbnail='', updated_at=datetime('now','localtime') WHERE id=?", [card_id])
-        safe_commit()
+    if card["original_ref"]:
+        p2 = os.path.join(WC_MEDIA_DIR, "originals", os.path.basename(card["original_ref"]))
+        if os.path.exists(p2):
+            os.remove(p2)
+    db.execute("UPDATE word_card SET thumbnail='', original_ref='', updated_at=datetime('now','localtime') WHERE id=?", [card_id])
+    safe_commit()
     return {"ok": True}
 
 
