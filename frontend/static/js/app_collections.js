@@ -1267,25 +1267,8 @@ Object.assign(App, {
             await this.loadCollections();
             // 刷新收藏夹视图
             if (this.state.currentView === 'collections') this.renderCollections();
-            // 如果查看器开着,刷新右侧勾选列表
-            if (document.getElementById('modalImageViewer').style.display !== 'none') {
-                var pid = document.getElementById('imgViewerContent').getAttribute('data-prompt-id');
-                if (pid) {
-                    var self = this;
-                    this.fetchJSON('/api/prompts/' + pid).then(function(d) {
-                        if (d) self._fillViewerPanel('imgViewer', d);
-                    });
-                }
-            }
-            if (document.getElementById('modalVideoViewer').style.display !== 'none') {
-                var pid = document.getElementById('vidViewerContent').getAttribute('data-prompt-id');
-                if (pid) {
-                    var self = this;
-                    this.fetchJSON('/api/prompts/' + pid).then(function(d) {
-                        if (d) self._fillViewerPanel('vidViewer', d);
-                    });
-                }
-            }
+            // 刷新查看器右侧收藏勾选列表（使用 _refreshViewerPanels 兼容 prompts/word_card 双源）
+            if (typeof this._refreshViewerPanels === 'function') this._refreshViewerPanels();
             // 如果有待收藏的词条
             if (this._pendingCollectId) {
                 const pid = this._pendingCollectId;
