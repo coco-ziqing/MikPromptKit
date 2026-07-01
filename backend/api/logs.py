@@ -78,18 +78,21 @@ def report_frontend_error(data: FrontendError):
     return {"ok": True}
 
 
-class BreadcrumbData(BaseModel):
-    session_id: str = ""
-    crumbs: list = []
-
-
 @router.post("/breadcrumbs")
-async def report_breadcrumbs(data: BreadcrumbData):
-    """前端上报面包屑（错误上下文）"""
+async def report_breadcrumbs(request: Request):
+    """前端上报面包屑（错误上下文）— 兼容 sendBeacon text/plain"""
     from breadcrumb_logger import record_breadcrumb, flush_breadcrumbs
-    for c in data.crumbs:
-        record_breadcrumb(data.session_id, c.get("event", ""), c.get("data", ""))
-    flush_breadcrumbs(data.session_id)
+    try:
+        # sendBeacon 发 text/plain，手动解析 JSON
+        raw = await request.body()
+        data = json.loads(raw.decode("utf-8", errors="replace"))
+        sid = data.get("session_id", "")
+        crumbs = data.get("crumbs", [])
+        for c in crumbs:
+            record_breadcrumb(sid, c.get("event", ""), c.get("data", ""))
+        flush_breadcrumbs(sid)
+    except Exception as e:
+        pass  # sendBeacon 不可重试，静默丢弃
     return {"ok": True}
 
 

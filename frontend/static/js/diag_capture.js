@@ -158,6 +158,13 @@
         if (error && error.stack) stack = error.stack;
         else { try { throw new Error(); } catch(e) { stack = e.stack || ''; } }
 
+        // 噪声过滤：浏览器扩展注入的 SyntaxError 不上报
+        if (message && (message.indexOf('Unexpected token') >= 0 || message.indexOf('Script error') >= 0) && source && source.indexOf(':1') >= 0) {
+            // 来源为 :1 表示行1列开始，非项目代码（浏览器扩展注入）
+            if (_origOnError) return _origOnError.apply(this, arguments);
+            return false;
+        }
+
         // 上报错误 + 面包屑
         var payload = {
             message: String(message).substring(0, 500),
@@ -343,9 +350,8 @@
                 badge.style.display = 'none';
             }
         };
-        var fc = actions.firstChild;
-        if (fc) actions.insertBefore(btn, fc);
-        else actions.appendChild(btn);
+        // Phase17: 放到最后面
+        actions.appendChild(btn);
     }
 
     if (document.readyState === 'loading') {
