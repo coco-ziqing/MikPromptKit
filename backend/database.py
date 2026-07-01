@@ -78,13 +78,13 @@ def safe_commit():
     """安全提交事务（WAL 模式下自动重试锁冲突）"""
     import time as _time
     db = get_db()
-    for attempt in range(3):
+    for attempt in range(10):
         try:
             db.commit()
             return True
         except sqlite3.OperationalError as e:
-            if 'locked' in str(e).lower() and attempt < 2:
-                _time.sleep(0.2 * (attempt + 1))
+            if ('locked' in str(e).lower() or 'busy' in str(e).lower()) and attempt < 9:
+                _time.sleep(0.3 * (attempt + 1))
                 continue
             log_error(f"[DB] 提交失败: {e}", source="database")
             return False
