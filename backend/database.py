@@ -75,17 +75,23 @@ def safe_execute(sql, params=None, commit=False):
 
 
 def safe_commit():
-    """安全提交事务（WAL 模式下自动重试锁冲突）"""
+    """安全提交事务（强制 checkpoint 后重试）"""
     import time as _time
     db = get_db()
-    for attempt in range(10):
+    for attempt in range(15):
         try:
             db.commit()
             return True
         except sqlite3.OperationalError as e:
-            if ('locked' in str(e).lower() or 'busy' in str(e).lower()) and attempt < 9:
-                _time.sleep(0.3 * (attempt + 1))
-                continue
+            err = str(e).lower()
+            if ('locked' in err or 'busy' in err):
+                if attempt >= 5:
+                    # 5 次失败后强制 checkpoint 释放 WAL
+                    try: db.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                    except: pass
+                if attempt < 14:
+                    _time.sleep(0.5 * (attempt + 1))
+                    continue
             log_error(f"[DB] 提交失败: {e}", source="database")
             return False
         except sqlite3.Error as e:
