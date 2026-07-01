@@ -146,41 +146,42 @@ def delete_collection(cid: int):
 
 @router.get("/collections/{cid}/items")
 def list_collection_items(cid: int, page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200)):
-    """查询收藏分组内的词条 — 兼容 prompts + word_card 双数据源"""
+    """查询收藏分组内的词条 — 优先 word_card，旧 prompts 为 fallback"""
     db = get_db()
     total = db.execute(
         "SELECT COUNT(*) as cnt FROM collection_items WHERE collection_id=?", [cid]
     ).fetchone()["cnt"]
 
     offset = (page - 1) * page_size
-    # Phase17: 先查 prompts，再查 word_card，合并结果
-    rows_p = db.execute("""
-        SELECT p.id, p.module, p.category, p.subcategory, p.content,
-               p.meaning, p.scene, p.tags, p.usage_count,
-               pt.filename as thumbnail, pv.filename as video_filename, pv.poster as video_poster,
-               pv.fps as video_fps, pv.duration as video_duration,
-               ci.note, ci.added_at as collected_at
+    # Phase17 修复：word_card 优先 + COALESCE 防重复，旧 prompts 表数据为 fallback
+    all_rows = db.execute("""
+        SELECT
+            ci.prompt_id as id,
+            COALESCE(wc.module, p.module, '') as module,
+            COALESCE(wc.category, p.category, '') as category,
+            CASE WHEN wc.id IS NOT NULL THEN '' WHEN p.subcategory IS NOT NULL THEN p.subcategory ELSE '' END as subcategory,
+            COALESCE(wc.content, p.content, '') as content,
+            COALESCE(wc.meaning, p.meaning, '') as meaning,
+            COALESCE(wc.scene, p.scene, '') as scene,
+            COALESCE(wc.tags, p.tags, '[]') as tags,
+            COALESCE(wc.usage_count, p.usage_count, 0) as usage_count,
+            COALESCE(wc.thumbnail, pt.filename, '') as thumbnail,
+            COALESCE(wc.thumbnail, pv.poster, '') as original_ref,
+            wc.preview_media as video_filename,
+            '' as video_poster,
+            '' as video_fps,
+            '' as video_duration,
+            ci.note, ci.added_at as collected_at
         FROM collection_items ci
-        JOIN prompts p ON p.id = ci.prompt_id AND p.deleted_at IS NULL
-        LEFT JOIN prompt_thumbnails pt ON pt.prompt_id = p.id
-        LEFT JOIN prompt_videos pv ON pv.prompt_id = p.id
+        LEFT JOIN word_card wc ON wc.id = ci.prompt_id AND wc.is_deleted=0
+        LEFT JOIN prompts p ON p.id = ci.prompt_id AND p.deleted_at IS NULL AND wc.id IS NULL
+        LEFT JOIN prompt_thumbnails pt ON pt.prompt_id = ci.prompt_id
+        LEFT JOIN prompt_videos pv ON pv.prompt_id = ci.prompt_id
         WHERE ci.collection_id = ?
-    """, [cid]).fetchall()
+        ORDER BY ci.added_at DESC
+        LIMIT ? OFFSET ?
+    """, [cid, page_size, offset]).fetchall()
 
-    rows_wc = db.execute("""
-        SELECT wc.id, wc.module, wc.category, '' as subcategory, wc.content,
-               wc.meaning, wc.scene, wc.tags, wc.usage_count,
-               wc.thumbnail, wc.preview_media as video_filename, '' as video_poster,
-               '' as video_fps, '' as video_duration,
-               ci.note, ci.added_at as collected_at
-        FROM collection_items ci
-        JOIN word_card wc ON wc.id = ci.prompt_id AND wc.is_deleted=0
-        WHERE ci.collection_id = ?
-    """, [cid]).fetchall()
-
-    all_rows = list(rows_p) + list(rows_wc)
-    # 按收藏时间排序
-    all_rows.sort(key=lambda r: r["collected_at"] or "", reverse=True)
     items = [dict(r) for r in all_rows]
 
     # 为每条词条补充收藏归属信息
@@ -207,20 +208,19 @@ def list_collection_items(cid: int, page: int = Query(1, ge=1), page_size: int =
         for item in items:
             item["collections"] = []
 
-    # 分页
-    paged = items[offset:offset + page_size]
+    # SQL 已处理分页，直接返回
     return {
         "total": total,
         "page": page,
         "page_size": page_size,
         "total_pages": max(1, (total + page_size - 1) // page_size),
-        "items": paged
+        "items": items
     }
 
 
 @router.post("/collections/{cid}/items")
 def add_to_collection(cid: int, data: dict):
-    """添加词条到收藏"""
+    """添加词条到收藏（兼容 prompts + word_card 双数据源）"""
     db = get_db()
     prompt_id = data.get("prompt_id")
     if not prompt_id:
@@ -233,18 +233,24 @@ def add_to_collection(cid: int, data: dict):
     if existing:
         raise HTTPException(409, "该词条已在收藏中")
     import time as _time
-    for attempt in range(3):
+    for attempt in range(5):
         try:
             db.execute("INSERT INTO collection_items (collection_id, prompt_id) VALUES (?, ?)",
                        [cid, prompt_id])
-            safe_commit()
+            ok = safe_commit()
+            if not ok:
+                raise Exception("提交失败")
             return {"ok": True}
-        except sqlite3.IntegrityError:
-            raise HTTPException(409, "该词条已在收藏中")
         except Exception as e:
-            if 'locked' in str(e).lower() and attempt < 2:
-                _time.sleep(0.2 * (attempt + 1))
-                continue
+            err = str(e).lower()
+            # UNIQUE 约束冲突 → 已收藏
+            if 'unique' in err or 'integrity' in err:
+                raise HTTPException(409, "该词条已在收藏中")
+            # 数据库锁 → 重试
+            if 'locked' in err or 'busy' in err:
+                if attempt < 4:
+                    _time.sleep(0.2 * (attempt + 1))
+                    continue
             raise HTTPException(500, f"添加收藏失败: {str(e)}")
 
 
