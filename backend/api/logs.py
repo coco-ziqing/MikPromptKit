@@ -1,10 +1,11 @@
 """
-v4.3.0-phase16: Log API — 日志查询/实时流/清除/统计
+v4.3.0-phase16: Log API — 日志查询/实时流/清除/统计 + Phase17 用户行为追踪
 """
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from logger import query, stats, clear_before, stream_generator
+from action_logger import record_action, query_actions, action_stream_generator
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 
@@ -65,3 +66,75 @@ def report_frontend_error(data: FrontendError):
         path=data.url
     )
     return {"ok": True}
+
+
+# ============================
+# Phase17: 用户行为追踪 API
+# ============================
+
+class ActionEntry(BaseModel):
+    action: str = ""
+    category: str = "click"
+    target: str = ""
+    detail: str = ""
+    url: str = ""
+    user_agent: str = ""
+
+
+class BatchActions(BaseModel):
+    actions: list = []
+
+
+@router.post("/actions")
+async def report_batch_actions(batch: BatchActions, request: Request):
+    """批量接收前端用户行为"""
+    client_ip = request.client.host if request.client else ""
+    count = 0
+    for item in batch.actions:
+        if isinstance(item, dict):
+            record_action(
+                action=item.get("action", ""),
+                category=item.get("category", "click"),
+                target=item.get("target", ""),
+                detail=item.get("detail", ""),
+                url=item.get("url", ""),
+                user_agent=item.get("user_agent", ""),
+                client_ip=client_ip,
+            )
+            count += 1
+    return {"ok": True, "count": count}
+
+
+@router.post("/action")
+async def report_single_action(data: ActionEntry, request: Request):
+    """单条用户行为上报"""
+    client_ip = request.client.host if request.client else ""
+    record_action(
+        action=data.action,
+        category=data.category,
+        target=data.target,
+        detail=data.detail,
+        url=data.url,
+        user_agent=data.user_agent,
+        client_ip=client_ip,
+    )
+    return {"ok": True}
+
+
+@router.get("/actions")
+def query_user_actions(
+    category: str = Query(None),
+    action: str = Query(None),
+    search: str = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0)
+):
+    """查询用户操作记录"""
+    items, total = query_actions(category=category, action=action, search=search, limit=limit, offset=offset)
+    return {"ok": True, "items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@router.get("/actions/stream")
+async def stream_actions():
+    """SSE 实时用户操作流"""
+    return StreamingResponse(action_stream_generator(), media_type="text/event-stream")
