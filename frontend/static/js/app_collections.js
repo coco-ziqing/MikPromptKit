@@ -927,13 +927,13 @@ Object.assign(App, {
         for (const card of data.items) {
             html += `
                 <div class="prompt-card">
-                    <span class="card-badge">${this._escape(p.module)}</span>
-                    <div class="card-content" id="cc_${p.id}">${this._escape(p.content)}</div>
-                    ${p.meaning ? `<div class="card-meaning">${this._escape(p.meaning)}</div>` : ''}
+                    <span class="card-badge">${this._escape(card.module)}</span>
+                    <div class="card-content" id="cc_${card.id}">${this._escape(card.content)}</div>
+                    ${card.meaning ? `<div class="card-meaning">${this._escape(card.meaning)}</div>` : ''}
                     <div class="card-actions">
-                        <span style="font-size:11px;color:#94a3b8;margin-right:auto;">${p.used_at ? p.used_at.substring(0, 16) : ''}</span>
-                        <button class="btn-copy" onclick="App.trackUsage(${p.id});App.copyText('${this._escape(p.content).replace(/'/g, "\\'")}')">📋 复制</button>
-                        <button class="btn-copy" style="border-color:#ef4444;color:#ef4444;padding:3px 8px;" onclick="App.deleteHistoryItem(${p.id})">×</button>
+                        <span style="font-size:11px;color:#94a3b8;margin-right:auto;">${card.used_at ? card.used_at.substring(0, 16) : ''}</span>
+                        <button class="btn-copy" onclick="App.trackUsage(${card.id});App.copyText('${this._escape(card.content).replace(/'/g, "\\'")}')">📋 复制</button>
+                        <button class="btn-copy" style="border-color:#ef4444;color:#ef4444;padding:3px 8px;" onclick="App.deleteHistoryItem(${card.id})">×</button>
                     </div>
                 </div>
             `;

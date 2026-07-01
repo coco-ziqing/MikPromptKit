@@ -300,7 +300,7 @@ async def record_request_middleware(request: Request, call_next):
                 if request.method in ("POST", "PUT", "PATCH") and hasattr(request, '_body'):
                     body = request._body.decode("utf-8", errors="replace")[:2000]
             except: pass
-            api_log(request.method, request.url.path, response.status_code, duration, request_body=body)
+            api_log(request.method, request.url.path, response.status_code, duration, request_body=body, request_id=request_id)
         response.headers["X-Request-ID"] = request_id
         return response
     except Exception as exc:
@@ -314,7 +314,7 @@ async def record_request_middleware(request: Request, call_next):
                 raw = await request.body()
                 body = raw.decode("utf-8", errors="replace")[:2000]
         except: pass
-        capture_exception(exc, source="api", path=request.url.path, status_code=500, request_body=body)
+        capture_exception(exc, source="api", path=request.url.path, status_code=500, request_body=body, request_id=request.state.request_id if hasattr(request.state,'request_id') else "")
         raise
 
 app.include_router(prompts_router)

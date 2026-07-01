@@ -335,8 +335,13 @@
         badge.style.cssText = 'position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-radius:50%;background:#ef4444;display:none;';
         btn.appendChild(badge);
         btn.onclick = function() {
-            App.logs.open();
-            badge.style.display = 'none';
+            var panel = document.getElementById('diagPanel');
+            if (panel && panel.style.display === 'flex') {
+                App.logs.closeDiag();
+            } else {
+                App.logs.open();
+                badge.style.display = 'none';
+            }
         };
         var fc = actions.firstChild;
         if (fc) actions.insertBefore(btn, fc);
