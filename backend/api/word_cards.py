@@ -470,7 +470,10 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
     _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
     db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', updated_at=datetime('now','localtime') WHERE id=?", [filename, card_id])
     safe_commit()
-    return {"ok": True, "filename": filename}@router.delete("/{card_id}/thumbnail")
+    return {"ok": True, "filename": filename}
+
+
+@router.delete("/{card_id}/thumbnail")
 def delete_card_thumbnail(card_id: int):
     """删除词卡缩略图"""
     db = get_db()
