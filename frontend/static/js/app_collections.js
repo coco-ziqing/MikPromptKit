@@ -319,7 +319,7 @@ Object.assign(App, {
                 <div class="collection-card" onclick="App.openCollection(${c.id})">
                     <div class="coll-left">
                         <div style="display:flex;align-items:center;gap:8px;">
-                            <span style="font-size:22px;">${this._escape(c.icon || '⭐')}</span>
+                            <span style="font-size:22px;flex-shrink:0;">${c.icon || '⭐'}</span>
                             <div class="card-name">${this._escape(c.name)}</div>
                             <div class="card-count">${c.item_count} 条</div>
                         </div>
@@ -436,7 +436,7 @@ Object.assign(App, {
                             ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (p.video_filename ? 'App.openVideoViewer(\'' + p.video_filename + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + p.thumbnail + '\', \'' + p.id + '\')') + '" title="' + (p.video_filename ? App._t('auto.view_原视频', '查看原视频') : App._t('auto.view_原图', '查看原图')) + '">' + (p.video_filename ? '▶' : '🔍') + '</span>' : ''}
                         </div>
                         <div class="card-add-row">
-                            <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title=App._t('auto.add_到收藏分组', '添加到收藏分组')>+</span>
+                            <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>
                             <div class="card-collections">
                                 <div class="card-checkbox">
                                     <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="App.toggleSelect(${p.id})">
