@@ -299,7 +299,7 @@ Object.assign(App, {
                             ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (videoFile ? 'App.openVideoViewer(\'' + videoFile + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + videoFps + '\')' : 'App.openImageViewer(\'' + origFile + '\', \'' + p.id + '\')') + '" title="' + (videoFile ? App._t('auto.view_原视频', '查看原视频') : App._t('auto.view_原图', '查看原图')) + '">' + (videoFile ? '▶' : '🔍') + '</span>' : ''}
                         </div>
                         <div class="card-add-row">
-                            <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title=App._t('auto.add_到收藏分组', '添加到收藏分组')>+</span>
+                            <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>
                             ${App.state.editMode ? '' : ''}
                             <div class="card-collections">
                                 <div class="card-checkbox">

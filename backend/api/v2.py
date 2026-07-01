@@ -7,9 +7,10 @@ import os
 import uuid
 import zipfile
 import datetime
+import sqlite3
 from fastapi import APIRouter, Query, HTTPException, Response, UploadFile, File, Form
 from pydantic import BaseModel
-from database import get_db
+from database import get_db, safe_commit
 import traceback
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
@@ -224,13 +225,27 @@ def add_to_collection(cid: int, data: dict):
     prompt_id = data.get("prompt_id")
     if not prompt_id:
         raise HTTPException(400, "缺少 prompt_id")
-    try:
-        db.execute("INSERT INTO collection_items (collection_id, prompt_id) VALUES (?, ?)",
-                   [cid, prompt_id])
-        db.commit()
-        return {"ok": True}
-    except Exception:
+    # Phase17: 先 check 再 insert + 重试防 WAL 锁
+    existing = db.execute(
+        "SELECT 1 FROM collection_items WHERE collection_id=? AND prompt_id=?",
+        [cid, prompt_id]
+    ).fetchone()
+    if existing:
         raise HTTPException(409, "该词条已在收藏中")
+    import time as _time
+    for attempt in range(3):
+        try:
+            db.execute("INSERT INTO collection_items (collection_id, prompt_id) VALUES (?, ?)",
+                       [cid, prompt_id])
+            safe_commit()
+            return {"ok": True}
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "该词条已在收藏中")
+        except Exception as e:
+            if 'locked' in str(e).lower() and attempt < 2:
+                _time.sleep(0.2 * (attempt + 1))
+                continue
+            raise HTTPException(500, f"添加收藏失败: {str(e)}")
 
 
 @router.post("/collections/{cid}/reorder")
