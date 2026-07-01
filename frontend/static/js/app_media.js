@@ -923,144 +923,42 @@ Object.assign(App, {
 
     // ============ 原图查看器(滚轮缩放 + 拖拽移动) ============
 
-openImageViewer(filename, promptId) {
+    openImageViewer(filename, promptId) {
         var modal = document.getElementById('modalImageViewer');
         var img = document.getElementById('imageViewerImg');
 
+        if (!filename) { App.showToast('暂无原图', 'warning'); return; }
+
+        // Phase17: CSS object-fit — 完整显示原图, 删 150 行 transform
         img.src = '/api/thumbnails/original/' + filename;
+        img.style.maxWidth = '100%';
+        img.style.maxHeight = '100%';
+        img.style.objectFit = 'contain';
+        img.style.transform = '';
+        img.style.cursor = 'default';
+        img.onload = null;
+        img.onwheel = null;
+        img.onmousedown = null;
+        img.ondblclick = null;
+        img.ontouchstart = null;
+        img.ontouchmove = null;
+        img.ontouchend = null;
         modal.style.display = 'flex';
 
-        var scale = 1, transX = 0, transY = 0;
-        var isDrag = false, startX = 0, startY = 0;
-
-        // 适配屏幕尺寸
-        img.onload = function() {
-            var vw = window.innerWidth * 0.85;
-            var vh = window.innerHeight * 0.85;
-            var iw = img.naturalWidth;
-            var ih = img.naturalHeight;
-            var fit = Math.min(vw / iw, vh / ih, 1);
-            if (fit >= 1) {
-                img.style.maxWidth = '90vw';
-                img.style.maxHeight = '90vh';
-            } else {
-                img.style.maxWidth = 'none';
-                img.style.maxHeight = 'none';
-                img.width = Math.round(iw * fit);
-                img.height = Math.round(ih * fit);
-            }
-            // 加载后重置变换
-            applyTransform();
-        };
-
-        // 渲染右侧详情面板
         this._renderViewerRight('imgViewer', promptId);
-
-        // 禁止浏览器原生图片拖拽
-        img.setAttribute('draggable', 'false');
-        img.style.transformOrigin = '0 0';
-        img.style.cursor = 'grab';
-        applyTransform();
-
-        function applyTransform() {
-            img.style.transform = 'translate(' + transX + 'px, ' + transY + 'px) scale(' + scale + ')';
-        }
 
         var closeFn = function() {
             modal.style.display = 'none';
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-            document.removeEventListener('keydown', escHandler);
-            img.onwheel = null;
-            img.onmousedown = null;
-            img.ondblclick = null;
             img.onload = null;
-            modal.onclick = null;
-            if (closeBtn) closeBtn.onclick = null;
+            document.removeEventListener('keydown', escHandler);
         };
 
-        var escHandler = function(e) {
-            if (e.key === 'Escape') closeFn();
-        };
+        var escHandler = function(e) { if (e.key === 'Escape') closeFn(); };
         document.addEventListener('keydown', escHandler);
 
-        function onMove(e) {
-            if (!isDrag) return;
-            e.preventDefault();
-            transX = e.clientX - startX;
-            transY = e.clientY - startY;
-            applyTransform();
-        }
-
-        function onUp(e) {
-            isDrag = false;
-            img.style.cursor = 'grab';
-        }
-
-        img.onmousedown = function(e) {
-            e.preventDefault();  // 阻止浏览器原生图片拖拽/保存
-            startX = e.clientX - transX;
-            startY = e.clientY - transY;
-            isDrag = true;
-            img.style.cursor = 'grabbing';
-        };
-
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-
-        // 滚轮缩放:以鼠标位置为中心
-        img.onwheel = function(e) {
-            e.preventDefault();
-            var rect = img.getBoundingClientRect();
-            var mx = e.clientX - rect.left;
-            var my = e.clientY - rect.top;
-            var delta = e.deltaY > 0 ? -0.1 : 0.1;
-            var ns = Math.max(0.2, Math.min(10, scale + delta));
-            var r = ns / scale;
-            transX = transX + mx * (1 - r);
-            transY = transY + my * (1 - r);
-            scale = ns;
-            applyTransform();
-        };
-
-        img.ondblclick = closeFn;
-
-        // 触摸
-        var lastDist = 0, lastTX = 0, lastTY = 0;
-        img.ontouchstart = function(e) {
-            if (e.touches.length === 1) {
-                lastTX = e.touches[0].clientX - transX;
-                lastTY = e.touches[0].clientY - transY;
-            } else if (e.touches.length === 2) {
-                var dx = e.touches[0].clientX - e.touches[1].clientX;
-                var dy = e.touches[0].clientY - e.touches[1].clientY;
-                lastDist = Math.sqrt(dx * dx + dy * dy);
-            }
-        };
-        img.ontouchmove = function(e) {
-            e.preventDefault();
-            if (e.touches.length === 1) {
-                transX = e.touches[0].clientX - lastTX;
-                transY = e.touches[0].clientY - lastTY;
-                applyTransform();
-            } else if (e.touches.length === 2) {
-                var dx = e.touches[0].clientX - e.touches[1].clientX;
-                var dy = e.touches[0].clientY - e.touches[1].clientY;
-                var dist = Math.sqrt(dx * dx + dy * dy);
-                if (lastDist > 0) {
-                    scale = Math.max(0.2, Math.min(10, scale * (dist / lastDist)));
-                    applyTransform();
-                }
-                lastDist = dist;
-            }
-        };
-        img.ontouchend = function() { lastDist = 0; };
-
+        modal.onclick = function(e) { if (e.target === modal) closeFn(); };
         var closeBtn = document.getElementById('imgViewerClose');
         if (closeBtn) closeBtn.onclick = closeFn;
-        modal.onclick = function(e) {
-            if (e.target === modal) closeFn();
-        };
     },
 
     closeImageViewer() {

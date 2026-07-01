@@ -738,7 +738,13 @@ body.dark-theme .seedance-tab:hover { background: #334155; }
     z-index: 5;
     border: 2px solid #fff;
     box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-    transition: transform 0.15s;
+    transition: transform 0.15s, opacity 0.15s;
+    opacity: 0;
+    pointer-events: none;
+}
+.prompt-card .card-thumb:hover .thumb-zoom-btn {
+    opacity: 1;
+    pointer-events: auto;
 }
 .prompt-card .card-thumb .thumb-zoom-btn:hover {
     transform: scale(1.2);

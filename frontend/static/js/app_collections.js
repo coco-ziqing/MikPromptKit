@@ -319,6 +319,7 @@ Object.assign(App, {
                 <div class="collection-card" onclick="App.openCollection(${c.id})">
                     <div class="coll-left">
                         <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:22px;">${this._escape(c.icon || '⭐')}</span>
                             <div class="card-name">${this._escape(c.name)}</div>
                             <div class="card-count">${c.item_count} 条</div>
                         </div>
