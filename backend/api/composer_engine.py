@@ -147,7 +147,7 @@ def fmt_header(proj: dict, fmt: str) -> str:
         return ""
 
     else:  # seedance (default)
-        parts = [f"{ar_label}{res}"]
+        parts = [f"{ar_label}{res} ({pix})"]
         if style:
             parts.append(style)
         parts.append(f"{dur}s")

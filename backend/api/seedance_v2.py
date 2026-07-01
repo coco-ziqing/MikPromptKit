@@ -18,14 +18,14 @@ router = APIRouter(prefix="/api/seedance/v2", tags=["seedance-v2"])
 # 词卡缩略图存储目录
 WC_THUMB_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "data", "wordcard_thumbs"
+    "data", "wc_media", "thumbs"
 )
 os.makedirs(WC_THUMB_DIR, exist_ok=True)
 
-# 词卡视频存储目录
+# 词卡视频存储目录（统一到 wc_media）
 WC_VIDEO_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "data", "wordcard_videos"
+    "data", "wc_media", "videos"
 )
 os.makedirs(WC_VIDEO_DIR, exist_ok=True)
 
@@ -127,13 +127,30 @@ def get_card(card_id: int):
 
 # ==================== 词卡缩略图 ====================
 
+def _resolve_card_id(db, card_id: int):
+    """解析前端传入的card_id: 可能是VIEW的old_id或word_card真实new_id"""
+    # 先查 seedance_id_map (old→new)
+    m = db.execute("SELECT new_id FROM seedance_id_map WHERE old_id=?", [card_id]).fetchone()
+    if m:
+        return m["new_id"]
+    # 再查 seedance_id_map 反向 (new→old, 前端直接传了真实ID)
+    m2 = db.execute("SELECT new_id FROM seedance_id_map WHERE new_id=?", [card_id]).fetchone()
+    if m2:
+        return m2["new_id"]
+    # 都不是→直接查 word_card 有无此ID
+    row = db.execute("SELECT id FROM word_card WHERE id=? AND is_deleted=0", [card_id]).fetchone()
+    return row["id"] if row else None
+
+
 @router.post("/cards/{card_id}/thumbnail")
 async def upload_word_card_thumbnail(card_id: int, file: UploadFile = File(...)):
     """为词卡上传缩略图（自动裁剪为 100x67 JPEG）"""
     db = get_db()
-    card = db.execute("SELECT * FROM prompt_word_card WHERE id=?", [card_id]).fetchone()
-    if not card:
+    resolved = _resolve_card_id(db, card_id)
+    if not resolved:
         raise HTTPException(404, "词卡不存在")
+    card_id = resolved
+    card = db.execute("SELECT * FROM word_card WHERE id=?", [card_id]).fetchone()
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"):
         raise HTTPException(400, "仅支持 jpg/png/gif/webp/bmp 格式")
@@ -162,16 +179,16 @@ async def upload_word_card_thumbnail(card_id: int, file: UploadFile = File(...))
         raise HTTPException(500, "Pillow 未安装")
     except Exception as e:
         raise HTTPException(500, f"缩略图处理失败: {str(e)}")
-    if card["preview_image"]:
-        old_path = os.path.join(WC_THUMB_DIR, card["preview_image"])
+    if card["thumbnail"]:
+        old_path = os.path.join(WC_THUMB_DIR, card["thumbnail"])
         if os.path.exists(old_path):
             os.remove(old_path)
     # 若已有视频预览，一并清除（图片替换视频）
-    if card["preview_video"]:
-        old_v = os.path.join(WC_VIDEO_DIR, card["preview_video"])
+    if card["preview_media"]:
+        old_v = os.path.join(WC_VIDEO_DIR, card["preview_media"])
         if os.path.exists(old_v):
             os.remove(old_v)
-    db.execute("UPDATE prompt_word_card SET preview_image=?, preview_video='' WHERE id=?", [filename, card_id])
+    db.execute("UPDATE word_card SET thumbnail=?, preview_media='' WHERE id=?", [filename, card_id])
     safe_commit()
     return {"ok": True, "filename": filename}
 
@@ -180,10 +197,13 @@ async def upload_word_card_thumbnail(card_id: int, file: UploadFile = File(...))
 def delete_word_card_thumbnail(card_id: int):
     """删除词卡缩略图"""
     db = get_db()
-    card = db.execute("SELECT preview_image FROM prompt_word_card WHERE id=?", [card_id]).fetchone()
+    card = db.execute("SELECT preview_image FROM word_card WHERE id=?", [card_id]).fetchone()
     if not card:
-        raise HTTPException(404, "词卡不存在")
-    if card["preview_image"]:
+        resolved = _resolve_card_id(db, card_id)
+        if not resolved:
+            raise HTTPException(404, "词卡不存在")
+        card = db.execute("SELECT preview_image FROM word_card WHERE id=?", [resolved]).fetchone()
+    if card["thumbnail"]:
         path = os.path.join(WC_THUMB_DIR, card["preview_image"])
         if os.path.exists(path):
             os.remove(path)
@@ -207,9 +227,11 @@ def serve_word_card_thumbnail(filename: str):
 async def upload_word_card_video(card_id: int, file: UploadFile = File(...)):
     """为词卡上传预览视频（mp4/webm/mov，最大50MB）"""
     db = get_db()
-    card = db.execute("SELECT * FROM prompt_word_card WHERE id=?", [card_id]).fetchone()
-    if not card:
+    resolved = _resolve_card_id(db, card_id)
+    if not resolved:
         raise HTTPException(404, "词卡不存在")
+    card_id = resolved
+    card = db.execute("SELECT * FROM word_card WHERE id=?", [card_id]).fetchone()
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in (".mp4", ".webm", ".mov"):
         raise HTTPException(400, "仅支持 mp4/webm/mov 格式")
@@ -221,16 +243,16 @@ async def upload_word_card_video(card_id: int, file: UploadFile = File(...)):
     with open(dest, "wb") as f:
         f.write(data)
     # 删除旧视频
-    if card["preview_video"]:
-        old_path = os.path.join(WC_VIDEO_DIR, card["preview_video"])
+    if card["preview_media"]:
+        old_path = os.path.join(WC_VIDEO_DIR, card["preview_media"])
         if os.path.exists(old_path):
             os.remove(old_path)
     # 若已有图片预览，一并清除（视频替换图片）
-    if card["preview_image"]:
-        old_i = os.path.join(WC_THUMB_DIR, card["preview_image"])
+    if card["thumbnail"]:
+        old_i = os.path.join(WC_THUMB_DIR, card["thumbnail"])
         if os.path.exists(old_i):
             os.remove(old_i)
-    db.execute("UPDATE prompt_word_card SET preview_video=?, preview_image='' WHERE id=?", [filename, card_id])
+    db.execute("UPDATE word_card SET preview_media=?, thumbnail='' WHERE id=?", [filename, card_id])
     safe_commit()
     return {"ok": True, "filename": filename}
 
@@ -242,11 +264,11 @@ def delete_word_card_video(card_id: int):
     card = db.execute("SELECT preview_video FROM prompt_word_card WHERE id=?", [card_id]).fetchone()
     if not card:
         raise HTTPException(404, "词卡不存在")
-    if card["preview_video"]:
-        path = os.path.join(WC_VIDEO_DIR, card["preview_video"])
+    if card["preview_media"]:
+        path = os.path.join(WC_VIDEO_DIR, card["preview_media"])
         if os.path.exists(path):
             os.remove(path)
-        db.execute("UPDATE prompt_word_card SET preview_video='' WHERE id=?", [card_id])
+        db.execute("UPDATE word_card SET preview_media='' WHERE id=?", [card_id])
         safe_commit()
     return {"ok": True}
 
@@ -323,17 +345,18 @@ def rename_library(lib_id: int, data: dict = Body(...)):
 def update_card(card_id: int, data: dict = Body(...)):
     """编辑自定义词条（仅限 is_system=0）"""
     db = get_db()
-    card = db.execute("SELECT * FROM prompt_word_card WHERE id=? AND is_system=0", [card_id]).fetchone()
+    resolved = _resolve_card_id(db, card_id)
+    if not resolved:
+        raise HTTPException(404, "词条不存在或不可编辑")
+    card_id = resolved
+    card = db.execute("SELECT * FROM word_card WHERE id=? AND is_builtin=0", [card_id]).fetchone()
     if not card:
         raise HTTPException(404, "词条不存在或不可编辑")
     word_text = data.get("word_text", "").strip()
     definition = data.get("definition", "")
     if not word_text:
         raise HTTPException(400, "word_text 必填")
-    db.execute("UPDATE prompt_word_card SET word_text=?, definition=? WHERE id=?", [word_text, definition, card_id])
-    # 同步 user_custom_word
-    db.execute("UPDATE user_custom_word SET word_text=?, definition=? WHERE library_id=? AND word_text=?",
-               [word_text, definition, card["library_id"], card["word_text"]])
+    db.execute("UPDATE word_card SET content=?, meaning=? WHERE id=?", [word_text, definition, card_id])
     safe_commit()
     return {"ok": True}
 
@@ -342,11 +365,14 @@ def update_card(card_id: int, data: dict = Body(...)):
 def delete_card(card_id: int):
     """删除自定义词条（仅限 is_system=0）"""
     db = get_db()
-    card = db.execute("SELECT * FROM prompt_word_card WHERE id=? AND is_system=0", [card_id]).fetchone()
+    resolved = _resolve_card_id(db, card_id)
+    if not resolved:
+        raise HTTPException(404, "词条不存在或不可删除")
+    card_id = resolved
+    card = db.execute("SELECT * FROM word_card WHERE id=? AND is_builtin=0", [card_id]).fetchone()
     if not card:
         raise HTTPException(404, "词条不存在或不可删除")
-    db.execute("DELETE FROM user_custom_word WHERE library_id=? AND word_text=?", [card["library_id"], card["word_text"]])
-    db.execute("DELETE FROM prompt_word_card WHERE id=?", [card_id])
+    db.execute("UPDATE word_card SET is_deleted=1, deleted_at=datetime('now','localtime') WHERE id=?", [card_id])
     safe_commit()
     return {"ok": True}
 
@@ -362,18 +388,19 @@ def create_library_card(lib_id: int, data: dict = Body(...)):
     lib = db.execute("SELECT * FROM prompt_library WHERE id=?", [lib_id]).fetchone()
     if not lib:
         raise HTTPException(404, "词库不存在")
-    # 写入词卡表
+    # 写入词卡表（直接写 word_card，VIEW 不支持 lastrowid）
     cur = db.execute(
-        "INSERT INTO prompt_word_card (library_id, word_text, definition, is_system, heat_weight) VALUES (?, ?, ?, 0, 0.5)",
+        "INSERT INTO word_card (group_id, content, meaning, is_builtin, heat_weight, module, category) VALUES (?, ?, ?, 0, 0.5, 'seedance_v2', 'seedance_v2')",
         [lib_id, word_text, definition]
     )
+    new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     # 同时追加入自定义词条表
     db.execute(
         "INSERT INTO user_custom_word (library_id, word_text, definition) VALUES (?, ?, ?)",
         [lib_id, word_text, definition]
     )
     safe_commit()
-    return {"ok": True, "id": cur.lastrowid}
+    return {"ok": True, "id": new_id}
 
 
 # ==================== 用户自定义词条 ====================
@@ -413,13 +440,14 @@ def create_custom_word(data: dict = Body(...)):
         "INSERT INTO user_custom_word (library_id, word_text, definition) VALUES (?, ?, ?)",
         [lib_id, word_text, definition]
     )
-    # 同时插入到词卡表方便检索
+    # 同时插入到词卡表方便检索（直接写 word_card）
     db.execute(
-        "INSERT INTO prompt_word_card (library_id, word_text, definition, is_system, heat_weight) VALUES (?, ?, ?, 0, 0.5)",
+        "INSERT INTO word_card (group_id, content, meaning, is_builtin, heat_weight, module, category) VALUES (?, ?, ?, 0, 0.5, 'seedance_v2', 'seedance_v2')",
         [lib_id, word_text, definition]
     )
+    new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     safe_commit()
-    return {"ok": True, "id": cur.lastrowid}
+    return {"ok": True, "id": new_id}
 
 
 @router.delete("/custom-words/{word_id}")
@@ -869,8 +897,12 @@ def update_scene(project_id: int, scene_id: int, data: dict = Body(...)):
     values = []
     for f in updatable:
         if f in data:
+            val = data[f]
+            # 防御：字符串字段自动 trim，空白值统一为空串
+            if isinstance(val, str):
+                val = val.strip()
             set_parts.append(f"{f}=?")
-            values.append(data[f])
+            values.append(val)
 
     if not set_parts:
         raise HTTPException(400, "无更新字段")
@@ -1039,6 +1071,12 @@ def compose_project(project_id: int, data: dict = Body({})):
     proj_dict = dict(proj)
     if not include_audio and proj_dict.get("audio_enabled"):
         include_audio = bool(int(proj_dict["audio_enabled"]))
+
+    # 合并前端实时全局参数（未保存的修改也生效）
+    for key in ["global_style", "global_transition", "negative_prompt", "aspect_ratio", "resolution", "total_duration"]:
+        val = data.get(key)
+        if val is not None and str(val).strip():
+            proj_dict[key] = str(val).strip()
 
     # 委托给共享引擎
     result = compose_full(scenes, proj_dict, fmt=fmt, density=density,

@@ -57,21 +57,34 @@ class SceneComposeReq(BaseModel):
     language: str = "zh"
 
 
-# ==================== DB: 确保 scene_profiles 表存在 ====================
+# ==================== DB: scene_profiles 表已在 init_db() 启动时创建 ====================
 def _ensure_scene_table():
+    """幂等保障：极端情况下表不存在则创建（正常路径在 init_db 已建好）"""
     db = get_db()
-    db.execute("""
-        CREATE TABLE IF NOT EXISTS scene_profiles (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            name            TEXT NOT NULL DEFAULT '',
-            settings_json   TEXT DEFAULT '{}',
-            is_builtin      INTEGER DEFAULT 0,
-            sort_order      INTEGER DEFAULT 0,
-            created_at      TEXT DEFAULT (datetime('now','localtime')),
-            updated_at      TEXT DEFAULT (datetime('now','localtime'))
-        )
-    """)
-    db.commit()
+    # 快速检查表是否存在，避免每次请求都跑 CREATE TABLE（DDL 持排他锁会导致并发死锁）
+    try:
+        db.execute("SELECT 1 FROM scene_profiles LIMIT 0")
+    except sqlite3.OperationalError:
+        # 表不存在时才创建
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS scene_profiles (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                name            TEXT NOT NULL DEFAULT '',
+                settings_json   TEXT DEFAULT '{}',
+                location_desc   TEXT DEFAULT '',
+                atmosphere      TEXT DEFAULT '',
+                architecture    TEXT DEFAULT '',
+                lighting_desc   TEXT DEFAULT '',
+                time_period     TEXT DEFAULT '',
+                weather_desc    TEXT DEFAULT '',
+                color_scheme    TEXT DEFAULT '',
+                is_builtin      INTEGER DEFAULT 0,
+                sort_order      INTEGER DEFAULT 0,
+                created_at      TEXT DEFAULT (datetime('now','localtime')),
+                updated_at      TEXT DEFAULT (datetime('now','localtime'))
+            )
+        """)
+        safe_commit()
 
 
 # ==================== 场景 CRUD ====================
@@ -121,10 +134,7 @@ def _save_scene_rich_fields(db, scene_id: int, settings: dict):
     vals.append(scene_id)
     sql = f"UPDATE scene_profiles SET {', '.join(set_parts)} WHERE id=?"
     db.execute(sql, vals)
-    try:
-        db.commit()
-    except:
-        safe_commit()
+    safe_commit()
 @router.get("/scenes")
 def list_scenes(page: int = 1, page_size: int = 20):
     _ensure_scene_table()
@@ -164,7 +174,7 @@ def create_scene(data: SceneCreate):
         "INSERT INTO scene_profiles (name, settings_json) VALUES (?,?)",
         [data.name, json.dumps(data.settings, ensure_ascii=False)]
     )
-    db.commit()
+    safe_commit()
     sid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     # 同步派生字段（场景库互通）
     _save_scene_rich_fields(db, sid, data.settings)
@@ -181,7 +191,7 @@ def update_scene(scene_id: int, data: SceneUpdate):
     if data.settings is not None:
         db.execute("UPDATE scene_profiles SET settings_json=?, updated_at=datetime('now','localtime') WHERE id=?",
                    [json.dumps(data.settings, ensure_ascii=False), scene_id])
-    db.commit()
+    safe_commit()
     # 同步派生字段
     if data.settings is not None:
         _save_scene_rich_fields(db, scene_id, data.settings)
@@ -193,7 +203,7 @@ def delete_scene(scene_id: int):
     _ensure_scene_table()
     db = get_db()
     db.execute("DELETE FROM scene_profiles WHERE id=?", [scene_id])
-    db.commit()
+    safe_commit()
     return {"ok": True}
 
 

@@ -75,8 +75,7 @@ def safe_execute(sql, params=None, commit=False):
 
 
 def safe_commit():
-    """安全提交事务（强制 checkpoint 后重试）"""
-    import time as _time
+    """安全提交事务（15次重试 + 5次后WAL checkpoint，根治 database is locked）"""
     db = get_db()
     for attempt in range(15):
         try:
@@ -84,13 +83,12 @@ def safe_commit():
             return True
         except sqlite3.OperationalError as e:
             err = str(e).lower()
-            if ('locked' in err or 'busy' in err):
+            if 'locked' in err or 'busy' in err:
                 if attempt >= 5:
-                    # 5 次失败后强制 checkpoint 释放 WAL
                     try: db.execute("PRAGMA wal_checkpoint(PASSIVE)")
                     except: pass
                 if attempt < 14:
-                    _time.sleep(0.5 * (attempt + 1))
+                    time.sleep(0.5 * (attempt + 1))
                     continue
             log_error(f"[DB] 提交失败: {e}", source="database")
             return False
@@ -684,6 +682,26 @@ def init_db():
                 created_at      TEXT DEFAULT (datetime('now','localtime')),
                 FOREIGN KEY (character_id) REFERENCES character_profiles(id) ON DELETE CASCADE
             );
+        """)
+
+        # === scene_profiles: 场景设定组装器 ===
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS scene_profiles (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                name            TEXT NOT NULL DEFAULT '',
+                settings_json   TEXT DEFAULT '{}',
+                location_desc   TEXT DEFAULT '',
+                atmosphere      TEXT DEFAULT '',
+                architecture    TEXT DEFAULT '',
+                lighting_desc   TEXT DEFAULT '',
+                time_period     TEXT DEFAULT '',
+                weather_desc    TEXT DEFAULT '',
+                color_scheme    TEXT DEFAULT '',
+                is_builtin      INTEGER DEFAULT 0,
+                sort_order      INTEGER DEFAULT 0,
+                created_at      TEXT DEFAULT (datetime('now','localtime')),
+                updated_at      TEXT DEFAULT (datetime('now','localtime'))
+            )
         """)
 
         conn.commit()
