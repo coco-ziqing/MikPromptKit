@@ -1314,15 +1314,17 @@ Object.assign(App, {
     async _toggleViewerCollect(cid, pid, checkbox) {
         if (checkbox.checked) {
             // 添加到收藏
-            await this.fetchJSON('/api/v2/collections/' + cid + '/items', {
+            var r = await this.fetchJSON('/api/v2/collections/' + cid + '/items', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ prompt_id: pid })
             });
+            if (!r) { checkbox.checked = false; this.showToast('添加收藏失败', 'error'); return; }
             this.showToast('已添加到收藏', 'success');
         } else {
             // 从收藏移除
-            await this.fetchJSON('/api/v2/collections/' + cid + '/items/' + pid, { method: 'DELETE' });
+            var r2 = await this.fetchJSON('/api/v2/collections/' + cid + '/items/' + pid, { method: 'DELETE' });
+            if (!r2) { checkbox.checked = true; this.showToast('移除收藏失败', 'error'); return; }
             this.showToast('已从收藏移除', 'info');
         }
         // 刷新查看器右侧面板 + 首页卡片收藏徽标
@@ -1365,9 +1367,9 @@ Object.assign(App, {
                 if (el) {
                     var pid = parseInt(el.getAttribute('data-prompt-id'));
                     if (pid) {
-                        self.fetchJSON('/api/prompts/' + pid).then(function(d) {
-                            if (d) self._fillViewerPanel(prefix, d);
-                        });
+                        // 直接重载收藏勾选列表，不重新取 prompt 数据
+                        var collDiv = document.getElementById(prefix + 'Collections');
+                        if (collDiv) self._loadViewerCollections(prefix, pid, collDiv);
                     }
                 }
             }
@@ -1422,24 +1424,46 @@ Object.assign(App, {
         }
         var collDiv = document.getElementById(prefix + 'Collections');
         if (collDiv) {
-            var allC = this.state.collections;
-            var pColls = p.collections || [];
-            var checked = {};
-            for (var ci = 0; ci < pColls.length; ci++) {
-                checked[pColls[ci].id] = true;
-            }
-            var ch = '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">收藏分组:</div>';
-            if (allC && allC.length > 0) {
-                for (var ci2 = 0; ci2 < allC.length; ci2++) {
-                    var cc = allC[ci2];
-                    var isChk = checked[cc.id] ? 'checked' : '';
-                    ch += '<label class="viewer-coll-check"><input type="checkbox" ' + isChk + ' data-cid="' + cc.id + '" data-pid="' + p.id + '" onchange="App._toggleViewerCollect(' + cc.id + ', ' + p.id + ', this)"> ' + (cc.icon || '⭐') + ' ' + (cc.name || '') + '</label>';
-                }
-            } else {
-                ch += '<div style="font-size:12px;color:#64748b;">暂无收藏分组</div>';
-            }
-            collDiv.innerHTML = ch;
+            // 延迟渲染收藏列表（先显示骨架，异步加载实际数据）
+            collDiv.innerHTML = '<div style="font-size:12px;color:#94a3b8;">收藏分组加载中...</div>';
+            this._loadViewerCollections(prefix, p.id, collDiv);
         }
+    },
+
+    // 独立异步加载查看器收藏勾选列表（不依赖 p.collections，兼容 prompts/word_card 双源）
+    async _loadViewerCollections(prefix, pid, collDiv) {
+        var allC = this.state.collections;
+        if (!allC || allC.length === 0) {
+            // 确保 collection 列表已加载
+            await this.loadCollections();
+            allC = this.state.collections;
+        }
+        // 批量查询此 prompt 的收藏归属
+        var checked = {};
+        try {
+            var collMap = await this.fetchJSON('/api/v2/collections/prompt-batch?ids=' + pid, { _timeoutMs: 4000 });
+            if (collMap) {
+                var entries = collMap[String(pid)] || collMap[pid] || [];
+                for (var ei = 0; ei < entries.length; ei++) {
+                    checked[entries[ei].id] = true;
+                }
+            }
+        } catch(e) {
+            console.warn('[viewer] 收藏查询失败:', e.message);
+        }
+        var ch = '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">收藏分组:</div>';
+        if (allC && allC.length > 0) {
+            for (var ci = 0; ci < allC.length; ci++) {
+                var cc = allC[ci];
+                var isChk = checked[cc.id] ? 'checked' : '';
+                // 转义单引号防 XSS
+                var safeName = (cc.name || '').replace(/'/g, "\\'");
+                ch += '<label class="viewer-coll-check"><input type="checkbox" ' + isChk + ' data-cid="' + cc.id + '" data-pid="' + pid + '" onchange="App._toggleViewerCollect(' + cc.id + ', ' + pid + ', this)"> ' + (cc.icon || '⭐') + ' ' + safeName + '</label>';
+            }
+        } else {
+            ch += '<div style="font-size:12px;color:#64748b;">暂无收藏分组</div>';
+        }
+        collDiv.innerHTML = ch;
     },
 
     copyImgViewerContent() {
