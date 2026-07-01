@@ -384,7 +384,7 @@ async def batch_create_from_text(data: dict):
 
 @router.post("/{card_id}/thumbnail-from-library")
 def copy_thumbnail_from_library(card_id: int, data: dict):
-    """从图库复制图片到词卡缩略图（避免前端 blob 中转）"""
+    """从图库复制图片到词卡缩略图（避免前端 blob 中转，320x213 基准）"""
     source = (data.get("source_filename") or "").strip()
     if not source:
         raise HTTPException(400, "请提供 source_filename")
@@ -402,7 +402,7 @@ def copy_thumbnail_from_library(card_id: int, data: dict):
         img = Image.open(src_path)
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
-        TW, TH = 100, 67
+        TW, TH = 320, 213
         sw, sh = img.size
         target_ratio = TW / TH
         src_ratio = sw / sh
@@ -432,18 +432,29 @@ def copy_thumbnail_from_library(card_id: int, data: dict):
 
 @router.post("/{card_id}/thumbnail")
 async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
-    """为词卡上传缩略图（自动裁剪为 100x67 JPEG）"""
+    """为词卡上传缩略图（自适应多列展示: 320x213 基准 + 原图归档媒体库）"""
     # Phase17: 先读文件再开DB — 避免 async await 断点持锁冲突
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"):
         raise HTTPException(400, "仅支持 jpg/png/gif/webp/bmp 格式")
     raw_data = await file.read()
+    # 归档目录: 原图 → wc_media/originals/ + 媒体库 data/thumbnails/
+    WC_ORIG_DIR = os.path.join(WC_MEDIA_DIR, "originals")
+    os.makedirs(WC_ORIG_DIR, exist_ok=True)
+    SHARED_THUMB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "thumbnails")
+    os.makedirs(SHARED_THUMB_DIR, exist_ok=True)
     try:
         from PIL import Image
         img = Image.open(io.BytesIO(raw_data))
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
-        TW, TH = 100, 67
+        # 1. 保存原图到归档目录
+        orig_name = f"{uuid.uuid4().hex}{ext if ext else '.jpg'}"
+        orig_path = os.path.join(WC_ORIG_DIR, orig_name)
+        with open(orig_path, "wb") as f:
+            f.write(raw_data)
+        # 2. 生成 320x213 缩略图 (1-2列清晰 / 3-6列缩小无锯齿)
+        TW, TH = 320, 213
         sw, sh = img.size
         target_ratio = TW / TH
         src_ratio = sw / sh
@@ -456,7 +467,13 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
         img = img.resize((TW, TH), Image.LANCZOS)
         filename = f"{uuid.uuid4().hex}.jpg"
         dest = os.path.join(WC_THUMB_DIR, filename)
-        img.save(dest, "JPEG", quality=82)
+        img.save(dest, "JPEG", quality=85)
+        # 3. 同步副本到共享媒体库 (供其他词卡/图库复用)
+        try:
+            import shutil
+            shutil.copy2(dest, os.path.join(SHARED_THUMB_DIR, filename))
+        except:
+            pass
     except ImportError:
         raise HTTPException(500, "Pillow 未安装")
     except Exception as e:
@@ -466,11 +483,12 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
     card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])
     if not card:
         if os.path.exists(dest): os.remove(dest)
+        if os.path.exists(orig_path): os.remove(orig_path)
         raise HTTPException(404, "词卡不存在")
     _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
     db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', updated_at=datetime('now','localtime') WHERE id=?", [filename, card_id])
     safe_commit()
-    return {"ok": True, "filename": filename}
+    return {"ok": True, "filename": filename, "original": orig_name}
 
 
 @router.delete("/{card_id}/thumbnail")
