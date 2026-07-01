@@ -963,7 +963,11 @@ Object.assign(App, {
 
     closeImageViewer() {
         var m = document.getElementById('modalImageViewer');
+        if (!m) return;
         m.style.display = 'none';
+        var img = document.getElementById('imageViewerImg');
+        if (img) { img.src = ''; img.onload = null; img.onwheel = null; }
+        document.querySelectorAll('#imgViewerRight .viewer-content').forEach(function(el){el.textContent='-'});
     },
 
 
