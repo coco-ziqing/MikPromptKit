@@ -1,7 +1,7 @@
 """
 v4.3.0-phase16: Log API — 日志查询/实时流/清除/统计 + Phase17 用户行为追踪
 """
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from logger import query, stats, clear_before, stream_generator
@@ -51,21 +51,54 @@ class FrontendError(BaseModel):
     url: str = ""
     line: int = 0
     col: int = 0
+    session_id: str = ""
+    breadcrumbs: list = []
 
 
 @router.post("/report")
 def report_frontend_error(data: FrontendError):
     """前端错误上报"""
     from logger import error
-    detail = f"{data.url}:{data.line}:{data.col}"
+    from breadcrumb_logger import record_breadcrumb, flush_breadcrumbs
+    detail_parts = [f"{data.url}:{data.line}:{data.col}"]
+    # 记录面包屑
+    sid = data.session_id or ""
+    if data.breadcrumbs:
+        for c in data.breadcrumbs:
+            record_breadcrumb(sid, c.get("event", ""), c.get("data", ""))
+        flush_breadcrumbs(sid)
+        detail_parts.append(f"面包屑: {len(data.breadcrumbs)} 条")
     error(
         data.message,
         source="frontend",
-        detail=detail,
+        detail=" | ".join(detail_parts),
         stack=data.stack,
         path=data.url
     )
     return {"ok": True}
+
+
+class BreadcrumbData(BaseModel):
+    session_id: str = ""
+    crumbs: list = []
+
+
+@router.post("/breadcrumbs")
+async def report_breadcrumbs(data: BreadcrumbData):
+    """前端上报面包屑（错误上下文）"""
+    from breadcrumb_logger import record_breadcrumb, flush_breadcrumbs
+    for c in data.crumbs:
+        record_breadcrumb(data.session_id, c.get("event", ""), c.get("data", ""))
+    flush_breadcrumbs(data.session_id)
+    return {"ok": True}
+
+
+@router.get("/breadcrumbs")
+def get_breadcrumbs(session_id: str = Query(...)):
+    """查询指定 session 的面包屑"""
+    from breadcrumb_logger import get_breadcrumbs
+    items = get_breadcrumbs(session_id, limit=100)
+    return {"ok": True, "items": items, "total": len(items)}
 
 
 # ============================
