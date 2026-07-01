@@ -479,11 +479,6 @@ Object.assign(App, {
             }
         }
     },
-            await this.loadPrompts();
-        } else {
-            this.showToast(App._t('auto.str_6d973dbe', '关联失败'), 'error');
-        }
-    },
 
     async loadThumbLibrary() {
         var grid = document.getElementById('thumbLibraryGrid');
