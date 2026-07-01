@@ -47,6 +47,13 @@ App.wordEditor.close = function() {
     var m = document.getElementById('modalWordEdit');
     if (m) m.style.display = 'none';
     this._cardId = null;
+    // Phase17: 清理暂存缩略图
+    if (this._pendingThumbBlobUrl && this._pendingThumbBlobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(this._pendingThumbBlobUrl);
+    }
+    this._pendingThumbFile = null;
+    this._pendingThumbSource = null;
+    this._pendingThumbBlobUrl = null;
 };
 
 // ============ 构建弹窗 ============
@@ -419,6 +426,13 @@ App.wordEditor._resetForm = function() {
     if (heatEl) heatEl.value = '0.5';
     var heatLabel = document.getElementById('wcEditHeatLabel');
     if (heatLabel) heatLabel.textContent = '0.5';
+    // Phase17: 清理暂存缩略图
+    if (this._pendingThumbBlobUrl && this._pendingThumbBlobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(this._pendingThumbBlobUrl);
+    }
+    this._pendingThumbFile = null;
+    this._pendingThumbSource = null;
+    this._pendingThumbBlobUrl = null;
     var thumbRow = document.getElementById('wcEditThumbRow');
     if (thumbRow) {
         thumbRow.style.display = 'block';
@@ -510,8 +524,34 @@ App.wordEditor._save = async function() {
 
         if (result && result.ok) {
             var newId = result.id || this._cardId;
+            var wasNew = !this._cardId;  // 记录是否新建
             this._cardId = newId;
             App.showToast(this._cardId ? App._t('auto.str_03f4d8a4', '词卡已保存') : App._t('auto.str_d2b555ae', '词卡已创建'), 'success');
+
+            // Phase17: 新建词卡保存后，自动上传暂存的缩略图
+            if (wasNew && (this._pendingThumbFile || this._pendingThumbSource)) {
+                try {
+                    if (this._pendingThumbFile) {
+                        var fd = new FormData();
+                        fd.append('file', this._pendingThumbFile);
+                        await fetch('/api/v4/word-cards/' + newId + '/thumbnail', { method: 'POST', body: fd });
+                    } else if (this._pendingThumbSource) {
+                        await App.fetchJSON('/api/v4/word-cards/' + newId + '/thumbnail-from-library', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ source_filename: this._pendingThumbSource })
+                        });
+                    }
+                    // 清理暂存
+                    if (this._pendingThumbBlobUrl && this._pendingThumbBlobUrl.startsWith('blob:')) {
+                        URL.revokeObjectURL(this._pendingThumbBlobUrl);
+                    }
+                    this._pendingThumbFile = null;
+                    this._pendingThumbSource = null;
+                    this._pendingThumbBlobUrl = null;
+                    await this._loadCard();  // 刷新预览为已上传状态
+                } catch(e) { console.warn('[wordEditor] pending thumb upload failed:', e); }
+            }
 
             // 回调通知调用方刷新
             if (this._onSaved) {
@@ -810,11 +850,29 @@ App.wordEditor._rollback = async function(cid, vid) {
     } catch(e) { App.showToast('回滚失败: ' + e.message, 'danger'); }
 };
 
-// ============ 缩略图管理 (Phase16.1) ============
+// ============ 缩略图管理 (Phase17: 新建+编辑双模式) ============
+
+// 临时缩略图状态（新建词卡尚未入库时暂存）
+App.wordEditor._pendingThumbFile = null;   // File 对象（上传模式）
+App.wordEditor._pendingThumbSource = null; // 图库源文件名（从图库选模式）
+App.wordEditor._pendingThumbBlobUrl = null; // blob: URL 用于预览
 
 App.wordEditor._uploadThumb = async function(event) {
     var file = (event.target.files||[])[0];
-    if (!file || !this._cardId) { event.target.value = ''; return; }
+    if (!file) { event.target.value = ''; return; }
+
+    // 新建模式：暂存文件，用 blob URL 预览
+    if (!this._cardId) {
+        this._pendingThumbFile = file;
+        this._pendingThumbSource = null;
+        this._pendingThumbBlobUrl = URL.createObjectURL(file);
+        this._refreshThumbPreview();
+        App.showToast('已选择图片，保存词卡后自动上传', 'success');
+        event.target.value = '';
+        return;
+    }
+
+    // 编辑模式：直接上传
     var formData = new FormData();
     formData.append('file', file);
     try {
@@ -823,7 +881,6 @@ App.wordEditor._uploadThumb = async function(event) {
         if (d.ok) {
             App.showToast('缩略图上传成功', 'success');
             await this._loadCard();
-            // Phase17: 刷新卡片列表使缩略图可见
             try { await App.loadPrompts(); } catch(e) {}
         } else {
             App.showToast('上传失败: ' + (d.detail || d.error || 'unknown'), 'error');
@@ -834,9 +891,22 @@ App.wordEditor._uploadThumb = async function(event) {
 
 App.wordEditor._openThumbLibrary = function() {
     var self = this;
-    // Phase17: 先设置回调（必须在 _openThumbnailModal 之前，因为它会清空回调）
+    // 图库选中后的回调
     App._onThumbnailSelected = async function(filename) {
         App.showToast('正在设置缩略图...', 'info');
+
+        // 新建模式：暂存源文件名，从共享图库预览
+        if (!self._cardId) {
+            self._pendingThumbSource = filename;
+            self._pendingThumbFile = null;
+            // 用统一缩略图端点预览
+            self._pendingThumbBlobUrl = '/api/thumbnails/file/' + filename;
+            self._refreshThumbPreview();
+            App.showToast('已选择缩略图，保存词卡后自动关联', 'success');
+            return;
+        }
+
+        // 编辑模式：直接调用 API
         var d = await App.fetchJSON('/api/v4/word-cards/' + self._cardId + '/thumbnail-from-library', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -844,7 +914,6 @@ App.wordEditor._openThumbLibrary = function() {
         });
         if (d && d.ok) {
             App.showToast('缩略图已设置', 'success');
-            // Phase17: 刷新编辑器内预览 + 卡片列表
             await self._loadCard();
             try { await App.loadPrompts(); } catch(e) {}
         } else {
@@ -853,6 +922,10 @@ App.wordEditor._openThumbLibrary = function() {
     };
     App._onVideoSelected = async function(videoFilename) {
         App.showToast('正在设置视频...', 'info');
+        if (!self._cardId) {
+            App.showToast('新建词卡暂不支持视频，请先保存', 'warning');
+            return;
+        }
         var d = await App.fetchJSON('/api/v4/word-cards/' + self._cardId + '/video-from-library', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -866,22 +939,57 @@ App.wordEditor._openThumbLibrary = function() {
             App.showToast('设置失败: ' + ((d && d.detail) || '服务器错误'), 'error');
         }
     };
-    // 打开缩略图模态（在设置回调之后，因为内部会清空）
     App._openThumbnailModal('images');
 };
 
 App.wordEditor._clearThumb = async function() {
-    if (!this._cardId) return;
+    // 新建模式：清除暂存
+    if (!this._cardId) {
+        this._pendingThumbFile = null;
+        this._pendingThumbSource = null;
+        if (this._pendingThumbBlobUrl && this._pendingThumbBlobUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(this._pendingThumbBlobUrl);
+        }
+        this._pendingThumbBlobUrl = null;
+        this._refreshThumbPreview();
+        App.showToast('已清除待上传缩略图', 'info');
+        return;
+    }
+
+    // 编辑模式：调用 API
     if (!confirm(App._t('common.confirm', '确认清除此词卡的缩略图？'))) return;
     try {
         var d = await App.fetchJSON('/api/v4/word-cards/' + this._cardId + '/thumbnail', { method: 'DELETE' });
         if (d && d.ok) {
             App.showToast('缩略图已清除', 'info');
             await this._loadCard();
-            // Phase17: 刷新卡片列表
             try { await App.loadPrompts(); } catch(e) {}
         }
     } catch(e) { App.showToast('清除失败: ' + e.message, 'error'); }
+};
+
+// 刷新缩略图预览区域（统一入口，兼容新建/编辑模式）
+App.wordEditor._refreshThumbPreview = function() {
+    var thumbImg = document.getElementById('wcEditThumbPreview');
+    var thumbName = document.getElementById('wcEditThumbName');
+    var clearBtn = document.getElementById('wcEditThumbClearBtn');
+
+    if (this._pendingThumbBlobUrl || this._pendingThumbFile || this._pendingThumbSource) {
+        if (thumbImg) {
+            thumbImg.src = this._pendingThumbBlobUrl || '/api/thumbnails/file/' + this._pendingThumbSource;
+            thumbImg.style.display = 'inline-block';
+        }
+        if (thumbName) thumbName.textContent = this._pendingThumbSource
+            ? this._pendingThumbSource.substring(0, 25)
+            : (this._pendingThumbFile ? this._pendingThumbFile.name.substring(0, 25) : '待上传');
+        if (clearBtn) clearBtn.style.display = 'inline-block';
+    } else if (!this._cardId) {
+        // 新建模式无待上传 → 空状态
+        if (thumbImg) thumbImg.style.display = 'none';
+        if (thumbName) thumbName.textContent = '未设置';
+        if (clearBtn) clearBtn.style.display = 'none';
+    }
+    // 编辑模式由 _loadCard 接管（不在此处处理）
 };
 
 })();

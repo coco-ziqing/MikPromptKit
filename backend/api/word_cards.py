@@ -425,7 +425,7 @@ def copy_thumbnail_from_library(card_id: int, data: dict):
     except Exception as e:
         raise HTTPException(500, f"文件处理失败: {str(e)}")
     _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
-    db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', updated_at=datetime('now','localtime') WHERE id=?", [dest_name, card_id])
+    db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, updated_at=datetime('now','localtime') WHERE id=?", [dest_name, TW, TH, card_id])
     safe_commit()
     return {"ok": True, "filename": dest_name, "source": source}
 
@@ -486,7 +486,7 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
         if os.path.exists(orig_path): os.remove(orig_path)
         raise HTTPException(404, "词卡不存在")
     _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
-    db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', updated_at=datetime('now','localtime') WHERE id=?", [filename, card_id])
+    db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, updated_at=datetime('now','localtime') WHERE id=?", [filename, TW, TH, card_id])
     safe_commit()
     return {"ok": True, "filename": filename, "original": orig_name}
 

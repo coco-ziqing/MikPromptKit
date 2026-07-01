@@ -1345,9 +1345,19 @@ openImageViewer(filename, promptId) {
             }
         }
         if (!p) {
+            // Phase17: prompts 列表中未找到 → 尝试 word_card API（新数据源），回退旧API
             var self = this;
-            this.fetchJSON('/api/prompts/' + promptId).then(function(data) {
-                if (data) self._fillViewerPanel(prefix, data);
+            var apiUrl = promptId > 200 ? '/api/v4/word-cards/' + promptId : '/api/prompts/' + promptId;
+            this.fetchJSON(apiUrl).then(function(data) {
+                if (!data) { self.fetchJSON('/api/prompts/' + promptId).then(function(d) { if (d) self._fillViewerPanel(prefix, d); }); return; }
+                var card = data.card || data;
+                self._fillViewerPanel(prefix, {
+                    id: card.id, content: card.content || '', meaning: card.meaning || '',
+                    scene: card.scene || '', module: card.module || '', category: card.category || '',
+                    tags: JSON.stringify(card.tags || []), collections: []
+                });
+            }).catch(function() {
+                self.fetchJSON('/api/prompts/' + promptId).then(function(d) { if (d) self._fillViewerPanel(prefix, d); });
             });
             return;
         }
