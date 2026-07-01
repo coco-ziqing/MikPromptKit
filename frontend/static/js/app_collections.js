@@ -417,25 +417,29 @@ Object.assign(App, {
                 collHtml += '<span class="coll-badge" ondblclick="App.switchView(\'collections\');App.openCollection(' + cc.id + ')" title="双击进入「' + this._escape(cc.name) + '」收藏分组">' + (cc.icon || '⭐') + '</span>';
             }
             const isSelected = this.state.batchSelected.has(p.id);
+            // 统一视频字段（兼容旧 prompts 和新 word_card）
+            var videoFile2 = p.video_filename || p.preview_media || '';
             html += `
                 <div class="prompt-card" data-id="${p.id}" draggable="true">
                     <div class="card-body">
                         <div class="card-thumb">
                             <div class="card-thumb-inner" onclick="App.showThumbnailPicker(${p.id})">
-                                ${p.thumbnail
-                                    ? (p.video_filename
-                                        ? `<div class="thumb-video-wrap-preview">`
-                                          + `<img class="thumb-video-poster" src="/api/thumbnails/file/${p.thumbnail}" alt="" loading="lazy">`
-                                          + `<video class="thumb-video" src="/api/thumbnails/video/${p.video_filename}" loop muted playsinline preload="none"></video>`
-                                          + `</div>`
-                                        : `<img src="/api/thumbnails/file/${p.thumbnail}" alt="缩略图">`
+                                ${videoFile2
+                                    ? `<div class="thumb-video-wrap-preview">`
+                                      + (p.thumbnail
+                                          ? `<img class="thumb-video-poster" src="/api/thumbnails/file/${p.thumbnail}" alt="" loading="lazy">`
+                                          : `<div class="thumb-placeholder thumb-video-placeholder"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg></div>`)
+                                      + `<video class="thumb-video" src="/api/thumbnails/video/${videoFile2}" loop muted playsinline preload="none"></video>`
+                                      + `</div>`
+                                    : (p.thumbnail
+                                        ? `<img src="/api/thumbnails/file/${p.thumbnail}" alt="缩略图">`
+                                        : `<div class="thumb-placeholder">
+                                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                                          </div>`
                                       )
-                                    : `<div class="thumb-placeholder">
-                                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                                      </div>`
                                 }
                             </div>
-                            ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (p.video_filename ? 'App.openVideoViewer(\'' + p.video_filename + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + (p.original_ref || p.thumbnail) + '\', \'' + p.id + '\')') + '" title="' + (p.video_filename ? '查看原视频' : '查看原图') + '">' + (p.video_filename ? '▶' : '🔍') + '</span>' : ''}
+                            ${(p.thumbnail || videoFile2) ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (videoFile2 ? 'App.openVideoViewer(\'' + videoFile2 + '\', \'' + (p.thumbnail || '') + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + (p.original_ref || p.thumbnail) + '\', \'' + p.id + '\')') + '" title="' + (videoFile2 ? '查看原视频' : '查看原图') + '">' + (videoFile2 ? '▶' : '🔍') + '</span>' : ''}
                         </div>
                         <div class="card-add-row">
                             <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>
