@@ -433,17 +433,14 @@ def copy_thumbnail_from_library(card_id: int, data: dict):
 @router.post("/{card_id}/thumbnail")
 async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
     """为词卡上传缩略图（自动裁剪为 100x67 JPEG）"""
-    db = get_db()
-    card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])
-    if not card:
-        raise HTTPException(404, "词卡不存在")
+    # Phase17: 先读文件再开DB — 避免 async await 断点持锁冲突
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"):
         raise HTTPException(400, "仅支持 jpg/png/gif/webp/bmp 格式")
+    raw_data = await file.read()
     try:
         from PIL import Image
-        data = await file.read()
-        img = Image.open(io.BytesIO(data))
+        img = Image.open(io.BytesIO(raw_data))
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
         TW, TH = 100, 67
@@ -464,13 +461,16 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
         raise HTTPException(500, "Pillow 未安装")
     except Exception as e:
         raise HTTPException(500, f"缩略图处理失败: {str(e)}")
+    # DB 操作放在最后 — 无 async 断点，不会持锁等待
+    db = get_db()
+    card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])
+    if not card:
+        if os.path.exists(dest): os.remove(dest)
+        raise HTTPException(404, "词卡不存在")
     _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
     db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', updated_at=datetime('now','localtime') WHERE id=?", [filename, card_id])
     safe_commit()
-    return {"ok": True, "filename": filename}
-
-
-@router.delete("/{card_id}/thumbnail")
+    return {"ok": True, "filename": filename}@router.delete("/{card_id}/thumbnail")
 def delete_card_thumbnail(card_id: int):
     """删除词卡缩略图"""
     db = get_db()
@@ -531,20 +531,23 @@ def copy_video_from_library(card_id: int, data: dict):
 @router.post("/{card_id}/video")
 async def upload_card_video(card_id: int, file: UploadFile = File(...)):
     """为词卡上传预览视频（mp4/webm/mov，最大50MB）"""
-    db = get_db()
-    card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])
-    if not card:
-        raise HTTPException(404, "词卡不存在")
+    # Phase17: 先读文件再开DB — 避免 async await 断点持锁冲突
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in (".mp4", ".webm", ".mov"):
         raise HTTPException(400, "仅支持 mp4/webm/mov 格式")
-    data = await file.read()
-    if len(data) > 50 * 1024 * 1024:
+    raw_data = await file.read()
+    if len(raw_data) > 50 * 1024 * 1024:
         raise HTTPException(400, "视频不能超过50MB")
     filename = f"{uuid.uuid4().hex}{ext}"
     dest = os.path.join(WC_VIDEO_DIR, filename)
     with open(dest, "wb") as f:
-        f.write(data)
+        f.write(raw_data)
+    # DB 操作放在最后 — 无 async 断点，不会持锁等待
+    db = get_db()
+    card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])
+    if not card:
+        if os.path.exists(dest): os.remove(dest)
+        raise HTTPException(404, "词卡不存在")
     _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
     db.execute("UPDATE word_card SET thumbnail='', preview_media=?, media_type='video', updated_at=datetime('now','localtime') WHERE id=?", [filename, card_id])
     safe_commit()
@@ -709,8 +712,8 @@ def delete_card(card_id: int):
     db = get_db()
     r = db.execute("SELECT id,is_builtin FROM word_card WHERE id=?", [card_id]).fetchone()
     if not r: raise HTTPException(404,"词卡不存在")
-    if r["is_builtin"]: db.execute("UPDATE word_card SET is_deleted=1,deleted_at=datetime('now','localtime') WHERE id=?", [card_id])
-    else: db.execute("DELETE FROM word_card WHERE id=?", [card_id])
+    # Phase17: 统一软删除 — 非内置词卡也不物理删除，防止数据丢失
+    db.execute("UPDATE word_card SET is_deleted=1,deleted_at=datetime('now','localtime') WHERE id=?", [card_id])
     safe_commit()
     return {"ok":True}
 
