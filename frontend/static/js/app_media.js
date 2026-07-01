@@ -925,37 +925,167 @@ Object.assign(App, {
 
     openImageViewer(filename, promptId) {
         var modal = document.getElementById('modalImageViewer');
+        var container = document.getElementById('imageViewerContainer');
         var img = document.getElementById('imageViewerImg');
 
         if (!filename) { App.showToast('暂无原图', 'warning'); return; }
 
-        // Phase17: CSS object-fit — 完整显示原图, 删 150 行 transform
-        img.src = '/api/thumbnails/original/' + filename;
-        img.style.maxWidth = '100%';
-        img.style.maxHeight = '100%';
-        img.style.objectFit = 'contain';
-        img.style.transform = '';
-        img.style.cursor = 'default';
-        img.onload = null;
-        img.onwheel = null;
-        img.onmousedown = null;
-        img.ondblclick = null;
-        img.ontouchstart = null;
-        img.ontouchmove = null;
-        img.ontouchend = null;
+        // Phase 1: CSS 原生居中 — 零时序依赖, 任何尺寸图片都完美居中
         modal.style.display = 'flex';
+        img.style.cssText = 'object-fit:contain;max-width:100%;max-height:100%;display:block;';
+        img.style.transform = '';
+        // 重置容器为 flex 居中（初始状态，适应窗口模式）
+        container.style.alignItems = 'center';
+        container.style.justifyContent = 'center';
+        container.style.cursor = 'default';
 
+        // Phase 2 状态 — 首次交互时才切换到 transform
+        var scale = 1, tx = 0, ty = 0;
+        var dragging = false, dsX = 0, dsY = 0, dtX = 0, dtY = 0;
+        var _zoomed = false;
+
+        var _syncFromCSS = function() {
+            // 从当前 CSS contain 的渲染结果计算等效 transform 参数
+            var cw = container.clientWidth, ch = container.clientHeight;
+            var iw = img.naturalWidth || img.width;
+            var ih = img.naturalHeight || img.height;
+            if (!iw || !ih || !cw || !ch) { scale = 1; tx = 0; ty = 0; return; }
+            var cssFit = Math.min(cw / iw, ch / ih, 1);
+            scale = cssFit;
+            // container 的 flex 居中 → 计算图片左上角在容器内的像素偏移
+            var renderW = iw * cssFit, renderH = ih * cssFit;
+            var offsetX = (cw - renderW) / 2;
+            var offsetY = (ch - renderH) / 2;
+            // transform: scale(S) translate(T) 渲染公式: screenX = S * (imgX + T)
+            // 图片原点在 (0,0), 屏幕位置 = S * (0 + T) = S * T
+            // 我们需要 scale * tx = offsetX → tx = offsetX / scale
+            tx = offsetX / scale;
+            ty = offsetY / scale;
+        };
+
+        var _enterZoom = function() {
+            if (_zoomed) return;
+            _zoomed = true;
+            // 关键：先采集当前 flex 居中状态下的等效 transform 坐标
+            // 再切换为原点对齐，避免首次缩放时图片跳变
+            _syncFromCSS();
+            container.style.alignItems = 'flex-start';
+            container.style.justifyContent = 'flex-start';
+            img.style.objectFit = 'none';
+            img.style.maxWidth = 'none';
+            img.style.maxHeight = 'none';
+            img.style.transformOrigin = '0 0';
+            img.style.width = img.naturalWidth + 'px';
+            img.style.height = img.naturalHeight + 'px';
+            img.style.cursor = 'grab';
+            _render();
+        };
+
+        var _render = function() {
+            if (!_zoomed) return;
+            img.style.transform = 'scale(' + scale + ') translate(' + tx + 'px, ' + ty + 'px)';
+        };
+
+        // 双击: 适应窗口 <-> 1:1
+        img.ondblclick = function() {
+            _enterZoom();
+            var cw = container.clientWidth, ch = container.clientHeight;
+            var iw = img.naturalWidth || img.width;
+            var ih = img.naturalHeight || img.height;
+            if (!iw || !ih) return;
+            var fit = Math.min(cw / iw, ch / ih, 1);
+            // 接近适应窗口 → 切 1:1,  否则切适应窗口
+            if (Math.abs(scale - fit) < 0.01) {
+                scale = 1;
+                tx = (cw - iw) / 2;
+                ty = (ch - ih) / 2;
+            } else {
+                scale = fit;
+                tx = (cw - iw * fit) / 2 / fit;
+                ty = (ch - ih * fit) / 2 / fit;
+            }
+            _render();
+        };
+
+        // 滚轮缩放: 光标位置为轴心
+        container.onwheel = function(e) {
+            e.preventDefault();
+            _enterZoom();
+            var rect = container.getBoundingClientRect();
+            var cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+            var prev = scale;
+            scale += e.deltaY > 0 ? -0.15 : 0.15;
+            scale = Math.max(0.1, Math.min(20, scale));
+            // 以光标为中心：tx_new = tx_old + cx/scale_new - cx/scale_old
+            tx = tx + cx * (1/scale - 1/prev);
+            ty = ty + cy * (1/scale - 1/prev);
+            _render();
+        };
+
+        // 鼠标拖拽平移
+        container.onmousedown = function(e) {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            _enterZoom();
+            dragging = true;
+            dsX = e.clientX; dsY = e.clientY;
+            dtX = tx; dtY = ty;
+            container.style.cursor = 'grabbing';
+        };
+        var _onMove = function(e) {
+            if (!dragging) return;
+            tx = dtX + (e.clientX - dsX) / scale;
+            ty = dtY + (e.clientY - dsY) / scale;
+            _render();
+        };
+        var _onUp = function() {
+            if (dragging) { dragging = false; container.style.cursor = 'grab'; }
+        };
+        document.addEventListener('mousemove', _onMove);
+        document.addEventListener('mouseup', _onUp);
+
+        // 双指缩放
+        var pinchBase = 0, pinchScale = 1;
+        img.ontouchstart = function(e) {
+            if (e.touches.length === 2) {
+                _enterZoom();
+                pinchBase = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+                                       e.touches[0].clientY - e.touches[1].clientY);
+                pinchScale = scale;
+            }
+        };
+        img.ontouchmove = function(e) {
+            if (e.touches.length === 2 && pinchBase > 0) {
+                e.preventDefault();
+                var d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+                                   e.touches[0].clientY - e.touches[1].clientY);
+                scale = Math.max(0.1, Math.min(20, pinchScale * d / pinchBase));
+                _render();
+            }
+        };
+        img.ontouchend = function() { pinchBase = 0; };
+
+        img.src = '/api/thumbnails/original/' + filename;
         this._renderViewerRight('imgViewer', promptId);
 
         var closeFn = function() {
             modal.style.display = 'none';
-            img.onload = null;
+            img.onload = null; img.ondblclick = null;
+            img.ontouchstart = null; img.ontouchmove = null; img.ontouchend = null;
+            container.onwheel = null; container.onmousedown = null;
+            img.src = '';
+            // 重置：恢复 img 样式 + 容器居中对齐
+            img.style.cssText = '';
+            container.style.alignItems = 'center';
+            container.style.justifyContent = 'center';
+            container.style.cursor = 'default';
+            document.removeEventListener('mousemove', _onMove);
+            document.removeEventListener('mouseup', _onUp);
             document.removeEventListener('keydown', escHandler);
+            _zoomed = false;
         };
-
         var escHandler = function(e) { if (e.key === 'Escape') closeFn(); };
         document.addEventListener('keydown', escHandler);
-
         modal.onclick = function(e) { if (e.target === modal) closeFn(); };
         var closeBtn = document.getElementById('imgViewerClose');
         if (closeBtn) closeBtn.onclick = closeFn;
@@ -966,13 +1096,19 @@ Object.assign(App, {
         if (!m) return;
         m.style.display = 'none';
         var img = document.getElementById('imageViewerImg');
-        if (img) { img.src = ''; img.onload = null; img.onwheel = null; }
-        document.querySelectorAll('#imgViewerRight .viewer-content').forEach(function(el){el.textContent='-'});
+        if (img) { img.src = ''; img.style.cssText = ''; }
+        var container = document.getElementById('imageViewerContainer');
+        if (container) {
+            container.onwheel = null;
+            container.onmousedown = null;
+            // 重置容器为 flex 居中，下次打开恢复适应窗口模式
+            container.style.alignItems = 'center';
+            container.style.justifyContent = 'center';
+        }
+        document.querySelectorAll('#imgViewerRight .viewer-content').forEach(function(el){el.textContent='-';});
     },
 
-
-
-    // ============ 视频查看器(逐帧控制) ============
+// ============ 视频查看器(逐帧控制) ============
 
     openVideoViewer(videoFilename, posterFilename, promptId, videoFps) {
         var fps = parseFloat(videoFps) > 0 ? parseFloat(videoFps) : 30;
