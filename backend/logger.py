@@ -71,14 +71,14 @@ def log(level: str, message: str, source: str = "system", detail: str = "",
     # 写数据库
     try:
         _ensure_init()
-        from database import get_db
+        from database import get_db, safe_commit
         db = get_db()
         db.execute(
-            "INSERT INTO runtime_log (seq,level,source,message,detail,stack,path,status_code,elapsed_ms) VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO runtime_log (seq,level,source,message,detail,stack,path,status_code,elapsed_ms,request_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
             [entry["seq"], entry["level"], entry["source"], entry["message"],
-             entry["detail"], entry["stack"], entry["path"], entry["status_code"], entry["elapsed_ms"]]
+             entry["detail"], entry["stack"], entry["path"], entry["status_code"], entry["elapsed_ms"], entry.get("request_id", "")[:50]]
         )
-        db.commit()
+        safe_commit()
     except Exception as e:
         print(f"[Logger] DB写入失败: {e}")
 
@@ -105,23 +105,24 @@ def error(msg, source="system", **kwargs): log("error", msg, source, **kwargs)
 def fatal(msg, source="system", **kwargs): log("fatal", msg, source, **kwargs)
 
 
-def capture_exception(e: Exception, source: str = "system", path: str = "", status_code: int = 500, request_body: str = ""):
-    """捕获异常并记录完整调用栈 + 请求体"""
-    msg = f"{type(e).__name__}: {e}"
+def capture_exception(e: Exception, source: str = "system", path: str = "", status_code: int = 500, request_body: str = "", request_id: str = ""):
+    """捕获异常并记录完整调用栈 + 请求体 + request_id"""
+    msg = f"[{request_id}] {type(e).__name__}: {e}" if request_id else f"{type(e).__name__}: {e}"
     stack = traceback.format_exc()
     detail_parts = [str(e)[:1500]]
     if request_body and len(request_body) < 4000:
-        detail_parts.append(f"[Request Body]: {request_body}")
+        detail_parts.append(f"[Body]: {request_body}")
     error(msg, source=source, detail=" | ".join(detail_parts), stack=stack, path=path, status_code=status_code)
 
 
-def api_log(method: str, path: str, status: int, elapsed_ms: float, source: str = "api", request_body: str = ""):
+def api_log(method: str, path: str, status: int, elapsed_ms: float, source: str = "api", request_body: str = "", request_id: str = ""):
     """记录 API 调用"""
     level = "error" if status >= 500 else ("warn" if status >= 400 else "info")
+    prefix = f"[{request_id}] " if request_id else ""
     detail_parts = [f"{method} {path} → {status} ({elapsed_ms:.0f}ms)"]
     if request_body and len(request_body) < 2000:
         detail_parts.append(f"[Body]: {request_body}")
-    log(level, f"{method} {path} → {status} ({elapsed_ms:.0f}ms)", source=source,
+    log(level, f"{prefix}{method} {path} → {status} ({elapsed_ms:.0f}ms)", source=source,
         path=path, status_code=status, elapsed_ms=elapsed_ms, detail=" | ".join(detail_parts))
 
 
