@@ -152,7 +152,7 @@ App.wordEditor._ensureModal = function() {
     '<div id="wcEditThumbRow" style="margin-bottom:10px;padding:8px;border-radius:8px;background:var(--hover-bg);">' +
     '<label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">缩略图预览</label>' +
     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
-    '<img id="wcEditThumbPreview" src="" style="width:80px;height:53px;border-radius:6px;object-fit:cover;border:1px solid var(--border-color);display:none;background:var(--bg-card);">' +
+    '<div id="wcEditThumbPreviewArea" style="width:120px;height:80px;border-radius:6px;border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;background:var(--bg-card);flex-shrink:0;"><span style="font-size:28px;color:var(--text-muted);">🖼</span></div>' +
     '<span id="wcEditThumbName" style="font-size:11px;color:var(--text-muted);min-width:60px;">未设置</span>' +
     '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
     '<input type="file" id="wcEditThumbInput" accept="image/*" style="display:none;" onchange="App.wordEditor._uploadThumb(event)">' +
@@ -364,25 +364,22 @@ App.wordEditor._loadCard = async function() {
         var heatLabel = document.getElementById('wcEditHeatLabel');
         if (heatLabel) heatLabel.textContent = heat;
 
-        // 缩略图预览 (Phase16.1: 修复显示)
+        // 缩略图/视频预览 (Phase17: 图片+视频双模式，用 innerHTML 容器)
         var thumbRow = document.getElementById('wcEditThumbRow');
-        var thumbImg = document.getElementById('wcEditThumbPreview');
+        var thumbPreview = document.getElementById('wcEditThumbPreviewArea');
         var thumbName = document.getElementById('wcEditThumbName');
         var clearBtn = document.getElementById('wcEditThumbClearBtn');
-        if (c.thumbnail && thumbRow && thumbImg && thumbName) {
-            thumbRow.style.display = 'block';
-            thumbImg.src = '/api/v4/word-cards/thumbnails/' + c.thumbnail;
-            thumbImg.style.display = 'inline-block';
+        if (thumbRow) thumbRow.style.display = 'block';
+        if (c.thumbnail && thumbPreview && thumbName) {
+            thumbPreview.innerHTML = '<img id="wcEditThumbPreview" src="/api/v4/word-cards/thumbnails/' + c.thumbnail + '" style="width:120px;height:80px;border-radius:6px;object-fit:cover;border:1px solid var(--border-color);background:var(--bg-card);">';
             thumbName.textContent = c.thumbnail.substring(0, 20) + (c.thumbnail.length > 20 ? '...' : '');
             if (clearBtn) clearBtn.style.display = 'inline-block';
-        } else if (c.preview_media && thumbRow && thumbImg && thumbName) {
-            thumbRow.style.display = 'block';
-            thumbImg.style.display = 'none';
-            thumbName.textContent = '🎬 ' + c.preview_media.substring(0, 30);
+        } else if (c.preview_media && thumbPreview && thumbName) {
+            thumbPreview.innerHTML = '<video id="wcEditThumbPreview" src="/api/v4/word-cards/videos/' + c.preview_media + '" controls muted preload="metadata" style="width:120px;height:80px;border-radius:6px;object-fit:cover;border:1px solid var(--border-color);background:var(--bg-card);"></video>';
+            thumbName.textContent = '🎬 ' + c.preview_media.substring(0, 25);
             if (clearBtn) clearBtn.style.display = 'inline-block';
-        } else if (thumbRow) {
-            thumbRow.style.display = 'block';
-            if (thumbImg) thumbImg.style.display = 'none';
+        } else {
+            if (thumbPreview) thumbPreview.innerHTML = '<span style="font-size:28px;color:var(--text-muted);">🖼</span>';
             if (thumbName) thumbName.textContent = '未设置';
             if (clearBtn) clearBtn.style.display = 'none';
         }
@@ -974,28 +971,25 @@ App.wordEditor._clearThumb = async function() {
     } catch(e) { App.showToast('清除失败: ' + e.message, 'error'); }
 };
 
-// 刷新缩略图预览区域（统一入口，兼容新建/编辑模式）
+// 刷新缩略图预览区域（统一入口，兼容新建/编辑模式 + 图片/视频双模式）
 App.wordEditor._refreshThumbPreview = function() {
-    var thumbImg = document.getElementById('wcEditThumbPreview');
+    var area = document.getElementById('wcEditThumbPreviewArea');
     var thumbName = document.getElementById('wcEditThumbName');
     var clearBtn = document.getElementById('wcEditThumbClearBtn');
 
     if (this._pendingThumbBlobUrl || this._pendingThumbFile || this._pendingThumbSource) {
-        if (thumbImg) {
-            thumbImg.src = this._pendingThumbBlobUrl || '/api/thumbnails/file/' + this._pendingThumbSource;
-            thumbImg.style.display = 'inline-block';
+        if (area) {
+            area.innerHTML = '<img src="' + (this._pendingThumbBlobUrl || '/api/thumbnails/file/' + this._pendingThumbSource) + '" style="width:100%;height:100%;border-radius:6px;object-fit:cover;">';
         }
         if (thumbName) thumbName.textContent = this._pendingThumbSource
             ? this._pendingThumbSource.substring(0, 25)
             : (this._pendingThumbFile ? this._pendingThumbFile.name.substring(0, 25) : '待上传');
         if (clearBtn) clearBtn.style.display = 'inline-block';
     } else if (!this._cardId) {
-        // 新建模式无待上传 → 空状态
-        if (thumbImg) thumbImg.style.display = 'none';
+        if (area) area.innerHTML = '<span style="font-size:28px;color:var(--text-muted);">🖼</span>';
         if (thumbName) thumbName.textContent = '未设置';
         if (clearBtn) clearBtn.style.display = 'none';
     }
-    // 编辑模式由 _loadCard 接管（不在此处处理）
 };
 
 })();

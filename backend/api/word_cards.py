@@ -530,11 +530,12 @@ def copy_video_from_library(card_id: int, data: dict):
     card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])
     if not card:
         raise HTTPException(404, "词卡不存在")
-    # 源路径: data/videos/ or data/thumbnails/video/
+    # 源路径: data/videos/ or data/thumbnails/video/ or data/wc_media/videos/
     import shutil
     VIDEO_LIB_DIRS = [
         os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "videos"),
         os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "thumbnails", "videos"),
+        WC_VIDEO_DIR,  # word_card 视频目录
     ]
     src_path = None
     for d in VIDEO_LIB_DIRS:

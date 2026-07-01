@@ -356,17 +356,17 @@ App.sc._loadPickerCards = async function(groupId) {
             var def = card.meaning||'';
             var pt = card.thumbnail ? '/api/v4/word-cards/thumbnails/' + card.thumbnail : '';
             var vt = card.preview_media ? '/api/v4/word-cards/videos/' + card.preview_media : '';
-            var sel = currentVal && word && (currentVal.indexOf(word)>=0||word.indexOf(currentVal)>=0);
+            var sel = currentVal && word && currentVal.trim() && (currentVal.indexOf(word)>=0||word.indexOf(currentVal)>=0);
             h += '<div class="s2-right-card-item'+(sel?' selected':'')+'" data-word="'+App._escape(word)+'" data-card-id="'+card.id+'" data-video="'+(vt||'')+'" data-thumb="'+(pt||'')+'" onclick="App.sc._pickCardWord(\''+App._escape(word)+'\')" style="display:flex;gap:6px;padding:5px 7px;border:1px solid '+(sel?'#10b981':'var(--border-color)')+';border-radius:5px;margin-bottom:3px;cursor:pointer;'+(sel?'background:rgba(16,185,129,0.08);':'')+'" onmouseenter="App.sc._thumbHoverIn(this)" onmouseleave="App.sc._thumbHoverOut(this)">';
             // 缩略图/视频预览区
-            h += '<div class="wc-card-thumb-zone" data-card-id="'+card.id+'" onclick="event.stopPropagation();" style="width:44px;height:30px;min-width:44px;border-radius:3px;overflow:hidden;position:relative;background:var(--hover-bg);">';
+            h += '<div class="wc-card-thumb-zone" data-card-id="'+card.id+'" onclick="event.stopPropagation();App.sc._pickFileForCard('+card.id+')" style="width:44px;height:30px;min-width:44px;border-radius:3px;overflow:hidden;position:relative;background:var(--hover-bg);cursor:pointer;" title="点击替换预览 | 右键更多操作">';
             if (vt) {
-                h += '<video src="'+vt+'" muted loop preload="metadata" style="width:100%;height:100%;object-fit:cover;display:block;"></video>';
+                h += '<video src="'+vt+'" muted loop preload="metadata" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;"></video>';
                 h += '<span style="position:absolute;top:1px;right:1px;background:rgba(0,0,0,0.7);color:#fff;font-size:7px;padding:0 2px;border-radius:2px;pointer-events:none;">V</span>';
             } else if (pt) {
-                h += '<img src="'+pt+'" style="width:100%;height:100%;object-fit:cover;" loading="lazy">';
+                h += '<img src="'+pt+'" style="width:100%;height:100%;object-fit:cover;pointer-events:none;" loading="lazy">';
             } else {
-                h += '<span onclick="event.stopPropagation();App.sc._pickFileForCard('+card.id+')" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:var(--text-muted);" title="点击/拖入/粘贴上传预览">+</span>';
+                h += '<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text-muted);pointer-events:none;" title="点击/拖入/粘贴上传预览">+</span>';
             }
             h += '</div>';
             h += '<div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:600;">'+App._escape(word)+'</div>';
