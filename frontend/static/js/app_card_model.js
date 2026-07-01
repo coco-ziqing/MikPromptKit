@@ -422,11 +422,11 @@
             category: data.category || '',
             group_id: data.group_id || null,
 
-            // 视觉层
+            // 视觉层 — 仅在显式传入时包含（避免保存时覆盖已上传的缩略图/视频）
             icon: data.icon || '',
-            thumbnail: data.thumbnail || '',
-            preview_media: data.preview_media || '',
-            media_type: data.media_type || 'image',
+            ...(('thumbnail' in data) ? { thumbnail: data.thumbnail || '' } : {}),
+            ...(('preview_media' in data) ? { preview_media: data.preview_media || '' } : {}),
+            ...(('media_type' in data) ? { media_type: data.media_type || 'image' } : {}),
 
             // 运营层
             sort_order: typeof data.sort_order === 'number' ? data.sort_order : 0,
