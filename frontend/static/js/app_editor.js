@@ -282,21 +282,23 @@ Object.assign(App, {
                     <div class="card-body">
                         <div class="card-thumb">
                             <div class="card-thumb-inner" onclick="${isWordCard ? 'App.wordEditor.open({cardId:' + p.id + ',source:\'cards\',onSaved:function(){App.loadPrompts()}})' : 'App.showThumbnailPicker(' + p.id + ')'}">
-                                ${p.thumbnail
-                                    ? (videoFile
-                                        ? `<div class="thumb-video-wrap-preview">`
-                                          + `<img class="thumb-video-poster" src="/api/thumbnails/file/${p.thumbnail}" alt="" loading="lazy">`
-                                          + `<video class="thumb-video" src="/api/thumbnails/video/${videoFile}" loop muted playsinline preload="none"></video>`
-                                          + `</div>`
-                                        : `<img src="/api/thumbnails/file/${p.thumbnail}" alt="缩略图">`
+                                ${videoFile
+                                    ? `<div class="thumb-video-wrap-preview">`
+                                      + (p.thumbnail
+                                          ? `<img class="thumb-video-poster" src="/api/thumbnails/file/${p.thumbnail}" alt="" loading="lazy">`
+                                          : `<div class="thumb-placeholder thumb-video-placeholder"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg></div>`)
+                                      + `<video class="thumb-video" src="/api/thumbnails/video/${videoFile}" loop muted playsinline preload="none"></video>`
+                                      + `</div>`
+                                    : (p.thumbnail
+                                        ? `<img src="/api/thumbnails/file/${p.thumbnail}" alt="缩略图">`
+                                        : `<div class="thumb-placeholder">
+                                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                                          </div>`
                                       )
-                                    : `<div class="thumb-placeholder">
-                                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                                      </div>`
                                 }
                             </div>
-                            ${p.thumbnail && App.state.editMode ? '<span class="thumb-clear-btn" onclick="event.stopPropagation();App.clearCardThumbnail(' + p.id + ')" title="清除缩略图">✕</span>' : ''}
-                            ${p.thumbnail ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (videoFile ? 'App.openVideoViewer(\'' + videoFile + '\', \'' + p.thumbnail + '\', \'' + p.id + '\', \'' + videoFps + '\')' : 'App.openImageViewer(\'' + origFile + '\', \'' + p.id + '\')') + '" title="' + (videoFile ? App._t('auto.view_原视频', '查看原视频') : App._t('auto.view_原图', '查看原图')) + '">' + (videoFile ? '▶' : '🔍') + '</span>' : ''}
+                            ${(p.thumbnail || videoFile) && App.state.editMode ? '<span class="thumb-clear-btn" onclick="event.stopPropagation();App.clearCardThumbnail(' + p.id + ')" title="清除缩略图">✕</span>' : ''}
+                            ${(p.thumbnail || videoFile) ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (videoFile ? 'App.openVideoViewer(\'' + videoFile + '\', \'' + (p.thumbnail || '') + '\', \'' + p.id + '\', \'' + videoFps + '\')' : 'App.openImageViewer(\'' + origFile + '\', \'' + p.id + '\')') + '" title="' + (videoFile ? App._t('auto.view_原视频', '查看原视频') : App._t('auto.view_原图', '查看原图')) + '">' + (videoFile ? '▶' : '🔍') + '</span>' : ''}
                         </div>
                         <div class="card-add-row">
                             <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>

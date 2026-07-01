@@ -743,6 +743,23 @@ body.dark-theme .seedance-tab:hover { background: #334155; }
 .prompt-card .card-thumb .thumb-video-wrap-preview:hover .thumb-video-poster {
     z-index: 0;
 }
+/* 无缩略图但有视频时的占位符 — 显示播放图标作为海报 */
+.prompt-card .card-thumb .thumb-video-wrap-preview .thumb-video-placeholder {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15,23,42,0.85);
+    color: #fff;
+    z-index: 1;
+    transition: opacity 0.2s;
+}
+.prompt-card .card-thumb .thumb-video-wrap-preview:hover .thumb-video-placeholder {
+    z-index: 0;
+    opacity: 0;
+}
 .prompt-card .card-thumb .thumb-zoom-btn {
     position: absolute;
     bottom: -6px;
