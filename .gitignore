@@ -48,3 +48,24 @@ macos/resources/app_icon.iconset/
 !data/.gitkeep
 
 prompts.db-*
+
+# Database backups
+*.before_view_migration
+*.unify_final_bak
+*_before_unify.bak
+
+# Word card user media
+frontend/static/js/media-cache/
+data/wc_media/originals/
+data/wc_media/thumbs/
+data/wc_media/videos/
+data/wordcard_thumbs/
+data/wordcard_videos/
+
+# Temporary scripts
+_shutdown.py
+_v5.py
+_verify2.py
+
+# Dream/memory session files
+memory/.dreams/

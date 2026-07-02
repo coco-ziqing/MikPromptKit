@@ -602,18 +602,27 @@ Object.assign(App, {
                         var data2 = await resp2.json();
                         if (data2.ok) {
                             this.showToast('已上传 ' + file.name, 'success');
-                            if (first) {
-                                await this.fetchJSON('/api/thumbnails/assign-video', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        prompt_id: this._thumbnailPromptId,
-                                        video_filename: data2.video_filename,
-                                        poster_filename: data2.poster_filename || '',
-                                        duration: data2.duration || 0
-                                    })
-                                });
-                                await this.loadPrompts();
+                            if (first && this._thumbnailPromptId) {
+                                // Phase17-hotfix: 用原生 fetch 而非 fetchJSON，确保拿到 HTTP 状态码
+                                try {
+                                    var aResp = await fetch('/api/thumbnails/assign-video', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            prompt_id: this._thumbnailPromptId,
+                                            video_filename: data2.video_filename,
+                                            poster_filename: data2.poster_filename || '',
+                                            duration: data2.duration || 0
+                                        })
+                                    });
+                                    if (aResp.ok) {
+                                        await this.loadPrompts();
+                                    } else {
+                                        console.error('assign-video failed:', aResp.status);
+                                    }
+                                } catch(e) {
+                                    console.error('assign-video error:', e);
+                                }
                                 first = false;
                             }
                         }

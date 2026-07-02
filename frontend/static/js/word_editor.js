@@ -1,5 +1,5 @@
 // ============================================================
-// v4.1.0: Unified Word Card Editor (多端编辑)
+// v4.1.0: Unified Word Card Editor (多端编辑) — Phase16.3: 新增视频上传按钮
 // 统一词卡编辑弹窗 — 从任意端(主界面/选取器/组装器/词库浏览器)打开
 // 实时同步: 编辑后所有视图自动刷新
 // ============================================================
@@ -60,6 +60,13 @@ App.wordEditor.close = function() {
     this._pendingThumbFile = null;
     this._pendingThumbSource = null;
     this._pendingThumbBlobUrl = null;
+    // Phase16.3: 清理视频暂存
+    if (this._pendingVideoBlobUrl && this._pendingVideoBlobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(this._pendingVideoBlobUrl);
+    }
+    this._pendingVideoFile = null;
+    this._pendingVideoSource = null;
+    this._pendingVideoBlobUrl = null;
 };
 
 // ============ 构建弹窗 ============
@@ -158,6 +165,10 @@ App.wordEditor._ensureModal = function() {
     '<input type="file" id="wcEditThumbInput" accept="image/*" style="display:none;" onchange="App.wordEditor._uploadThumb(event)">' +
     '<button type="button" class="btn btn-xs" onclick="document.getElementById(\'wcEditThumbInput\').click()" style="font-size:11px;padding:4px 10px;border:1px solid #6366f1;color:#6366f1;border-radius:6px;background:transparent;cursor:pointer;">📤 上传图片</button>' +
     '<button type="button" class="btn btn-xs" onclick="App.wordEditor._openThumbLibrary()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border-color);color:var(--text-muted);border-radius:6px;background:transparent;cursor:pointer;">🖼 从图库选</button>' +
+    // Phase16.3: 视频上传按钮
+    '<input type="file" id="wcEditVideoInput" accept="video/mp4,video/webm,video/quicktime,video/x-msvideo" style="display:none;" onchange="App.wordEditor._uploadVideo(event)">' +
+    '<button type="button" class="btn btn-xs" onclick="document.getElementById(\'wcEditVideoInput\').click()" style="font-size:11px;padding:4px 10px;border:1px solid #10b981;color:#10b981;border-radius:6px;background:transparent;cursor:pointer;">🎬 上传视频</button>' +
+    '<button type="button" class="btn btn-xs" onclick="App.wordEditor._openVideoLibrary()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border-color);color:var(--text-muted);border-radius:6px;background:transparent;cursor:pointer;">📁 从视频库选</button>' +
     '<button type="button" class="btn btn-xs" id="wcEditThumbClearBtn" onclick="App.wordEditor._clearThumb()" style="display:none;font-size:11px;padding:4px 10px;border:1px solid #ef4444;color:#ef4444;border-radius:6px;background:transparent;cursor:pointer;">✕ 清除</button>' +
     '</div></div></div>' +
 
@@ -375,7 +386,8 @@ App.wordEditor._loadCard = async function() {
             thumbName.textContent = c.thumbnail.substring(0, 20) + (c.thumbnail.length > 20 ? '...' : '');
             if (clearBtn) clearBtn.style.display = 'inline-block';
         } else if (c.preview_media && thumbPreview && thumbName) {
-            thumbPreview.innerHTML = '<video id="wcEditThumbPreview" src="/api/v4/word-cards/videos/' + c.preview_media + '" controls muted preload="metadata" style="width:120px;height:80px;border-radius:6px;object-fit:cover;border:1px solid var(--border-color);background:var(--bg-card);"></video>';
+            var posterFromThumb = c.thumbnail ? ('/api/v4/word-cards/thumbnails/' + c.thumbnail) : ('');
+            thumbPreview.innerHTML = '<video id="wcEditThumbPreview" src="/api/v4/word-cards/videos/' + c.preview_media + '" controls muted preload="metadata" poster="' + posterFromThumb + '" style="width:120px;height:80px;border-radius:6px;object-fit:cover;border:1px solid var(--border-color);background:var(--bg-card);"></video>';
             thumbName.textContent = '🎬 ' + c.preview_media.substring(0, 25);
             if (clearBtn) clearBtn.style.display = 'inline-block';
         } else {
@@ -436,6 +448,13 @@ App.wordEditor._resetForm = function() {
     this._pendingThumbFile = null;
     this._pendingThumbSource = null;
     this._pendingThumbBlobUrl = null;
+    // Phase16.3: 清理视频暂存
+    if (this._pendingVideoBlobUrl && this._pendingVideoBlobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(this._pendingVideoBlobUrl);
+    }
+    this._pendingVideoFile = null;
+    this._pendingVideoSource = null;
+    this._pendingVideoBlobUrl = null;
     var thumbRow = document.getElementById('wcEditThumbRow');
     if (thumbRow) {
         thumbRow.style.display = 'block';
@@ -554,6 +573,24 @@ App.wordEditor._save = async function() {
                     this._pendingThumbBlobUrl = null;
                     await this._loadCard();  // 刷新预览为已上传状态
                 } catch(e) { console.warn('[wordEditor] pending thumb upload failed:', e); }
+            }
+
+            // Phase16.3: 新建词卡保存后，自动关联视频库视频
+            if (wasNew && this._pendingVideoSource) {
+                try {
+                    await App.fetchJSON('/api/v4/word-cards/' + newId + '/video-from-library', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ source_filename: this._pendingVideoSource })
+                    });
+                    if (this._pendingVideoBlobUrl && this._pendingVideoBlobUrl.startsWith('blob:')) {
+                        URL.revokeObjectURL(this._pendingVideoBlobUrl);
+                    }
+                    this._pendingVideoFile = null;
+                    this._pendingVideoSource = null;
+                    this._pendingVideoBlobUrl = null;
+                    await this._loadCard();
+                } catch(e) { console.warn('[wordEditor] pending video associate failed:', e); }
             }
 
             // 回调通知调用方刷新
@@ -859,6 +896,10 @@ App.wordEditor._rollback = async function(cid, vid) {
 App.wordEditor._pendingThumbFile = null;   // File 对象（上传模式）
 App.wordEditor._pendingThumbSource = null; // 图库源文件名（从图库选模式）
 App.wordEditor._pendingThumbBlobUrl = null; // blob: URL 用于预览
+// Phase16.3: 视频暂存状态
+App.wordEditor._pendingVideoFile = null;   // File 对象（上传模式）
+App.wordEditor._pendingVideoSource = null; // 视频库源文件名
+App.wordEditor._pendingVideoBlobUrl = null; // blob: URL 用于预览
 
 App.wordEditor._uploadThumb = async function(event) {
     var file = (event.target.files||[])[0];
@@ -892,6 +933,113 @@ App.wordEditor._uploadThumb = async function(event) {
     event.target.value = '';
 };
 
+// Phase16.3: 视频上传 — 先传共享库再关联词卡
+App.wordEditor._uploadVideo = async function(event) {
+    var file = (event.target.files||[])[0];
+    if (!file) { event.target.value = ''; return; }
+
+    // 限制 50MB
+    if (file.size > 50 * 1024 * 1024) {
+        App.showToast('视频不能超过 50MB', 'error');
+        event.target.value = '';
+        return;
+    }
+
+    App.showToast('正在上传视频...', 'info');
+
+    // 编辑模式（已有 cardId）：直接 POST /{card_id}/video 一步到位（含ffmpeg封面提取）
+    if (this._cardId) {
+        var formData2 = new FormData();
+        formData2.append('file', file);
+        try {
+            var resp2 = await fetch('/api/v4/word-cards/' + this._cardId + '/video', { method: 'POST', body: formData2 });
+            var d2 = await resp2.json();
+            if (d2 && d2.ok) {
+                App.showToast('视频已上传并关联到词卡', 'success');
+                await this._loadCard();
+                try { await App.loadPrompts(); } catch(e) {}
+            } else {
+                App.showToast('上传失败: ' + ((d2 && (d2.detail || d2.error)) || '服务器错误'), 'error');
+            }
+        } catch(e) {
+            App.showToast('上传出错: ' + e.message, 'error');
+        }
+        event.target.value = '';
+        return;
+    }
+
+    // 新建模式（无 cardId）：先上传到共享视频库暂存，保存后自动关联
+    var formData = new FormData();
+    formData.append('file', file);
+    var videoFilename = null;
+    try {
+        var resp = await fetch('/api/thumbnails/upload-video', { method: 'POST', body: formData });
+        var d = await resp.json();
+        if (!d.ok) { throw new Error(d.detail || '上传到视频库失败'); }
+        videoFilename = d.video_filename;
+    } catch(e) {
+        App.showToast('上传到视频库失败: ' + e.message, 'error');
+        event.target.value = '';
+        return;
+    }
+
+    // 新建模式：暂存 videoFilename，保存后自动关联
+    if (this._pendingThumbBlobUrl && this._pendingThumbBlobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(this._pendingThumbBlobUrl);
+    }
+    this._pendingThumbFile = null;
+    this._pendingThumbSource = null;
+    this._pendingThumbBlobUrl = null;
+
+    this._pendingVideoFile = null;
+    this._pendingVideoSource = videoFilename;
+    this._pendingVideoBlobUrl = '/api/thumbnails/video/' + videoFilename;
+    this._refreshThumbPreview();
+    App.showToast('已选择视频，保存词卡后自动关联', 'success');
+    event.target.value = '';
+};
+
+// Phase16.3: 打开视频库选取器
+App.wordEditor._openVideoLibrary = function() {
+    var self = this;
+    App._onVideoSelected = async function(videoFilename) {
+        App.showToast('正在设置预览视频...', 'info');
+
+        // 新建模式：暂存源文件名，从视频库预览
+        if (!self._cardId) {
+            // 清除已有图片临时状态
+            if (self._pendingThumbBlobUrl && self._pendingThumbBlobUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(self._pendingThumbBlobUrl);
+            }
+            self._pendingThumbFile = null;
+            self._pendingThumbSource = null;
+            self._pendingThumbBlobUrl = null;
+
+            self._pendingVideoFile = null;
+            self._pendingVideoSource = videoFilename;
+            self._pendingVideoBlobUrl = '/api/thumbnails/video/' + videoFilename;
+            self._refreshThumbPreview();
+            App.showToast('已选择视频，保存词卡后自动关联', 'success');
+            return;
+        }
+
+        // 编辑模式：直接调用 API
+        var d = await App.fetchJSON('/api/v4/word-cards/' + self._cardId + '/video-from-library', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source_filename: videoFilename })
+        });
+        if (d && d.ok) {
+            App.showToast('视频已设置', 'success');
+            await self._loadCard();
+            try { await App.loadPrompts(); } catch(e) {}
+        } else {
+            App.showToast('设置失败: ' + ((d && d.detail) || '服务器错误'), 'error');
+        }
+    };
+    App._openThumbnailModal('videos');
+};
+
 App.wordEditor._openThumbLibrary = function() {
     var self = this;
     // 图库选中后的回调
@@ -923,50 +1071,53 @@ App.wordEditor._openThumbLibrary = function() {
             App.showToast('设置失败: ' + ((d && d.detail) || '服务器错误'), 'error');
         }
     };
-    App._onVideoSelected = async function(videoFilename) {
-        App.showToast('正在设置视频...', 'info');
-        if (!self._cardId) {
-            App.showToast('新建词卡暂不支持视频，请先保存', 'warning');
-            return;
-        }
-        var d = await App.fetchJSON('/api/v4/word-cards/' + self._cardId + '/video-from-library', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source_filename: videoFilename })
-        });
-        if (d && d.ok) {
-            App.showToast('视频已设置', 'success');
-            await self._loadCard();
-            try { await App.loadPrompts(); } catch(e) {}
-        } else {
-            App.showToast('设置失败: ' + ((d && d.detail) || '服务器错误'), 'error');
-        }
-    };
+    // Phase16.3: 视频选择已迁移到 _openVideoLibrary，此处只保留图片选择
+    App._onVideoSelected = null;
     App._openThumbnailModal('images');
 };
 
 App.wordEditor._clearThumb = async function() {
-    // 新建模式：清除暂存
+    // 新建模式：清除暂存（图片+视频）
     if (!this._cardId) {
-        this._pendingThumbFile = null;
-        this._pendingThumbSource = null;
         if (this._pendingThumbBlobUrl && this._pendingThumbBlobUrl.startsWith('blob:')) {
             URL.revokeObjectURL(this._pendingThumbBlobUrl);
         }
+        if (this._pendingVideoBlobUrl && this._pendingVideoBlobUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(this._pendingVideoBlobUrl);
+        }
+        this._pendingThumbFile = null;
+        this._pendingThumbSource = null;
         this._pendingThumbBlobUrl = null;
+        this._pendingVideoFile = null;
+        this._pendingVideoSource = null;
+        this._pendingVideoBlobUrl = null;
         this._refreshThumbPreview();
-        App.showToast('已清除待上传缩略图', 'info');
+        App.showToast('已清除待上传媒体', 'info');
         return;
     }
 
-    // 编辑模式：调用 API
-    if (!confirm(App._t('common.confirm', '确认清除此词卡的缩略图？'))) return;
+    // 编辑模式：调用 API — 清除视频或缩略图
+    if (!confirm(App._t('common.confirm', '确认清除此词卡的媒体？'))) return;
+    // 先查当前卡片是否有视频
     try {
-        var d = await App.fetchJSON('/api/v4/word-cards/' + this._cardId + '/thumbnail', { method: 'DELETE' });
-        if (d && d.ok) {
-            App.showToast('缩略图已清除', 'info');
-            await this._loadCard();
-            try { await App.loadPrompts(); } catch(e) {}
+        var cardResp = await App.fetchJSON('/api/v4/word-cards/' + this._cardId);
+        var cardData = cardResp && cardResp.card;
+        if (cardData && cardData.preview_media) {
+            // 有视频 → 调 video DELETE
+            var d = await App.fetchJSON('/api/v4/word-cards/' + this._cardId + '/video', { method: 'DELETE' });
+            if (d && d.ok) {
+                App.showToast('视频已清除', 'info');
+                await this._loadCard();
+                try { await App.loadPrompts(); } catch(e) {}
+            }
+        } else {
+            // 无视频 → 调缩略图 DELETE
+            var d = await App.fetchJSON('/api/v4/word-cards/' + this._cardId + '/thumbnail', { method: 'DELETE' });
+            if (d && d.ok) {
+                App.showToast('缩略图已清除', 'info');
+                await this._loadCard();
+                try { await App.loadPrompts(); } catch(e) {}
+            }
         }
     } catch(e) { App.showToast('清除失败: ' + e.message, 'error'); }
 };
@@ -977,9 +1128,29 @@ App.wordEditor._refreshThumbPreview = function() {
     var thumbName = document.getElementById('wcEditThumbName');
     var clearBtn = document.getElementById('wcEditThumbClearBtn');
 
-    if (this._pendingThumbBlobUrl || this._pendingThumbFile || this._pendingThumbSource) {
+    // Phase16.3: 视频暂存优先（视频盖过图片）
+    if (this._pendingVideoBlobUrl || this._pendingVideoFile || this._pendingVideoSource) {
+        var videoSrc = this._pendingVideoBlobUrl
+            ? this._pendingVideoBlobUrl
+            : '/api/thumbnails/video/' + this._pendingVideoSource;
+        var posterUrl = '';
+        if (this._pendingVideoSource && (!this._pendingVideoBlobUrl || !this._pendingVideoBlobUrl.startsWith('blob:'))) {
+            // 从视频库选择：封面路径为 /api/thumbnails/file/{base}.jpg
+            var baseName = this._pendingVideoSource.replace(/\.[^.]+$/, '.jpg');
+            posterUrl = '/api/thumbnails/file/' + baseName;
+        }
         if (area) {
-            area.innerHTML = '<img src="' + (this._pendingThumbBlobUrl || '/api/thumbnails/file/' + this._pendingThumbSource) + '" style="width:100%;height:100%;border-radius:6px;object-fit:cover;">';
+            area.innerHTML = '<video id="wcEditThumbPreview" src="' + videoSrc + '" muted loop playsinline preload="metadata" poster="' + posterUrl + '" style="width:100%;height:100%;border-radius:6px;object-fit:cover;" onmouseenter="this.play()" onmouseleave="this.pause();this.currentTime=0"></video>';
+        }
+        if (thumbName) thumbName.textContent = '🎬 ' + (
+            this._pendingVideoSource
+                ? this._pendingVideoSource.substring(0, 25)
+                : (this._pendingVideoFile ? this._pendingVideoFile.name.substring(0, 25) : '待上传视频')
+        );
+        if (clearBtn) clearBtn.style.display = 'inline-block';
+    } else if (this._pendingThumbBlobUrl || this._pendingThumbFile || this._pendingThumbSource) {
+        if (area) {
+            area.innerHTML = '<img id="wcEditThumbPreview" src="' + (this._pendingThumbBlobUrl || '/api/thumbnails/file/' + this._pendingThumbSource) + '" style="width:100%;height:100%;border-radius:6px;object-fit:cover;">';
         }
         if (thumbName) thumbName.textContent = this._pendingThumbSource
             ? this._pendingThumbSource.substring(0, 25)
