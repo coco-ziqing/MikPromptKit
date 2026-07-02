@@ -545,13 +545,48 @@ def copy_video_from_library(card_id: int, data: dict):
             break
     if not src_path:
         raise HTTPException(404, f"视频文件不存在: {source}")
+
+    # Phase16.3-fix: 先释放 DB 锁，再 copy 文件（不阻塞其他写入）
     dest_name = f"{uuid.uuid4().hex}{os.path.splitext(source)[1] or '.mp4'}"
     dest_path = os.path.join(WC_VIDEO_DIR, dest_name)
-    shutil.copy2(src_path, dest_path)
     _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
     db.execute("UPDATE word_card SET thumbnail='', preview_media=?, media_type='video', updated_at=datetime('now','localtime') WHERE id=?", [dest_name, card_id])
     safe_commit()
-    return {"ok": True, "filename": dest_name, "source": source}
+
+    # Phase17-video-poster: 先同步从源视频提取首帧封面（~100ms）
+    poster_name = ''
+    try:
+        import subprocess
+        poster_dest_name = f"{os.path.splitext(dest_name)[0] or uuid.uuid4().hex}.jpg"
+        poster_dest = os.path.join(WC_THUMB_DIR, poster_dest_name)
+        # 直接从源视频提取首帧
+        subprocess.run(
+            ['ffmpeg', '-ss', '0.1', '-i', src_path, '-vframes', '1', '-q:v', '2', poster_dest, '-y'],
+            capture_output=True, timeout=30
+        )
+        if os.path.exists(poster_dest):
+            poster_name = poster_dest_name
+            # 立即更新 DB 以使前端立即可见
+            try:
+                poster_db = get_db()
+                poster_db.execute("UPDATE word_card SET thumbnail=? WHERE id=?", [poster_name, card_id])
+                poster_db.commit()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # 后台线程复制视频文件（可能较大，不阻塞响应）
+    import threading
+    def _copy_files_thread():
+        try:
+            import shutil
+            shutil.copy2(src_path, dest_path)
+        except Exception:
+            pass
+    threading.Thread(target=_copy_files_thread, daemon=True).start()
+
+    return {"ok": True, "filename": dest_name, "poster": poster_name or None, "source": source}
 
 
 @router.post("/{card_id}/video")
@@ -575,9 +610,36 @@ async def upload_card_video(card_id: int, file: UploadFile = File(...)):
         if os.path.exists(dest): os.remove(dest)
         raise HTTPException(404, "词卡不存在")
     _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
+
+    # Phase16.3-fix: 先提交 DB 释放锁，再走 ffmpeg（海报非关键路径，不可阻塞DB）
     db.execute("UPDATE word_card SET thumbnail='', preview_media=?, media_type='video', updated_at=datetime('now','localtime') WHERE id=?", [filename, card_id])
     safe_commit()
-    return {"ok": True, "filename": filename}
+
+    # Phase17-video-poster: 同步提取首帧封面（~100ms，不阻塞DB）
+    # DB已提交并释放锁，这里直接走 subprocess
+    poster_dest_name = f"{os.path.splitext(filename)[0]}.jpg"
+    poster_dest = os.path.join(WC_THUMB_DIR, poster_dest_name)
+    poster_ok = False
+    try:
+        import subprocess
+        subprocess.run(
+            ['ffmpeg', '-ss', '0.1', '-i', dest, '-vframes', '1', '-q:v', '2', poster_dest, '-y'],
+            capture_output=True, timeout=30
+        )
+        poster_ok = os.path.exists(poster_dest)
+    except Exception:
+        pass
+
+    if poster_ok:
+        # 更新海报到 DB（同步写入，立即可用）
+        try:
+            poster_db = get_db()
+            poster_db.execute("UPDATE word_card SET thumbnail=? WHERE id=?", [poster_dest_name, card_id])
+            poster_db.commit()
+        except Exception:
+            pass
+
+    return {"ok": True, "filename": filename, "poster": poster_dest_name if poster_ok else None}
 
 
 @router.delete("/{card_id}/video")

@@ -67,24 +67,24 @@ Object.assign(App, {
     },
 
     toggleEditMode() {
-        // 编辑模式仅适用于 home 视图，非 home 视图时先切换
-        if (this.state.currentView !== 'home') {
+        // 编辑模式适用于 home 和 collections 视图
+        if (this.state.currentView !== 'home' && this.state.currentView !== 'collections') {
             this.switchView('home');
         }
         this.state.editMode = !this.state.editMode;
         
         var eb = document.getElementById('batchBar');
         var fb = document.getElementById('editFilterBar');
+        var isCollView = this.state.currentView === 'collections' && !!this.state.currentCollection;
         if (this.state.editMode) {
             this.state.batchSelected.clear();
             this._editFilterQuery = '';
             this._editFilterModule = '';
             this._editFilterCollected = '';
             if (eb) { eb.style.display = 'flex'; }
-            if (fb) { fb.style.display = 'block'; }
-            this._populateEditFilterModules();
+            if (fb) { fb.style.display = isCollView ? 'none' : 'block'; }
+            if (!isCollView) this._populateEditFilterModules();
             this.updateBatchCount();
-            // 持久化编辑模式状态
             try { localStorage.setItem('promptkit_editmode', '1'); } catch(e) {}
         } else {
             this.state.batchSelected.clear();
@@ -100,7 +100,12 @@ Object.assign(App, {
             btn.style.color = '#94a3b8';
             btn.classList.remove('active');
         }
-        this.renderPrompts();
+        // 根据当前视图渲染对应内容
+        if (this.state.currentView === 'collections' && this.state.currentCollection) {
+            this.renderCollectionItems();
+        } else {
+            this.renderPrompts();
+        }
         this.renderSidebar();
     },
 
@@ -182,22 +187,35 @@ Object.assign(App, {
         } else {
             this.state.batchSelected.add(promptId);
         }
-        this.renderPrompts();
+        // 根据当前视图渲染对应内容
+        if (this.state.currentView === 'collections' && this.state.currentCollection) {
+            this.renderCollectionItems();
+        } else {
+            this.renderPrompts();
+        }
         this.updateBatchCount();
     },
 
     selectAllPrompts() {
-        var allIds = this.state.prompts.map(function(p) { return p.id; });
-        // 如果当前已全选 → 取消全选；否则全选
-        var allSelected = allIds.every(function(id) { return App.state.batchSelected.has(id); });
+        // 获取当前视图下的所有条目标识
+        var items = (this.state.currentView === 'collections' && this.state.currentCollection)
+            ? (this.state.collectionItems || [])
+            : (this.state.prompts || []);
+        var allIds = items.map(function(p) { return p.id; });
+        var allSelected = allIds.length > 0 && allIds.every(function(id) { return App.state.batchSelected.has(id); });
         if (allSelected) {
             this.state.batchSelected.clear();
         } else {
-            for (const p of this.state.prompts) {
-                this.state.batchSelected.add(p.id);
+            for (var i = 0; i < items.length; i++) {
+                this.state.batchSelected.add(items[i].id);
             }
         }
-        this.renderPrompts();
+        // 根据当前视图渲染对应内容
+        if (this.state.currentView === 'collections' && this.state.currentCollection) {
+            this.renderCollectionItems();
+        } else {
+            this.renderPrompts();
+        }
         this.updateBatchCount();
     },
 
@@ -205,15 +223,25 @@ Object.assign(App, {
         var count = this.state.batchSelected.size;
         var el = document.getElementById('batchCount');
         if (el) el.textContent = '已选 ' + count + ' 项';
-        // 更新按钮文字
+
+        // 按钮文字：获取当前视图下的所有条目
+        var allItems = (this.state.currentView === 'collections' && this.state.currentCollection)
+            ? (this.state.collectionItems || [])
+            : (this.state.prompts || []);
+        var allIds = allItems.map(function(p) { return p.id; });
+        var allSelected = allIds.length > 0 && allIds.every(function(id) { return App.state.batchSelected.has(id); });
         var btn = document.getElementById('btnSelectAllPrompts');
         if (btn) {
-            var allIds = this.state.prompts.map(function(p) { return p.id; });
-            var allSelected = allIds.every(function(id) { return App.state.batchSelected.has(id); });
             btn.innerHTML = allSelected
                 ? '<i class="bi bi-x-square"></i> 取消全选'
                 : '<i class="bi bi-check-all"></i> 全选';
         }
+
+        // Phase17.2: 收藏夹专用按钮显隐（移出本分组 仅收藏夹显示）
+        var isCollView = this.state.currentView === 'collections' && !!this.state.currentCollection;
+        document.querySelectorAll('.btn-batch-coll').forEach(function(b) {
+            b.style.display = isCollView ? '' : 'none';
+        });
     },
 
     async exportSelected() {

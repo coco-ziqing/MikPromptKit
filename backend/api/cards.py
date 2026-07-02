@@ -64,7 +64,7 @@ def list_cards(
             card_ids).fetchall():
             thumbs_map[t['prompt_id']] = t
         for v in db.execute(
-            f"SELECT prompt_id, filename, duration FROM prompt_videos WHERE prompt_id IN ({placeholders})",
+            f"SELECT prompt_id, filename, poster, duration, fps, width, height FROM prompt_videos WHERE prompt_id IN ({placeholders})",
             card_ids).fetchall():
             videos_map[v['prompt_id']] = v
         for cr in db.execute(
@@ -85,6 +85,12 @@ def list_cards(
         item['thumbnail'] = t['filename'] if t else ''
         item['media_type'] = t['media_type'] if t else 'image'
         item['video_filename'] = v['filename'] if v else ''
+        item['video_poster'] = v['poster'] if v else ''  # Phase17-video-poster: 视频封面帧
+        item['video_fps'] = v['fps'] if v else ''
+        # Phase17-video-poster: 无缩略图但视频有封面帧 → 用封面帧作为缩略图
+        if not item['thumbnail'] and item.get('video_poster'):
+            item['thumbnail'] = item['video_poster']
+            item['media_type'] = 'video'
         item['collections'] = colls_map.get(tid, [])
         items.append(item)
     

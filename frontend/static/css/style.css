@@ -726,6 +726,29 @@ body.dark-theme .seedance-tab:hover { background: #334155; }
     display: block;
     z-index: 1;
 }
+/* Phase17-video-poster: 视频播放图标覆盖层 — 悬停即播放的视觉提示 */
+.prompt-card .card-thumb .thumb-video-wrap-preview .thumb-play-overlay {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 32px; height: 32px;
+    background: rgba(0,0,0,0.55);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    pointer-events: none;
+    transition: opacity 0.2s;
+}
+.prompt-card .card-thumb .thumb-video-wrap-preview .thumb-play-overlay svg {
+    width: 14px; height: 14px;
+    fill: #fff;
+    margin-left: 2px; /* 三角形视觉居中补偿 */
+}
+.prompt-card .card-thumb .thumb-video-wrap-preview:hover .thumb-play-overlay {
+    opacity: 0;
+}
 .prompt-card .card-thumb .thumb-video-wrap-preview .thumb-video {
     position: absolute;
     top: 0; left: 0;

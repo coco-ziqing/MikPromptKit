@@ -58,6 +58,40 @@
     <nav class="sidebar" id="sidebar"></nav>
     <aside class="recommend-panel" id="recommendPanel"><div class="rec-header"><span><i class="bi bi-stars"></i> 智能推荐</span><button class="header-btn-sm" onclick="App.closeRecommend()">&times;</button></div><div id="recommendList" class="rec-list"><div class="rec-empty">点击提示词查看推荐</div></div></aside>
     <main class="main-content" id="mainContent">
+        <!-- Phase17.2: batchBar + editFilterBar 提升到 main 级别，跨视图共享 -->
+        <div id="batchBar" class="batch-bar" style="display:none;">
+            <span id="batchCount">已选 0 项</span>
+            <button class="btn-batch" onclick="App.selectAllPrompts()" id="btnSelectAllPrompts"><i class="bi bi-check-all"></i> 全选</button>
+            <button class="btn-batch" onclick="App.batchCopy()" id="btnBatchCopy"><i class="bi bi-files"></i> 批量复制</button>
+            <button class="btn-batch" onclick="App.batchExport('png')" id="btnBatchExportPng" style="border-color:#059669;color:#059669;"><i class="bi bi-card-image"></i> PNG</button>
+            <button class="btn-batch" onclick="App.batchExport('txt')" id="btnBatchExportTxt"><i class="bi bi-download"></i> TXT</button>
+            <button class="btn-batch" onclick="App.batchExport('md')" id="btnBatchExportMd" style="border-color:#10b981;color:#10b981;"><i class="bi bi-markdown"></i> MD</button>
+            <button class="btn-batch" onclick="App.batchExport('json')" id="btnBatchExportJson" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-file-code"></i> JSON</button>
+            <button class="btn-batch" onclick="App.batchExport('pt')" id="btnBatchExportPt" style="border-color:#06b6d4;color:#06b6d4;"><i class="bi bi-box"></i> .pt</button>
+            <button class="btn-batch" onclick="App.batchAddToWordpack()" id="btnBatchAddWordpack"><i class="bi bi-folder-plus"></i> 添加到词包</button>
+            <button class="btn-batch" onclick="App._wcBatchMove()" id="btnBatchWcMove" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-arrow-right-circle"></i> 批量移动</button>
+            <button class="btn-batch" onclick="App.batchGenerateThumbnails()" id="btnBatchAiThumb" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-magic"></i> AI 批量生成缩略图</button>
+            <button class="btn-batch" onclick="App.openAddPromptModal()" id="btnBatchNewCard" style="border-color:#22c55e;color:#22c55e;"><i class="bi bi-plus-lg"></i> 新建词条</button>
+            <button class="btn-batch" onclick="App.batchTrash()" id="btnBatchTrash" style="border-color:#ef4444;color:#ef4444;"><i class="bi bi-trash"></i> 删除</button>
+            <button class="btn-batch btn-batch-coll" id="btnBatchRemoveColl" onclick="App.batchRemoveFromCollection()" style="border-color:#f97316;color:#f97316;display:none;"><i class="bi bi-dash-square"></i> 移出本分组</button>
+        </div>
+        <div id="editFilterBar" class="edit-filter-bar" style="display:none;margin-bottom:8px;" data-edit-only="1">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <div style="position:relative;flex:1;min-width:160px;">
+                    <input type="text" id="editFilterInput" class="modal-input" placeholder="🔍 快速筛选当前页（回车确认）" style="padding:6px 10px 6px 30px;font-size:12px;" onkeydown="if(event.key==='Enter')App._applyEditFilter()">
+                </div>
+                <select id="editFilterModule" class="modal-input" style="width:auto;min-width:80px;font-size:12px;padding:6px 8px;" onchange="App._applyEditFilter()">
+                    <option value="">全部模块</option>
+                </select>
+                <select id="editFilterCollected" class="modal-input" style="width:auto;min-width:80px;font-size:12px;padding:6px 8px;" onchange="App._applyEditFilter()">
+                    <option value="">所有词条</option>
+                    <option value="collected">已收藏</option>
+                    <option value="uncollected">未收藏</option>
+                </select>
+                <span id="editFilterCount" style="font-size:11px;color:var(--text-muted);white-space:nowrap;"></span>
+                <button class="btn-batch btn-batch-cancel" onclick="App._resetEditFilter()" style="font-size:11px;padding:4px 10px;">重置</button>
+            </div>
+        </div>
         <div id="viewHome" class="view-panel">
             <div id="viewHomeTop" class="view-home-top">
                 <div id="categoryTabs"></div>
@@ -68,38 +102,6 @@
                         <span class="count-info" id="countInfo" style="white-space:nowrap;">加载中...</span>
                     </div>
                     <div id="pageHeaderRight" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;"></div>
-                </div>
-                <div id="batchBar" class="batch-bar" style="display:none;">
-                    <span id="batchCount">已选 0 项</span>
-                    <button class="btn-batch" onclick="App.selectAllPrompts()" id="btnSelectAllPrompts"><i class="bi bi-check-all"></i> 全选</button>
-                    <button class="btn-batch" onclick="App.batchCopy()"><i class="bi bi-files"></i> 批量复制</button>
-                    <button class="btn-batch" onclick="App.batchExport('png')" style="border-color:#059669;color:#059669;"><i class="bi bi-card-image"></i> PNG</button>
-                    <button class="btn-batch" onclick="App.batchExport('txt')"><i class="bi bi-download"></i> TXT</button>
-                    <button class="btn-batch" onclick="App.batchExport('md')" style="border-color:#10b981;color:#10b981;"><i class="bi bi-markdown"></i> MD</button>
-                    <button class="btn-batch" onclick="App.batchExport('json')" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-file-code"></i> JSON</button>
-                    <button class="btn-batch" onclick="App.batchExport('pt')" style="border-color:#06b6d4;color:#06b6d4;"><i class="bi bi-box"></i> .pt</button>
-                    <button class="btn-batch" onclick="App.batchAddToWordpack()"><i class="bi bi-folder-plus"></i> 添加到词包</button>
-                    <button class="btn-batch" onclick="App._wcBatchMove()" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-arrow-right-circle"></i> 批量移动</button>
-                    <button class="btn-batch" onclick="App.batchGenerateThumbnails()" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-magic"></i> AI 批量生成缩略图</button>
-                    <button class="btn-batch" onclick="App.openAddPromptModal()" style="border-color:#22c55e;color:#22c55e;"><i class="bi bi-plus-lg"></i> 新建词条</button>
-                    <button class="btn-batch" onclick="App.batchTrash()" style="border-color:#ef4444;color:#ef4444;"><i class="bi bi-trash"></i> 删除</button>
-                </div><!-- 编辑模式增强筛选栏（仅在编辑模式下显示） -->
-                <div id="editFilterBar" class="edit-filter-bar" style="display:none;margin-bottom:8px;" data-edit-only="1">
-                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                        <div style="position:relative;flex:1;min-width:160px;">
-                            <input type="text" id="editFilterInput" class="modal-input" placeholder="🔍 快速筛选当前页（回车确认）" style="padding:6px 10px 6px 30px;font-size:12px;" onkeydown="if(event.key==='Enter')App._applyEditFilter()">
-                        </div>
-                        <select id="editFilterModule" class="modal-input" style="width:auto;min-width:80px;font-size:12px;padding:6px 8px;" onchange="App._applyEditFilter()">
-                            <option value="">全部模块</option>
-                        </select>
-                        <select id="editFilterCollected" class="modal-input" style="width:auto;min-width:80px;font-size:12px;padding:6px 8px;" onchange="App._applyEditFilter()">
-                            <option value="">所有词条</option>
-                            <option value="collected">已收藏</option>
-                            <option value="uncollected">未收藏</option>
-                        </select>
-                        <span id="editFilterCount" style="font-size:11px;color:var(--text-muted);white-space:nowrap;"></span>
-                        <button class="btn-batch btn-batch-cancel" onclick="App._resetEditFilter()" style="font-size:11px;padding:4px 10px;">重置</button>
-                    </div>
                 </div>
             </div>
             <!-- 下方可滚动列表区 -->
@@ -940,9 +942,9 @@
     <script src="/static/js/health_check.js?v=5"></script>
     <script src="/static/js/app_sync.js?v=9.3"></script>
     <script src="/static/js/app_editor.js?v=11.14"></script>
-    <script src="/static/js/app_collections.js?v=10.11"></script>
+    <script src="/static/js/app_collections.js?v=10.12"></script>
     <script src="/static/js/app_tools.js?v=9.3"></script>
-    <script src="/static/js/app_media.js?v=10.6"></script>
+    <script src="/static/js/app_media.js?v=10.7"></script>
     <script src="/static/js/ai_tools.js?v=8"></script>
     <script src="/static/js/word_picker.js?v=5"></script>
     <script src="/static/js/word_editor.js?v=11.2"></script>

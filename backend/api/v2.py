@@ -161,6 +161,8 @@ def list_collection_items(cid: int, page: int = Query(1, ge=1), page_size: int =
             COALESCE(wc.category, p.category, '') as category,
             CASE WHEN wc.id IS NOT NULL THEN '' WHEN p.subcategory IS NOT NULL THEN p.subcategory ELSE '' END as subcategory,
             COALESCE(wc.content, p.content, '') as content,
+            COALESCE(wc.content_en, '') as content_en,
+            COALESCE(wc.content_zh, '') as content_zh,
             COALESCE(wc.meaning, p.meaning, '') as meaning,
             COALESCE(wc.scene, p.scene, '') as scene,
             COALESCE(wc.tags, p.tags, '[]') as tags,
@@ -168,6 +170,9 @@ def list_collection_items(cid: int, page: int = Query(1, ge=1), page_size: int =
             COALESCE(wc.thumbnail, pt.filename, '') as thumbnail,
             COALESCE(wc.thumbnail, pv.poster, '') as original_ref,
             wc.preview_media as video_filename,
+            COALESCE(wc.icon, '') as icon,
+            COALESCE(wc.name, SUBSTR(wc.content, 1, 60), '') as name,
+            COALESCE(wc.media_type, 'image') as media_type,
             '' as video_poster,
             '' as video_fps,
             '' as video_duration,
@@ -274,6 +279,22 @@ def remove_from_collection(cid: int, prompt_id: int):
                [cid, prompt_id])
     db.commit()
     return {"ok": True}
+
+
+@router.post("/collections/{cid}/items/batch-remove")
+def batch_remove_from_collection(cid: int, data: dict):
+    """批量从收藏中移除词条"""
+    prompt_ids = data.get("prompt_ids", [])
+    if not prompt_ids:
+        raise HTTPException(400, "请提供 prompt_ids")
+    db = get_db()
+    removed = 0
+    for pid in prompt_ids:
+        db.execute("DELETE FROM collection_items WHERE collection_id=? AND prompt_id=?",
+                   [cid, pid])
+        removed += 1
+    db.commit()
+    return {"ok": True, "removed": removed}
 
 
 @router.get("/collections/prompt-batch")

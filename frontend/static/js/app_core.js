@@ -273,6 +273,33 @@ var App = window.App || {
             this.switchView('home');
             this.loadPrompts();
         }
+
+        // Phase17.1: 自动修复缺失视频首帧封面（每个会话只执行一次）
+        this._repairMissingPosters();
+    },
+
+    // Phase17.1: 每会话一次，自动修复缺失视频首帧封面
+    _repairMissingPosters() {
+        try {
+            if ((typeof sessionStorage !== 'undefined' && sessionStorage.getItem('_pk_poster_repaired'))) return;
+            sessionStorage.setItem('_pk_poster_repaired', '1');
+            var self = this;
+            this.fetchJSON('/api/thumbnails/repair-missing-posters', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            }).then(function(r) {
+                if (r && r.total_fixed > 0) {
+                    console.log('[repair] 视频首帧修复完成：' + r.total_fixed + ' 条');
+                    // 修复后刷新当前视图，让新 thumbnail 即刻显示
+                    if (self.state.currentView === 'home') {
+                        self.loadPrompts();
+                    }
+                }
+            }).catch(function(e) {
+                // 静默失败，不影响正常使用
+            });
+        } catch(e) {}
     },
 
     // ============ 事件绑定 ============
