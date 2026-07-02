@@ -1,5 +1,10 @@
 # PromptKit — 提示词检索工具
 
+## ⚠️ 暂停开发触发器
+- **触发词**: 用户说「暂停开发」「停止开发」「先不做了」「休息一下」或关闭 OpenClaw
+- **必须执行**: ① git status 确认干净 ② git push origin master ③ WAL checkpoint ④ 确认最新 tag 已推送 ⑤ 输出安全关闭清单
+- **设置时间**: 2026-07-02 15:17 GMT+8
+
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit) / 咪卡Mik词库
 - 版本：v5.3.7-phase17-word-editor-video (2026-07-02)
