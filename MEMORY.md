@@ -2,13 +2,12 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit) / 咪卡Mik词库
-- 版本：v5.0.0-phase17-video-poster (2026-07-02)
+- 版本：v5.3.6-phase17-video-poster (2026-07-02)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
 - 默认端口：8080（自增 8080→8089）
 - 局域网地址：http://192.168.0.101:8080
-- 前一个tag: `v5.0.0-phase17-video-hotfix`
-- 当前tag: `v5.0.0-phase17-video-poster` (视频首帧封面同步提取)
+- 当前tag: `v5.3.6-phase17-video-poster` (视频首帧封面同步提取 + 收藏夹编辑模式补全 + batchBar DOM修复)
 
 ## Phase17.1 视频首帧封面修复（2026-07-02 13:10）
 
