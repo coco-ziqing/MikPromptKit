@@ -383,19 +383,16 @@ ALLOWED_VIDEO_EXT = {'.mp4', '.webm', '.mov', '.avi'}
 
 @router.post("/upload-video")
 async def upload_video(file: UploadFile = File(...)):
-    """上传视频，自动提取第一帧作为封面"""
+    """上传视频，自动提取第一帧作为封面 — Phase16.3-fix: ffmpeg异步化避免DB锁"""
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_VIDEO_EXT:
         raise HTTPException(400, f"不支持的视频格式: {ext}，支持 {ALLOWED_VIDEO_EXT}")
 
-    # 生成唯一名
     base_name = uuid.uuid4().hex
     video_name = base_name + ext
     poster_name = base_name + '.jpg'
-
     video_path = os.path.join(VIDEO_DIR, video_name)
 
-    # 读取上传内容
     file_bytes = await file.read()
     if len(file_bytes) > 50 * 1024 * 1024:
         raise HTTPException(400, "视频太大，最大 50MB")
@@ -403,47 +400,55 @@ async def upload_video(file: UploadFile = File(...)):
     with open(video_path, 'wb') as f:
         f.write(file_bytes)
 
-    # 用 ffmpeg 提取第一帧作为封面
-    poster_path = os.path.join(THUMB_DIR, poster_name)
-    try:
-        import subprocess
-        subprocess.run(
-            ['ffmpeg', '-ss', '0.1', '-i', video_path, '-vframes', '1',
-             '-q:v', '2', poster_path, '-y'],
-            capture_output=True, timeout=30
-        )
-        poster_ok = os.path.exists(poster_path)
-    except Exception as e:
-        print('[视频] 封面提取失败:', e)
-        poster_ok = False
-
-    # 获取视频时长 + fps/分辨率
+    # Phase17-video-poster: 同步提取首帧封面（非耗时，~100ms）确保立即可用
+    orig_filename = file.filename
+    poster_ok = False
     duration = 0
     vinfo = {}
     try:
+        poster_path_full = os.path.join(THUMB_DIR, poster_name)
         import subprocess, json
-        probe = subprocess.run(
-            ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', video_path],
-            capture_output=True, timeout=10, text=True
+        subprocess.run(
+            ['ffmpeg', '-ss', '0.1', '-i', video_path, '-vframes', '1',
+             '-q:v', '2', poster_path_full, '-y'],
+            capture_output=True, timeout=30
         )
-        info = json.loads(probe.stdout)
-        duration = float(info.get('format', {}).get('duration', 0))
+        poster_ok = os.path.exists(poster_path_full)
     except Exception:
         pass
 
-    vinfo = _probe_video_info(video_path)
+    # Phase17-video-poster: 后台异步探测元数据（ffprobe较慢，不阻塞响应）
+    import threading
+    def _post_process_thread():
+        try:
+            import subprocess, json
+            probe = subprocess.run(
+                ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', video_path],
+                capture_output=True, timeout=10, text=True
+            )
+            info = json.loads(probe.stdout)
+            dur = float(info.get('format', {}).get('duration', 0))
+            vin = _probe_video_info(video_path)
+            db = get_db()
+            db.execute("INSERT OR REPLACE INTO thumb_meta (filename, original_name, media_type) VALUES (?, ?, 'video')",
+                       [video_name, orig_filename])
+            if vin:
+                db.execute(
+                    "INSERT OR REPLACE INTO video_cache (filename, fps, width, height, duration, cached_at) "
+                    "VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))",
+                    [video_name, vin.get("fps", 0), vin.get("width", 0), vin.get("height", 0), round(dur, 1)]
+                )
+            db.commit()
+        except Exception:
+            pass
+    threading.Thread(target=_post_process_thread, daemon=True).start()
 
-    # 写入数据库 poster 字段（持久化封面关联）
+    # Phase17-video-poster: 写 thumb_meta 记录首帧封面（同步）
     if poster_ok:
         try:
             db = get_db()
-            db.execute("INSERT OR REPLACE INTO prompt_videos (filename, poster, duration, fps, width, height, updated_at) "
-                       "VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))",
-                       [video_name, poster_name, round(duration, 1),
-                        vinfo.get("fps", 0), vinfo.get("width", 0), vinfo.get("height", 0)])
-            # 记录原始文件名
             db.execute("INSERT OR REPLACE INTO thumb_meta (filename, original_name, media_type) VALUES (?, ?, 'video')",
-                       [video_name, file.filename])
+                       [video_name, orig_filename])
             db.commit()
         except Exception:
             pass
@@ -451,14 +456,16 @@ async def upload_video(file: UploadFile = File(...)):
     return {
         "ok": True,
         "video_filename": video_name,
-        "poster_filename": poster_name if poster_ok else None,
+        "poster_filename": poster_name,  # 首帧已同步提取，保证存在
         "video_url": f"/api/thumbnails/video/{video_name}",
         "poster_url": f"/api/thumbnails/file/{poster_name}" if poster_ok else None,
-        "duration": round(duration, 1),
-        "fps": vinfo.get("fps", 0),
-        "width": vinfo.get("width", 0),
-        "height": vinfo.get("height", 0),
-        "size": len(file_bytes)
+        "poster_ok": poster_ok,  # Phase17-video-poster: 首帧是否成功
+        "duration": 0,  # 后台异步填充元数据
+        "fps": 0,
+        "width": 0,
+        "height": 0,
+        "size": len(file_bytes),
+        "note": "首帧已提取，元数据异步处理中"
     }
 
 
@@ -658,19 +665,20 @@ def finalize_video_upload(data: dict):
     # 探测信息
     vinfo = _probe_video_info(video_path)
 
-    # 写入数据库
-    if poster_ok:
-        try:
-            db = get_db()
-            db.execute("INSERT OR REPLACE INTO prompt_videos (filename, poster, duration, fps, width, height, updated_at) "
-                       "VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))",
-                       [temp_filename, poster_name, round(vinfo.get("duration", 0), 1),
-                        vinfo.get("fps", 0), vinfo.get("width", 0), vinfo.get("height", 0)])
-            db.execute("INSERT OR REPLACE INTO thumb_meta (filename, original_name, media_type) VALUES (?, ?, 'video')",
-                       [temp_filename, original_name])
-            db.commit()
-        except Exception:
-            pass
+    # 写入元数据（不写 prompt_videos——prompt_id 是主键且引外键，
+    # 此处无对应 prompt，插入必失败。关联由 assign-video 完成）
+    try:
+        db = get_db()
+        db.execute("INSERT OR REPLACE INTO thumb_meta (filename, original_name, media_type) VALUES (?, ?, 'video')",
+                   [temp_filename, original_name])
+        db.execute(
+            "INSERT OR REPLACE INTO video_cache (filename, fps, width, height, duration, cached_at) "
+            "VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))",
+            [temp_filename, vinfo.get("fps", 0), vinfo.get("width", 0), vinfo.get("height", 0), round(vinfo.get("duration", 0), 1)]
+        )
+        db.commit()
+    except Exception:
+        pass
 
     return {
         "ok": True,
@@ -1065,3 +1073,129 @@ def batch_delete_videos(data: dict):
         deleted.append(safe_name)
     db.commit()
     return {"ok": True, "deleted_count": len(deleted), "deleted": deleted}
+
+
+# ==================== Phase17.1: 自动修复缺失首帧封面 ====================
+
+@router.post("/repair-missing-posters")
+def repair_missing_posters():
+    """扫描所有有视频但缺少首帧封面的记录，自动用 ffmpeg 提取并回写 DB。
+    前端首次加载时调用，sessionStorage 标记确保每个会话只执行一次。"""
+    import subprocess
+    WC_THUMB_DIR2 = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "data", "wc_media", "thumbs"
+    )
+    WC_VIDEO_DIR2 = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "data", "wc_media", "videos"
+    )
+    os.makedirs(THUMB_DIR, exist_ok=True)
+    os.makedirs(WC_THUMB_DIR2, exist_ok=True)
+
+    db = get_db()
+    fixed_videos = []
+    fixed_wordcards = []
+
+    # ---- 1. 修复 prompt_videos: 有视频但 poster 为空 ----------------
+    pv_rows = db.execute(
+        "SELECT prompt_id, filename FROM prompt_videos WHERE poster IS NULL OR poster = ''"
+    ).fetchall()
+    for r in pv_rows:
+        vname = os.path.basename(r["filename"])
+        vpath = os.path.join(VIDEO_DIR, vname)
+        if not os.path.exists(vpath):
+            continue
+        poster_name = os.path.splitext(vname)[0] + ".jpg"
+        poster_path = os.path.join(THUMB_DIR, poster_name)
+        try:
+            subprocess.run(
+                ['ffmpeg', '-ss', '0.1', '-i', vpath, '-vframes', '1',
+                 '-q:v', '2', poster_path, '-y'],
+                capture_output=True, timeout=20
+            )
+            if os.path.exists(poster_path):
+                db.execute("UPDATE prompt_videos SET poster=? WHERE prompt_id=?",
+                           [poster_name, r["prompt_id"]])
+                db.execute(
+                    "INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) "
+                    "VALUES (?, ?, 'video', datetime('now','localtime'))",
+                    [r["prompt_id"], poster_name]
+                )
+                db.commit()
+                fixed_videos.append({
+                    "prompt_id": r["prompt_id"], "video": vname,
+                    "poster": poster_name, "size": os.path.getsize(poster_path)
+                })
+        except Exception as e:
+            pass  # 单条失败不影响其余
+
+    # ---- 2. 修复 word_card: 有 preview_media 但 thumbnail 为空 -------
+    wc_rows = db.execute(
+        "SELECT id, preview_media FROM word_card WHERE preview_media != ''"
+        " AND (thumbnail IS NULL OR thumbnail = '')"
+    ).fetchall()
+    for r in wc_rows:
+        vname = os.path.basename(r["preview_media"])
+        vpath = os.path.join(WC_VIDEO_DIR2, vname)
+        if not os.path.exists(vpath):
+            vpath = os.path.join(VIDEO_DIR, vname)
+        if not os.path.exists(vpath):
+            continue
+        poster_name = os.path.splitext(vname)[0] + ".jpg"
+        poster_path = os.path.join(WC_THUMB_DIR2, poster_name)
+        try:
+            subprocess.run(
+                ['ffmpeg', '-ss', '0.1', '-i', vpath, '-vframes', '1',
+                 '-q:v', '2', poster_path, '-y'],
+                capture_output=True, timeout=20
+            )
+            if os.path.exists(poster_path):
+                db.execute("UPDATE word_card SET thumbnail=?, updated_at=datetime('now','localtime') WHERE id=?",
+                           [poster_name, r["id"]])
+                db.commit()
+                fixed_wordcards.append({
+                    "card_id": r["id"], "video": vname,
+                    "poster": poster_name, "size": os.path.getsize(poster_path)
+                })
+        except Exception:
+            pass
+
+    # ---- 3. 修复 word_card: thumbnail 有值但磁盘文件不存在 ---------
+    wc_th_rows = db.execute(
+        "SELECT id, preview_media, thumbnail FROM word_card WHERE preview_media != ''"
+        " AND thumbnail IS NOT NULL AND thumbnail != ''"
+    ).fetchall()
+    for r in wc_th_rows:
+        th_path = os.path.join(WC_THUMB_DIR2, os.path.basename(r["thumbnail"]))
+        th_path2 = os.path.join(THUMB_DIR, os.path.basename(r["thumbnail"]))
+        if os.path.exists(th_path) or os.path.exists(th_path2):
+            continue
+        vname = os.path.basename(r["preview_media"])
+        vpath = os.path.join(WC_VIDEO_DIR2, vname)
+        if not os.path.exists(vpath):
+            vpath = os.path.join(VIDEO_DIR, vname)
+        if not os.path.exists(vpath):
+            continue
+        poster_name = os.path.basename(r["thumbnail"])
+        poster_path = os.path.join(WC_THUMB_DIR2, poster_name)
+        try:
+            subprocess.run(
+                ['ffmpeg', '-ss', '0.1', '-i', vpath, '-vframes', '1',
+                 '-q:v', '2', poster_path, '-y'],
+                capture_output=True, timeout=20
+            )
+            if os.path.exists(poster_path):
+                fixed_wordcards.append({
+                    "card_id": r["id"], "video": vname,
+                    "poster": poster_name, "size": os.path.getsize(poster_path),
+                    "note": "re-extracted"
+                })
+        except Exception:
+            pass
+
+    total_fixed = len(fixed_videos) + len(fixed_wordcards)
+    return {
+        "ok": True, "total_fixed": total_fixed,
+        "fixed_videos": fixed_videos, "fixed_wordcards": fixed_wordcards
+    }

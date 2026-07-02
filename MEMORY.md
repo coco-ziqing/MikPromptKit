@@ -2,15 +2,105 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit) / 咪卡Mik词库
-- 版本：v5.0.0-phase16-atom-editor (2026-06-24)
+- 版本：v5.0.0-phase17-video-poster (2026-07-02)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
 - 默认端口：8080（自增 8080→8089）
-- 局域网地址：http://192.168.0.103:8080
-- 前一个tag: `v4.2.0-phase14-arch`
-- 当前tag: `v5.0.0-phase16-atom-editor` (分类架构重构)
+- 局域网地址：http://192.168.0.101:8080
+- 前一个tag: `v5.0.0-phase17-video-hotfix`
+- 当前tag: `v5.0.0-phase17-video-poster` (视频首帧封面同步提取)
 
-## Phase16 原子编辑器前端（2026-06-24 14:00~15:00）
+## Phase17.1 视频首帧封面修复（2026-07-02 13:10）
+
+### 问题
+- 视频卡片只显示「⏵ 播放」占位符 SVG，不显示视频首帧静态图
+- 原因3层：
+  1. `cards.py` 读 `prompt_videos` 时遗漏 `poster` 字段
+  2. `upload-video` 和 word_card video 上传的 ffmpeg 首帧提取是**异步线程**，前端拿到响应时 poster 文件可能还不存在
+  3. `prompt_videos.poster` 存在于 DB 但未映射到前端 `thumbnail` 字段
+
+### 修复清单（4层）
+
+| # | 层级 | 文件 | 修复内容 |
+|---|------|------|---------|
+| 1 | 后端 | `cards.py` | `prompt_videos` 查询增加 `poster/fps/width/height` 字段；`thumbnail` 为空时用 `video_poster` 回退 |
+| 2 | 后端 | `thumbnails.py:upload_video` | ffmpeg 首帧提取从**异步线程**改为**同步**（~100ms）；仅元数据探测异步 |
+| 3 | 后端 | `word_cards.py:POST /video` | 同上：同步提取首帧 + 同步写 thumbnail 到 DB |
+| 4 | 后端 | `word_cards.py:video-from-library` | 从源视频同步提取首帧 + 立即写 DB，视频 copy 异步 |
+| 5 | 前端 | `app_editor.js:renderPrompts` | 视频卡片增加 `.thumb-play-overlay`（播放▶提示图标） |
+| 6 | CSS | `style.css` | 新增 `.thumb-play-overlay` 规则（半透明圆形+三角形▶，悬停时淡出） |
+
+### 原理解释
+```
+上传视频 → ffmpeg同步截取第1帧（100ms）→ 写入 data/thumbnails/{base}.jpg
+         → 响应返回 poster_filename（保证存在）
+         → 前端收到 poster_ok=True，poster_url 立即可用
+         → 卡片渲染：<img poster> (z-index:1 常显) + <video> (z-index:0 opacity:0 隐藏)
+         → 鼠标悬停：poster z-index→0，video z-index→2, opacity→1 → 播放预览
+```
+
+### 版本号
+- style.css: v12.8 → **v12.9**
+- app_editor.js: v11.3 → **v11.4**
+
+## Phase17.1.1 自动修复缺失首帧封面（2026-07-02 13:14）
+
+### 需求
+刷新页面时自动检测：有视频但无首帧海报 → 自动 ffmpeg 截取 + 写入 DB + 刷新视图
+
+### 实现
+| 层级 | 文件 | 内容 |
+|------|------|------|
+| 后端 | `thumbnails.py` | 新增 `POST /repair-missing-posters`：扫描 prompt_videos + word_card 3类缺失 → ffmpeg 逐个修复 |
+| 前端 | `app_core.js` | `init()` 末尾调用 `_repairMissingPosters()`，`sessionStorage` 标记确保每会话一次 |
+
+### 3 类缺失覆盖
+1. `prompt_videos.poster IS NULL` → 提取首帧写入 thumbnails/ + 更新 prompt_videos + prompt_thumbnails
+2. `word_card.thumbnail IS NULL AND preview_media != ''` → 提取首帧写入 wc_media/thumbs/ + 更新 word_card
+3. `word_card.thumbnail` 有值但磁盘文件不存在 → 重新提取
+
+### 修复结果
+- word_card 共 4 条缺 thumbnail：修复 2 条（4K 首帧），2 条视频文件损坏（moov atom not found）
+- prompt_videos 无缺失
+- 前端：修复后自动 `loadPrompts()` 刷新卡片渲染，首帧立即可见
+
+### 版本号
+- app_core.js: v12.4 → **v12.5**
+- thumbnails.py: +120 行（新端点）
+
+## Phase17.2 收藏夹编辑模式补全（2026-07-02 13:44）
+
+### 需求
+收藏夹分组内页面补全词卡列表拥有的编辑模式功能：批量选中/全选/移出分组
+
+### 变更清单
+| 层级 | 文件 | 内容 |
+|------|------|------|
+| 前端 | `app_tools.js` | `toggleEditMode` 扩展支持 collections 视图；`toggleSelect`/`selectAllPrompts`/`updateBatchCount` 适配收藏夹上下文 |
+| 前端 | `app_collections.js` | `renderCollectionItems` 升级：编辑模式 CSS 类(batch-mode/edit-mode)+thumb-play-overlay+缩略图清除按钮；`batchRemoveFromCollection` 批量移出；`backToCollections` 退出编辑 |
+| 前端 | `index.html` | batchBar 新增 `btnBatchRemoveColl`（首页隐藏/收藏夹显示） |
+| 后端 | `v2.py` | 新增 `POST /collections/{cid}/items/batch-remove` 批量移出 API |
+
+### 功能对齐
+```
+词卡列表编辑模式（home）       收藏夹编辑模式（collections）
+  ✅ 编辑模式切换/toggle           ✅ 同
+  ✅ 批量选中/全选/取消全选         ✅ 同（适配 collectionItems 数据源）
+  ✅ 批量复制/批量导出             ✅ 继承
+  ✅ 批量删除/移入回收站            ✅ 继承
+  ✅ 批量移动分组                 ✅ 继承
+  ✅ thumb-clear-btn 清除缩略图    ✅ 同（编辑模式下显示）
+  — 无                           ✅ 批量移出本分组（专用按钮）
+  — 无                           ✅ 返回分组列表自动退出编辑模式
+```
+
+### 版本号
+- app_tools.js: v9 → **v9.1**
+- app_collections.js: v5 → **v5.1**
+- v2.py: +15 行
+- index.html: +1 按钮
+
+## Phase17 视频上传热修复（2026-07-02 11:42）
 
 ### 变更清单
 | 层级 | 文件 | 内容 |

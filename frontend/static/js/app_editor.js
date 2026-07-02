@@ -287,6 +287,7 @@ Object.assign(App, {
                                       + (p.thumbnail
                                           ? `<img class="thumb-video-poster" src="/api/thumbnails/file/${p.thumbnail}" alt="" loading="lazy">`
                                           : `<div class="thumb-placeholder thumb-video-placeholder"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg></div>`)
+                                      + `<div class="thumb-play-overlay"><svg viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19"/></svg></div>`
                                       + `<video class="thumb-video" src="/api/thumbnails/video/${videoFile}" loop muted playsinline preload="none"></video>`
                                       + `</div>`
                                     : (p.thumbnail

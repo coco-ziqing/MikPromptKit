@@ -203,14 +203,25 @@ Object.assign(App, {
         });
         if (data) {
             this.showToast('已移入回收站 ' + data.trashed + ' 条', 'success');
+            var isCollView = this.state.currentView === 'collections' && !!this.state.currentCollection;
             if (this.state.editMode) {
                 this.state.batchSelected.clear();
                 var eb = document.getElementById('batchBar');
                 if (eb) eb.style.display = 'none';
-                this.loadPrompts();
+                if (isCollView) {
+                    this.loadCollections();
+                    this.loadCollectionItems();
+                } else {
+                    this.loadPrompts();
+                }
             } else {
                 this.toggleEditMode();
-                this.loadPrompts();
+                if (isCollView) {
+                    this.loadCollections();
+                    this.loadCollectionItems();
+                } else {
+                    this.loadPrompts();
+                }
             }
         }
     },
@@ -375,6 +386,8 @@ Object.assign(App, {
         document.getElementById('collectionGroups').style.display = 'none';
         document.getElementById('collectionItems').style.display = 'block';
         await this.loadCollectionItems();
+        // 编辑模式下：确保 batchBar 按钮按收藏夹规则更新
+        if (this.state.editMode) this.updateBatchCount();
     },
 
     async loadCollectionItems() {
@@ -406,6 +419,9 @@ Object.assign(App, {
             container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>分组为空</p></div>';
             return;
         }
+        var isEdit = this.state.editMode;
+        var batchClass = isEdit ? 'batch-mode' : '';
+        var editClass = isEdit ? 'edit-mode' : '';
         let html = '<div class="prompt-grid">';
         for (const p of items) {
             const tags = JSON.parse(p.tags || '[]');
@@ -417,18 +433,20 @@ Object.assign(App, {
                 collHtml += '<span class="coll-badge" ondblclick="App.switchView(\'collections\');App.openCollection(' + cc.id + ')" title="双击进入「' + this._escape(cc.name) + '」收藏分组">' + (cc.icon || '⭐') + '</span>';
             }
             const isSelected = this.state.batchSelected.has(p.id);
+            const selectedClass = isSelected ? 'selected' : '';
             // 统一视频字段（兼容旧 prompts 和新 word_card）
             var videoFile2 = p.video_filename || p.preview_media || '';
             html += `
-                <div class="prompt-card" data-id="${p.id}" draggable="true">
+                <div class="prompt-card ${batchClass} ${selectedClass} ${editClass}" data-id="${p.id}" draggable="true">
                     <div class="card-body">
                         <div class="card-thumb">
-                            <div class="card-thumb-inner" onclick="App.showThumbnailPicker(${p.id})">
+                            <div class="card-thumb-inner" onclick="${isEdit ? 'event.stopPropagation();App.toggleSelect(' + p.id + ')' : 'App.showThumbnailPicker(' + p.id + ')'}">
                                 ${videoFile2
                                     ? `<div class="thumb-video-wrap-preview">`
                                       + (p.thumbnail
                                           ? `<img class="thumb-video-poster" src="/api/thumbnails/file/${p.thumbnail}" alt="" loading="lazy">`
                                           : `<div class="thumb-placeholder thumb-video-placeholder"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg></div>`)
+                                      + `<div class="thumb-play-overlay"><svg viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19"/></svg></div>`
                                       + `<video class="thumb-video" src="/api/thumbnails/video/${videoFile2}" loop muted playsinline preload="none"></video>`
                                       + `</div>`
                                     : (p.thumbnail
@@ -439,6 +457,7 @@ Object.assign(App, {
                                       )
                                 }
                             </div>
+                            ${(p.thumbnail || videoFile2) && isEdit ? '<span class="thumb-clear-btn" onclick="event.stopPropagation();App.clearCardThumbnail(' + p.id + ')" title="清除缩略图">✕</span>' : ''}
                             ${(p.thumbnail || videoFile2) ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (videoFile2 ? 'App.openVideoViewer(\'' + videoFile2 + '\', \'' + (p.thumbnail || '') + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + (p.original_ref || p.thumbnail) + '\', \'' + p.id + '\')') + '" title="' + (videoFile2 ? '查看原视频' : '查看原图') + '">' + (videoFile2 ? '▶' : '🔍') + '</span>' : ''}
                         </div>
                         <div class="card-add-row">
@@ -455,13 +474,15 @@ Object.assign(App, {
                                 <span class="card-badge">${this._escape(p.category)}</span>
                                 ${p.subcategory ? `<span style="font-size:10px;color:#94a3b8;">${this._escape(p.subcategory)}</span>` : ''}
                             </div>
-                            <div class="card-content" id="cc_${p.id}">${this._escape(p.content)}</div>
+                            <div class="card-content" id="cc_${p.id}">${this._escape(App._transContent ? App._transContent(p) : p.content)}</div>
                             ${p.meaning ? `<div class="card-meaning">${this._escape(p.meaning)}</div>` : ''}
                             ${p.scene ? `<div class="card-scene">🎯 ${this._escape(p.scene)}</div>` : ''}
                             <div style="font-size:10px;color:#cbd5e1;margin-bottom:6px;">${tagHtml}</div>
                             <div class="card-actions">
                                 <span style="font-size:11px;color:#94a3b8;margin-right:auto;">使用 ${p.usage_count} 次</span>
                                 <button class="btn-copy" onclick="App.trackUsage(${p.id});App.copyText('${this._escape(p.content).replace(/'/g, "\\'")}')">📋 复制</button>
+                                <button class="btn-copy translate-btn" onclick="App.toggleTranslation(${p.id})" title="中英翻译">🌐</button>
+                                <button class="btn-copy" onclick="App.openEditModal(${p.id})" title="编辑">✏️</button>
                                 <button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.removeFromCollection(${this.state.currentCollection}, ${p.id})">移除</button>
                             </div>
                         </div>
@@ -479,6 +500,32 @@ Object.assign(App, {
         this.showToast('已移除', 'info');
         await this.loadCollections();
         await this.loadCollectionItems();
+    },
+
+    async batchRemoveFromCollection() {
+        var ids = [...this.state.batchSelected];
+        var cid = this.state.currentCollection;
+        if (ids.length === 0) { this.showToast('请先选择词条', 'error'); return; }
+        if (!confirm('确认将选中的 ' + ids.length + ' 条移出本收藏分组？')) return;
+        var data = await this.fetchJSON('/api/v2/collections/' + cid + '/items/batch-remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt_ids: ids })
+        });
+        if (data && data.ok) {
+            this.showToast('已移出 ' + data.removed + ' 条', 'success');
+            this.state.batchSelected.clear();
+            var eb = document.getElementById('batchBar');
+            if (eb) eb.style.display = 'none';
+            this.state.editMode = false;
+            var btn2 = document.getElementById('btnEditMode');
+            if (btn2) { btn2.style.color = '#94a3b8'; btn2.classList.remove('active'); }
+            try { localStorage.removeItem('promptkit_editmode'); } catch(e) {}
+            await this.loadCollections();
+            await this.loadCollectionItems();
+        } else {
+            this.showToast('操作失败: ' + (data ? data.error : '未知错误'), 'error');
+        }
     },
 
 
@@ -540,7 +587,14 @@ Object.assign(App, {
         } catch(e) { el.innerHTML = App._escape(original); this.showToast('翻译失败: ' + e.message, 'error'); }
     },
 
-    _findCardData(pid) { var ps = this.state.prompts || []; for (var i = 0; i < ps.length; i++) { if (ps[i].id === pid) return ps[i]; } return null; },
+    _findCardData(pid) {
+        var ps = this.state.prompts || [];
+        for (var i = 0; i < ps.length; i++) { if (ps[i].id === pid) return ps[i]; }
+        // Phase16.3: 收藏视图下数据在 collectionItems 中
+        var cs = this.state.collectionItems || [];
+        for (var i2 = 0; i2 < cs.length; i2++) { if (cs[i2].id === pid) return cs[i2]; }
+        return null;
+    },
 
     getCardDisplayContent(promptId) {
         var card = this._findCardData(promptId); if (!card) return null;
@@ -675,7 +729,7 @@ Object.assign(App, {
             var assignRes = await this.fetchJSON('/api/thumbnails/assign-video', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt_id: promptId, video_filename: data.filename })
+                body: JSON.stringify({ prompt_id: promptId, video_filename: data.video_filename, poster_filename: data.poster_filename || '', duration: data.duration || 0 })
             });
             if (assignRes && assignRes.ok) {
                 this.showToast(App._t('auto.str_ec86f555', '✅ 视频已关联到提示词'), 'success');
@@ -690,6 +744,18 @@ Object.assign(App, {
     },
 
     backToCollections() {
+        // 退出编辑模式
+        if (this.state.editMode) {
+            this.state.editMode = false;
+            this.state.batchSelected.clear();
+            var eb = document.getElementById('batchBar');
+            var fb = document.getElementById('editFilterBar');
+            if (eb) eb.style.display = 'none';
+            if (fb) fb.style.display = 'none';
+            var btn = document.getElementById('btnEditMode');
+            if (btn) { btn.style.color = '#94a3b8'; btn.classList.remove('active'); }
+            try { localStorage.removeItem('promptkit_editmode'); } catch(e) {}
+        }
         this.state.currentCollection = null;
         document.getElementById('collectionGroups').style.display = 'grid';
         document.getElementById('collectionItems').style.display = 'none';
