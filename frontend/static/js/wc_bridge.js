@@ -224,6 +224,35 @@ App._showShowcase = function() {
                 }
                 html += '</div></div>';
             }
+
+            // Phase17.4: 无 sub 包裹的叶子分组（自定义分组 / 含词卡的 builtin 直挂 root 下）
+            var uwLeaves = [];
+            for (var u = 0; u < root.children.length; u++) {
+                var cr = root.children[u];
+                if (cr.group_type !== 'sub' && cr.group_type !== 'root' && cr.group_type !== 'atom'
+                    && (!cr.children || cr.children.length === 0)) {
+                    uwLeaves.push(cr);
+                }
+            }
+            if (uwLeaves.length > 0) {
+                var uwTotal = uwLeaves.reduce(function(sum,g){return sum+(g.card_count||0);},0);
+                html += '<div style="border-left:2px solid var(--border-color);margin-left:8px;margin-bottom:6px;padding:6px 0 6px 12px;border-radius:0 8px 8px 0;">';
+                html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;color:var(--text-muted);font-weight:600;">';
+                html += '<span style="font-size:15px;">📂</span><span>自定义分组</span>';
+                html += '<span style="font-size:11px;margin-left:auto;">' + uwTotal + ' 条</span></div>';
+                html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+                for (var g2 = 0; g2 < uwLeaves.length; g2++) {
+                    var grp = uwLeaves[g2];
+                    html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
+                    html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
+                    html += ' onmouseenter="this.style.borderColor=var(--primary);this.style.background=var(--hover-bg)" onmouseleave="this.style.borderColor=var(--border-color);this.style.background=var(--bg-card)"';
+                    html += '>';
+                    html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
+                    html += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
+                    html += '</button>';
+                }
+                html += '</div></div>';
+            }
         }
         html += '</div></div>';
     }
@@ -853,7 +882,7 @@ App._wcLoadPrompts = async function() {
         this.renderPagination();
         this.updateBatchCount();  // 切换分组后：根据当前分组数据更新按钮状态
         document.getElementById('countInfo').textContent = '共 ' + d.total + ' 条词卡';
-        document.getElementById('pageTitle').textContent = s.currentGroupName || '词卡列表';
+        document.getElementById('pageTitle').textContent = s.currentGroupName || '全部分组列表';
         // 侧边栏滚动到当前分组（首次加载/刷新时也触发）
         var self = this;
         setTimeout(function() { self._scrollSidebarToGroup(s.currentGroupId); }, 200);
@@ -1005,6 +1034,8 @@ App.gmCreate = function() {
                 if (nameEl) nameEl.value = '';
                 self.loadGroupTree().then(function() {
                     self.gmRefresh();
+                    // Phase17.4: 如果当前在全部词组页面，刷新陈列架显示
+                    if (self.state.currentGroupId === null) self._showShowcase();
                 });
             });
         } else {
@@ -1016,7 +1047,7 @@ App.gmCreate = function() {
 
 // Phase15: 行内重命名（有 btnEl 时变输入框，否则回退 prompt）
 App.gmEdit = function(groupId, oldName, btnEl) {
-    if (!btnEl) { var n=prompt('修改名称：',oldName||''); if(!n||!n.trim())return; var s=this; fetch('/api/v4/word-cards/groups/'+groupId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.trim()})}).then(function(r){if(r.ok){s.showToast('已更新','success');s.loadGroupTree().then(function(){s.gmRefresh()})}else{s.showToast('更新失败','error')}}); return; }
+    if (!btnEl) { var n=prompt('修改名称：',oldName||''); if(!n||!n.trim())return; var s=this; fetch('/api/v4/word-cards/groups/'+groupId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.trim()})}).then(function(r){if(r.ok){s.showToast('已更新','success');s.loadGroupTree().then(function(){s.gmRefresh();if(s.state.currentGroupId===null)s._showShowcase()})}else{s.showToast('更新失败','error')}}); return; }
     var el = btnEl.closest('.module-item');
     var spans = el.querySelectorAll('span');
     var nameSpan = null;
@@ -1044,7 +1075,7 @@ App.gmEdit = function(groupId, oldName, btnEl) {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name: v })
         }).then(function(r) {
-            if (r.ok) { self.showToast('已更新', 'success'); self.loadGroupTree(); }
+            if (r.ok) { self.showToast('已更新', 'success'); self.loadGroupTree().then(function() { if (self.state.currentGroupId === null) self._showShowcase(); }); }
             else { self.showToast('更新失败', 'error'); }
         }).catch(function() { self.showToast('出错', 'error'); });
     };
@@ -1107,9 +1138,9 @@ App.gmBatchMove = function(fromGroupId) {
 var _origUpdateTitle = App._updatePageTitle;
 App._updatePageTitle = function() {
     if (this.state.currentGroupId !== null && this.state.currentView === 'home') {
-        document.getElementById('pageTitle').textContent = this.state.currentGroupName || '词组列表';
+        document.getElementById('pageTitle').textContent = this.state.currentGroupName || '全部分组列表';
     } else if (this.state.currentView === 'home') {
-        document.getElementById('pageTitle').textContent = '查找词组';
+        document.getElementById('pageTitle').textContent = '全部词组';
     } else {
         if (_origUpdateTitle) _origUpdateTitle.call(this);
     }

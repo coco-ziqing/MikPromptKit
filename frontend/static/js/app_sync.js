@@ -795,10 +795,10 @@ Object.assign(App, {
 
     applyColumns() {
         var cols = this.state.columns || 3;
-        // 不再更新滑块UI，只更新CSS grid列数
+        // Phase17.4: 用 minmax(170px,1fr) 兜底，6列时如果页面不够宽自动折行
         var grids = document.querySelectorAll('.prompt-grid');
         for (var i = 0; i < grids.length; i++) {
-            grids[i].style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+            grids[i].style.gridTemplateColumns = 'repeat(' + cols + ', minmax(170px, 1fr))';
         }
 
         // 根据列数调整缩略图大小
