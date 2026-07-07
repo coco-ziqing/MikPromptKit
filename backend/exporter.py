@@ -93,21 +93,34 @@ def _wrap_text(text, font, draw, max_width):
 
 
 def export_prompt_to_png(prompt_id: int) -> bytes:
-    """导出单条提示词为 PNG 字节流"""
+    """导出单条提示词为 PNG 字节流 — Phase17.6: 兼容 word_card + prompts 双表"""
     db = get_db()
+    # 1) word_card（新引擎主表，1074+ 条）
     row = db.execute("""
-        SELECT p.*, pt.filename as thumbnail, pv.filename as video_filename
-        FROM prompts p
-        LEFT JOIN prompt_thumbnails pt ON pt.prompt_id = p.id
-        LEFT JOIN prompt_videos pv ON pv.prompt_id = p.id
-        WHERE p.id = ?
+        SELECT wc.id, wc.module, wc.category, '' as subcategory,
+               wc.content, wc.meaning, wc.scene, wc.tags,
+               wc.usage_count, wc.is_builtin, wc.name, wc.content_en, wc.content_zh,
+               wc.thumbnail, wc.preview_media as video_filename,
+               wc.group_id
+        FROM word_card wc WHERE wc.id = ? AND wc.is_deleted = 0
     """, [prompt_id]).fetchone()
+    table = "word_card"
+    if not row:
+        # 2) prompts 旧表（156 条）
+        row = db.execute("""
+            SELECT p.*, pt.filename as thumbnail, pv.filename as video_filename
+            FROM prompts p
+            LEFT JOIN prompt_thumbnails pt ON pt.prompt_id = p.id
+            LEFT JOIN prompt_videos pv ON pv.prompt_id = p.id
+            WHERE p.id = ?
+        """, [prompt_id]).fetchone()
+        table = "prompts"
     if not row:
         raise HTTPException(404, "提示词不存在")
 
     p = dict(row)
 
-    # 查询中文翻译（如果有）
+    # 查询中文翻译
     translation_row = db.execute(
         "SELECT content FROM translations WHERE prompt_id=? AND lang='zh'",
         [prompt_id]
@@ -122,14 +135,15 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
     """, [prompt_id]).fetchall()
     collections = [{"name": r["name"], "icon": r.get("icon") or "⭐"} for r in coll_rows]
 
-    # 读取缩略图原图
+    # 读取缩略图 — word_card 用 wc_media/thumbs/, prompts 用 data/thumbnails/
     thumbnail_bytes = None
-    THUMB_DIR = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "data", "thumbnails"
-    )
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if table == "word_card":
+        THUMB_DIR = os.path.join(PROJECT_ROOT, "data", "wc_media", "thumbs")
+    else:
+        THUMB_DIR = os.path.join(PROJECT_ROOT, "data", "thumbnails")
     if p.get("thumbnail"):
-        tpath = os.path.join(THUMB_DIR, p["thumbnail"])
+        tpath = os.path.join(THUMB_DIR, os.path.basename(p["thumbnail"]))
         if os.path.exists(tpath):
             with open(tpath, "rb") as f:
                 thumbnail_bytes = f.read()
