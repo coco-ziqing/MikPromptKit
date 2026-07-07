@@ -571,7 +571,7 @@ def copy_video_from_library(card_id: int, data: dict):
             try:
                 poster_db = get_db()
                 poster_db.execute("UPDATE word_card SET thumbnail=? WHERE id=?", [poster_name, card_id])
-                poster_db.commit()
+                safe_commit()
             except Exception:
                 pass
     except Exception:

@@ -441,13 +441,14 @@ Object.assign(App, {
             }
             const isSelected = this.state.batchSelected.has(p.id);
             const selectedClass = isSelected ? 'selected' : '';
-            // 统一视频字段（兼容旧 prompts 和新 word_card）
+            // 统一视频字段 + word_card 检测
             var videoFile2 = p.video_filename || p.preview_media || '';
+            var isWordCard = p._source === 'word_card';
             html += `
                 <div class="prompt-card ${batchClass} ${selectedClass} ${editClass}" data-id="${p.id}" draggable="true">
                     <div class="card-body">
                         <div class="card-thumb">
-                            <div class="card-thumb-inner" onclick="${isEdit ? 'event.stopPropagation();App.toggleSelect(' + p.id + ')' : 'App.showThumbnailPicker(' + p.id + ')'}">
+                            <div class="card-thumb-inner" onclick="${isEdit ? 'event.stopPropagation();App.toggleSelect(' + p.id + ')' : (isWordCard ? 'App.wordEditor.open({cardId:' + p.id + ',source:\'collection\',onSaved:function(){App.loadCollectionItems()}})' : 'App.showThumbnailPicker(' + p.id + ')')}">
                                 ${videoFile2
                                     ? `<div class="thumb-video-wrap-preview">`
                                       + (p.thumbnail
@@ -486,11 +487,14 @@ Object.assign(App, {
                             ${p.scene ? `<div class="card-scene">🎯 ${this._escape(p.scene)}</div>` : ''}
                             <div style="font-size:10px;color:#cbd5e1;margin-bottom:6px;">${tagHtml}</div>
                             <div class="card-actions">
-                                <span style="font-size:11px;color:#94a3b8;margin-right:auto;">使用 ${p.usage_count} 次</span>
-                                <button class="btn-copy" onclick="App.trackUsage(${p.id});App.copyText('${this._escape(p.content).replace(/'/g, "\\'")}')">📋 复制</button>
-                                <button class="btn-copy translate-btn" onclick="App.toggleTranslation(${p.id})" title="中英翻译">🌐</button>
-                                <button class="btn-copy" onclick="App.openEditModal(${p.id})" title="编辑">✏️</button>
-                                <button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.removeFromCollection(${this.state.currentCollection}, ${p.id})">移除</button>
+                                <span style="font-size:11px;color:#94a3b8;">使用 ${p.usage_count} 次</span>
+                                <div style="display:flex;gap:4px;align-items:center;margin-left:auto;">
+                                <button class="btn-copy" onclick="App.toggleTranslation(${p.id})" title="中英文翻译" style="border-color:${App._transBtnStyle ? App._transBtnStyle(p.id,'color') : 'var(--primary)'};color:${App._transBtnStyle ? App._transBtnStyle(p.id,'color') : 'var(--primary)'};">${App._transBtnLabel ? App._transBtnLabel(p) : '🌐'}</button>
+                                ${isEdit ? '<button class="btn-copy" style="border-color:#8b5cf6;color:#8b5cf6;" onclick="event.stopPropagation();App._wcShowMovePicker(' + p.id + ')" title="移动到其他分组">📦</button>' : ''}
+                                ${isEdit ? '<button class="btn-copy" style="border-color:#eab308;color:#eab308;" onclick="App.openEditModal(' + p.id + ')" title="编辑词卡内容">✏</button>' : ''}
+                                <button class="btn-copy" onclick="App.handleCopyLang(${p.id})" title="复制当前语言提示词">📋</button>
+                                ${isEdit ? '<button class="btn-copy" style="border-color:#ef4444;color:#ef4444;" onclick="App.removeFromCollection(' + this.state.currentCollection + ', ' + p.id + ')" title="移出收藏分组">🗑</button>' : ''}
+                                </div>
                             </div>
                         </div>
                     </div>
