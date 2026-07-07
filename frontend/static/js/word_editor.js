@@ -1,5 +1,5 @@
 // ============================================================
-// v4.1.0: Unified Word Card Editor (多端编辑) — Phase16.3: 新增视频上传按钮
+// v4.1.1: Unified Word Card Editor (多端编辑) — Phase17.4: 修复重复HTML导致保存按钮丢失
 // 统一词卡编辑弹窗 — 从任意端(主界面/选取器/组装器/词库浏览器)打开
 // 实时同步: 编辑后所有视图自动刷新
 // ============================================================
@@ -38,6 +38,11 @@ App.wordEditor.open = async function(options) {
         await this._loadCard();
     } else {
         this._resetForm();
+        // Phase17.3: 新建词卡时预选当前分组（_resetForm 后再设置）
+        if (this._prefillGroupId) {
+            var gSel = document.getElementById('wcEditGroup');
+            if (gSel) { gSel.value = this._prefillGroupId; this._updateGroupPickerBtn(); }
+        }
     }
 
     m.style.display = 'flex';
@@ -110,23 +115,29 @@ App.wordEditor._ensureModal = function() {
     '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">释义/说明</label>' +
     '<input id="wcEditMeaning" class="modal-input" placeholder="中文释义或补充说明" style="font-size:12px;margin-bottom:10px;">' +
 
-    // 模块 + 分类 (一行)
+    // Phase17.3: 模块改为分组选择按钮 + 弹窗
     '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
     '<div style="flex:1;">' +
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">功能模块 <span style="font-size:9px;color:var(--primary);">(自动同步分组)</span></label>' +
+    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">分组选择</label>' +
     '<div style="display:flex;gap:4px;">' +
-    '<select id="wcEditModule" class="modal-input" style="flex:1;font-size:12px;" onchange="App.wordEditor._onModuleChange()"></select>' +
-    '<button class="btn btn-xs" onclick="App.wordEditor._showNewModuleInput()" title="新建自定义模块" style="font-size:11px;padding:4px 8px;border:1px dashed var(--border-color);border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer;white-space:nowrap;">+ 新模块</button>' +
-    '</div>' +
-    '<div id="wcNewModuleRow" style="display:none;margin-top:4px;display:none;gap:4px;">' +
-    '<input id="wcNewModuleName" class="modal-input" placeholder="输入模块名称..." style="flex:1;font-size:11px;padding:4px 6px;">' +
-    '<button class="btn btn-xs btn-primary" onclick="App.wordEditor._createModule()" style="font-size:10px;padding:3px 8px;">创建</button>' +
-    '<button class="btn btn-xs" onclick="App.wordEditor._hideNewModule()" style="font-size:10px;padding:3px 8px;color:var(--text-muted);">取消</button>' +
+    '<button id="wcEditGroupBtn" class="modal-input" onclick="App.wordEditor._showGroupPicker()" style="flex:1;font-size:12px;text-align:left;padding:6px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);cursor:pointer;">📁 选择分组...</button>' +
+    '<span id="wcEditGroupBadge" style="display:none;align-self:center;font-size:10px;padding:2px 8px;border-radius:10px;background:#10b981;color:#fff;white-space:nowrap;flex-shrink:0;"></span>' +
     '</div></div>' +
     '<div style="flex:1;">' +
     '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">分类</label>' +
     '<input id="wcEditCategory" class="modal-input" placeholder="二级分类" style="font-size:12px;">' +
     '</div></div>' +
+    // 分组选择弹窗
+    '<div id="wcGroupPickerModal" class="modal-overlay" style="display:none;z-index:600;" onclick="if(event.target===this)App.wordEditor._hideGroupPicker()">' +
+    '<div class="modal-content" style="max-width:420px;width:92%;max-height:70vh;overflow-y:auto;border-radius:12px;padding:0;">' +
+    '<div style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">' +
+    '<h6 style="margin:0;font-size:14px;">📁 选择分组</h6>' +
+    '<button style="background:none;border:none;font-size:18px;color:var(--text-muted);cursor:pointer;" onclick="App.wordEditor._hideGroupPicker()">&times;</button>' +
+    '</div>' +
+    '<div id="wcGroupPickerTree" style="padding:8px 12px 12px;"></div>' +
+    '</div></div>' +
+    // 隐藏的模块选择器（兼容读取）
+    '<select id="wcEditModule" style="display:none;"></select>' +
 
     // 标签 + AI按钮
     '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">标签</label>' +
@@ -196,7 +207,7 @@ App.wordEditor._loadGroups = async function() {
         var d = await App.fetchJSON('/api/v4/word-cards/groups?include_empty=true');
         this._groups = d.groups || [];
 
-        // 填充分组下拉
+        // 填充分组下拉（隐藏的旧控件，_save 仍从它取值）
         var sel = document.getElementById('wcEditGroup');
         if (sel) {
             sel.innerHTML = '<option value="">-- 无分组 --</option>';
@@ -206,10 +217,129 @@ App.wordEditor._loadGroups = async function() {
             }
         }
 
-        // 填充模块下拉（从groups提取builtin+custom类型 → 模块列表）
+        // 填充隐藏的模块下拉（兼容旧逻辑）
         this._buildModuleOptions();
 
+        // Phase17.3: 更新分组选择按钮文字（如果已预设 group_id）
+        this._updateGroupPickerBtn();
+
     } catch(e) { /* silent */ }
+};
+
+// Phase17.3: 根据隐藏控件更新分组选择按钮
+App.wordEditor._updateGroupPickerBtn = function() {
+    var sel = document.getElementById('wcEditGroup');
+    var btn = document.getElementById('wcEditGroupBtn');
+    var badge = document.getElementById('wcEditGroupBadge');
+    if (!sel || !btn) return;
+    
+    if (sel.value) {
+        var opt = sel.options[sel.selectedIndex];
+        var name = opt ? opt.text.replace(/\[.*\]$/, '').trim() : '已选择';
+        btn.innerHTML = '<span style="font-size:13px;">📁</span> ' + App._escape(name);
+        btn.style.borderColor = '#10b981';
+        if (badge) badge.style.display = 'inline-block';
+    } else {
+        btn.innerHTML = '📁 选择分组...';
+        btn.style.borderColor = 'var(--border-color)';
+        if (badge) badge.style.display = 'none';
+    }
+};
+
+// Phase17.3: 弹出分组选择弹窗
+App.wordEditor._showGroupPicker = async function() {
+    var modal = document.getElementById('wcGroupPickerModal');
+    if (!modal) return;
+    
+    // 构建分组树
+    var tree = document.getElementById('wcGroupPickerTree');
+    if (!tree) return;
+    
+    if (!this._groups || this._groups.length === 0) {
+        try {
+            var d = await App.fetchJSON('/api/v4/word-cards/groups?include_empty=true');
+            this._groups = d.groups || [];
+        } catch(e) {}
+    }
+    
+    var currentVal = document.getElementById('wcEditGroup').value || '';
+    var html = '<div style="display:flex;flex-direction:column;gap:2px;">';
+    
+    // "无分组" 选项
+    var noGroupActive = !currentVal ? 'border:2px solid #10b981;background:#ecfdf5;' : 'border:1px solid transparent;';
+    html += '<div onclick="App.wordEditor._selectGroupFromPicker(\'\')" style="padding:8px 10px;border-radius:8px;cursor:pointer;' + noGroupActive + 'transition:0.15s;margin-bottom:4px;font-size:13px;" onmouseenter="this.style.background=var(--hover-bg)" onmouseleave="this.style.background=\'\'">📭 无分组</div>';
+    html += '<div style="border-top:1px solid var(--border-color);margin:4px 0 8px;"></div>';
+    
+    // 构建分组树（扁平展示带缩进）
+    html += this._buildGroupPickerTree(this._groups, currentVal);
+    html += '</div>';
+    
+    tree.innerHTML = html;
+    modal.style.display = 'flex';
+    
+    // ESC 关闭
+    var self = this;
+    this._groupPickerEscHandler = function(e) {
+        if (e.key === 'Escape') { self._hideGroupPicker(); }
+    };
+    document.addEventListener('keydown', this._groupPickerEscHandler);
+};
+
+// Phase17.3: 构建分组选择树（扁平+缩进）
+App.wordEditor._buildGroupPickerTree = function(groups, currentVal) {
+    // 构建父子映射
+    var childrenMap = {};
+    for (var i = 0; i < groups.length; i++) {
+        var g = groups[i];
+        var pid = g.parent_group_id || 'root';
+        if (!childrenMap[pid]) childrenMap[pid] = [];
+        childrenMap[pid].push(g);
+    }
+    
+    var html = '';
+    function renderNodes(parentId, depth) {
+        var kids = childrenMap[parentId] || [];
+        for (var i = 0; i < kids.length; i++) {
+            var g = kids[i];
+            var indent = depth * 20;
+            var isActive = String(currentVal) === String(g.id);
+            var activeStyle = isActive ? 'border:2px solid #10b981;background:#ecfdf5;font-weight:700;' : 'border:1px solid transparent;';
+            var typeBadge = g.group_type === 'builtin' ? '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:var(--tag-bg);color:var(--primary);margin-left:4px;">内置</span>' : '';
+            var cardCount = g.card_count ? ' <span style="font-size:10px;color:var(--text-muted);">(' + g.card_count + ')</span>' : '';
+            html += '<div onclick="App.wordEditor._selectGroupFromPicker(\'' + g.id + '\')" data-group="' + g.id + '" style="padding:7px 10px 7px ' + (12 + indent) + 'px;border-radius:8px;cursor:pointer;' + activeStyle + 'transition:0.15s;font-size:13px;display:flex;align-items:center;gap:6px;" onmouseenter="if(!this.style.border.includes(\'#10b981\')){this.style.background=\'var(--hover-bg)\';}" onmouseleave="if(!this.style.border.includes(\'#10b981\')){this.style.background=\'\';}">';
+            html += '<span>' + (g.icon||'📁') + '</span>';
+            html += '<span>' + App._escape(g.name) + '</span>';
+            html += typeBadge + cardCount;
+            html += '</div>';
+            // 递归子节点
+            if (g.id && childrenMap[g.id]) {
+                html += renderNodes(g.id, depth + 1);
+            }
+        }
+        return html;
+    }
+    
+    html += renderNodes('root', 0);
+    return html;
+};
+
+// Phase17.3: 选中分组
+App.wordEditor._selectGroupFromPicker = function(groupId) {
+    var sel = document.getElementById('wcEditGroup');
+    if (!sel) return;
+    sel.value = groupId;
+    this._updateGroupPickerBtn();
+    this._hideGroupPicker();
+};
+
+// Phase17.3: 关闭分组选择弹窗
+App.wordEditor._hideGroupPicker = function() {
+    var modal = document.getElementById('wcGroupPickerModal');
+    if (modal) modal.style.display = 'none';
+    if (this._groupPickerEscHandler) {
+        document.removeEventListener('keydown', this._groupPickerEscHandler);
+        this._groupPickerEscHandler = null;
+    }
 };
 
 // ============ 模块选择器 ============
@@ -361,6 +491,7 @@ App.wordEditor._loadCard = async function() {
         var c = d.card;
 
         document.getElementById('wcEditGroup').value = c.group_id || '';
+        this._updateGroupPickerBtn();  // Phase17.3: 同步分组选择按钮
         document.getElementById('wcEditName').value = c.name || '';
         document.getElementById('wcEditContent').value = c.content || '';
         document.getElementById('wcEditMeaning').value = c.meaning || '';
@@ -441,6 +572,11 @@ App.wordEditor._resetForm = function() {
     if (heatEl) heatEl.value = '0.5';
     var heatLabel = document.getElementById('wcEditHeatLabel');
     if (heatLabel) heatLabel.textContent = '0.5';
+    // Phase17.3: 重置分组选择按钮
+    var btn = document.getElementById('wcEditGroupBtn');
+    if (btn) { btn.innerHTML = '📁 选择分组...'; btn.style.borderColor = 'var(--border-color)'; }
+    var badge = document.getElementById('wcEditGroupBadge');
+    if (badge) badge.style.display = 'none';
     // Phase17: 清理暂存缩略图
     if (this._pendingThumbBlobUrl && this._pendingThumbBlobUrl.startsWith('blob:')) {
         URL.revokeObjectURL(this._pendingThumbBlobUrl);
@@ -705,16 +841,18 @@ App.wordEditor.openFromComposer = function(cardId) {
 };
 
 // 入口4: 新建词卡（快捷）
-App.wordEditor.openCreate = function(groupId, source) {
+// Phase17.4: 修复预选分组竞态 — 必须 await open() 完成后再清除 _prefillGroupId
+// 未传 groupId 时自动继承当前分组
+App.wordEditor.openCreate = async function(groupId, source) {
     source = source || 'cards';
-    this.open({ cardId: null, source: source });
-    // 预设分组
-    if (groupId) {
-        setTimeout(function() {
-            var el = document.getElementById('wcEditGroup');
-            if (el) el.value = groupId;
-        }, 100);
+    // 未传 groupId → 自动使用当前选中的分组
+    if (!groupId && App.state && App.state.currentGroupId) {
+        groupId = App.state.currentGroupId;
     }
+    this._prefillGroupId = groupId || null;
+    await this.open({ cardId: null, source: source });
+    // 预设分组已在 open → _resetForm 后应用，此处清理
+    this._prefillGroupId = null;
 };
 
 // ============ Hook: 主界面编辑按钮路由到 word_card ============
@@ -1096,28 +1234,28 @@ App.wordEditor._clearThumb = async function() {
         return;
     }
 
-    // 编辑模式：调用 API — 清除视频或缩略图
-    if (!confirm(App._t('common.confirm', '确认清除此词卡的媒体？'))) return;
-    // 先查当前卡片是否有视频
+    // Phase17.4: 编辑模式 — 同时清除缩略图和视频（封面图+视频一起移除）
+    if (!confirm(App._t('common.confirm', '确认清除此词卡的所有媒体（缩略图+视频）？'))) return;
     try {
+        // 先获取当前卡片状态
         var cardResp = await App.fetchJSON('/api/v4/word-cards/' + this._cardId);
         var cardData = cardResp && cardResp.card;
-        if (cardData && cardData.preview_media) {
-            // 有视频 → 调 video DELETE
-            var d = await App.fetchJSON('/api/v4/word-cards/' + this._cardId + '/video', { method: 'DELETE' });
-            if (d && d.ok) {
-                App.showToast('视频已清除', 'info');
-                await this._loadCard();
-                try { await App.loadPrompts(); } catch(e) {}
-            }
-        } else {
-            // 无视频 → 调缩略图 DELETE
-            var d = await App.fetchJSON('/api/v4/word-cards/' + this._cardId + '/thumbnail', { method: 'DELETE' });
-            if (d && d.ok) {
-                App.showToast('缩略图已清除', 'info');
-                await this._loadCard();
-                try { await App.loadPrompts(); } catch(e) {}
-            }
+        var hasThumb = cardData && cardData.thumbnail;
+        var hasVideo = cardData && cardData.preview_media;
+
+        // 并发清除缩略图 + 视频
+        var results = await Promise.all([
+            hasThumb ? App.fetchJSON('/api/v4/word-cards/' + this._cardId + '/thumbnail', { method: 'DELETE' }) : Promise.resolve({ok:true}),
+            hasVideo  ? App.fetchJSON('/api/v4/word-cards/' + this._cardId + '/video', { method: 'DELETE' }) : Promise.resolve({ok:true})
+        ]);
+
+        if (results[0].ok || results[1].ok) {
+            var msg = [];
+            if (hasThumb) msg.push('缩略图');
+            if (hasVideo) msg.push('视频');
+            App.showToast((msg.join('+') || '媒体') + '已清除', 'info');
+            await this._loadCard();
+            try { await App.loadPrompts(); } catch(e) {}
         }
     } catch(e) { App.showToast('清除失败: ' + e.message, 'error'); }
 };

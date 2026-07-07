@@ -197,17 +197,24 @@ Object.assign(App, {
     },
 
     selectAllPrompts() {
-        // 获取当前视图下的所有条目标识
+        // Phase17.4: 分组级全选/取消 — 切换分组保留原有选中，只对当前页操作
+        //  当前页全选中 → 取消当前页选中（保留其他分组选中不变）
+        //  当前页未全选 → 全选当前页（累加到已有选中）
         var items = (this.state.currentView === 'collections' && this.state.currentCollection)
             ? (this.state.collectionItems || [])
             : (this.state.prompts || []);
         var allIds = items.map(function(p) { return p.id; });
         var allSelected = allIds.length > 0 && allIds.every(function(id) { return App.state.batchSelected.has(id); });
+
         if (allSelected) {
-            this.state.batchSelected.clear();
+            // 当前页全部已选中 → 只取消当前页的选中（不碰其他分组的选中）
+            for (var i = 0; i < allIds.length; i++) {
+                this.state.batchSelected.delete(allIds[i]);
+            }
         } else {
-            for (var i = 0; i < items.length; i++) {
-                this.state.batchSelected.add(items[i].id);
+            // 当前页未全选 → 全选当前页（累加到已有选中）
+            for (var i = 0; i < allIds.length; i++) {
+                this.state.batchSelected.add(allIds[i]);
             }
         }
         // 根据当前视图渲染对应内容

@@ -485,6 +485,17 @@ App._renderTreeNode = function(node, depth) {
         '</div>';
 };
 
+// Phase17.3: batchBar 新建词条 → 调用词卡编辑器（带入当前分组）
+App._batchNewWordCard = function() {
+    var gid = this.state.currentGroupId || null;
+    var gname = this.state.currentGroupName || '';
+    if (App.wordEditor && App.wordEditor.openCreate) {
+        App.wordEditor.openCreate(gid, 'cards');
+    } else {
+        this.showToast('编辑器未就绪', 'error');
+    }
+};
+
 // Phase15: 侧边栏内快速添加分组
 App._treeQuickAdd = function(parentId) {
     var name = prompt('在此分组下新建子分组名称：');

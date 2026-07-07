@@ -969,23 +969,34 @@ def import_json_data(data: dict):
 
 @router.post("/trash/batch-trash")
 def batch_trash(data: dict):
-    """批量移入回收站"""
+    """批量移入回收站 — Phase17.4: 兼容 word_card + prompt_cards + prompts 三表"""
     prompt_ids = data.get("prompt_ids", [])
     if not prompt_ids:
         raise HTTPException(400, "缺少 prompt_ids")
     db = get_db()
     trashed = 0
     for pid in prompt_ids:
-        # 优先查 prompt_cards（v4 主表），其次 prompts 旧表
+        deleted = False
+        # 1) word_card（新引擎主表，1074+ 条）
+        row = db.execute("SELECT id FROM word_card WHERE id=? AND is_deleted=0", [pid]).fetchone()
+        if row:
+            db.execute("UPDATE word_card SET is_deleted=1, deleted_at=datetime('now','localtime') WHERE id=?", [pid])
+            deleted = True
+        # 2) prompt_cards（v4 迁移表，152 条）
         row = db.execute("SELECT id FROM prompt_cards WHERE id=? AND is_deleted=0", [pid]).fetchone()
-        if not row:
-            continue
-        # 双表同步软删除
-        db.execute("UPDATE prompt_cards SET is_deleted=1, deleted_at=datetime('now','localtime') WHERE id=?", [pid])
-        db.execute("UPDATE prompts SET deleted_at=datetime('now','localtime') WHERE id=? AND deleted_at IS NULL", [pid])
-        db.execute("DELETE FROM collection_items WHERE prompt_id=?", [pid])
-        db.execute("DELETE FROM wordpack_items WHERE prompt_id=?", [pid])
-        trashed += 1
+        if row:
+            db.execute("UPDATE prompt_cards SET is_deleted=1, deleted_at=datetime('now','localtime') WHERE id=?", [pid])
+            db.execute("UPDATE prompts SET deleted_at=datetime('now','localtime') WHERE id=? AND deleted_at IS NULL", [pid])
+            deleted = True
+        # 3) prompts（最旧表，156 条，无 is_deleted 字段）
+        row = db.execute("SELECT id FROM prompts WHERE id=? AND deleted_at IS NULL", [pid]).fetchone()
+        if row:
+            db.execute("UPDATE prompts SET deleted_at=datetime('now','localtime') WHERE id=?", [pid])
+            deleted = True
+        if deleted:
+            db.execute("DELETE FROM collection_items WHERE prompt_id=?", [pid])
+            db.execute("DELETE FROM wordpack_items WHERE prompt_id=?", [pid])
+            trashed += 1
     db.commit()
     return {"ok": True, "trashed": trashed}
 
@@ -1097,24 +1108,42 @@ def set_theme(data: dict):
 
 @router.get("/trash")
 def list_trash(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200)):
-    """回收站列表"""
+    """回收站列表 — Phase17.4: UNION word_card + prompt_cards 双源"""
     db = get_db()
-    where = " WHERE p.deleted_at IS NOT NULL "
-    from_clause = " FROM prompts p LEFT JOIN prompt_thumbnails pt ON pt.prompt_id = p.id LEFT JOIN prompt_videos pv ON pv.prompt_id = p.id "
-
-    total_row = db.execute(f"SELECT COUNT(*) as cnt {from_clause} {where}", []).fetchone()
-    total = total_row["cnt"] if total_row else 0
-
-    offset = (page - 1) * page_size
-    rows = db.execute(f"""
+    # word_card 软删除项
+    wc_sql = """
+        SELECT wc.id, wc.module, wc.category, '' as subcategory, wc.content, wc.meaning, wc.scene, wc.tags,
+               wc.usage_count, wc.deleted_at, wc.thumbnail, '' as video_filename,
+               '' as video_poster, 0 as video_fps, 0 as video_duration,
+               wc.is_builtin
+        FROM word_card wc WHERE wc.is_deleted=1
+    """
+    # prompt_cards 软删除项（此表无 subcategory 列）
+    pc_sql = """
+        SELECT pc.id, pc.module, pc.category, '' as subcategory, pc.content, pc.meaning, pc.scene, pc.tags,
+               pc.usage_count, pc.deleted_at, '' as thumbnail, '' as video_filename,
+               '' as video_poster, 0 as video_fps, 0 as video_duration,
+               pc.is_builtin
+        FROM prompt_cards pc WHERE pc.is_deleted=1
+    """
+    # 旧 prompts 表（deleted_at 方式）
+    p_sql = """
         SELECT p.id, p.module, p.category, p.subcategory, p.content, p.meaning, p.scene, p.tags,
                p.usage_count, p.deleted_at, pt.filename as thumbnail, pv.filename as video_filename,
                pv.poster as video_poster, pv.fps as video_fps, pv.duration as video_duration,
                p.is_builtin
-        {from_clause} {where}
-        ORDER BY p.deleted_at DESC LIMIT ? OFFSET ?
-    """, [page_size, offset]).fetchall()
+        FROM prompts p
+        LEFT JOIN prompt_thumbnails pt ON pt.prompt_id = p.id
+        LEFT JOIN prompt_videos pv ON pv.prompt_id = p.id
+        WHERE p.deleted_at IS NOT NULL
+    """
+    # 合并三源，按 deleted_at 降序
+    union_sql = f"SELECT * FROM ({wc_sql} UNION ALL {pc_sql} UNION ALL {p_sql}) AS trash_items"
+    total_row = db.execute(f"SELECT COUNT(*) as cnt FROM ({union_sql})").fetchone()
+    total = total_row["cnt"] if total_row else 0
 
+    offset = (page - 1) * page_size
+    rows = db.execute(f"{union_sql} ORDER BY deleted_at DESC LIMIT ? OFFSET ?", [page_size, offset]).fetchall()
     items = [dict(r) for r in rows]
     return {
         "total": total,
@@ -1127,26 +1156,33 @@ def list_trash(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=2
 
 @router.post("/trash/{prompt_id}/restore")
 def restore_from_trash(prompt_id: int):
-    """从回收站恢复词条"""
+    """从回收站恢复词条 — Phase17.4: 兼容 word_card + prompt_cards 双表"""
     db = get_db()
-    # 优先查 prompt_cards（v4 主表）
+    # 1) word_card（新引擎主表）
+    row = db.execute("SELECT id FROM word_card WHERE id=? AND is_deleted=1", [prompt_id]).fetchone()
+    if row:
+        db.execute("UPDATE word_card SET is_deleted=0, deleted_at=NULL WHERE id=?", [prompt_id])
+        db.commit()
+        return {"ok": True}
+    # 2) prompt_cards（v4 迁移表）
     row = db.execute("SELECT id FROM prompt_cards WHERE id=? AND is_deleted=1", [prompt_id]).fetchone()
-    if not row:
-        raise HTTPException(404, "提示词不存在或不在回收站")
-    db.execute("UPDATE prompt_cards SET is_deleted=0, deleted_at=NULL WHERE id=?", [prompt_id])
-    db.execute("UPDATE prompts SET deleted_at=NULL WHERE id=? AND deleted_at IS NOT NULL", [prompt_id])
-    db.commit()
-    return {"ok": True}
+    if row:
+        db.execute("UPDATE prompt_cards SET is_deleted=0, deleted_at=NULL WHERE id=?", [prompt_id])
+        db.execute("UPDATE prompts SET deleted_at=NULL WHERE id=? AND deleted_at IS NOT NULL", [prompt_id])
+        db.commit()
+        return {"ok": True}
+    raise HTTPException(404, "提示词不存在或不在回收站")
 
 
 @router.post("/trash/batch-restore")
 def batch_restore_from_trash(data: dict):
-    """批量恢复"""
+    """批量恢复 — Phase17.4: 兼容 word_card + prompt_cards 双表"""
     prompt_ids = data.get("prompt_ids", [])
     if not prompt_ids:
         raise HTTPException(400, "缺少 prompt_ids")
     db = get_db()
     for pid in prompt_ids:
+        db.execute("UPDATE word_card SET is_deleted=0, deleted_at=NULL WHERE id=? AND is_deleted=1", [pid])
         db.execute("UPDATE prompt_cards SET is_deleted=0, deleted_at=NULL WHERE id=? AND is_deleted=1", [pid])
         db.execute("UPDATE prompts SET deleted_at=NULL WHERE id=? AND deleted_at IS NOT NULL", [pid])
     db.commit()
@@ -1155,39 +1191,72 @@ def batch_restore_from_trash(data: dict):
 
 @router.delete("/trash/{prompt_id}")
 def permanent_delete_prompt(prompt_id: int):
-    """永久删除（内置词条禁止永久删除）"""
+    """永久删除（内置词条禁止永久删除）— Phase17.4: 兼容 word_card + prompt_cards 双表"""
     db = get_db()
-    # 优先查 prompt_cards（v4 主表）
+    # 1) word_card（新引擎主表）
+    row = db.execute("SELECT id, is_builtin FROM word_card WHERE id=?", [prompt_id]).fetchone()
+    if row:
+        if row["is_builtin"] == 1:
+            raise HTTPException(403, "内置提示词不可永久删除，可恢复")
+        for tbl in ["collection_items", "wordpack_items", "usage_history"]:
+            db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [prompt_id])
+        db.execute("DELETE FROM atom_word_bridge WHERE word_card_id=?", [prompt_id])
+        db.execute("DELETE FROM scene_card_ref WHERE card_id=?", [prompt_id])
+        db.execute("DELETE FROM word_card_versions WHERE card_id=?", [prompt_id])
+        db.execute("DELETE FROM word_card WHERE id=?", [prompt_id])
+        safe_commit()
+        return {"ok": True}
+    # 2) prompt_cards（v4 迁移表）
     row = db.execute("SELECT id, is_builtin FROM prompt_cards WHERE id=?", [prompt_id]).fetchone()
-    if not row:
-        raise HTTPException(404, "提示词不存在")
-    if row["is_builtin"] == 1:
-        raise HTTPException(403, "内置提示词不可永久删除，可恢复")
-    # 清除所有关联
-    for tbl in ["collection_items", "wordpack_items", "usage_history", "prompt_thumbnails", "prompt_videos"]:
-        db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [prompt_id])
-    db.execute("DELETE FROM prompts WHERE id=?", [prompt_id])
-    db.execute("DELETE FROM prompt_cards WHERE id=?", [prompt_id])
-    db.commit()
-    return {"ok": True}
+    if row:
+        if row["is_builtin"] == 1:
+            raise HTTPException(403, "内置提示词不可永久删除，可恢复")
+        for tbl in ["collection_items", "wordpack_items", "usage_history", "prompt_thumbnails", "prompt_videos"]:
+            db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [prompt_id])
+        db.execute("DELETE FROM prompts WHERE id=?", [prompt_id])
+        db.execute("DELETE FROM prompt_cards WHERE id=?", [prompt_id])
+        safe_commit()
+        return {"ok": True}
+    raise HTTPException(404, "提示词不存在")
 
 
 @router.post("/trash/empty")
 def empty_trash():
-    """清空回收站（内置词条跳过不清除）"""
+    """清空回收站（内置词条跳过不清除）— Phase17.4.1: 分批提交防止大事务锁死"""
     db = get_db()
-    # 以 prompt_cards 为准（v4 主表）
-    ids = db.execute("SELECT id, is_builtin FROM prompt_cards WHERE is_deleted=1").fetchall()
-    for row in ids:
-        pid = row["id"]
-        if row["is_builtin"] == 1:
-            # 内置词条只恢复不清除
-            db.execute("UPDATE prompt_cards SET is_deleted=0, deleted_at=NULL WHERE id=?", [pid])
-            db.execute("UPDATE prompts SET deleted_at=NULL WHERE id=?", [pid])
-            continue
-        for tbl in ["collection_items", "wordpack_items", "usage_history", "prompt_thumbnails", "prompt_videos"]:
-            db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [pid])
-        db.execute("DELETE FROM prompts WHERE id=?", [pid])
-        db.execute("DELETE FROM prompt_cards WHERE id=?", [pid])
-    db.commit()
-    return {"ok": True, "count": len(ids)}
+    done = 0
+    # 1) word_card — 批量删除（每次 50 条 + safe_commit）
+    wc_rows = db.execute("SELECT id, is_builtin FROM word_card WHERE is_deleted=1").fetchall()
+    for i in range(0, len(wc_rows), 50):
+        batch = wc_rows[i:i+50]
+        for row in batch:
+            pid = row["id"]
+            if row["is_builtin"] == 1:
+                db.execute("UPDATE word_card SET is_deleted=0, deleted_at=NULL WHERE id=?", [pid])
+                continue
+            for tbl in ["collection_items", "wordpack_items", "usage_history"]:
+                db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [pid])
+            # FK 列名不同的表
+            db.execute("DELETE FROM atom_word_bridge WHERE word_card_id=?", [pid])
+            db.execute("DELETE FROM scene_card_ref WHERE card_id=?", [pid])
+            db.execute("DELETE FROM word_card_versions WHERE card_id=?", [pid])
+            db.execute("DELETE FROM word_card WHERE id=?", [pid])
+            done += 1
+        safe_commit()
+    # 2) prompt_cards — 批量删除
+    pc_rows = db.execute("SELECT id, is_builtin FROM prompt_cards WHERE is_deleted=1").fetchall()
+    for i in range(0, len(pc_rows), 50):
+        batch = pc_rows[i:i+50]
+        for row in batch:
+            pid = row["id"]
+            if row["is_builtin"] == 1:
+                db.execute("UPDATE prompt_cards SET is_deleted=0, deleted_at=NULL WHERE id=?", [pid])
+                db.execute("UPDATE prompts SET deleted_at=NULL WHERE id=?", [pid])
+                continue
+            for tbl in ["collection_items", "wordpack_items", "usage_history", "prompt_thumbnails", "prompt_videos"]:
+                db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [pid])
+            db.execute("DELETE FROM prompts WHERE id=?", [pid])
+            db.execute("DELETE FROM prompt_cards WHERE id=?", [pid])
+            done += 1
+        safe_commit()
+    return {"ok": True, "count": done}

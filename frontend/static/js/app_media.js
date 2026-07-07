@@ -156,18 +156,20 @@ Object.assign(App, {
     },
 
     async clearCardThumbnail(promptId) {
-        if (!confirm(App._t('common.confirm', '确认清除此提示词的缩略图？'))) return;
-        // Phase17: 检测数据源，分发到正确的API端点
-        var p = this.state.prompts.find(function(x) { return x.id === promptId; });
-        var isWc = p && p._source === 'word_card';
-        var data;
-        if (isWc) {
-            data = await this.fetchJSON('/api/v4/word-cards/' + promptId + '/thumbnail', { method: 'DELETE' });
-        } else {
-            data = await this.fetchJSON('/api/thumbnails/assign/' + promptId, { method: 'DELETE' });
+        if (!confirm(App._t('common.confirm', '确认清除此词卡的所有媒体（缩略图+视频）？'))) return;
+        // Phase17.4: 直接并发调 word_card 端点（1074/1226=87%都是 word_card），旧prompts为fallback
+        var results = await Promise.all([
+            this.fetchJSON('/api/v4/word-cards/' + promptId + '/thumbnail', { method: 'DELETE' }),
+            this.fetchJSON('/api/v4/word-cards/' + promptId + '/video', { method: 'DELETE' })
+        ]);
+        var ok = results.some(function(r) { return r && r.ok; });
+        if (!ok) {
+            // 回退旧 prompts API
+            var r2 = await this.fetchJSON('/api/thumbnails/assign/' + promptId, { method: 'DELETE' });
+            ok = r2 && r2.ok;
         }
-        if (data && data.ok) {
-            this.showToast(App._t('auto.str_00cadfcb', '缩略图已清除'), 'info');
+        if (ok) {
+            this.showToast(App._t('auto.str_00cadfcb', '媒体已清除'), 'info');
             await this.loadPrompts();
         } else {
             this.showToast(App._t('auto.str_cd6849ea', '清除失败'), 'error');

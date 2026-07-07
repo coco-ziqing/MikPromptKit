@@ -57,6 +57,17 @@ App.healthCheck._ensureModal = function() {
         + '</div></div>';
 
     overlay.onclick = function(e) { if (e.target === overlay) App.healthCheck.close(); };
+    
+    // ESC 键关闭自检窗口
+    var self = this;
+    overlay._escHandler = function(e) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            self.close();
+        }
+    };
+    document.addEventListener('keydown', overlay._escHandler);
+    
     document.body.appendChild(overlay);
     this._modal = overlay;
 };
@@ -190,7 +201,13 @@ App.healthCheck.retryOne = async function(key) {
 
 App.healthCheck.close = function() {
     var m = document.getElementById('healthCheckModal');
-    if (m) m.remove();
+    if (m) {
+        // 移除 ESC 键监听
+        if (m._escHandler) {
+            document.removeEventListener('keydown', m._escHandler);
+        }
+        m.remove();
+    }
     this._modal = null;
 };
 

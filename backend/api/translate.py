@@ -228,9 +228,7 @@ async def translate_single(prompt_id: int, target_lang: str = "zh"):
 @router.post("/batch")
 async def translate_batch(data: BatchTranslateRequest):
     """
-    批量翻译 — 并发自动检测语言方向（中文→英文, 英文→中文）
-    - prompt_ids: 提示词ID列表
-    - target_lang: 固定目标语言（可选, 不传则自动检测）
+    批量翻译 — Phase17.4: Semaphore(2) 限流 + 总超时600s + 依赖 ollama_generate 内置重试
     """
     import asyncio, sqlite3, os
 
@@ -241,11 +239,10 @@ async def translate_batch(data: BatchTranslateRequest):
         return {"ok": False, "error": "单次最多20条"}
 
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data', 'prompts.db')
-    force_lang = data.target_lang if data.target_lang else None  # empty string = auto-detect
+    force_lang = data.target_lang if data.target_lang else None
 
-    # 串行翻译 + 空结果自动重试（qwen3.5:9b 并发时偶发空返回）
-    sem = asyncio.Semaphore(1)
-    _retried = {}
+    # Phase17.4: Semaphore(2) 限流 — Ollama 本地模型 2 并发不会 OOM，避免串行太慢
+    sem = asyncio.Semaphore(2)
 
     async def _translate_one(pid: int):
         async with sem:
@@ -272,79 +269,91 @@ async def translate_batch(data: BatchTranslateRequest):
                 else:
                     target_lang = "en" if has_cn else "zh"
 
-                # 已是目标语言则跳过
                 if (has_cn and target_lang == "zh") or (not has_cn and target_lang == "en"):
-                    return {"prompt_id": pid, "ok": True, "translated": original, "cached": False, "note": "已是目标语言", "direction": "zh→zh" if has_cn else "en→en"}
+                    return {"prompt_id": pid, "ok": True, "translated": original, "cached": False,
+                            "note": "已是目标语言", "direction": "zh→zh" if has_cn else "en→en"}
 
-                # 查缓存（独立连接）
+                # 查缓存
                 conn2 = sqlite3.connect(db_path, timeout=3)
                 conn2.row_factory = sqlite3.Row
                 cache = conn2.execute(
-                    "SELECT content FROM translations WHERE prompt_id=? AND lang=?",
-                    [pid, target_lang]
-                ).fetchone()
+                    "SELECT content FROM translations WHERE prompt_id=? AND lang=?", [pid, target_lang]).fetchone()
                 conn2.close()
 
                 if cache:
-                    return {"prompt_id": pid, "ok": True, "translated": cache["content"], "cached": True, "direction": ("zh→en" if target_lang == "en" else "en→zh")}
+                    return {"prompt_id": pid, "ok": True, "translated": cache["content"], "cached": True,
+                            "direction": ("zh→en" if target_lang == "en" else "en→zh")}
 
-                # 调 Ollama（不持 DB 连接）
+                # 调 Ollama（内置 3 次重试 + 退避）
                 direction = "中文" if target_lang == "zh" else "英文"
                 prompt = f"请将以下AI提示词翻译成{direction}：\n\n{original}"
 
                 model = get_model_for("translate")
                 result = await ollama_generate(
                     prompt=prompt, system=TRANSLATE_ZH_SYSTEM,
-                    model=model, temperature=0.1, max_tokens=2048, timeout_s=120
+                    model=model, temperature=0.1, max_tokens=2048, timeout_s=180
                 )
 
                 if not result.get("ok"):
-                    return {"prompt_id": pid, "ok": False, "error": result.get("error", "翻译失败"), "direction": ("zh→en" if target_lang == "en" else "en→zh")}
+                    return {"prompt_id": pid, "ok": False,
+                            "error": result.get("error", "翻译失败"),
+                            "direction": ("zh→en" if target_lang == "en" else "en→zh")}
 
                 translated = result["content"]
                 if not translated:
-                    # qwen3.5:9b 偶发空返回，重试一次（提高 temperature 增加随机性）
-                    if pid not in _retried:
-                        _retried[pid] = True
-                        await asyncio.sleep(1.5)
-                        result2 = await ollama_generate(
-                            prompt=prompt, system=TRANSLATE_ZH_SYSTEM,
-                            model=model, temperature=0.4, max_tokens=2048, timeout_s=120
-                        )
-                        if result2.get("ok") and result2.get("content"):
-                            translated = result2["content"]
-                        else:
-                            return {"prompt_id": pid, "ok": False, "error": "Ollama 返回空结果（已重试）", "direction": ("zh→en" if target_lang == "en" else "en→zh")}
-                    else:
-                        return {"prompt_id": pid, "ok": False, "error": "Ollama 返回空结果", "direction": ("zh→en" if target_lang == "en" else "en→zh")}
+                    return {"prompt_id": pid, "ok": False, "error": "Ollama 返回空结果（已自动重试）",
+                            "direction": ("zh→en" if target_lang == "en" else "en→zh")}
 
-                # 写缓存 + 写回词卡（独立连接）
+                # 写缓存 + 写回词卡
                 conn3 = sqlite3.connect(db_path, timeout=10)
                 try:
                     conn3.execute("PRAGMA busy_timeout=5000")
                     conn3.execute(
                         "INSERT OR REPLACE INTO translations (prompt_id, lang, content, quality_score, created_at) VALUES (?, ?, ?, 0, datetime('now','localtime'))",
-                        [pid, target_lang, translated]
-                    )
+                        [pid, target_lang, translated])
                     col = f"content_{target_lang}"
                     if table == "word_card":
                         conn3.execute(f"UPDATE word_card SET {col}=? WHERE id=?", [translated, pid])
                     conn3.commit()
-                except sqlite3.Error:
-                    pass
+                except sqlite3.Error as e2:
+                    # Phase17.4: 双语字段写回失败不静默吞掉，返回警告信息
+                    return {"prompt_id": pid, "ok": True, "translated": translated, "model": model,
+                            "direction": ("zh→en" if target_lang == "en" else "en→zh"),
+                            "db_error": str(e2)[:200]}  # 翻译成功但存档失败
                 finally:
                     try: conn3.close()
                     except: pass
 
-                return {"prompt_id": pid, "ok": True, "translated": translated, "model": model, "direction": ("zh→en" if target_lang == "en" else "en→zh")}
+                return {"prompt_id": pid, "ok": True, "translated": translated, "model": model,
+                        "direction": ("zh→en" if target_lang == "en" else "en→zh")}
+            except asyncio.CancelledError:
+                return {"prompt_id": pid, "ok": False, "error": "批量翻译被取消"}
             except Exception as e:
                 return {"prompt_id": pid, "ok": False, "error": str(e)[:200]}
 
-    tasks = [_translate_one(pid) for pid in data.prompt_ids]
-    results = await asyncio.gather(*tasks)
+    # Phase17.4: 每条任务外层包 180s 超时，防止某条 Ollama 卡住拖死 gather
+    # gather(return_exceptions=True) 确保单个失败不影响整体
+    async def _wrap_with_timeout(pid):
+        try:
+            return await asyncio.wait_for(_translate_one(pid), timeout=180.0)
+        except asyncio.TimeoutError:
+            return {"prompt_id": pid, "ok": False, "error": "翻译超时 (180s)"}
+        except Exception as e:
+            return {"prompt_id": pid, "ok": False, "error": str(e)[:200]}
 
-    success = [r for r in results if r.get("ok")]
-    failed = [r for r in results if not r.get("ok")]
+    tasks = [_wrap_with_timeout(pid) for pid in data.prompt_ids]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # 把 CancelledError / Exception 统一转成错误结果
+    processed = []
+    for r in results:
+        if isinstance(r, BaseException):
+            processed.append({"prompt_id": 0, "ok": False, "error": str(r)[:200]})
+        else:
+            processed.append(r)
+
+    success = [r for r in processed if r.get("ok")]
+    failed = [r for r in processed if not r.get("ok")]
 
     return {
         "ok": True,
@@ -353,7 +362,7 @@ async def translate_batch(data: BatchTranslateRequest):
         "failed": len(failed),
         "cached": sum(1 for r in success if r.get("cached")),
         "auto_detect": not force_lang,
-        "results": results,
+        "results": processed,
     }
 
 

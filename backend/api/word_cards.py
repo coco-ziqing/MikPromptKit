@@ -493,9 +493,9 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
 
 @router.delete("/{card_id}/thumbnail")
 def delete_card_thumbnail(card_id: int):
-    """删除词卡缩略图"""
+    """删除词卡缩略图 — Phase17.4: 视频预览词卡同步清除 preview_media"""
     db = get_db()
-    card = safe_fetch_one("SELECT thumbnail, original_ref FROM word_card WHERE id=?", [card_id])
+    card = safe_fetch_one("SELECT thumbnail, original_ref, preview_media FROM word_card WHERE id=?", [card_id])
     if not card:
         raise HTTPException(404, "词卡不存在")
     if card["thumbnail"]:
@@ -506,6 +506,7 @@ def delete_card_thumbnail(card_id: int):
         p2 = os.path.join(WC_MEDIA_DIR, "originals", os.path.basename(card["original_ref"]))
         if os.path.exists(p2):
             os.remove(p2)
+    # 视频词卡：同步清除视频封面（preview_media 不动，留给 video DELETE 端点）
     db.execute("UPDATE word_card SET thumbnail='', original_ref='', updated_at=datetime('now','localtime') WHERE id=?", [card_id])
     safe_commit()
     return {"ok": True}
@@ -644,17 +645,22 @@ async def upload_card_video(card_id: int, file: UploadFile = File(...)):
 
 @router.delete("/{card_id}/video")
 def delete_card_video(card_id: int):
-    """删除词卡预览视频"""
+    """删除词卡预览视频 — Phase17.4: 同步清除视频封面图"""
     db = get_db()
-    card = safe_fetch_one("SELECT preview_media FROM word_card WHERE id=?", [card_id])
+    card = safe_fetch_one("SELECT preview_media, thumbnail FROM word_card WHERE id=?", [card_id])
     if not card:
         raise HTTPException(404, "词卡不存在")
     if card["preview_media"]:
         p = os.path.join(WC_VIDEO_DIR, os.path.basename(card["preview_media"]))
         if os.path.exists(p):
             os.remove(p)
-        db.execute("UPDATE word_card SET preview_media='', updated_at=datetime('now','localtime') WHERE id=?", [card_id])
-        safe_commit()
+    # 同步清除视频封面（首帧截图一般在 thumbnails/ 目录）
+    if card["thumbnail"]:
+        tp = os.path.join(WC_THUMB_DIR, os.path.basename(card["thumbnail"]))
+        if os.path.exists(tp):
+            os.remove(tp)
+    db.execute("UPDATE word_card SET preview_media='', thumbnail='', updated_at=datetime('now','localtime') WHERE id=?", [card_id])
+    safe_commit()
     return {"ok": True}
 
 

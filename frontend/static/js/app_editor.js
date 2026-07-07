@@ -117,11 +117,18 @@ Object.assign(App, {
     },
 
     async _doDeleteFromEditor(pid) {
-        var result = await this.fetchJSON('/api/prompts/' + pid, { method: 'DELETE' });
-        if (result) {
+        // Phase17.4: 统一走 batch-trash API（兼容 word_card + prompt_cards + prompts 三表）
+        var result = await this.fetchJSON('/api/v2/trash/batch-trash', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt_ids: [pid] })
+        });
+        if (result && result.ok && result.trashed > 0) {
             this.closeEditModal();
             this.showToast(App._t('auto.str_5cc23262', '已删除'), 'info');
             await this.loadPrompts();
+        } else {
+            this.showToast('提示词不存在', 'error');
         }
     },
 

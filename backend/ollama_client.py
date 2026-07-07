@@ -1,11 +1,30 @@
 """
 v4.0.0-phase12: Ollama 统一调用工具
 所有 AI 功能模块的公共基座 — 配置读取、模型路由、连接检测、超时重试
+Phase17.4: 连接池复用 + 自动重试(3次退避) + 保活探测
 """
 import json, asyncio, time
 from typing import Optional, List
 from database import get_db
 import httpx
+
+# ============ Phase17.4: 模块级连接池 ============
+# 复用 TCP 连接，避免每次调用建连导致 Ollama socket 耗尽
+_ollama_client: Optional[httpx.AsyncClient] = None
+_client_lock = asyncio.Lock()
+
+async def _get_client(timeout_s: float = 120.0) -> httpx.AsyncClient:
+    """获取或创建持久化 AsyncClient（连接池 + keep-alive）"""
+    global _ollama_client
+    if _ollama_client is None or _ollama_client.is_closed:
+        async with _client_lock:
+            if _ollama_client is None or _ollama_client.is_closed:
+                _ollama_client = httpx.AsyncClient(
+                    timeout=httpx.Timeout(timeout_s, connect=8.0, read=timeout_s),
+                    limits=httpx.Limits(max_keepalive_connections=4, max_connections=8, keepalive_expiry=30.0),
+                    transport=httpx.AsyncHTTPTransport(retries=1),
+                )
+    return _ollama_client
 
 # ============ 默认配置 ============
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
@@ -186,9 +205,11 @@ async def ollama_generate(
     temperature: float = 0.1,
     max_tokens: int = 2048,
     timeout_s: float = 120.0,
+    max_retries: int = 3,   # Phase17.4: 自动重试 + 指数退避
 ) -> dict:
     """
-    统一 Ollama Generate API 调用（兼容旧版）
+    统一 Ollama Generate API 调用
+    Phase17.4: 连接池复用 + 3次自动重试(1s→2s→4s退避) + qwen3.5空返回重试
     """
     if not model and function:
         model = get_model_for(function)
@@ -208,13 +229,30 @@ async def ollama_generate(
     if system:
         payload["system"] = system
 
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s, connect=10.0)) as client:
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            client = await _get_client(timeout_s)
             resp = await client.post(f"{server_url}/api/generate", json=payload)
             if resp.status_code != 200:
-                return {"ok": False, "error": f"Ollama HTTP {resp.status_code}", "model": model}
+                err_text = resp.text[:200]
+                if resp.status_code >= 500 and attempt < max_retries:
+                    # 服务端错误 → 退避重试
+                    wait = min(1.0 * (2 ** attempt), 8.0)
+                    await asyncio.sleep(wait)
+                    continue
+                return {"ok": False, "error": f"Ollama HTTP {resp.status_code}: {err_text}", "model": model}
+
             result = resp.json()
             response = (result.get("response") or "").strip()
+
+            # qwen3.5:9b 偶发空返回 → 提高 temperature 重试
+            if not response and attempt < max_retries:
+                payload["options"]["temperature"] = min(temperature + 0.15 * (attempt + 1), 0.7)
+                wait = min(1.0 * (2 ** attempt), 4.0)
+                await asyncio.sleep(wait)
+                continue
+
             return {
                 "ok": True,
                 "content": response,
@@ -225,10 +263,25 @@ async def ollama_generate(
                     "duration_ms": result.get("total_duration", 0) // 1_000_000 if result.get("total_duration") else 0,
                 }
             }
-    except httpx.TimeoutException:
-        return {"ok": False, "error": f"Ollama 超时 ({timeout_s}s)", "model": model}
-    except Exception as e:
-        return {"ok": False, "error": str(e)[:200], "model": model}
+        except httpx.TimeoutException:
+            last_error = f"Ollama 超时 ({timeout_s}s)"
+            if attempt < max_retries:
+                await asyncio.sleep(2.0 * (attempt + 1))
+                continue
+        except (httpx.ConnectError, httpx.RemoteProtocolError) as e:
+            # 连接断开 / 协议错误 → 退避重试
+            last_error = f"Ollama 连接错误: {str(e)[:100]}"
+            if attempt < max_retries:
+                wait = min(1.5 * (2 ** attempt), 6.0)
+                await asyncio.sleep(wait)
+                continue
+        except Exception as e:
+            last_error = str(e)[:200]
+            if attempt < max_retries:
+                await asyncio.sleep(1.0)
+                continue
+
+    return {"ok": False, "error": last_error or "Ollama 调用失败", "model": model}
 
 
 async def ollama_stream(

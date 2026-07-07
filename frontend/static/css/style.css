@@ -259,7 +259,7 @@ body.sidebar-collapsed .main-content {
     transition: all 0.2s; border: 1px solid transparent; position: relative;
     height: auto;
     min-height: 0;
-    overflow: hidden;
+    overflow: visible;  /* Phase17.4: 5-6列时防止功能按钮被裁剪 */
 }
 .prompt-card:hover { box-shadow: var(--card-hover-shadow); border-color: var(--border-color); }
 
@@ -307,14 +307,17 @@ body.sidebar-collapsed .main-content {
     border-top: 1px solid var(--border-color); padding-top: 8px; align-items: center;
     margin-top: auto;
     flex-wrap: wrap;
+    /* Phase17.4: 5-6列窄卡时按钮组不溢出 */
+    overflow: visible;
 }
 .prompt-card .card-actions .btn-copy {
-    padding: 4px 8px; font-size: 14px; border-radius: 6px;
+    padding: 4px 6px; font-size: 13px; border-radius: 6px;
     border: 1px solid var(--primary); background: transparent;
     color: var(--primary); cursor: pointer; transition: all 0.15s;
-    min-width: 32px; height: 32px; display: inline-flex;
+    min-width: 28px; height: 28px; display: inline-flex;
     align-items: center; justify-content: center;
     line-height: 1; white-space: nowrap;
+    flex-shrink: 0;
 }
 .prompt-card .card-actions .btn-copy:hover { background: var(--primary); color: #fff; }
 .prompt-card .card-checkbox {

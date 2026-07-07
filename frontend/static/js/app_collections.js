@@ -178,14 +178,21 @@ Object.assign(App, {
     },
 
     async _doTrashDelete(pid) {
+        // Phase17.4: 统一走 batch-trash API（兼容 word_card + prompt_cards + prompts 三表）
         try {
-            var res = await fetch('/api/prompts/' + pid, { method: 'DELETE' });
+            var res = await fetch('/api/v2/trash/batch-trash', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_ids: [pid] })
+            });
             var data = await res.json();
-            if (data.trashed) {
+            if (data.ok && data.trashed > 0) {
                 this.showToast(App._t('auto.str_8d6e3b74', '已移入回收站'), 'info');
                 this.loadPrompts();
             } else if (data.detail) {
                 this.showToast(data.detail, 'error');
+            } else {
+                this.showToast('提示词不存在', 'error');
             }
         } catch(e) {
             this.showToast(App._t('common.op_failed', '操作失败: ') + e.message, 'error');
