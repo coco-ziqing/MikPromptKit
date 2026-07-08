@@ -1,5 +1,5 @@
 // ============================================================
-// v4.1.1: Unified Word Card Editor (多端编辑) — Phase17.4: 修复重复HTML导致保存按钮丢失
+// v4.3.1: Unified Word Card Editor (多端编辑) — Phase19: 弹窗拓宽 900px + 左栏加宽
 // 统一词卡编辑弹窗 — 从任意端(主界面/选取器/组装器/词库浏览器)打开
 // 实时同步: 编辑后所有视图自动刷新
 // ============================================================
@@ -27,9 +27,12 @@ App.wordEditor.open = async function(options) {
     var m = document.getElementById('modalWordEdit');
     if (!m) return;
 
-    // 更新标题
+    // 更新标题 + 按钮文字（编辑=保存，新建=添加）
     var title = document.getElementById('wcEditTitle');
-    if (title) title.textContent = this._cardId ? App._t('auto.str_78033f01', '✏️ 编辑词卡') : App._t('auto.str_3f8ea773', '➕ 新建词卡');
+    var saveBtn = document.getElementById('wcEditSaveBtn');
+    var isEdit = !!this._cardId;
+    if (title) title.textContent = isEdit ? App._t('auto.str_78033f01', '✏️ 编辑词卡') : App._t('auto.str_3f8ea773', '➕ 新建词卡');
+    if (saveBtn) saveBtn.innerHTML = isEdit ? '💾 保存' : '➕ 添加';
 
     // 加载分组列表
     await this._loadGroups();
@@ -86,48 +89,70 @@ App.wordEditor._ensureModal = function() {
     overlay.onclick = function(e) { if (e.target === overlay) App.wordEditor.close(); };
 
     overlay.innerHTML = '' +
-    '<div class="modal-content" style="max-width:560px;width:95%;max-height:88vh;overflow-y:auto;border-radius:14px;padding:0;">' +
-    // Header
-    '<div style="padding:14px 18px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">' +
-    '<h5 id="wcEditTitle" style="margin:0;font-size:15px;">✏️ 编辑词卡</h5>' +
-    '<div style="display:flex;gap:6px;align-items:center;">' +
-    '<span id="wcEditSource" style="font-size:10px;color:var(--text-muted);"></span>' +
-    '<button style="background:none;border:none;font-size:20px;color:var(--text-muted);cursor:pointer;" onclick="App.wordEditor.close()">&times;</button>' +
-    '</div></div>' +
-    // Body
-    '<div style="padding:12px 18px;">' +
-    // 分组选择
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">所属分组</label>' +
-    '<div style="display:flex;gap:6px;margin-bottom:10px;">' +
-    '<select id="wcEditGroup" class="modal-input" style="font-size:12px;flex:1;"></select>' +
-    '<button class="btn btn-xs ai-inline-btn" onclick="App.wordEditor._suggestGroup()" title="AI 智能推荐分组" style="flex-shrink:0;font-size:10px;padding:4px 8px;">🤖 建议分组</button>' +
+    // Phase19: 双栏布局 — 左栏主填写流 + 右栏元数据/媒体，sticky footer 始终可见
+    '<div class="wc-edit-modal">' +
+    // Header — 紧凑标题栏
+    '<div class="wc-edit-header">' +
+    '<h5 id="wcEditTitle">✏️ 编辑词卡</h5>' +
+    '<button class="wc-edit-close" onclick="App.wordEditor.close()">&times;</button>' +
     '</div>' +
-
-    // 名称
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">词卡名称</label>' +
-    '<input id="wcEditName" class="modal-input" placeholder="简短名称(选填,留空取内容前60字)" style="font-size:12px;margin-bottom:10px;">' +
-
-    // 内容
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">核心内容 <span style="color:#ef4444;">*</span></label>' +
-    '<textarea id="wcEditContent" class="modal-input" rows="3" placeholder="提示词片段 / 关键词 / 描述文本..." style="font-size:12px;margin-bottom:10px;"></textarea>' +
-
-    // 释义
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">释义/说明</label>' +
-    '<input id="wcEditMeaning" class="modal-input" placeholder="中文释义或补充说明" style="font-size:12px;margin-bottom:10px;">' +
-
-    // Phase17.3: 模块改为分组选择按钮 + 弹窗
-    '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
-    '<div style="flex:1;">' +
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">分组选择</label>' +
-    '<div style="display:flex;gap:4px;">' +
-    '<button id="wcEditGroupBtn" class="modal-input" onclick="App.wordEditor._showGroupPicker()" style="flex:1;font-size:12px;text-align:left;padding:6px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);cursor:pointer;">📁 选择分组...</button>' +
-    '<span id="wcEditGroupBadge" style="display:none;align-self:center;font-size:10px;padding:2px 8px;border-radius:10px;background:#10b981;color:#fff;white-space:nowrap;flex-shrink:0;"></span>' +
+    // Body — 双栏网格 + 内部滚动
+    '<div class="wc-edit-body">' +
+    // === 左栏：主填写流（词卡名称 → 核心内容 → 释义 → 场景 → 标签）===
+    '<div class="wc-edit-left">' +
+    '<label>词卡名称</label>' +
+    '<input id="wcEditName" class="modal-input" placeholder="简短名称(选填,留空取内容前60字)">' +
+    '<label>核心内容 <span style="color:#ef4444;">*</span></label>' +
+    '<textarea id="wcEditContent" class="modal-input" rows="4" placeholder="提示词片段 / 关键词 / 描述文本..."></textarea>' +
+    '<label>释义/说明</label>' +
+    '<input id="wcEditMeaning" class="modal-input" placeholder="中文释义或补充说明">' +
+    '<label>适用场景</label>' +
+    '<input id="wcEditScene" class="modal-input" placeholder="如: 特写镜头 / 广角风光 / 室内人像">' +
+    '<label>标签</label>' +
+    '<div class="wc-edit-tags-row">' +
+    '<input id="wcEditTags" class="modal-input" placeholder="用逗号或空格分隔, 如: 自然 温暖 电影感">' +
+    '<button class="btn btn-xs ai-inline-btn" onclick="App.wordEditor._aiAnalyze()">🤖 AI分析</button>' +
+    '</div>' +
+    '</div>' +
+    // === 右栏：元数据 + 缩略图 + 排序/图标/热度 ===
+    '<div class="wc-edit-right">' +
+    // 分组选择下拉（隐藏，实际仍由它取值）
+    '<select id="wcEditGroup" style="display:none;"></select>' +
+    '<label>所属分组</label>' +
+    '<div class="wc-edit-group-row">' +
+    '<button id="wcEditGroupBtn" class="wc-edit-group-btn" onclick="App.wordEditor._showGroupPicker()">📁 选择分组...</button>' +
+    '<span id="wcEditGroupBadge" style="display:none;font-size:10px;padding:2px 8px;border-radius:10px;background:#10b981;color:#fff;white-space:nowrap;flex-shrink:0;"></span>' +
+    '<button class="btn btn-xs ai-inline-btn" onclick="App.wordEditor._suggestGroup()" title="AI 智能推荐分组">🤖</button>' +
+    '</div>' +
+    '<label>分类</label>' +
+    '<input id="wcEditCategory" class="modal-input" placeholder="二级分类">' +
+    // 缩略图预览区
+    '<div id="wcEditThumbRow" class="wc-edit-thumb-row">' +
+    '<label>缩略图</label>' +
+    '<div id="wcEditThumbPreviewArea" class="wc-edit-thumb-preview"><span>🖼</span></div>' +
+    '<span id="wcEditThumbName">未设置</span>' +
+    '<div class="wc-edit-thumb-actions">' +
+    '<input type="file" id="wcEditThumbInput" accept="image/*" style="display:none;" onchange="App.wordEditor._uploadThumb(event)">' +
+    '<button type="button" class="wc-edit-thumb-btn wc-edit-thumb-upload" onclick="document.getElementById(\'wcEditThumbInput\').click()">📤 上传</button>' +
+    '<button type="button" class="wc-edit-thumb-btn wc-edit-thumb-lib" onclick="App.wordEditor._openThumbLibrary()">🖼 图库</button>' +
+    '<input type="file" id="wcEditVideoInput" accept="video/mp4,video/webm,video/quicktime,video/x-msvideo" style="display:none;" onchange="App.wordEditor._uploadVideo(event)">' +
+    '<button type="button" class="wc-edit-thumb-btn wc-edit-thumb-video" onclick="document.getElementById(\'wcEditVideoInput\').click()">🎬 视频</button>' +
+    '<button type="button" class="wc-edit-thumb-btn wc-edit-thumb-vlib" onclick="App.wordEditor._openVideoLibrary()">📁 视频库</button>' +
+    '<button type="button" id="wcEditThumbClearBtn" class="wc-edit-thumb-btn wc-edit-thumb-clear" onclick="App.wordEditor._clearThumb()" style="display:none;">✕</button>' +
     '</div></div>' +
-    '<div style="flex:1;">' +
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">分类</label>' +
-    '<input id="wcEditCategory" class="modal-input" placeholder="二级分类" style="font-size:12px;">' +
-    '</div></div>' +
-    // 分组选择弹窗
+    // 排序/图标/热度
+    '<div class="wc-edit-meta-row">' +
+    '<div class="wc-edit-meta-item"><label>排序</label><input id="wcEditSort" type="number" class="modal-input" value="0"></div>' +
+    '<div class="wc-edit-meta-item"><label>图标</label><input id="wcEditIcon" class="modal-input" placeholder="emoji"></div>' +
+    '<div class="wc-edit-meta-item wc-edit-meta-heat"><label>热度</label><div class="wc-edit-heat-row"><input id="wcEditHeat" type="range" min="0" max="1" step="0.1" value="0.5" oninput="document.getElementById(\'wcEditHeatLabel\').textContent=this.value"><span id="wcEditHeatLabel">0.5</span></div></div>' +
+    '</div>' +
+    // 隐藏模块选择器（兼容）+ 内置标记
+    '<select id="wcEditModule" style="display:none;"></select>' +
+    '<div id="wcEditBuiltinRow" style="display:none;margin-top:8px;">' +
+    '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--tag-bg);color:var(--primary);">🔒 内置词条 (部分字段不可编辑)</span>' +
+    '</div>' +
+    '</div>' +
+    // 分组选择弹窗（层级独立，放在 body 末尾）
     '<div id="wcGroupPickerModal" class="modal-overlay" style="display:none;z-index:600;" onclick="if(event.target===this)App.wordEditor._hideGroupPicker()">' +
     '<div class="modal-content" style="max-width:420px;width:92%;max-height:70vh;overflow-y:auto;border-radius:12px;padding:0;">' +
     '<div style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">' +
@@ -136,65 +161,13 @@ App.wordEditor._ensureModal = function() {
     '</div>' +
     '<div id="wcGroupPickerTree" style="padding:8px 12px 12px;"></div>' +
     '</div></div>' +
-    // 隐藏的模块选择器（兼容读取）
-    '<select id="wcEditModule" style="display:none;"></select>' +
-
-    // 标签 + AI按钮
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">标签</label>' +
-    '<div style="display:flex;gap:6px;margin-bottom:10px;">' +
-    '<input id="wcEditTags" class="modal-input" placeholder="用逗号或空格分隔, 如: 自然 温暖 电影感" style="flex:1;font-size:12px;">' +
-    '<button class="btn btn-xs ai-inline-btn" onclick="App.wordEditor._aiAnalyze()" style="flex-shrink:0;font-size:10px;padding:4px 8px;">🤖 AI分析</button>' +
     '</div>' +
-
-    // 场景 (Phase13.5: 统一词卡要素)
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">适用场景</label>' +
-    '<input id="wcEditScene" class="modal-input" placeholder="如: 特写镜头 / 广角风光 / 室内人像" style="font-size:12px;margin-bottom:10px;">' +
-
-    // 排序 + 图标 + 热度
-    '<div style="display:flex;gap:8px;margin-bottom:12px;">' +
-    '<div style="flex:1;">' +
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">排序权重</label>' +
-    '<input id="wcEditSort" type="number" class="modal-input" value="0" style="font-size:12px;width:80px;">' +
-    '</div>' +
-    '<div style="flex:1;">' +
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">图标</label>' +
-    '<input id="wcEditIcon" class="modal-input" placeholder="emoji 图标" style="font-size:12px;max-width:80px;">' +
-    '</div>' +
-    '<div style="flex:1;">' +
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">热度 <span style="font-size:9px;">(0~1)</span></label>' +
-    '<input id="wcEditHeat" type="range" min="0" max="1" step="0.1" value="0.5" style="width:100%;vertical-align:middle;" oninput="document.getElementById(\'wcEditHeatLabel\').textContent=this.value">' +
-    '<span id="wcEditHeatLabel" style="font-size:10px;color:var(--text-muted);margin-left:4px;">0.5</span>' +
-    '</div></div>' +
-
-    // 缩略图上传/选择 (Phase16.2: 始终可见 + 按钮修复)
-    '<div id="wcEditThumbRow" style="margin-bottom:10px;padding:8px;border-radius:8px;background:var(--hover-bg);">' +
-    '<label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">缩略图预览</label>' +
-    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
-    '<div id="wcEditThumbPreviewArea" style="width:120px;height:80px;border-radius:6px;border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;background:var(--bg-card);flex-shrink:0;"><span style="font-size:28px;color:var(--text-muted);">🖼</span></div>' +
-    '<span id="wcEditThumbName" style="font-size:11px;color:var(--text-muted);min-width:60px;">未设置</span>' +
-    '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
-    '<input type="file" id="wcEditThumbInput" accept="image/*" style="display:none;" onchange="App.wordEditor._uploadThumb(event)">' +
-    '<button type="button" class="btn btn-xs" onclick="document.getElementById(\'wcEditThumbInput\').click()" style="font-size:11px;padding:4px 10px;border:1px solid #6366f1;color:#6366f1;border-radius:6px;background:transparent;cursor:pointer;">📤 上传图片</button>' +
-    '<button type="button" class="btn btn-xs" onclick="App.wordEditor._openThumbLibrary()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border-color);color:var(--text-muted);border-radius:6px;background:transparent;cursor:pointer;">🖼 从图库选</button>' +
-    // Phase16.3: 视频上传按钮
-    '<input type="file" id="wcEditVideoInput" accept="video/mp4,video/webm,video/quicktime,video/x-msvideo" style="display:none;" onchange="App.wordEditor._uploadVideo(event)">' +
-    '<button type="button" class="btn btn-xs" onclick="document.getElementById(\'wcEditVideoInput\').click()" style="font-size:11px;padding:4px 10px;border:1px solid #10b981;color:#10b981;border-radius:6px;background:transparent;cursor:pointer;">🎬 上传视频</button>' +
-    '<button type="button" class="btn btn-xs" onclick="App.wordEditor._openVideoLibrary()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border-color);color:var(--text-muted);border-radius:6px;background:transparent;cursor:pointer;">📁 从视频库选</button>' +
-    '<button type="button" class="btn btn-xs" id="wcEditThumbClearBtn" onclick="App.wordEditor._clearThumb()" style="display:none;font-size:11px;padding:4px 10px;border:1px solid #ef4444;color:#ef4444;border-radius:6px;background:transparent;cursor:pointer;">✕ 清除</button>' +
-    '</div></div></div>' +
-
-    // 内置/自定义标记 (Phase13.5)
-    '<div id="wcEditBuiltinRow" style="display:none;margin-bottom:10px;">' +
-    '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--tag-bg);color:var(--primary);">🔒 内置词条 (部分字段不可编辑)</span>' +
-    '</div>' +
-
-    '</div>' +
-    // Footer
-    '<div style="padding:10px 18px;border-top:1px solid var(--border-color);display:flex;gap:6px;justify-content:flex-end;">' +
+    // Footer — sticky 固定底部
+    '<div class="wc-edit-footer">' +
     '<button class="btn btn-danger btn-sm" id="wcEditDeleteBtn" onclick="App.wordEditor._delete()" style="margin-right:auto;display:none;">删除</button>' +
     '<button class="btn btn-outline btn-sm" onclick="App.wordEditor._showVersions()" style="font-size:11px;">📜 历史版本</button>' +
     '<button class="btn btn-secondary btn-sm" onclick="App.wordEditor.close()">取消</button>' +
-    '<button class="btn btn-primary btn-sm" id="wcEditSaveBtn" onclick="App.wordEditor._save()">💾 保存</button>' +
+    '<button class="btn btn-primary btn-sm" id="wcEditSaveBtn" onclick="App.wordEditor._save()">➕ 添加</button>' +
     '</div></div>';
 
     document.body.appendChild(overlay);
@@ -513,12 +486,12 @@ App.wordEditor._loadCard = async function() {
         var clearBtn = document.getElementById('wcEditThumbClearBtn');
         if (thumbRow) thumbRow.style.display = 'block';
         if (c.thumbnail && thumbPreview && thumbName) {
-            thumbPreview.innerHTML = '<img id="wcEditThumbPreview" src="/api/v4/word-cards/thumbnails/' + c.thumbnail + '" style="width:120px;height:80px;border-radius:6px;object-fit:cover;border:1px solid var(--border-color);background:var(--bg-card);">';
+            thumbPreview.innerHTML = '<img id="wcEditThumbPreview" src="/api/v4/word-cards/thumbnails/' + c.thumbnail + '" style="width:100%;height:100%;border-radius:6px;object-fit:cover;">';
             thumbName.textContent = c.thumbnail.substring(0, 20) + (c.thumbnail.length > 20 ? '...' : '');
             if (clearBtn) clearBtn.style.display = 'inline-block';
         } else if (c.preview_media && thumbPreview && thumbName) {
             var posterFromThumb = c.thumbnail ? ('/api/v4/word-cards/thumbnails/' + c.thumbnail) : ('');
-            thumbPreview.innerHTML = '<video id="wcEditThumbPreview" src="/api/v4/word-cards/videos/' + c.preview_media + '" controls muted preload="metadata" poster="' + posterFromThumb + '" style="width:120px;height:80px;border-radius:6px;object-fit:cover;border:1px solid var(--border-color);background:var(--bg-card);"></video>';
+            thumbPreview.innerHTML = '<video id="wcEditThumbPreview" src="/api/v4/word-cards/videos/' + c.preview_media + '" controls muted preload="metadata" poster="' + posterFromThumb + '" style="width:100%;height:100%;border-radius:6px;object-fit:cover;"></video>';
             thumbName.textContent = '🎬 ' + c.preview_media.substring(0, 25);
             if (clearBtn) clearBtn.style.display = 'inline-block';
         } else {
@@ -541,17 +514,6 @@ App.wordEditor._loadCard = async function() {
         // 删除按钮显示
         var delBtn = document.getElementById('wcEditDeleteBtn');
         if (delBtn) delBtn.style.display = c.is_builtin ? 'none' : 'inline-block';
-
-        // 来源标记
-        var src = document.getElementById('wcEditSource');
-        if (src) {
-            var gName = c.group_name || '';
-            var info = [];
-            if (gName) info.push(gName);
-            if (c.source) info.push(c.source);
-            if (c.usage_count > 0) info.push('×' + c.usage_count);
-            src.textContent = info.join(' · ');
-        }
 
     } catch(e) {
         App.showToast(App._t('common.load_failed', '加载失败: ') + e.message, 'error');
@@ -606,8 +568,52 @@ App.wordEditor._resetForm = function() {
     document.getElementById('wcEditTags').value = '';
     var delBtn = document.getElementById('wcEditDeleteBtn');
     if (delBtn) delBtn.style.display = 'none';
-    var src = document.getElementById('wcEditSource');
-    if (src) src.textContent = App._t('common.new', '新建');
+};
+
+// Phase18: 连续添加模式 — 只清空内容字段，保留模块/分组/标签/排序
+App.wordEditor._resetContentForBatchAdd = function() {
+    // 清空内容字段
+    document.getElementById('wcEditName').value = '';
+    document.getElementById('wcEditContent').value = '';
+    document.getElementById('wcEditMeaning').value = '';
+    document.getElementById('wcEditScene').value = '';
+    // 保留: module, category, group_id, sort_order, icon, heat, tags
+    // 清空缩略图/视频预览（每次新词卡不继承）
+    if (this._pendingThumbBlobUrl && this._pendingThumbBlobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(this._pendingThumbBlobUrl);
+    }
+    this._pendingThumbFile = null;
+    this._pendingThumbSource = null;
+    this._pendingThumbBlobUrl = null;
+    var thumbRow = document.getElementById('wcEditThumbRow');
+    if (thumbRow) {
+        thumbRow.style.display = 'block';
+        var thumbImg = document.getElementById('wcEditThumbPreview');
+        var thumbName = document.getElementById('wcEditThumbName');
+        var clearBtn = document.getElementById('wcEditThumbClearBtn');
+        if (thumbImg) thumbImg.style.display = 'none';
+        if (thumbName) thumbName.textContent = '未设置';
+        if (clearBtn) clearBtn.style.display = 'none';
+    }
+    // 清空视频暂存
+    if (this._pendingVideoBlobUrl && this._pendingVideoBlobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(this._pendingVideoBlobUrl);
+    }
+    this._pendingVideoFile = null;
+    this._pendingVideoSource = null;
+    this._pendingVideoBlobUrl = null;
+    // 隐藏删除按钮
+    var delBtn = document.getElementById('wcEditDeleteBtn');
+    if (delBtn) delBtn.style.display = 'none';
+    // 标记为新建（button 保持为「➕ 添加」）
+    this._cardId = null;
+    var title = document.getElementById('wcEditTitle');
+    if (title) title.textContent = '➕ 新建词卡';
+    var saveBtn = document.getElementById('wcEditSaveBtn');
+    if (saveBtn) saveBtn.innerHTML = '➕ 添加';
+    // 聚焦到内容输入框，方便继续输入
+    var contentEl = document.getElementById('wcEditContent');
+    if (contentEl) setTimeout(function() { contentEl.focus(); }, 100);
 };
 
 // ============ 保存/删除 ============
@@ -683,68 +689,90 @@ App.wordEditor._save = async function() {
         if (result && result.ok) {
             var newId = result.id || this._cardId;
             var wasNew = !this._cardId;  // 记录是否新建
-            this._cardId = newId;
-            App.showToast(this._cardId ? App._t('auto.str_03f4d8a4', '词卡已保存') : App._t('auto.str_d2b555ae', '词卡已创建'), 'success');
 
-            // Phase17: 新建词卡保存后，自动上传暂存的缩略图
-            if (wasNew && (this._pendingThumbFile || this._pendingThumbSource)) {
-                try {
-                    if (this._pendingThumbFile) {
-                        var fd = new FormData();
-                        fd.append('file', this._pendingThumbFile);
-                        await fetch('/api/v4/word-cards/' + newId + '/thumbnail', { method: 'POST', body: fd });
-                    } else if (this._pendingThumbSource) {
-                        await App.fetchJSON('/api/v4/word-cards/' + newId + '/thumbnail-from-library', {
+            // Phase18: 连续添加模式 — 新建词卡后不关闭弹窗、保留模块/分组/标签、清空内容字段
+            if (wasNew) {
+                // Phase17: 新建词卡保存后，自动上传暂存的缩略图
+                if (this._pendingThumbFile || this._pendingThumbSource) {
+                    try {
+                        if (this._pendingThumbFile) {
+                            var fd = new FormData();
+                            fd.append('file', this._pendingThumbFile);
+                            await fetch('/api/v4/word-cards/' + newId + '/thumbnail', { method: 'POST', body: fd });
+                        } else if (this._pendingThumbSource) {
+                            await App.fetchJSON('/api/v4/word-cards/' + newId + '/thumbnail-from-library', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ source_filename: this._pendingThumbSource })
+                            });
+                        }
+                        // 清理暂存
+                        if (this._pendingThumbBlobUrl && this._pendingThumbBlobUrl.startsWith('blob:')) {
+                            URL.revokeObjectURL(this._pendingThumbBlobUrl);
+                        }
+                        this._pendingThumbFile = null;
+                        this._pendingThumbSource = null;
+                        this._pendingThumbBlobUrl = null;
+                    } catch(e) { console.warn('[wordEditor] pending thumb upload failed:', e); }
+                }
+
+                // Phase16.3: 新建词卡保存后，自动关联视频库视频
+                if (this._pendingVideoSource) {
+                    try {
+                        await App.fetchJSON('/api/v4/word-cards/' + newId + '/video-from-library', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ source_filename: this._pendingThumbSource })
+                            body: JSON.stringify({ source_filename: this._pendingVideoSource })
                         });
-                    }
-                    // 清理暂存
-                    if (this._pendingThumbBlobUrl && this._pendingThumbBlobUrl.startsWith('blob:')) {
-                        URL.revokeObjectURL(this._pendingThumbBlobUrl);
-                    }
-                    this._pendingThumbFile = null;
-                    this._pendingThumbSource = null;
-                    this._pendingThumbBlobUrl = null;
-                    await this._loadCard();  // 刷新预览为已上传状态
-                } catch(e) { console.warn('[wordEditor] pending thumb upload failed:', e); }
-            }
+                        if (this._pendingVideoBlobUrl && this._pendingVideoBlobUrl.startsWith('blob:')) {
+                            URL.revokeObjectURL(this._pendingVideoBlobUrl);
+                        }
+                        this._pendingVideoFile = null;
+                        this._pendingVideoSource = null;
+                        this._pendingVideoBlobUrl = null;
+                    } catch(e) { console.warn('[wordEditor] pending video associate failed:', e); }
+                }
 
-            // Phase16.3: 新建词卡保存后，自动关联视频库视频
-            if (wasNew && this._pendingVideoSource) {
-                try {
-                    await App.fetchJSON('/api/v4/word-cards/' + newId + '/video-from-library', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ source_filename: this._pendingVideoSource })
-                    });
-                    if (this._pendingVideoBlobUrl && this._pendingVideoBlobUrl.startsWith('blob:')) {
-                        URL.revokeObjectURL(this._pendingVideoBlobUrl);
-                    }
-                    this._pendingVideoFile = null;
-                    this._pendingVideoSource = null;
-                    this._pendingVideoBlobUrl = null;
-                    await this._loadCard();
-                } catch(e) { console.warn('[wordEditor] pending video associate failed:', e); }
-            }
+                // 回调通知调用方刷新
+                if (this._onSaved) {
+                    this._onSaved({ id: newId, ...data });
+                }
 
-            // 回调通知调用方刷新
-            if (this._onSaved) {
-                this._onSaved({ id: newId, ...data });
-            }
+                // 通知选取器刷新
+                if (App.wordPicker && App.wordPicker._load) App.wordPicker._load();
 
-            // 通知选取器刷新
-            if (App.wordPicker && App.wordPicker._load) App.wordPicker._load();
+                // 刷新侧边栏模块计数
+                await App.loadModules();
 
-            // 刷新侧边栏模块计数（新建的模块从0→1）
-            await App.loadModules();
+                // 刷新列表
+                if (this._source === 'cards' && App.loadPrompts) {
+                    App.loadPrompts();
+                } else if (App.wordCards && App.wordCards.load) {
+                    App.wordCards.load();
+                }
 
-            // 如果是从主界面编辑，刷新列表
-            if (this._source === 'cards' && App.loadPrompts) {
-                App.loadPrompts();
-            } else if (App.wordCards && App.wordCards.load) {
-                App.wordCards.load();
+                App.showToast('✅ 词卡已添加，可继续添加', 'success');
+
+                // 连续添加：重置内容字段，保留模块/分组/标签
+                this._resetContentForBatchAdd();
+
+            } else {
+                // 编辑模式 — 更新后保持 cardId
+                this._cardId = newId;
+                App.showToast(App._t('auto.str_03f4d8a4', '词卡已保存'), 'success');
+
+                // 回调通知调用方刷新
+                if (this._onSaved) {
+                    this._onSaved({ id: newId, ...data });
+                }
+
+                if (App.wordPicker && App.wordPicker._load) App.wordPicker._load();
+                await App.loadModules();
+                if (this._source === 'cards' && App.loadPrompts) {
+                    App.loadPrompts();
+                } else if (App.wordCards && App.wordCards.load) {
+                    App.wordCards.load();
+                }
             }
         } else {
             App.showToast(App._t('common.save', '保存失败: ') + (result ? result.error || App._t('common.unknown_error', '未知错误') : App._t('common.net_error', '网络错误')), 'error');
@@ -781,7 +809,8 @@ App.wordEditor._aiAnalyze = async function() {
     var content = document.getElementById('wcEditContent').value.trim();
     if (!content) { App.showToast('请先输入词卡内容', 'warning'); return; }
 
-    var btn = document.querySelector('#wcEditTags + .ai-inline-btn');
+    // Phase19: 选择器适配双栏布局 — AI分析按钮在 .wc-edit-tags-row 内
+    var btn = document.querySelector('.wc-edit-tags-row .ai-inline-btn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
 
     try {
@@ -904,7 +933,8 @@ App.wordEditor._suggestGroup = async function() {
     var meaning = document.getElementById('wcEditMeaning').value.trim();
     if (!content && !name) { App.showToast('请先输入词卡内容或名称', 'warning'); return; }
     
-    var btn = document.querySelector('#wcEditGroup + .ai-inline-btn');
+    // Phase19: 选择器适配双栏布局 — suggest 按钮在 .wc-edit-group-row 内
+    var btn = document.querySelector('.wc-edit-group-row .ai-inline-btn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
     
     try {

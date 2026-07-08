@@ -2645,15 +2645,245 @@ body.dark-theme .ai-opt-modal {
 }
 #viewWordCards { padding: 12px 16px; }
 
-/* ============ v4.1.0: Word Card Editor ============ */
-#modalWordEdit .modal-input { font-family: 'Segoe UI', system-ui, sans-serif; }
+/* ============ Phase19 (v4.3.0): Word Card Editor — 双栏布局 ============ */
+
+/* 弹窗容器 — 完全独立于 .modal-content，确保背景/宽度/溢出可控 */
+.wc-edit-modal {
+    background: #fff;
+    background: var(--bg-card, #fff);
+    border-radius: 14px;
+    width: 94vw;
+    max-width: 900px;
+    max-height: 88vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+}
+
+/* Header */
+.wc-edit-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+.wc-edit-header h5 { margin: 0; font-size: 15px; font-weight: 600; }
+.wc-edit-close {
+    background: none; border: none;
+    font-size: 22px; color: var(--text-muted);
+    cursor: pointer; padding: 0 4px; line-height: 1;
+}
+.wc-edit-close:hover { color: var(--text-main); }
+
+/* Body — 双栏网格 + 内部滚动 */
+.wc-edit-body {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 20px;
+    padding: 16px 20px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1;
+    min-height: 0;
+    align-items: start;
+}
+
+/* 左右栏统一样式 */
+.wc-edit-left label,
+.wc-edit-right label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+    margin-top: 8px;
+}
+.wc-edit-left label:first-child,
+.wc-edit-right label:first-child { margin-top: 0; }
+
+.wc-edit-left .modal-input,
+.wc-edit-right .modal-input {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 12px;
+    margin-bottom: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
 #modalWordEdit select { cursor: pointer; }
-#modalWordEdit select:focus, #modalWordEdit input:focus, #modalWordEdit textarea:focus {
+#modalWordEdit select:focus,
+#modalWordEdit input:focus,
+#modalWordEdit textarea:focus {
     outline: 2px solid var(--primary);
     outline-offset: -1px;
 }
+
+/* 左栏 textarea */
+.wc-edit-left textarea { resize: vertical; min-height: 72px; }
+
+/* 标签行 */
+.wc-edit-tags-row {
+    display: flex; gap: 4px; align-items: center;
+}
+.wc-edit-tags-row input { flex: 1; margin-bottom: 0 !important; }
+.wc-edit-tags-row .ai-inline-btn {
+    flex-shrink: 0;
+    font-size: 10px; padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px; background: var(--bg-card);
+    color: var(--primary); cursor: pointer;
+    white-space: nowrap;
+}
+
+/* 分组选择行 */
+.wc-edit-group-row {
+    display: flex; gap: 4px; align-items: center;
+}
+.wc-edit-group-btn {
+    flex: 1;
+    font-size: 12px; text-align: left;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    cursor: pointer;
+}
+.wc-edit-group-btn:hover { border-color: var(--primary); }
+.wc-edit-group-row .ai-inline-btn {
+    flex-shrink: 0;
+    font-size: 10px; padding: 4px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px; background: var(--bg-card);
+    color: var(--primary); cursor: pointer;
+}
+
+/* 缩略图预览区 */
+.wc-edit-thumb-row {
+    margin-top: 8px;
+    padding: 8px;
+    border-radius: 8px;
+    background: var(--hover-bg);
+}
+.wc-edit-thumb-row label {
+    display: block; margin-top: 0 !important;
+}
+.wc-edit-thumb-preview {
+    width: 100%;
+    height: 90px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card);
+    overflow: hidden;
+    margin: 4px 0;
+}
+.wc-edit-thumb-preview span {
+    font-size: 32px;
+    color: var(--text-muted);
+}
+.wc-edit-thumb-preview img,
+.wc-edit-thumb-preview video {
+    width: 100%; height: 100%;
+    object-fit: cover;
+}
+#wcEditThumbName {
+    display: block;
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    word-break: break-all;
+}
+.wc-edit-thumb-actions {
+    display: flex;
+    gap: 3px;
+    flex-wrap: wrap;
+}
+.wc-edit-thumb-btn {
+    font-size: 10px !important;
+    padding: 3px 7px !important;
+    border-radius: 4px !important;
+    background: transparent !important;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.wc-edit-thumb-btn:hover { opacity: 0.8; }
+.wc-edit-thumb-upload { border-color: #6366f1 !important; color: #6366f1 !important; }
+.wc-edit-thumb-video { border-color: #10b981 !important; color: #10b981 !important; }
+.wc-edit-thumb-clear { border-color: #ef4444 !important; color: #ef4444 !important; }
+
+/* 排序/图标/热度 三列 */
+.wc-edit-meta-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    align-items: flex-end;
+}
+.wc-edit-meta-item {
+    flex: 1;
+    min-width: 0;
+}
+.wc-edit-meta-item label {
+    font-size: 10px;
+    margin-top: 0 !important;
+    margin-bottom: 1px;
+}
+.wc-edit-meta-item input { font-size: 11px !important; padding: 4px 6px !important; }
+.wc-edit-meta-heat { flex: 1.3; }
+.wc-edit-heat-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.wc-edit-heat-row input[type="range"] {
+    flex: 1;
+    height: 16px;
+    accent-color: var(--primary);
+}
+.wc-edit-heat-row span {
+    font-size: 10px;
+    color: var(--text-muted);
+    min-width: 24px;
+    text-align: center;
+}
+
+/* Footer — sticky 固定底部 */
+.wc-edit-footer {
+    padding: 10px 20px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+    flex-shrink: 0;
+}
 #wcEditDeleteBtn { transition: all 0.15s; }
 #wcEditDeleteBtn:hover { opacity: 0.85; }
+
+/* ============ 深色主题适配 ============ */
+body.dark-theme .wc-edit-modal { background: #1e293b; }
+body.dark-theme .wc-edit-group-btn { background: #334155; color: #e2e8f0; border-color: #475569; }
+body.dark-theme .wc-edit-group-row .ai-inline-btn,
+body.dark-theme .wc-edit-tags-row .ai-inline-btn { background: #334155; border-color: #475569; }
+body.dark-theme .wc-edit-thumb-row { background: rgba(255,255,255,0.03); }
+body.dark-theme .wc-edit-thumb-preview { background: #334155; border-color: #475569; }
+
+/* ============ 移动端响应式 — 回退单列 ============ */
+@media (max-width: 640px) {
+    .wc-edit-modal { max-width: 100vw !important; border-radius: 12px 12px 0 0 !important; }
+    .wc-edit-body {
+        grid-template-columns: 1fr;
+        gap: 8px;
+        padding: 12px 14px;
+    }
+    .wc-edit-thumb-preview { height: 70px; }
+    .wc-edit-meta-row { flex-wrap: wrap; }
+}
 
 /* ============ Phase13.2: 骨架屏 ============ */
 .skeleton-card {

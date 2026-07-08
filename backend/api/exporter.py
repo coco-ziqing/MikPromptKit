@@ -65,6 +65,8 @@ async def preview_png_import(file: UploadFile = File(...)):
                 "thumbnail_base64": data.get("thumbnail_base64"),
                 "thumbnail_filename": data.get("thumbnail_filename", ""),
                 "scene": data.get("scene", ""),
+                "group_id": data.get("group_id"),
+                "group_name": data.get("group_name", ""),
             }
         }
     except HTTPException:
@@ -88,6 +90,7 @@ async def import_single_png(
     ov_mod = None
     ov_cat = None
     ov_cont = None
+    ov_gid = None
     try:
         ov_list = json.loads(overrides) if overrides and overrides != "[]" else []
         if ov_list and len(ov_list) > 0:
@@ -95,12 +98,17 @@ async def import_single_png(
             ov_mod = ov.get("module")
             ov_cat = ov.get("category")
             ov_cont = ov.get("content")
+            ov_gid = ov.get("group_id")
+            if ov_gid is not None:
+                try: ov_gid = int(ov_gid)
+                except: ov_gid = None
     except Exception:
         pass
     result = import_prompt_from_png(file_bytes, conflict=conflict,
                                      override_module=ov_mod,
                                      override_category=ov_cat,
-                                     override_content=ov_cont)
+                                     override_content=ov_cont,
+                                     override_group_id=ov_gid)
     return {"ok": True, "result": result}
 
 

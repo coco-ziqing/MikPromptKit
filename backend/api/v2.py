@@ -911,7 +911,7 @@ async def preview_pt_package(file: UploadFile = File(...)):
 
 @router.post("/import/from-json-data")
 def import_json_data(data: dict):
-    """从 JSON 数据批量导入（拖拽导入使用，直接接收解析后的数据 body）"""
+    """从 JSON 数据批量导入 — Phase17.6: 写入 word_card + 支持 group_id"""
     items = data.get("items", [])
     conflict = data.get("conflict", "skip")
     if not items:
@@ -928,7 +928,10 @@ def import_json_data(data: dict):
         if not content:
             failed += 1
             continue
-        existing = db.execute("SELECT id FROM prompts WHERE content=?", [content]).fetchone()
+        # 去重检测（word_card 优先）
+        existing = db.execute("SELECT id FROM word_card WHERE content=? AND is_deleted=0", [content]).fetchone()
+        if not existing:
+            existing = db.execute("SELECT id FROM prompts WHERE content=? AND deleted_at IS NULL", [content]).fetchone()
         if existing:
             if conflict == "skip":
                 skipped += 1
@@ -936,26 +939,26 @@ def import_json_data(data: dict):
             elif conflict == "rename":
                 content += " (导入副本 " + uuid.uuid4().hex[:4] + ")"
             elif conflict == "overwrite":
+                db.execute("DELETE FROM word_card WHERE id=?", [existing["id"]])
                 db.execute("DELETE FROM prompts WHERE id=?", [existing["id"]])
+                db.execute("DELETE FROM prompt_cards WHERE id=?", [existing["id"]])
 
-        module = item.get("module", "custom")
+        group_id = item.get("group_id") or item.get("module")  # group_id 优先，module 兼容
+        if isinstance(group_id, str) and group_id.isdigit():
+            group_id = int(group_id)
+        elif isinstance(group_id, str):
+            group_id = None
         category = item.get("category", "通用")
         meaning = item.get("meaning", "")
         scene = item.get("scene", "")
-        subcategory = item.get("subcategory", "")
         tags = json.dumps(item.get("tags", []), ensure_ascii=False)
+        name = (item.get("name") or content)[:60]
 
         db.execute(
-            "INSERT INTO prompts (module, category, subcategory, content, meaning, scene, tags, is_builtin) VALUES (?,?,?,?,?,?,?,?)",
-            [module, category, subcategory, content, meaning, scene, tags, 0]
+            "INSERT INTO word_card (group_id, name, content, meaning, scene, module, category, tags, is_builtin, is_deleted, sort_order, card_role, source) VALUES (?,?,?,?,?,?,?,?,0,0,0,'custom','import')",
+            [group_id, name, content, meaning, scene, "custom", category, tags]
         )
-        new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-        # 同步写入 prompt_cards（v4 主表，id 与 prompts 同步）
-        db.execute(
-            "INSERT INTO prompt_cards (id, card_type, name, content, meaning, scene, module, category, tags, structured_fields, is_builtin, is_deleted, created_at, updated_at) VALUES (?,'image',?,?,?,?,?,?,'{}',0,0,datetime('now','localtime'),datetime('now','localtime'))",
-            [new_id, subcategory or content[:30], content, meaning, scene, module, category, tags]
-        )
-        db.commit()
+        safe_commit()
         created += 1
 
     return {

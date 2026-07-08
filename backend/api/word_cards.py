@@ -6,7 +6,7 @@ v4.1.0: 统一词卡 API
 import json, re, hashlib, os, uuid, io
 from fastapi import APIRouter, Query, HTTPException, UploadFile, File
 from fastapi.responses import Response, FileResponse
-from database import get_db, safe_count, safe_count_dict, safe_fetch_one, safe_commit
+from database import get_db, safe_count, safe_count_dict, safe_fetch_one, safe_execute, safe_commit
 
 router = APIRouter(prefix="/api/v4/word-cards", tags=["word-cards"])
 
@@ -384,7 +384,7 @@ async def batch_create_from_text(data: dict):
 
 @router.post("/{card_id}/thumbnail-from-library")
 def copy_thumbnail_from_library(card_id: int, data: dict):
-    """从图库复制图片到词卡缩略图（避免前端 blob 中转，320x213 基准）"""
+    """从图库复制图片到词卡缩略图（避免前端 blob 中转，320x213 基准 + 原图归档）"""
     source = (data.get("source_filename") or "").strip()
     if not source:
         raise HTTPException(400, "请提供 source_filename")
@@ -397,6 +397,19 @@ def copy_thumbnail_from_library(card_id: int, data: dict):
     src_path = os.path.join(THUMB_LIB_DIR, os.path.basename(source))
     if not os.path.exists(src_path):
         raise HTTPException(404, f"图库文件不存在: {source}")
+
+    # 原图归档：复制源文件到 wc_media/originals/，供查看原图弹窗使用
+    WC_ORIG_DIR = os.path.join(WC_MEDIA_DIR, "originals")
+    os.makedirs(WC_ORIG_DIR, exist_ok=True)
+    src_ext = os.path.splitext(source)[1] or ".jpg"
+    orig_name = f"{uuid.uuid4().hex}{src_ext}"
+    orig_path = os.path.join(WC_ORIG_DIR, orig_name)
+    try:
+        import shutil
+        shutil.copy2(src_path, orig_path)
+    except Exception as e:
+        raise HTTPException(500, f"原图归档失败: {str(e)}")
+
     try:
         from PIL import Image
         img = Image.open(src_path)
@@ -417,17 +430,22 @@ def copy_thumbnail_from_library(card_id: int, data: dict):
         dest_path = os.path.join(WC_THUMB_DIR, dest_name)
         img.save(dest_path, "JPEG", quality=82)
     except ImportError:
-        # Pillow 不可用时直接复制
-        import shutil
         dest_name = f"{uuid.uuid4().hex}{os.path.splitext(source)[1] or '.jpg'}"
         dest_path = os.path.join(WC_THUMB_DIR, dest_name)
         shutil.copy2(src_path, dest_path)
     except Exception as e:
+        # 缩略图生成失败，清理已归档的原图
+        if os.path.exists(orig_path):
+            try: os.remove(orig_path)
+            except: pass
         raise HTTPException(500, f"文件处理失败: {str(e)}")
     _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
-    db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, updated_at=datetime('now','localtime') WHERE id=?", [dest_name, TW, TH, card_id])
+    safe_execute(
+        "UPDATE word_card SET thumbnail=?, original_ref=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, updated_at=datetime('now','localtime') WHERE id=?",
+        [dest_name, orig_name, TW, TH, card_id]
+    )
     safe_commit()
-    return {"ok": True, "filename": dest_name, "source": source}
+    return {"ok": True, "filename": dest_name, "original_ref": orig_name, "source": source}
 
 
 @router.post("/{card_id}/thumbnail")

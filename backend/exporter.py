@@ -133,7 +133,16 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
         JOIN collections c ON c.id = ci.collection_id
         WHERE ci.prompt_id = ?
     """, [prompt_id]).fetchall()
-    collections = [{"name": r["name"], "icon": r.get("icon") or "⭐"} for r in coll_rows]
+    collections = [{"name": r["name"], "icon": r["icon"] or "⭐"} for r in coll_rows]
+
+    # 查询分组信息
+    group_id = p.get("group_id")
+    group_name = ""
+    if group_id and table == "word_card":
+        gr = db.execute("SELECT name FROM word_card_group WHERE id=?", [group_id]).fetchone()
+        group_name = gr["name"] if gr else ""
+    elif table == "prompts":
+        group_id = None
 
     # 读取缩略图 — word_card 用 wc_media/thumbs/, prompts 用 data/thumbnails/
     thumbnail_bytes = None
@@ -320,6 +329,8 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
                 "subcategory": p.get("subcategory", ""),
                 "tags": tag_list,
                 "collections": collections,
+                "group_id": group_id,
+                "group_name": group_name,
                 "usage_count": p.get("usage_count", 0),
                 "translation": translation,
                 "thumbnail_base64": base64.b64encode(thumbnail_bytes).decode("utf-8") if thumbnail_bytes else None,
@@ -342,7 +353,7 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
     return buf.getvalue()
 
 
-def import_prompt_from_png(file_bytes: bytes, conflict: str = "skip", override_module: str = None, override_category: str = None, override_content: str = None) -> dict:
+def import_prompt_from_png(file_bytes: bytes, conflict: str = "skip", override_module: str = None, override_category: str = None, override_content: str = None, override_group_id: int = None) -> dict:
     """从 PNG 字节流导入提示词，返回创建结果"""
     try:
         img = Image.open(io.BytesIO(file_bytes))
@@ -395,6 +406,23 @@ def import_prompt_from_png(file_bytes: bytes, conflict: str = "skip", override_m
         INSERT INTO prompt_cards (id, card_type, name, content, meaning, scene, module, category, tags, structured_fields, is_builtin, is_deleted, created_at, updated_at)
         VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?, '{}', 0, 0, datetime('now','localtime'), datetime('now','localtime'))
     """, [new_id, subcategory or content[:30], content, meaning, scene, module, category, tags])
+
+    # 分组 id（提供有效分组则同步写入 word_card）
+    final_group_id = override_group_id if override_group_id is not None else data.get("group_id")
+    if final_group_id:
+        try:
+            final_group_id = int(final_group_id)
+            grp = db.execute("SELECT id FROM word_card_group WHERE id=? AND is_active=1", [final_group_id]).fetchone()
+            if grp:
+                max_sort = db.execute("SELECT COALESCE(MAX(sort_order),0) FROM word_card WHERE group_id=?", [final_group_id]).fetchone()[0]
+                name = (content or "")[:60]
+                db.execute(
+                    "INSERT INTO word_card (group_id,name,content,meaning,scene,module,category,tags,icon,sort_order,is_builtin,source) VALUES (?,?,?,?,?,?,?,?,'',?,0,'png_import')",
+                    [final_group_id, name, content, meaning, scene, module, category, tags, max_sort + 1]
+                )
+        except Exception:
+            pass
+
     db.commit()
 
     # 还原缩略图

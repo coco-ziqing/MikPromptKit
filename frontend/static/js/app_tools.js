@@ -376,8 +376,15 @@ Object.assign(App, {
                 scene: p.scene || '',
                 module: p.module || 'custom',
                 category: p.category || '',
-                tags: p.tags || []
+                tags: p.tags || [],
+                group_id: p.group_id || null,        // PNG 中存储的原始分组
+                group_name: p.group_name || ''        // 分组名称用于显示
             };
+            // 记录 PNG 识别的分组信息（供下拉排序用）
+            this._diPngGroupId = p.group_id || null;
+            this._diPngGroupName = p.group_name || '';
+            // 记录当前页面所在分组（第二顺位）
+            this._diCurrentGroupId = App.state.currentGroupId || null;
             this._diFile = file;
             this._diItems = [item];
             this._diIsPt = false;
@@ -430,6 +437,9 @@ Object.assign(App, {
         this._diFile = file;
         this._diItems = items;
         this._diIsPt = false;
+        this._diPngGroupId = null;
+        this._diPngGroupName = '';
+        this._diCurrentGroupId = App.state.currentGroupId || null;
 
         // 填充弹窗信息
         document.getElementById('diFileName').textContent = file.name;
@@ -448,33 +458,113 @@ Object.assign(App, {
         document.getElementById('modalDropImport').style.display = 'flex';
     },
 
-    // ============ 导入预览渲染（JSON / .pt 共用） ============
+    // ============ 导入预览渲染（JSON / .pt / PNG 共用） ============
 
     _renderDiItems(items) {
         var container = document.getElementById('diItemList');
-        var moduleOpts = '';
-        var modList = this.state.modules || [];
-        for (var mi = 0; mi < modList.length; mi++) {
-            var m = modList[mi];
-            if (m.id === 'seedance') continue;
-            moduleOpts += '<option value="' + this._escape(m.id) + '">' + this._escape(m.name || m.id) + '</option>';
+        // 构建分组选项（扁平化，按优先级排序）：
+        // Tier 0: PNG识别分组（第一顺位，★）
+        // Tier 1: 当前所在分组（第二顺位，●）
+        // Tier 2: 其余分组
+        var pngGid = this._diPngGroupId;
+        var curGid = this._diCurrentGroupId;
+        var pngGname = this._diPngGroupName || '';
+
+        function flattenGroups(groups, depth) {
+            depth = depth || 0;
+            var result = [];
+            for (var gi = 0; gi < groups.length; gi++) {
+                var g = groups[gi];
+                if (g.group_type === 'atom') continue;
+                var prefix = '';
+                for (var d = 0; d < depth; d++) prefix += '　';
+                result.push({ id: g.id, name: prefix + (g.icon||'📁') + ' ' + App._escape(g.name || g.group_key || ''), depth: depth });
+                if (g.children && g.children.length > 0) {
+                    var children = flattenGroups(g.children, depth + 1);
+                    result = result.concat(children);
+                }
+            }
+            return result;
         }
+
+        var allGroups = [];
+        var seenIds = {};
+        if (this.state.groupTree) allGroups = flattenGroups(this.state.groupTree);
+        for (var gi = 0; gi < allGroups.length; gi++) {
+            seenIds[allGroups[gi].id] = true;
+        }
+
+        // 兜底：PNG分组或当前分组不在tree中时，手动补充（groupTree可能尚未加载或分组已移动）
+        function ensureGroup(gid, gname) {
+            if (!gid || seenIds[gid]) return;
+            allGroups.unshift({ id: gid, name: '📁 ' + App._escape(gname || '分组#' + gid), depth: 0 });
+            seenIds[gid] = true;
+        }
+        ensureGroup(pngGid, pngGname);
+        
+        // 获取当前分组名称（树中查找）
+        var curGname = '';
+        if (curGid) {
+            for (var gi = 0; gi < allGroups.length; gi++) {
+                if (allGroups[gi].id == curGid) { curGname = allGroups[gi].name; break; }
+            }
+            if (!seenIds[curGid]) {
+                allGroups.unshift({ id: curGid, name: '📁 当前分组#' + curGid, depth: 0 });
+                seenIds[curGid] = true;
+            }
+        }
+
+        // 优先级排序（稳定：PNG分组前置，当前分组织前）
+        function getPriority(g) {
+            if (g.id == pngGid) return 0;
+            if (g.id == curGid) return 1;
+            return 2;
+        }
+        allGroups.sort(function(a, b) {
+            var pa = getPriority(a), pb = getPriority(b);
+            if (pa !== pb) return pa - pb;
+            return 0;
+        });
+
+        // 拼接下拉选项
+        var groupOpts = '<option value="">-- 无分组 --</option>';
+        for (var gi = 0; gi < allGroups.length; gi++) {
+            var g = allGroups[gi];
+            var optText = g.name;
+            if (g.id == pngGid) optText += ' ★ (PNG原分组)';
+            else if (g.id == curGid && g.id != pngGid) optText += ' ● (当前分组)';
+            groupOpts += '<option value="' + g.id + '">' + optText + '</option>';
+        }
+
+        // 默认选中：PNG原始分组 > 当前分组
+        var defaultGid = pngGid || curGid || '';
+
         var html = '<table>';
-        html += '<thead><tr><th style="width:30px;"></th><th>模块</th><th>分类</th><th>词条内容（点击编辑）</th></tr></thead><tbody>';
+        html += '<thead><tr><th style="width:30px;"></th><th>分组</th><th>分类</th><th>词条内容（点击编辑）</th></tr></thead><tbody>';
         var limit = Math.min(50, items.length);
         for (var i = 0; i < limit; i++) {
             var item = items[i];
             var escContent = this._escape(item.content || '');
-            var itemModule = item.module || 'custom';
-            var escCategory = this._escape(item.category || '通用');
-            var optHtml = moduleOpts.replace('value="' + itemModule + '"', 'value="' + itemModule + '" selected');
-            var hasModule = modList.some(function(m) { return m.id === itemModule; });
-            if (!hasModule) {
-                optHtml = '<option value="' + this._escape(itemModule) + '" selected>' + this._escape(itemModule) + '</option>' + optHtml;
+            var itemGroupId = item.group_id || '';
+            var selGid = itemGroupId || defaultGid || '';
+            // 确保选中分组在选项中（包括兜底补充的分组）
+            if (selGid && !seenIds[selGid] && this._diPngGroupName) {
+                ensureGroup(selGid, this._diPngGroupName);
+                // 重建 groupOpts
+                groupOpts = '<option value="">-- 无分组 --</option>';
+                for (var gi2 = 0; gi2 < allGroups.length; gi2++) {
+                    var g2 = allGroups[gi2];
+                    var ot = g2.name;
+                    if (g2.id == pngGid) ot += ' ★ (PNG原分组)';
+                    else if (g2.id == curGid && g2.id != pngGid) ot += ' ● (当前分组)';
+                    groupOpts += '<option value="' + g2.id + '">' + ot + '</option>';
+                }
             }
+            var escCategory = this._escape(item.category || '通用');
+            var optHtml = groupOpts.replace('value="' + selGid + '"', 'value="' + selGid + '" selected');
             html += '<tr>';
             html += '<td><input type="checkbox" class="di-item-cb" data-idx="' + i + '" checked onchange="App._updateDiCount()"></td>';
-            html += '<td><select class="di-module-select" data-idx="' + i + '">' + optHtml + '</select></td>';
+            html += '<td><select class="di-group-select" data-idx="' + i + '">' + optHtml + '</select></td>';
             html += '<td><input class="di-category-input" data-idx="' + i + '" value="' + escCategory + '"></td>';
             html += '<td><input class="di-content-input" data-idx="' + i + '" value="' + escContent + '"></td>';
             html += '</tr>';
@@ -513,11 +603,11 @@ Object.assign(App, {
             for (var cbi = 0; cbi < cbs.length; cbi++) {
                 var idx = parseInt(cbs[cbi].getAttribute('data-idx'));
                 var contentInput = document.querySelector('.di-content-input[data-idx="' + idx + '"]');
-                var moduleSelect = document.querySelector('.di-module-select[data-idx="' + idx + '"]');
+                var groupSelect = document.querySelector('.di-group-select[data-idx="' + idx + '"]');
                 var categoryInput = document.querySelector('.di-category-input[data-idx="' + idx + '"]');
                 overrides.push({
                     content: contentInput ? contentInput.value.trim() : null,
-                    module: moduleSelect ? moduleSelect.value : null,
+                    group_id: groupSelect ? parseInt(groupSelect.value) || null : null,
                     category: categoryInput ? categoryInput.value.trim() : null
                 });
             }
@@ -560,11 +650,11 @@ Object.assign(App, {
             for (var cbi = 0; cbi < cbs.length; cbi++) {
                 var idx = parseInt(cbs[cbi].getAttribute('data-idx'));
                 var contentInput = document.querySelector('.di-content-input[data-idx="' + idx + '"]');
-                var moduleSelect = document.querySelector('.di-module-select[data-idx="' + idx + '"]');
+                var groupSelect = document.querySelector('.di-group-select[data-idx="' + idx + '"]');
                 var categoryInput = document.querySelector('.di-category-input[data-idx="' + idx + '"]');
                 overrides.push({
                     content: contentInput ? contentInput.value.trim() : null,
-                    module: moduleSelect ? moduleSelect.value : null,
+                    group_id: groupSelect ? parseInt(groupSelect.value) || null : null,
                     category: categoryInput ? categoryInput.value.trim() : null
                 });
             }
@@ -587,13 +677,13 @@ Object.assign(App, {
                 var idx = parseInt(cbs[i].getAttribute('data-idx'));
                 var original = this._diItems[idx];
                 var contentInput = document.querySelector('.di-content-input[data-idx="' + idx + '"]');
-                var moduleSelect = document.querySelector('.di-module-select[data-idx="' + idx + '"]');
+                var groupSelect = document.querySelector('.di-group-select[data-idx="' + idx + '"]');
                 var categoryInput = document.querySelector('.di-category-input[data-idx="' + idx + '"]');
                 items.push({
                     content: contentInput ? contentInput.value.trim() : (original.content || ''),
                     meaning: original.meaning || '',
                     scene: original.scene || '',
-                    module: moduleSelect ? moduleSelect.value : (original.module || 'custom'),
+                    group_id: groupSelect ? parseInt(groupSelect.value) || null : null,
                     category: categoryInput ? categoryInput.value.trim() : (original.category || '通用'),
                     tags: original.tags || []
                 });
@@ -626,18 +716,20 @@ Object.assign(App, {
 
         if (data.created > 0) {
             this.state.page = 1;
-            // 跳转到用户选择的模块（取第一个选中行）
-            var targetModule = null;
+            // 跳转到用户选择的分组（取第一个选中行）
+            var targetGroupId = null;
             if (cbs.length > 0) {
                 var firstIdx = parseInt(cbs[0].getAttribute('data-idx'));
-                var ms = document.querySelector('.di-module-select[data-idx="' + firstIdx + '"]');
-                if (ms) targetModule = ms.value;
+                var gs = document.querySelector('.di-group-select[data-idx="' + firstIdx + '"]');
+                if (gs) targetGroupId = parseInt(gs.value) || this.state.currentGroupId;
             }
-            if (targetModule && this.state.modules && this.state.modules.find(function(m){return m.id===targetModule;})) {
-                this.switchModule(targetModule);
+            if (targetGroupId) {
+                await App.switchGroup(targetGroupId);
             } else {
-                this.switchAllModules();
+                App.switchAllGroups();
             }
+            // 确保数据加载完成（switchView 内部不 await loadPrompts，手动补偿）
+            await App._wcLoadPrompts();
             this.showToast(App._t('common.success', '成功导入 ') + data.created + App._t('auto.str_6f2666c1', ' 条提示词'), 'success');
         }
     },
@@ -835,6 +927,13 @@ Object.assign(App, {
                 for (var i = 0; i < ids.length; i++) {
                     var p = this.state.prompts ? this.state.prompts.find(function(x) { return x.id === ids[i]; }) : null;
                     var pr = await fetch('/api/export/prompt-to-png/' + ids[i]);
+                    // Phase17.6: 检查 HTTP 状态，避免把错误 JSON 当 PNG 下载
+                    if (!pr.ok) {
+                        var errText = '';
+                        try { var ed = await pr.json(); errText = ': ' + (ed.detail || pr.statusText); } catch(_) {}
+                        console.warn('PNG export failed for #' + ids[i] + errText);
+                        continue;
+                    }
                     var pb = await pr.blob();
                     var pn = App._makeExportFilename(p ? [p] : [{id: ids[i]}], 'png');
                     if (saveDir) {
@@ -1054,11 +1153,11 @@ Object.assign(App, {
             document.getElementById('ssTips').value = preview.tips || '';
 
             this._populateSSModule();
-            var moduleSelect = document.getElementById('ssModule');
+            var groupSelect = document.getElementById('ssModule');
             if (preview.module && preview.module !== 'custom') {
-                for (var i = 0; i < moduleSelect.options.length; i++) {
-                    if (moduleSelect.options[i].value === preview.module) {
-                        moduleSelect.value = preview.module;
+                for (var i = 0; i < groupSelect.options.length; i++) {
+                    if (groupSelect.options[i].value === preview.module) {
+                        groupSelect.value = preview.module;
                         break;
                     }
                 }
