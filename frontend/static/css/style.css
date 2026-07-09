@@ -2190,6 +2190,137 @@ body.dark-theme .s2-chip-audio.s2-filled { background: rgba(139,92,246,0.15) !im
 body.dark-theme .s2-chip-audio .s2-chip-label { color: #a78bfa; }
 body.dark-theme .s2-audio-switch { color: var(--text-muted); }
 
+
+/* ====== 分镜组装器紧凑布局优化 ====== */
+/* 镜头卡片整体收紧 */
+.s2-scene-card {
+    padding: 5px 8px !important;
+}
+.s2-scene-header {
+    margin-bottom: 2px !important;
+    padding: 2px 0 !important;
+}
+/* 镜头体间距压缩 */
+.s2-scene-body-compact {
+    gap: 2px !important;
+}
+.s2-scene-body-compact .s2-scene-time {
+    margin-bottom: 2px;
+    padding: 1px 0;
+}
+/* 字段容器间距压缩 */
+.s2-scene-fields-compact {
+    gap: 3px !important;
+}
+/* 基础字段组间距 */
+.s2-scene-fields-compact .s2-field-group {
+    gap: 2px !important;
+    padding: 0 !important;
+    margin-bottom: 1px;
+}
+/* 角色+场景合并行 */
+.s2-char-scene-row {
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 3px !important;
+    padding: 2px 0 !important;
+    margin: 1px 0 !important;
+    border-top: 1px solid var(--border-color, #e2e8f0);
+    border-bottom: 1px solid var(--border-color, #e2e8f0);
+    background: rgba(0,0,0,0.01);
+}
+body.dark-theme .s2-char-scene-row {
+    background: rgba(255,255,255,0.02);
+    border-color: var(--border-color, #334155);
+}
+.s2-char-scene-row .s2-field-label {
+    font-size: 10px !important;
+    margin: 0 !important;
+    flex-shrink: 0;
+}
+/* 内联选择器（角色/场景） */
+.s2-inline-picker {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+    padding: 1px 6px !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    font-size: 10px !important;
+    transition: 0.12s !important;
+    background: var(--bg-card, #fff) !important;
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 130px;
+}
+.s2-inline-picker:hover {
+    border-color: var(--primary, #6366f1) !important;
+    background: rgba(99,102,241,0.05) !important;
+}
+.s2-inline-picker span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* 紧凑音频区 */
+.s2-audio-compact {
+    padding: 3px 6px !important;
+    gap: 3px !important;
+    margin-top: 1px !important;
+    margin-bottom: 1px !important;
+}
+.s2-audio-compact .s2-field-label {
+    font-size: 10px !important;
+    padding: 0 3px !important;
+}
+.s2-audio-compact .s2-audio-switch {
+    font-size: 10px !important;
+    padding: 0 2px !important;
+}
+.s2-audio-compact .s2-audio-fields {
+    gap: 2px !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+}
+.s2-audio-compact .s2-field-chip {
+    font-size: 10px !important;
+    padding: 1px 5px !important;
+}
+/* 拓展区压缩 */
+.s2-ext-group {
+    padding: 2px 0 !important;
+    margin-top: 2px !important;
+    gap: 2px !important;
+}
+.s2-ext-group .s2-field-label {
+    font-size: 10px !important;
+}
+.s2-ext-unit {
+    padding: 1px 4px !important;
+    font-size: 10px !important;
+}
+.s2-ext-unit-tag {
+    font-size: 9px !important;
+    padding: 1px 4px !important;
+}
+.s2-ext-unit-add-btn {
+    font-size: 10px !important;
+    padding: 1px 6px !important;
+}
+/* 折叠状态行 */
+.s2-scene-collapsed-text {
+    font-size: 11px !important;
+    padding: 2px 0 !important;
+    margin: 0 !important;
+}
+/* 缩短动画：折叠展开 */
+.s2-scene-card .s2-scene-body { transition: all 0.15s ease; }
+
 /* ====== v4.0.0-phase10.1: 角色库 ====== */
 .s2-char-group { padding: 4px 0; }
 .s2-char-selector:hover { border-color: #8b5cf6 !important; background: rgba(139,92,246,0.08) !important; }

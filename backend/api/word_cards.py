@@ -24,7 +24,7 @@ def _safe_remove_media(thumbnail, preview_media):
             p = os.path.join(directory, os.path.basename(fname))
             if os.path.exists(p):
                 try: os.remove(p)
-                except: pass
+                except (OSError, PermissionError): pass
 
 # ⚠️ 路由顺序必须: 静态路径 → 动态路径 → 根路径
 
@@ -136,7 +136,7 @@ def picker_cards(group_type: str = Query("seedance"), search: str = Query(None),
         for c in cards:
             it = dict(c)
             try: it["tags"] = json.loads(it["tags"]) if isinstance(it["tags"], str) else (it["tags"] or [])
-            except: it["tags"] = []
+            except (json.JSONDecodeError, TypeError): it["tags"] = []
             items.append(it); all_ids.append(c["id"])
         result_groups.append({"id":g["id"],"name":g["name"],"key":g["group_key"],"icon":g["icon"],"type":g["group_type"],"card_count":g["card_count"],"cards":items})
     return {"ok":True,"groups":result_groups,"group_count":len(result_groups),"card_count":len(all_ids)}
@@ -702,9 +702,9 @@ def get_card(card_id: int):
     if not r: raise HTTPException(404,"词卡不存在")
     item = dict(r)
     try: item["tags"] = json.loads(item["tags"]) if isinstance(item["tags"], str) else (item["tags"] or [])
-    except: item["tags"] = []
+    except (json.JSONDecodeError, TypeError): item["tags"] = []
     try: item["structured"] = json.loads(item["structured"]) if isinstance(item["structured"], str) else (item["structured"] or {})
-    except: item["structured"] = {}
+    except (json.JSONDecodeError, TypeError): item["structured"] = {}
     return {"ok":True,"card":item}
 
 # ==================== P0-3: 版本管理 ====================
@@ -858,9 +858,9 @@ def list_cards(page: int = Query(1,ge=1), page_size: int = Query(50,ge=1,le=200)
     for r in rows:
         it = dict(r)
         try: it["tags"] = json.loads(it["tags"]) if isinstance(it["tags"], str) else (it["tags"] or [])
-        except: it["tags"] = []
+        except (json.JSONDecodeError, TypeError): it["tags"] = []
         try: it["structured"] = json.loads(it["structured"]) if isinstance(it["structured"], str) else (it["structured"] or {})
-        except: it["structured"] = {}
+        except (json.JSONDecodeError, TypeError): it["structured"] = {}
         items.append(it)
     return {"ok":True,"items":items,"total":total,"total_pages":max(1,-(-total//page_size)),"page":page,"page_size":page_size}
 
@@ -902,7 +902,7 @@ def export_cards(data: dict):
     for r in rows:
         it = dict(r)
         try: it["tags"] = json.loads(it["tags"]) if isinstance(it["tags"], str) else (it["tags"] or [])
-        except: it["tags"] = []
+        except (json.JSONDecodeError, TypeError): it["tags"] = []
         items.append(it)
     if fmt == "csv":
         import csv, io

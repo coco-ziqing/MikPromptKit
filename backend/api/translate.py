@@ -146,7 +146,7 @@ async def translate_single(prompt_id: int, target_lang: str = "zh"):
                 _conn.execute(f"UPDATE word_card SET {col}=? WHERE id=? AND ({col}='' OR {col} IS NULL)", [cache["content"], prompt_id])
                 _conn.commit()
                 _conn.close()
-            except:
+            except (sqlite3.Error, Exception):
                 pass
         return {
             "ok": True, "prompt_id": prompt_id, "original": original,

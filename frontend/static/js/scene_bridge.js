@@ -76,20 +76,39 @@ App.seedanceV2._applySceneToShot = async function(shotId, sceneId) {
     if (!pId) { App.showToast('请先打开项目','warning'); return; }
 
     if (sceneId === null) {
-        // 取消绑定：清空 scene_profile_id + 字段
-        var d = await App.fetchJSON('/api/seedance/v2/projects/' + pId + '/scenes/' + shotId, {
-            method:'PUT', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({scene_profile_id: null})
-        });
+        // 取消绑定：清空 scene_profile_id + 清空场景相关字段
+        try {
+            var clearFields = {
+                scene_profile_id: null,
+                scene_desc: '', emotion: '', lighting: '', weather: '',
+                color_grade: '', perspective: '', composition: '',
+                environment_detail: '', filter: ''
+            };
+            var d = await App.fetchJSON('/api/seedance/v2/projects/' + pId + '/scenes/' + shotId, {
+                method:'PUT', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify(clearFields)
+            });
+            if (d && d.ok) {
+                App.showToast('已取消场景模板绑定，字段已清空', 'info');
+            }
+        } catch(e) {
+            App.showToast('取消失败: ' + e.message, 'error');
+        }
     }
 
     if (sceneId !== null) {
-        var d = await App.fetchJSON('/api/scene-composer/scenes/' + sceneId + '/apply-to-shot', {
-            method:'PUT', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({shot_id: shotId})
-        });
-        if (d && d.ok) {
-            App.showToast('已加载场景模板: ' + (d.scene_name||'') + ' (' + (d.field_count||0) + ' 字段)', 'success');
+        try {
+            var d = await App.fetchJSON('/api/scene-composer/scenes/' + sceneId + '/apply-to-shot', {
+                method:'PUT', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({shot_id: shotId})
+            });
+            if (d && d.ok) {
+                App.showToast('已加载场景模板: ' + (d.scene_name||'') + ' (' + (d.field_count||0) + ' 字段)', 'success');
+            } else {
+                App.showToast('加载模板失败', 'error');
+            }
+        } catch(e) {
+            App.showToast('加载模板异常: ' + e.message, 'error');
         }
     }
 

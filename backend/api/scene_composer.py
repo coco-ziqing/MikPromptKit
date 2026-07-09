@@ -97,8 +97,8 @@ _SETTINGS_TO_FIELDS = {
     "lighting": "lighting_desc",
     "time": "time_period",
     "weather": "weather_desc",
-    "color_scheme": "color_scheme",
-    "style": "architecture",  # 画风→建筑（可覆盖）
+    "color_scheme": "color_scheme"
+    # style 不映射富字段（避免覆盖 architecture），仅在 settings_json 中保留
 }
 
 

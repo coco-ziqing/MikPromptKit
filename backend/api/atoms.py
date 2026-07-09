@@ -228,7 +228,7 @@ async def list_decomposes(page: int = 1, page_size: int = 20):
     for r in rows:
         it = dict(r)
         try: it["atoms"] = json.loads(it["atoms_json"])
-        except: it["atoms"] = []
+        except (json.JSONDecodeError, TypeError): it["atoms"] = []
         items.append(it)
     return {"ok": True, "items": items, "total": total}
 
@@ -920,11 +920,11 @@ async def list_templates(page: int = 1, page_size: int = 20, search: str = None,
     for r in rows:
         it = dict(r)
         try: it["tags"] = json.loads(it["tags_json"]) if isinstance(it["tags_json"], str) else (it["tags_json"] or [])
-        except: it["tags"] = []
+        except (json.JSONDecodeError, TypeError): it["tags"] = []
         try: it["atoms"] = json.loads(it["atoms_json"]) if isinstance(it["atoms_json"], str) else []
-        except: it["atoms"] = []
+        except (json.JSONDecodeError, TypeError): it["atoms"] = []
         try: it["params"] = json.loads(it["params_json"]) if isinstance(it["params_json"], str) else {}
-        except: it["params"] = {}
+        except (json.JSONDecodeError, TypeError): it["params"] = {}
         items.append(it)
     return {"ok": True, "items": items, "total": total, "page": page, "page_size": page_size}
 
@@ -938,11 +938,11 @@ async def get_template(tid: int):
         raise HTTPException(404, "模板不存在")
     it = dict(r)
     try: it["tags"] = json.loads(it["tags_json"]) if isinstance(it["tags_json"], str) else (it["tags_json"] or [])
-    except: it["tags"] = []
+    except (json.JSONDecodeError, TypeError): it["tags"] = []
     try: it["atoms"] = json.loads(it["atoms_json"]) if isinstance(it["atoms_json"], str) else []
-    except: it["atoms"] = []
+    except (json.JSONDecodeError, TypeError): it["atoms"] = []
     try: it["params"] = json.loads(it["params_json"]) if isinstance(it["params_json"], str) else {}
-    except: it["params"] = {}
+    except (json.JSONDecodeError, TypeError): it["params"] = {}
     return {"ok": True, "template": it}
 
 

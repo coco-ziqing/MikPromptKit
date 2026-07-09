@@ -197,17 +197,19 @@ async def upload_word_card_thumbnail(card_id: int, file: UploadFile = File(...))
 def delete_word_card_thumbnail(card_id: int):
     """删除词卡缩略图"""
     db = get_db()
-    card = db.execute("SELECT preview_image FROM word_card WHERE id=?", [card_id]).fetchone()
+    card = db.execute("SELECT thumbnail FROM word_card WHERE id=?", [card_id]).fetchone()
     if not card:
         resolved = _resolve_card_id(db, card_id)
         if not resolved:
             raise HTTPException(404, "词卡不存在")
-        card = db.execute("SELECT preview_image FROM word_card WHERE id=?", [resolved]).fetchone()
-    if card["thumbnail"]:
-        path = os.path.join(WC_THUMB_DIR, card["preview_image"])
+        card = db.execute("SELECT thumbnail FROM word_card WHERE id=?", [resolved]).fetchone()
+        if card:
+            card_id = resolved
+    if card and card["thumbnail"]:
+        path = os.path.join(WC_THUMB_DIR, card["thumbnail"])
         if os.path.exists(path):
             os.remove(path)
-        db.execute("UPDATE prompt_word_card SET preview_image='' WHERE id=?", [card_id])
+        db.execute("UPDATE word_card SET thumbnail='' WHERE id=?", [card_id])
         safe_commit()
     return {"ok": True}
 
@@ -261,10 +263,15 @@ async def upload_word_card_video(card_id: int, file: UploadFile = File(...)):
 def delete_word_card_video(card_id: int):
     """删除词卡预览视频"""
     db = get_db()
-    card = db.execute("SELECT preview_video FROM prompt_word_card WHERE id=?", [card_id]).fetchone()
+    card = db.execute("SELECT preview_media FROM word_card WHERE id=?", [card_id]).fetchone()
     if not card:
-        raise HTTPException(404, "词卡不存在")
-    if card["preview_media"]:
+        resolved = _resolve_card_id(db, card_id)
+        if not resolved:
+            raise HTTPException(404, "词卡不存在")
+        card = db.execute("SELECT preview_media FROM word_card WHERE id=?", [resolved]).fetchone()
+        if card:
+            card_id = resolved
+    if card and card["preview_media"]:
         path = os.path.join(WC_VIDEO_DIR, card["preview_media"])
         if os.path.exists(path):
             os.remove(path)
@@ -282,6 +289,68 @@ def serve_word_card_video(filename: str):
     ext = os.path.splitext(filename)[1].lower()
     mime = {".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime"}.get(ext, "video/mp4")
     return FileResponse(path, media_type=mime)
+
+@router.post("/cards/{card_id}/video-from-library")
+def copy_word_card_video_from_library(card_id: int, data: dict = Body(...)):
+    """从视频库选取视频复制到词卡预览"""
+    source = (data.get("source_filename") or "").strip()
+    if not source:
+        raise HTTPException(400, "请提供 source_filename")
+    import shutil
+    db = get_db()
+    # 必须通过 seedance_id_map 映射：前端传入的是 VIEW id (prompt_word_card.id)
+    # 先解析到 word_card 真实 ID（与其他端点逻辑一致）
+    resolved = _resolve_card_id(db, card_id)
+    if resolved:
+        card_id = resolved
+    card = db.execute("SELECT * FROM word_card WHERE id=?", [card_id]).fetchone()
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    # 源路径搜索
+    VIDEO_LIB_DIRS = [
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "videos"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "thumbnails", "videos"),
+        WC_VIDEO_DIR,
+    ]
+    src_path = None
+    for d in VIDEO_LIB_DIRS:
+        p = os.path.join(d, os.path.basename(source))
+        if os.path.exists(p):
+            src_path = p
+            break
+    if not src_path:
+        raise HTTPException(404, "源视频文件不存在")
+    # 复制到词卡视频目录
+    ext = os.path.splitext(source)[1]
+    dest_name = f"{uuid.uuid4().hex}{ext}"
+    dest_path = os.path.join(WC_VIDEO_DIR, dest_name)
+    shutil.copy2(src_path, dest_path)
+    # 清除旧缩略图 + 更新视频
+    if card["thumbnail"]:
+        old_i = os.path.join(WC_THUMB_DIR, card["thumbnail"])
+        if os.path.exists(old_i):
+            os.remove(old_i)
+    if card["preview_media"]:
+        old_v = os.path.join(WC_VIDEO_DIR, card["preview_media"])
+        if os.path.exists(old_v):
+            os.remove(old_v)
+    # 提取首帧封面
+    poster_name = ""
+    try:
+        import subprocess
+        poster_name = f"{uuid.uuid4().hex}.jpg"
+        poster_path = os.path.join(WC_THUMB_DIR, poster_name)
+        subprocess.run(
+            ['ffmpeg', '-ss', '0.1', '-i', dest_path, '-vframes', '1', '-q:v', '2', poster_path, '-y'],
+            capture_output=True, timeout=30
+        )
+        if not os.path.exists(poster_path):
+            poster_name = ""
+    except Exception:
+        poster_name = ""
+    db.execute("UPDATE word_card SET preview_media=?, thumbnail=? WHERE id=?", [dest_name, poster_name, card_id])
+    safe_commit()
+    return {"ok": True, "video_filename": dest_name, "poster_filename": poster_name}
 
 
 # ==================== 自定义词库管理 ====================
@@ -756,11 +825,16 @@ def delete_project(project_id: int):
     proj = db.execute("SELECT id FROM user_project WHERE id=?", [project_id]).fetchone()
     if not proj:
         raise HTTPException(404, "项目不存在")
-    # 级联删除镜头和关联（CASCADE）
-    db.execute("DELETE FROM user_scene_prompt WHERE scene_id IN (SELECT id FROM user_project_scene WHERE project_id=?)", [project_id])
-    db.execute("DELETE FROM user_project_scene WHERE project_id=?", [project_id])
-    db.execute("DELETE FROM user_project WHERE id=?", [project_id])
-    safe_commit()
+    # 关闭外键检查（user_scene_prompt 有残留FK引用已删除的表）
+    db.execute("PRAGMA foreign_keys = OFF")
+    try:
+        # 级联删除镜头和关联
+        db.execute("DELETE FROM user_scene_prompt WHERE scene_id IN (SELECT id FROM user_project_scene WHERE project_id=?)", [project_id])
+        db.execute("DELETE FROM user_project_scene WHERE project_id=?", [project_id])
+        db.execute("DELETE FROM user_project WHERE id=?", [project_id])
+        safe_commit()
+    finally:
+        db.execute("PRAGMA foreign_keys = ON")
     return {"ok": True}
 
 
@@ -873,7 +947,9 @@ def update_scene(project_id: int, scene_id: int, data: dict = Body(...)):
         "color_grade", "emotion", "natural_force", "depth_of_field", "filter",
         "film_flaw", "fantasy_physics", "environment_detail", "action", "details",
         # v4.0.0-phase10: audio 4-elements
-        "character_voice", "narration", "bgm", "sfx", "audio_enabled"
+        "character_voice", "narration", "bgm", "sfx", "audio_enabled",
+        # Phase17: 场景模板绑定 + 角色绑定
+        "scene_profile_id", "character_id"
     ]
 
     has_recalc = "duration" in data or "scene_order" in data
@@ -946,19 +1022,20 @@ def delete_scene(project_id: int, scene_id: int):
     if not scene:
         raise HTTPException(404, "镜头不存在")
 
-    # 删除关联
-    db.execute("DELETE FROM user_scene_prompt WHERE scene_id=?", [scene_id])
-    db.execute("DELETE FROM user_project_scene WHERE id=?", [scene_id])
-
-    # 重排序号
-    db.execute(
-        "UPDATE user_project_scene SET scene_order=scene_order-1 WHERE project_id=? AND scene_order>?",
-        [project_id, scene["scene_order"]]
-    )
-    # 删除后重算时间线并统一提交
-    _recalculate_scene_times(project_id)
-    safe_commit()
-
+    # 关闭外键检查（user_scene_prompt 有残留FK引用已删除的表）
+    db.execute("PRAGMA foreign_keys = OFF")
+    try:
+        db.execute("DELETE FROM user_scene_prompt WHERE scene_id=?", [scene_id])
+        db.execute("DELETE FROM user_project_scene WHERE id=?", [scene_id])
+        # 重排序号
+        db.execute(
+            "UPDATE user_project_scene SET scene_order=scene_order-1 WHERE project_id=? AND scene_order>?",
+            [project_id, scene["scene_order"]]
+        )
+        _recalculate_scene_times(project_id)
+        safe_commit()
+    finally:
+        db.execute("PRAGMA foreign_keys = ON")
     return {"ok": True}
 
 

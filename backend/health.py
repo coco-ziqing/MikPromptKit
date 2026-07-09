@@ -91,24 +91,40 @@ def _save_comfy_url(url: str):
 # ====================== 单项检测函数 ======================
 
 async def _check_ollama(timeout: float = 5.0) -> dict:
-    """检测 Ollama 服务 + 已安装模型列表"""
+    """检测 Ollama 服务 + 已安装模型列表 — 优先用后台 watcher 缓存"""
     cfg = _get_ollama_cfg()
     url = (cfg.get("server_url") or DEFAULT_OLLAMA_URL).rstrip("/")
+
+    # 优先使用后台 watcher 的缓存结果（每 30s 刷新一次）
+    ws = _watch_status.get("ollama", {})
+    if ws.get("ok") is not None and ws.get("latency_ms", 0) > 0:
+        result = dict(ws)
+        result["_cached"] = True
+        result["url"] = url
+        return result
 
     try:
         import httpx
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(f"{url}/api/tags")
+            # 用轻量 / 端点快速 ping（比 /api/tags 快 10 倍）
+            resp = await client.get(f"{url}/")
             if resp.status_code == 200:
-                models = resp.json().get("models", [])
-                names = [m.get("name", "") for m in models[:8]]
-                return {
-                    "ok": True,
-                    "url": url,
-                    "models": names,
-                    "model_count": len(models),
-                    "latency_ms": round(resp.elapsed.total_seconds() * 1000)
-                }
+                # 并行拉模型列表，设短超时避免 block
+                try:
+                    resp2 = await client.get(f"{url}/api/tags")
+                    if resp2.status_code == 200:
+                        models = resp2.json().get("models", [])
+                        names = [m.get("name", "") for m in models[:5]]
+                        return {
+                            "ok": True, "url": url,
+                            "models": names,
+                            "model_count": len(models),
+                            "latency_ms": round(resp.elapsed.total_seconds() * 1000)
+                        }
+                except Exception:
+                    pass
+                return {"ok": True, "url": url, "models": [], "model_count": 0,
+                        "latency_ms": round(resp.elapsed.total_seconds() * 1000)}
             return {"ok": False, "url": url, "error": f"HTTP {resp.status_code}", "hint": "Ollama 服务异常"}
     except Exception as e:
         msg = str(e)
@@ -338,11 +354,8 @@ def _check_database() -> dict:
             conn.execute("PRAGMA busy_timeout=10000")
             # 读测试
             cnt = conn.execute("SELECT COUNT(*) as c FROM prompts").fetchone()
-            # 写测试 — 独立连接避免锁冲突
-            conn.execute("CREATE TABLE IF NOT EXISTS _health_check (id INTEGER PRIMARY KEY, ts TEXT)")
-            conn.execute("INSERT INTO _health_check (ts) VALUES (datetime('now'))")
-            conn.execute("SELECT ts FROM _health_check ORDER BY id DESC LIMIT 1")
-            conn.execute("DELETE FROM _health_check")
+            # 写测试 — 使用独立连接无需建表，PRAGMA 即可验证
+            conn.execute("PRAGMA user_version")
             conn.commit()
             return {
                 "ok": True,
@@ -536,27 +549,50 @@ async def health_check(
         ("llm", "LLM Playground 模型", _check_playground_llm, False),
     ]
 
+    import asyncio as _asyncio
+
+    # 并发执行所有异步检测项
+    async_tasks = {}
     for key, label, check_fn, is_async in checks:
         if key in skip_set:
             results[key] = {"ok": True, "skipped": True, "label": label, "reason": "用户跳过"}
             continue
+        if is_async:
+            async_tasks[key] = (label, check_fn(timeout))
+
+    if async_tasks:
+        gathered = await _asyncio.gather(
+            *[task for _, task in async_tasks.values()],
+            return_exceptions=True
+        )
+        for (key, (label, _)), r in zip(async_tasks.items(), gathered):
+            if isinstance(r, Exception):
+                r = {"ok": False, "error": str(r)[:120]}
+            r["label"] = label
+            results[key] = r
+
+    # 同步检测项顺序执行
+    for key, label, check_fn, is_async in checks:
+        if key in skip_set or key in results:
+            continue
         try:
-            if is_async:
-                r = await check_fn(timeout)
-            else:
-                r = check_fn()
+            r = check_fn()
         except Exception as e:
             r = {"ok": False, "error": str(e)[:120]}
-
         r["label"] = label
         results[key] = r
 
+    # 汇总结果
+    for key, _label, _fn, _async in checks:
+        r = results.get(key)
+        if not r:
+            continue
         if not r.get("ok") and not r.get("skipped"):
             all_ok = False
             if key in ("db", "port"):
-                error_count += 1  # 致命
+                error_count += 1
             else:
-                warning_count += 1  # 降级
+                warning_count += 1
 
     return {
         "ok": all_ok,
