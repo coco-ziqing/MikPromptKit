@@ -3386,3 +3386,21 @@ body.dark-theme .atom-quality { background: rgba(79,70,229,0.12); }
 .atom-record-actions { display: flex; gap: 6px; }
 .atom-record-selected { border-color: var(--primary,#4f46e5) !important; background: rgba(79,70,229,0.03) !important; }
 
+/* ===== Phase18: License 激活面板样式 ===== */
+.license-panel .modal-content { border-radius: 12px; }
+.license-status { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+.license-status.loading { background: #f0f4ff; color: #6366f1; }
+.license-status.success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+.license-status.inactive { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+.license-status.warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.license-status.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+.license-form { margin-top: 8px; }
+.license-form .input-group { display: flex; gap: 8px; }
+.license-form .form-control { flex: 1; }
+
+body.dark-theme .license-status.loading { background: #1e293b; color: #818cf8; }
+body.dark-theme .license-status.success { background: #064e3b; color: #6ee7b7; border-color: #065f46; }
+body.dark-theme .license-status.inactive { background: #1e293b; color: #94a3b8; border-color: #334155; }
+body.dark-theme .license-status.warning { background: #422006; color: #fbbf24; border-color: #78350f; }
+body.dark-theme .license-status.error { background: #450a0a; color: #fca5a5; border-color: #7f1d1d; }
+

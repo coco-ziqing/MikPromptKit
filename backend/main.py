@@ -27,7 +27,7 @@ from database import safe_fetch_one, safe_count, safe_count_dict
 from logger import api_log, capture_exception
 
 # 启动时读取版本号
-APP_VERSION = 'v5.0.0-phase15-atom-engine'
+APP_VERSION = 'v5.1.0-phase18-plugin-framework'
 from api.prompts import router as prompts_router
 from api.v2 import router as v2_router
 from api.seedance import router as seedance_router
@@ -60,6 +60,9 @@ from api.atoms_import import router as atoms_import_router
 from api.character_composer import router as character_composer_router
 from api.scene_composer import router as scene_composer_router
 from api.atom_filler import router as atom_filler_router
+from api.plugins_api import router as plugins_api_router
+from plugin_manager import get_plugin_manager, init_plugin_system
+from ws_collab import router as ws_collab_router
 from sync import (
     export_package, restore_package, import_package,
     list_packages, delete_package, get_package_info,
@@ -128,6 +131,15 @@ async def lifespan(app: FastAPI):
     try:
         init_db()
         db = get_db()
+        
+        # Phase18: 插件框架数据库迁移（幂等）
+        try:
+            from db_migrate_phase18 import run_migration as run_p18_migration
+            run_p18_migration(db)
+            log_info("[main] Phase18 迁移完成")
+        except Exception as e:
+            log_warn(f"[main] Phase18 迁移跳过: {e}")
+        
         existing = safe_count_dict("SELECT COUNT(*) as cnt FROM prompts")
         if existing == 0:
             print("[初始化] 导入 %d 条内置提示词..." % get_builtin_count())
@@ -173,6 +185,13 @@ async def lifespan(app: FastAPI):
 
     # v4 数据迁移: prompts→prompt_cards, prompt_library→library_assets
     _migrate_v4(db)
+
+    # Phase18: 初始化插件系统（发现+加载+启用 free 插件+注册API）
+    try:
+        pm = init_plugin_system(app, db)
+        log_info(f"[main] 插件系统就绪: {len(pm.plugins)} 个插件")
+    except Exception as e:
+        log_warn(f"[main] 插件系统初始化异常: {e}")
 
     try:
         total = safe_count_dict("SELECT COUNT(*) as cnt FROM prompts")
@@ -269,6 +288,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Phase18: JWT 认证中间件（仅解析，不强制验证）
+try:
+    from jwt_auth import JWTAuthMiddleware
+    app.add_middleware(JWTAuthMiddleware)
+    log_info("[main] JWT 中间件已注册（Phase18: 不强制验证）")
+except Exception as e:
+    log_warn(f"[main] JWT 中间件注册失败: {e}")
+
 # ============ 静态资源缓存控制中间件（防浏览器顽固缓存） ============
 @app.middleware("http")
 async def cache_control_middleware(request: Request, call_next):
@@ -349,6 +376,10 @@ app.include_router(atoms_import_router)
 app.include_router(character_composer_router)
 app.include_router(scene_composer_router)
 app.include_router(atom_filler_router)
+app.include_router(plugins_api_router)
+app.include_router(ws_collab_router)
+
+# Phase18: 插件系统由 lifespan 初始化（db/app 就绪后）
 
 
 # ============ 数据同步 API (.pkb 包系统) ============

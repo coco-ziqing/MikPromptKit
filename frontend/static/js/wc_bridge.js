@@ -387,6 +387,9 @@ App.renderSidebar = function() {
             '</div>';
     }
     
+    // Phase18: 插件侧边栏注入点（在所有分组之后）
+    html += '<div id="pluginSidebarItems" style="border-top:1px solid var(--border-color);margin-top:8px;padding-top:4px;"></div>';
+    
     sidebar.innerHTML = html;
     App._injectSidebarToggle(sidebar);
     } catch(e) {

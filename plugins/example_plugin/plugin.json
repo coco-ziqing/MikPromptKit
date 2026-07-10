@@ -1,0 +1,16 @@
+{
+  "plugin_id": "com.promptkit.example",
+  "name": "示例插件",
+  "version": "1.0.0",
+  "min_core_version": "5.1.0",
+  "author": "PromptKit Team",
+  "description": "展示插件开发规范的示例插件，不具备实际功能。复制此目录可快速开始开发新插件。",
+  "license_tier": "free",
+  "dependencies": [],
+  "api_router_module": "",
+  "db_migrations": [],
+  "hooks": {},
+  "config": {
+    "enable_logging": true
+  }
+}

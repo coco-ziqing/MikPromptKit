@@ -1,0 +1,5 @@
+#!/bin/bash
+# PromptKit 预提交钩子 — 调用 python 脚本做安全检查
+# 安装: git config core.hooksPath .githooks
+set -e
+python "$(git rev-parse --show-toplevel)/pre_commit_check.py"
