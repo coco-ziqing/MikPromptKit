@@ -150,3 +150,6 @@ memory/dreaming/
 # ================================================================
 
 !data/.gitkeep
+
+# Plugins (disabled/archived)
+plugins/_disabled/
