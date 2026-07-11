@@ -116,6 +116,16 @@
       modal.onclick = function(e) {
         if (e.target===modal) { modal.remove(); if (cover) cover.style.display = ''; }
       };
+
+      // ESC 关闭弹窗
+      var escHandler = function(e) {
+        if (e.key === 'Escape') {
+          var m = document.getElementById('pkAuthModal');
+          if (m) { m.remove(); if (cover) cover.style.display = ''; }
+          document.removeEventListener('keydown', escHandler);
+        }
+      };
+      document.addEventListener('keydown', escHandler);
       modal.innerHTML =
         '<div class="pk-auth-modal" onclick="event.stopPropagation()">'+
           '<div class="pk-auth-header">'+
@@ -239,18 +249,70 @@
       var menu = document.getElementById('pkUserMenu');
       if (menu) { menu.remove(); return; }
       var user = this._user || {};
+      var isAdmin = user.role === 'admin';
+      var roleName = {admin:'管理员',editor:'编辑员',viewer:'观察者'}[user.role]||user.role;
+
       menu = document.createElement('div');
       menu.id = 'pkUserMenu';
-      menu.style.cssText = 'position:fixed;z-index:9999;background:var(--bg-card,#1e293b);border:1px solid var(--border-color,#334155);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.2);min-width:180px;padding:8px 0;';
-      menu.style.top = (e.target.getBoundingClientRect().bottom+4)+'px';
+      menu.style.cssText = 'position:fixed;z-index:9999;background:var(--bg-card,#1e293b);border:1px solid var(--border-color,#334155);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.24);min-width:220px;padding:6px 0;overflow:hidden;';
+      menu.style.top = (e.target.getBoundingClientRect().bottom+6)+'px';
       menu.style.right = (window.innerWidth-e.target.getBoundingClientRect().right)+'px';
-      var h = '<div style="padding:8px 16px;font-size:12px;color:var(--text-muted);border-bottom:1px solid var(--border-color);">👤 '+(user.display_name||user.username)+'<br><span style="font-size:10px;">'+user.role+'</span></div>';
-      if (user.role==='admin') h+='<button class="pk-menu-item" onclick="window.location.href=\'/admin_users.html\'">👥 用户管理</button>';
-      h+='<button class="pk-menu-item" onclick="PK_AUTH_CLIENT._doLogout()">🔓 退出登录</button>';
+
+      // 用户信息顶部
+      var h = '<div style="padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border-color);">';
+      h += '<div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:12px;background:var(--primary-light,#1e3a5f);color:var(--primary,#3b82f6);font-size:20px;font-weight:700;flex-shrink:0;">'+(user.display_name||user.username||'?').charAt(0).toUpperCase()+'</div>';
+      h += '<div style="min-width:0;"><div style="font-size:14px;font-weight:700;color:var(--text-main,#f1f5f9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(user.display_name||user.username||'User')+'</div>';
+      h += '<div style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-top:2px;"><span>'+(isAdmin?'🔷':'🟢')+' '+roleName+'</span><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span> 在线</div></div></div>';
+
+      // 菜单项
+      var items = [
+        {icon:'👤', label:'个人详情', action:'PK_AUTH_CLIENT._showProfile()', show:true},
+        {icon:'🔑', label:isAdmin?'用户管理':'用户列表', action:"window.location.href='"+(isAdmin?"/admin_users.html":"/admin_users.html")+"'", show:isAdmin},
+        {divider:true, show:true},
+        {icon:'🔄', label:'切换账户', action:'PK_AUTH_CLIENT._switchAccount()', show:true},
+        {icon:'🔓', label:'退出登录', action:'PK_AUTH_CLIENT._doLogout()', show:true, danger:true},
+      ];
+
+      items.forEach(function(item){
+        if (!item.show) return;
+        if (item.divider) { h += '<div style="height:1px;background:var(--border-color);margin:4px 0;"></div>'; return; }
+        h += '<button class="pk-menu-item'+(item.danger?' pk-menu-danger':'')+'" onclick="'+item.action+'">'+item.icon+' '+item.label+'</button>';
+      });
+
       menu.innerHTML = h;
       document.body.appendChild(menu);
       var cls = function(ev){if(!menu.contains(ev.target)){menu.remove();document.removeEventListener('click',cls);}};
       setTimeout(function(){document.addEventListener('click',cls);},10);
+    },
+
+    // 个人详情弹窗
+    _showProfile: function() {
+      var user = this._user || {};
+      var roleName = {admin:'管理员',editor:'编辑员',viewer:'观察者'}[user.role]||user.role;
+      var init = (user.display_name||user.username||'?').charAt(0).toUpperCase();
+
+      // Fetch full user info
+      var self = this;
+      fetch('/api/auth/me',{headers:{'Authorization':'***'+this._token}}).then(function(r){return r.json();}).then(function(d){
+        var u = (d.user||user);
+        var ov = document.createElement('div');
+        ov.className = 'pk-auth-modal-overlay';
+        ov.onclick = function(e){if(e.target===ov)ov.remove();};
+        ov.innerHTML = '<div class="pk-auth-modal" style="max-width:420px;" onclick="event.stopPropagation()"><div style="text-align:center;margin-bottom:16px;"><div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:16px;background:var(--primary-light,#1e3a5f);color:var(--primary,#3b82f6);font-size:28px;font-weight:700;margin-bottom:8px;">'+init+'</div><h4 style="margin:0 0 2px;font-size:16px;">'+self._esc(u.display_name||u.username||'')+'</h4><div style="font-size:12px;color:var(--text-muted);">@'+self._esc(u.username||'')+' · '+roleName+'</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;"><div style="padding:10px;background:var(--bg-main,#0f172a);border-radius:8px;"><div style="color:var(--text-muted);">账户ID</div><div style="font-weight:600;color:var(--text-main);">'+u.id+'</div></div><div style="padding:10px;background:var(--bg-main,#0f172a);border-radius:8px;"><div style="color:var(--text-muted);">状态</div><div style="font-weight:600;color:#10b981;">🟢 在线</div></div><div style="padding:10px;background:var(--bg-main,#0f172a);border-radius:8px;"><div style="color:var(--text-muted);">注册时间</div><div style="font-weight:600;">'+(u.created_at||'—').substring(0,10)+'</div></div><div style="padding:10px;background:var(--bg-main,#0f172a);border-radius:8px;"><div style="color:var(--text-muted);">最后登录</div><div style="font-weight:600;">'+(u.last_login_at||'—').substring(0,10)+'</div></div></div><div style="margin-top:12px;text-align:right;"><button class="pk-auth-submit" style="width:auto;padding:8px 24px;" onclick="this.closest(\'.pk-auth-modal-overlay\').remove()">关闭</button></div></div>';
+        document.body.appendChild(ov);
+
+        // ESC close
+        var escH = function(ev){if(ev.key==='Escape'){ov.remove();document.removeEventListener('keydown',escH);}};
+        document.addEventListener('keydown',escH);
+      }).catch(function(){});
+    },
+
+    // 切换账户
+    _switchAccount: function() {
+      if (confirm('确定要切换账户？当前账户将登出。')) {
+        this._doLogout();
+        setTimeout(function(){ PK_AUTH_CLIENT._showLoginModal(); }, 500);
+      }
     },
 
     _doLogout: function() {
