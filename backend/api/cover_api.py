@@ -37,6 +37,7 @@ def _ensure_table():
             "title": "咪卡Mik词库",
             "subtitle": "AIGC 提示词全流程管理平台",
             "description": "专为 AI 影视创作者打造。从剧本构思到分镜输出，\n一站管理角色、场景、提示词，支持局域网多端协同。\n内置 Ollama 16 模型池 + ComfyUI 无缝集成。",
+            "description_full": "AIGC影片制作全流程管理平台。\n\n核心能力：\n• 提示词快捷检索与复用\n• 角色/场景资产管理\n• 分镜段落编排\n• 团队协同与权限控制\n• 局域网多端同步",
             "cover_images": json.dumps([
                 {"src":"/static/img/cover_hero.svg","alt":"工作台总览","label":"全流程看板"},
                 {"src":"/static/img/cover_search.svg","alt":"智能检索","label":"提示词检索"},

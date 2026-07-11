@@ -7,10 +7,9 @@
 :root{--bg:#0f172a;--card-bg:#1e293b;--text:#f1f5f9;--text-muted:#64748b;--border:#334155;--primary:#3b82f6;--danger:#ef4444;--success:#10b981}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-h2{margin:0;font-size:15px;font-weight:700}
-a{color:var(--text-muted);text-decoration:none;font-size:13px}a:hover{color:var(--primary)}
+h2{margin:0;font-size:15px;font-weight:700}a{color:var(--text-muted);text-decoration:none;font-size:13px}a:hover{color:var(--primary)}
 .nav-bar{background:var(--card-bg);border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
-.container{max-width:760px;margin:0 auto;padding:24px 20px}
+.container{max-width:780px;margin:0 auto;padding:24px 20px}
 .form-group{margin-bottom:16px}
 .form-group label{display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px}
 .form-group input,.form-group textarea{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box;resize:vertical}
@@ -37,76 +36,65 @@ a{color:var(--text-muted);text-decoration:none;font-size:13px}a:hover{color:var(
 <div class="toast" id="toast"></div>
 <script>
 function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
-var CVE={_data:{},_imgCount:3,
-async init(){var t=localStorage.getItem('pk_token');if(!t){location.href='/';return;}var u;try{u=JSON.parse(localStorage.getItem('pk_user'));}catch(e){}if(!u||u.role!=='admin'){document.getElementById('app').innerHTML='<div style="text-align:center;padding:80px 20px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:12px;">🚫</div><h4>仅管理员可编辑封面内容</h4><p>请使用管理员账户登录</p><a href="/">← 返回首页</a></div>';return;}try{var r=await fetch('/api/cover');var d=await r.json();if(d.ok)this._data=d.cover||{};}catch(e){}this.render();},
+var CVE={_data:{},_imgCount:3,_formSnapshot:null,
+async init(){var t=localStorage.getItem('pk_token');if(!t){location.href='/';return;}var u;try{u=JSON.parse(localStorage.getItem('pk_user'));}catch(e){}if(!u||u.role!=='admin'){document.getElementById('app').innerHTML='<div style="text-align:center;padding:80px 20px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:12px;">🚫</div><h4>仅管理员可编辑封面内容</h4><p>请使用管理员账户登录</p><a href="/">← 返回首页</a></div>';return;}try{var r=await fetch('/api/cover');var d=await r.json();if(d.ok)this._data=d.cover||{};}catch(e){}this._imgCount=Math.max(this._imgCount, (Array.isArray(this._data.cover_images)?this._data.cover_images.length:0), 1);this.render();},
 toast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast toast-'+(t||'success')+' show';setTimeout(function(){el.classList.remove('show')},2000);},
+// 保存表单当前值到快照，防止重绘丢数据
+_saveFormSnapshot(){if(!document.getElementById('cv_title'))return;var s={};s.cv_title=document.getElementById('cv_title').value;s.cv_subtitle=document.getElementById('cv_subtitle').value;s.cv_desc=document.getElementById('cv_desc').value;s.cv_version=document.getElementById('cv_version').value;s.cv_hint=document.getElementById('cv_hint').value;s.cv_desc_full=(document.getElementById('cv_desc_full')||{}).value||'';for(var i=0;i<50;i++){var el=document.getElementById('cv_img_src_'+i);if(!el)break;s['cv_img_src_'+i]=el.value;s['cv_img_alt_'+i]=(document.getElementById('cv_img_alt_'+i)||{}).value||'';s['cv_img_label_'+i]=(document.getElementById('cv_img_label_'+i)||{}).value||'';}this._formSnapshot=s;},
+// 从快照取字段值，优先级：快照 > 数据 > 默认
+_snap(k,def){return(this._formSnapshot&&this._formSnapshot[k])||def||'';},
 
 render(){
-  var d=this._data,images=Array.isArray(d.cover_images)?d.cover_images:[];this._imgCount=images.length||3;
-  var h='<div class="form-group"><label>🔍 工具名称</label><input type="text" id="cv_title" value="'+esc(d.title||'咪卡Mik词库')+'"></div>';
-  h+='<div class="form-group"><label>📌 副标题</label><input type="text" id="cv_subtitle" value="'+esc(d.subtitle||'')+'"></div>';
-  h+='<div class="form-group"><label>📄 描述</label><textarea id="cv_desc" rows="4">'+esc(d.description||'')+'</textarea></div>';
-  h+='<div class="form-group"><label>🏷 版本号</label><input type="text" id="cv_version" value="'+esc(d.version||'')+'"></div>';
-  h+='<div class="form-group"><label>🔐 登录按钮文字</label><input type="text" id="cv_hint" value="'+esc(d.login_hint||'登录以使用全部功能')+'"></div>';
+  var d=this._data,images=Array.isArray(d.cover_images)?d.cover_images:[];
+  this._imgCount=Math.max(this._imgCount, images.length, 1);
+  this._saveFormSnapshot();
+  var h='';
+  h+='<div class="form-group"><label>🔍 工具名称</label><input type="text" id="cv_title" value="'+esc(this._snap('cv_title',d.title||'咪卡Mik词库'))+'"></div>';
+  h+='<div class="form-group"><label>📌 副标题</label><input type="text" id="cv_subtitle" value="'+esc(this._snap('cv_subtitle',d.subtitle||''))+'"></div>';
+  h+='<div class="form-group"><label>📄 简介描述（封面显示的文字）</label><textarea id="cv_desc" rows="3" placeholder="在封面页底部展示的应用简介">'+esc(this._snap('cv_desc',d.description||''))+'</textarea></div>';
+  h+='<div class="form-group"><label>📝 完整描述（多行支持）</label><textarea id="cv_desc_full" rows="6" placeholder="AIGC影片制作全流程管理平台&#10;&#10;核心能力：&#10;• 提示词快捷检索与复用&#10;• 角色/场景资产管理&#10;• 分镜段落编排&#10;• 团队协同与权限控制&#10;• 局域网多端同步">'+esc(this._snap('cv_desc_full',d.description_full||''))+'</textarea></div>';
+  h+='<div class="form-group"><label>🏷 版本号</label><input type="text" id="cv_version" value="'+esc(this._snap('cv_version',d.version||''))+'"></div>';
+  h+='<div class="form-group"><label>🔐 登录按钮文字</label><input type="text" id="cv_hint" value="'+esc(this._snap('cv_hint',d.login_hint||'登录以使用全部功能'))+'"></div>';
   h+='<div class="form-group"><label>🖼 封面媒体素材 ('+this._imgCount+'个)</label>';
-  for(var i=0;i<this._imgCount;i++){var img=images[i]||{},isVid=img.src&&(/\.mp4|\.webm|video\//i).test(img.src);
-    h+='<div class="image-item"><div class="preview" id="cvPreview_'+i+'">';
-    if(img.src){h+=isVid?'<video src="'+esc(img.src)+'" muted loop></video><div class="vid-badge">▶</div>':'<img src="'+esc(img.src)+'">';}
-    else h+='🎬';
-    h+='</div><div style="flex:1;">';
-    h+='<input type="text" id="cv_img_src_'+i+'" value="'+esc(img.src||'')+'" placeholder="图片/视频路径" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);margin-bottom:4px;">';
-    h+='<div style="display:flex;gap:4px;margin-bottom:4px;"><input type="text" id="cv_img_alt_'+i+'" value="'+esc(img.alt||'')+'" placeholder="替代文字" style="flex:1;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);"><input type="text" id="cv_img_label_'+i+'" value="'+esc(img.label||'')+'" placeholder="标签" style="width:120px;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);"></div>';
-    h+='<div style="display:flex;gap:4px;"><button class="btn-outline" type="button" onclick="CVE.pickFromGallery('+i+')" style="font-size:10px;">🖼 媒体库</button><button class="btn-outline" type="button" onclick="CVE.uploadImage('+i+')" style="font-size:10px;">📤 上传</button><input type="file" id="cv_upload_'+i+'" accept="image/*,video/*" style="display:none;" onchange="CVE.doUpload('+i+')"></div></div></div>';
+  for(var i=0;i<this._imgCount;i++){
+    var src=this._snap('cv_img_src_'+i, (images[i]||{}).src||'');
+    var alt=this._snap('cv_img_alt_'+i, (images[i]||{}).alt||'');
+    var lbl=this._snap('cv_img_label_'+i, (images[i]||{}).label||'');
+    var isVid=src&&(/\.mp4|\.webm|video\//i).test(src);
+    h+='<div class="image-item"><div class="preview" id="cvPreview_'+i+'">'+(src?(isVid?'<video src="'+esc(src)+'" muted loop></video><div class="vid-badge">▶</div>':'<img src="'+esc(src)+'">'):'🎬')+'</div>';
+    h+='<div style="flex:1;">';
+    h+='<input type="text" id="cv_img_src_'+i+'" value="'+esc(src)+'" placeholder="图片/视频路径" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);margin-bottom:4px;">';
+    h+='<div style="display:flex;gap:4px;margin-bottom:4px;"><input type="text" id="cv_img_alt_'+i+'" value="'+esc(alt)+'" placeholder="替代文字" style="flex:1;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);"><input type="text" id="cv_img_label_'+i+'" value="'+esc(lbl)+'" placeholder="标签" style="width:120px;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);"></div>';
+    h+='<div style="display:flex;gap:4px;"><button class="btn-outline" type="button" onclick="CVE.pickFromGallery('+i+')" style="font-size:10px;">🖼 媒体库</button><button class="btn-outline" type="button" onclick="CVE.uploadImage('+i+')" style="font-size:10px;">📤 上传</button><button class="btn-outline" type="button" onclick="CVE.removeSlot('+i+')" style="font-size:10px;color:var(--danger);">🗑 删除</button><input type="file" id="cv_upload_'+i+'" accept="image/*,video/*" style="display:none;" onchange="CVE.doUpload('+i+')"></div></div></div>';
   }
-  h+='<button class="btn btn-outline" type="button" onclick="CVE.addImage()">+ 添加媒体位</button></div>';
-  h+='<div class="preview-box"><h3>👁 封面预览</h3><div style="font-size:28px;font-weight:900;color:var(--text);">'+esc(d.title||'咪卡Mik词库')+'</div><div style="font-size:13px;color:var(--text-muted);margin:4px 0;">'+esc(d.subtitle||'')+'</div><div style="font-size:12px;color:var(--text-muted);line-height:1.6;white-space:pre-line;">'+esc(d.description||'')+'</div><div style="margin-top:8px;font-size:11px;color:var(--primary);">['+esc(d.login_hint||'登录以使用全部功能')+']</div></div>';
+  h+='<button class="btn btn-outline" type="button" style="margin-bottom:8px;border-style:dashed;" onclick="CVE.addImage()">+ 添加媒体位</button></div>';
+  h+='<div class="preview-box"><h3>👁 封面预览</h3><div style="font-size:28px;font-weight:900;color:var(--text);">'+esc(this._snap('cv_title',d.title||'咪卡Mik词库'))+'</div><div style="font-size:13px;color:var(--text-muted);margin:4px 0;">'+esc(this._snap('cv_subtitle',d.subtitle||''))+'</div><div style="font-size:12px;color:var(--text-muted);line-height:1.6;white-space:pre-line;">'+esc(this._snap('cv_desc',d.description||''))+'</div><div style="margin-top:8px;font-size:11px;color:var(--primary);">['+esc(this._snap('cv_hint',d.login_hint||'登录以使用全部功能'))+']</div></div>';
   document.getElementById('app').innerHTML=h;
 },
-addImage(){this._imgCount++;this.render();},
+addImage(){this._saveFormSnapshot();this._imgCount++;this.render();},
+removeSlot(idx){if(this._imgCount<=1)return;this._saveFormSnapshot();var newS={};var j=0;for(var i=0;i<this._imgCount;i++){if(i===idx)continue;if(this._formSnapshot){newS['cv_img_src_'+j]=this._formSnapshot['cv_img_src_'+i]||'';newS['cv_img_alt_'+j]=this._formSnapshot['cv_img_alt_'+i]||'';newS['cv_img_label_'+j]=this._formSnapshot['cv_img_label_'+i]||'';}j++;}this._formSnapshot=Object.assign(this._formSnapshot||{},newS);this._imgCount--;this.render();},
 
 pickFromGallery(idx){
-  var self=this;
+  var self=this;this._saveFormSnapshot();
   fetch('/api/cover/gallery').then(function(r){return r.json();}).then(function(r){
-    var all=r.images||[];
-    var imgs=all.filter(function(x){return x.type==='image';});
-    var vids=all.filter(function(x){return x.type==='video';});
-    var ov=document.createElement('div');ov.className='modal-overlay';
-    ov.style.zIndex='99990';
-    ov.innerHTML='<div class="modal-box" onclick="event.stopPropagation()" style="background:var(--card-bg);"><h4 style="display:flex;justify-content:space-between;align-items:center;">🖼 媒体素材库 <span style="font-size:11px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove();CVE._currentGalleryOv=null;">✕ 关闭</span></h4>'+
+    var all=r.images||[],imgs=all.filter(function(x){return x.type==='image';}),vids=all.filter(function(x){return x.type==='video';});
+    var ov=document.createElement('div');ov.className='modal-overlay';ov.style.zIndex='99990';
+    ov.innerHTML='<div class="modal-box" onclick="event.stopPropagation()"><h4 style="display:flex;justify-content:space-between;">🖼 媒体素材库 <span style="font-size:11px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove();">✕ 关闭</span></h4>'+
       '<div class="modal-tabs"><button class="modal-tab active" data-t="image" onclick="CVE._switchGalleryTab(event,\'image\','+idx+')">📷 图片 ('+imgs.length+')</button>'+
       '<button class="modal-tab" data-t="video" onclick="CVE._switchGalleryTab(event,\'video\','+idx+')">🎬 视频 ('+vids.length+')</button></div>'+
-      '<div id="cvGalContent"></div>'+
-      '<button class="btn btn-secondary" style="margin-top:12px;" type="button" onclick="this.closest(\'.modal-overlay\').remove();CVE._currentGalleryOv=null;">关闭</button></div>';
-    ov.onclick=function(e){if(e.target===ov){ov.remove();CVE._currentGalleryOv=null;}};document.body.appendChild(ov);
-    self._currentGalleryOv=ov;
+      '<div id="cvGalContent"></div><button class="btn btn-secondary" style="margin-top:12px;" type="button" onclick="this.closest(\'.modal-overlay\').remove()">关闭</button></div>';
+    ov.onclick=function(e){if(e.target===ov)ov.remove();};document.body.appendChild(ov);
     self._renderGalleryContent('image',imgs,vids,idx);
+    localStorage.setItem('_gal_cache',JSON.stringify({imgs:imgs,vids:vids}));
   });
 },
-_switchGalleryTab: function(e,type,idx){document.querySelectorAll('.modal-tab').forEach(function(b){b.classList.toggle('active',b.dataset.t===type);});var all=[];try{var imgs=[],vids=[];var r=JSON.parse(localStorage.getItem('_gallery_cache')||'{}');imgs=r.imgs||[];vids=r.vids||[];this._renderGalleryContent(type,imgs,vids,idx);}catch(e){}},
-_renderGalleryContent: function(type,imgs,vids,idx){
-  var c=document.getElementById('cvGalContent'),items=type==='video'?vids:imgs;
-  if(!c)return;
-  if(!items||!items.length){c.innerHTML='<p style="color:var(--text-muted);text-align:center;padding:20px;">暂无此类素材。请先通过词卡管理上传图片/视频。</p>';return;}
-  var h='<div class="gallery-grid">';
-  items.forEach(function(it){
-    var isVid=it.type==='video';
-    h+='<div class="gallery-item" onclick="CVE._onPick('+idx+',\''+it.url+'\');this.closest(\'.modal-overlay\').remove();CVE._currentGalleryOv=null;"><div class="gallery-preview">'+
-      (isVid?'<video src="'+it.url+'" muted></video><div class="type-badge">▶ 视频</div>':'<img src="'+it.url+'">')+
-      '</div><div class="gallery-name">'+it.filename+'</div></div>';
-  });h+='</div>';c.innerHTML=h;
-  // Cache for tab switching
-  localStorage.setItem('_gallery_cache',JSON.stringify({imgs:imgs,vids:vids}));
-},
-_onPick(idx,url){
-  var el=document.getElementById('cv_img_src_'+idx);if(el)el.value=url;
-  var prev=document.getElementById('cvPreview_'+idx);var isVid=(/\.mp4|\.webm|video\//i).test(url);
-  if(prev)prev.innerHTML=url?(isVid?'<video src="'+url+'" muted loop></video><div class="vid-badge">▶</div>':'<img src="'+url+'">'):'🎬';
-},
-
+_switchGalleryTab: function(e,type,idx){document.querySelectorAll('.modal-tab').forEach(function(b){b.classList.toggle('active',b.dataset.t===type);});var cache=JSON.parse(localStorage.getItem('_gal_cache')||'{}');this._renderGalleryContent(type,cache.imgs||[],cache.vids||[],idx);},
+_renderGalleryContent: function(type,imgs,vids,idx){var c=document.getElementById('cvGalContent'),items=type==='video'?vids:imgs;if(!c)return;if(!items||!items.length){c.innerHTML='<p style="color:var(--text-muted);text-align:center;padding:20px;">暂无此类素材</p>';return;}c.innerHTML='<div class="gallery-grid">'+items.map(function(it){return'<div class="gallery-item" onclick="CVE._onPick('+idx+',\''+it.url+'\');this.closest(\'.modal-overlay\').remove();"><div class="gallery-preview">'+(it.type==='video'?'<video src="'+it.url+'" muted></video><div class="type-badge">▶ 视频</div>':'<img src="'+it.url+'">')+'</div><div class="gallery-name">'+it.filename+'</div></div>';}).join('')+'</div>';},
+_onPick(idx,url){var el=document.getElementById('cv_img_src_'+idx);if(el){el.value=url;this._saveFormSnapshot();}var prev=document.getElementById('cvPreview_'+idx);if(prev)prev.innerHTML=(/\.mp4|\.webm|video\//i).test(url)?'<video src="'+url+'" muted loop></video><div class="vid-badge">▶</div>':'<img src="'+url+'">';},
 uploadImage(idx){document.getElementById('cv_upload_'+idx).click();},
-async doUpload(idx){var file=document.getElementById('cv_upload_'+idx).files[0];if(!file)return;var fd=new FormData();fd.append('file',file);try{var r=await fetch('/api/cover/upload',{method:'POST',body:fd,headers:{'Authorization':'Bearer '+localStorage.getItem('pk_token')}});var d=await r.json();if(d.ok){var el=document.getElementById('cv_img_src_'+idx);if(el)el.value=d.url;var prev=document.getElementById('cvPreview_'+idx);var isVid=(/\.mp4|\.webm/i).test(d.url);if(prev)prev.innerHTML=isVid?'<video src="'+d.url+'" muted loop></video><div class="vid-badge">▶</div>':'<img src="'+d.url+'">';this.toast('上传成功');}else this.toast(d.detail||'上传失败','error');}catch(e){this.toast('网络错误','error');}},
+async doUpload(idx){var file=document.getElementById('cv_upload_'+idx).files[0];if(!file)return;var fd=new FormData();fd.append('file',file);try{var r=await fetch('/api/cover/upload',{method:'POST',body:fd,headers:{'Authorization':'Bearer '+localStorage.getItem('pk_token')}});var d=await r.json();if(d.ok){var el=document.getElementById('cv_img_src_'+idx);if(el){el.value=d.url;this._saveFormSnapshot();}var prev=document.getElementById('cvPreview_'+idx);if(prev)prev.innerHTML=(/\.mp4|\.webm/i).test(d.url)?'<video src="'+d.url+'" muted loop></video><div class="vid-badge">▶</div>':'<img src="'+d.url+'">';this.toast('上传成功');}else this.toast(d.detail||'上传失败','error');}catch(e){this.toast('网络错误','error');}},
 
-async save(){var d={};d.title=document.getElementById('cv_title').value.trim();d.subtitle=document.getElementById('cv_subtitle').value.trim();d.description=document.getElementById('cv_desc').value;d.version=document.getElementById('cv_version').value.trim();d.login_hint=document.getElementById('cv_hint').value.trim();var images=[];for(var i=0;i<this._imgCount;i++){var src=(document.getElementById('cv_img_src_'+i)||{}).value||'';var alt=(document.getElementById('cv_img_alt_'+i)||{}).value||'';var lbl=(document.getElementById('cv_img_label_'+i)||{}).value||'';if(src||alt||lbl)images.push({src:src,alt:alt,label:lbl});}d.cover_images=images;var tok=localStorage.getItem('pk_token');if(!tok){this.toast('未登录，请先登录','error');return;}try{var r=await fetch('/api/cover',{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'***'+tok},body:JSON.stringify(d)});var rd=await r.json();if(rd.ok){this.toast('封面内容已保存');this._data=d;}else this.toast(rd.detail||'保存失败','error');}catch(e){this.toast('网络错误: '+e.message,'error');}}};
+async save(){var d={};d.title=document.getElementById('cv_title').value.trim();d.subtitle=document.getElementById('cv_subtitle').value.trim();d.description=document.getElementById('cv_desc').value.trim();d.description_full=(document.getElementById('cv_desc_full')||{}).value||'';d.version=document.getElementById('cv_version').value.trim();d.login_hint=document.getElementById('cv_hint').value.trim();var images=[];for(var i=0;i<this._imgCount;i++){var src=(document.getElementById('cv_img_src_'+i)||{}).value||'';var alt=(document.getElementById('cv_img_alt_'+i)||{}).value||'';var lbl=(document.getElementById('cv_img_label_'+i)||{}).value||'';if(src||alt||lbl)images.push({src:src,alt:alt,label:lbl});}d.cover_images=images;var tok=localStorage.getItem('pk_token');if(!tok){this.toast('未登录，请先登录','error');return;}try{var r=await fetch('/api/cover',{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'***'+tok},body:JSON.stringify(d)});var rd=await r.json();if(rd.ok){this.toast('封面内容已保存');this._data=d;this._formSnapshot=null;}else this.toast(rd.detail||'保存失败','error');}catch(e){this.toast('网络错误: '+e.message,'error');}}};
 CVE.init();
 </script>
 </body>
