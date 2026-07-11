@@ -1,13 +1,16 @@
 """
 com.promptkit.project — 项目管理专业版插件
-v1.0.0
+v1.1.0 (Phase21 深度优化)
 
 功能:
-  📊 项目仪表盘 — 进度汇总/任务热力图
-  📋 看板视图 — 拖拽任务卡片，支持自定义列
-  📅 甘特图 — 里程碑+任务时间线可视化
-  👥 团队管理 — 成员角色与权限
-  🔗 种子舞集成 — 镜头→任务自动同步
+  📊 项目仪表盘 — 进度汇总/成员工作量/近期活动
+  📋 看板视图 — 拖拽跨列移动/任务编辑弹窗/优先级可视化
+  📅 甘特图 — 真实时间轴横向条/里程碑标记线
+  🏁 里程碑 — 编辑弹窗/描述+日期编辑
+  👥 团队管理 — 成员角色与权限/自定义头像
+  🏛 组织架构 — 拖拽层级树/循环引用防护
+  🔗 镜头关联 — 任务↔镜头双向绑定
+  📦 项目CRUD — 编辑/删除项目
 
 License: 个人版买断 / 团队版订阅
 """
@@ -124,8 +127,77 @@ class ProjectManagerPlugin(PromptKitPlugin):
                 project_id INTEGER NOT NULL,
                 user_id    INTEGER NOT NULL,
                 role       TEXT DEFAULT 'viewer',
+                real_name  TEXT DEFAULT '',
+                duty       TEXT DEFAULT '',
+                avatar     TEXT DEFAULT '',
+                avatar_color TEXT DEFAULT '',
+                phone      TEXT DEFAULT '',
+                email      TEXT DEFAULT '',
+                parent_member_id INTEGER,
+                permissions_json TEXT DEFAULT '{}',
                 joined_at  TEXT DEFAULT (datetime('now','localtime')),
-                FOREIGN KEY (project_id) REFERENCES user_project(id) ON DELETE CASCADE
+                FOREIGN KEY (project_id) REFERENCES user_project(id) ON DELETE CASCADE,
+                FOREIGN KEY (parent_member_id) REFERENCES project_members(id) ON DELETE SET NULL
+            )""",
+
+            # 任务 ↔ 镜头关联表
+            """CREATE TABLE IF NOT EXISTS project_task_scene (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id    INTEGER NOT NULL,
+                scene_id   INTEGER NOT NULL,
+                created_at TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE,
+                FOREIGN KEY (scene_id) REFERENCES user_project_scene(id) ON DELETE CASCADE,
+                UNIQUE(task_id, scene_id)
+            )""",
+
+            # Phase22 总项目
+            """CREATE TABLE IF NOT EXISTS master_project (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                name         TEXT NOT NULL,
+                description  TEXT DEFAULT '',
+                project_type TEXT DEFAULT 'short_film',
+                aspect_ratio TEXT DEFAULT '16:9',
+                resolution   TEXT DEFAULT '4K',
+                status       TEXT DEFAULT 'draft',
+                cover_image  TEXT DEFAULT '',
+                created_at   TEXT DEFAULT (datetime('now','localtime')),
+                updated_at   TEXT DEFAULT (datetime('now','localtime'))
+            )""",
+
+            # Phase22 子项目
+            """CREATE TABLE IF NOT EXISTS master_sub_project (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                master_project_id INTEGER NOT NULL,
+                seedance_project_id INTEGER,
+                name              TEXT NOT NULL,
+                sub_type          TEXT DEFAULT 'storyboard',
+                description       TEXT DEFAULT '',
+                phase             TEXT DEFAULT 'P3',
+                sort_order        INTEGER DEFAULT 0,
+                created_at        TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (master_project_id) REFERENCES master_project(id) ON DELETE CASCADE,
+                FOREIGN KEY (seedance_project_id) REFERENCES user_project(id) ON DELETE SET NULL
+            )""",
+
+            # Phase22 资产
+            """CREATE TABLE IF NOT EXISTS master_asset (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                master_project_id INTEGER NOT NULL,
+                sub_project_id    INTEGER,
+                asset_type        TEXT NOT NULL,
+                name              TEXT NOT NULL,
+                description       TEXT DEFAULT '',
+                content           TEXT DEFAULT '',
+                image_path        TEXT DEFAULT '',
+                tags              TEXT DEFAULT '[]',
+                word_card_id      INTEGER,
+                sort_order        INTEGER DEFAULT 0,
+                created_at        TEXT DEFAULT (datetime('now','localtime')),
+                updated_at        TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (master_project_id) REFERENCES master_project(id) ON DELETE CASCADE,
+                FOREIGN KEY (sub_project_id) REFERENCES master_sub_project(id) ON DELETE SET NULL,
+                FOREIGN KEY (word_card_id) REFERENCES word_card(id) ON DELETE SET NULL
             )""",
         ]
 

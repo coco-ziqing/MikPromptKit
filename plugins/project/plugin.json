@@ -1,10 +1,10 @@
 {
   "plugin_id": "com.promptkit.project",
   "name": "项目管理专业版",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "min_core_version": "5.1.0",
   "author": "PromptKit Team",
-  "description": "项目管理拓展插件 — 看板/甘特图/里程碑/团队协作。与种子舞分镜组装器深度集成，提供专业的影视/设计项目管理能力。",
+  "description": "项目管理专业版 v2.0 — AIGC影片全流程制作：7阶段工作流/总项目+子项目+资产三层架构/剧本编辑器/角色场景档案/词卡模板/提示词继承链/批量生成面板",
   "license_tier": "personal",
   "dependencies": [],
   "api_router_module": "api",

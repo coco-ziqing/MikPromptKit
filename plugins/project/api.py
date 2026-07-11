@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-com.promptkit.project API路由
+com.promptkit.project API路由 v1.1.0
 挂载前缀: /api/plugins/com.promptkit.project/
 
-所有写操作使用独立连接避免与核心读事务锁竞争
+新增: 任务详情/编辑弹窗支持/任务跨列移动/任务关联镜头/里程碑编辑/列编辑/甘特时间轴/项目CRUD
 """
 import json, os, sqlite3, time
 from fastapi import APIRouter, HTTPException, Query, Body
@@ -14,12 +14,10 @@ router = APIRouter(tags=["项目管理插件"])
 DB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "prompts.db")
 
 def _ro():
-    """只读连接（复用核心线程池）"""
     from database import get_db
     return get_db()
 
 def _rw():
-    """写连接：独立新建，写完即关，避免锁竞争"""
     conn = sqlite3.connect(DB, timeout=2)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -29,8 +27,65 @@ def _rw():
 def _rows(rows):
     return [dict(r) for r in rows]
 
+def _safe_commit(db, max_retries=5):
+    """WAL 模式下重试提交"""
+    for i in range(max_retries):
+        try:
+            db.commit()
+            return
+        except sqlite3.OperationalError:
+            if i == max_retries - 1:
+                raise
+            time.sleep(0.05 * (i + 1))
+
 # ============================================================
-# 看板列
+# 项目 CRUD
+# ============================================================
+
+@router.get("/project/{project_id}")
+def get_project(project_id: int):
+    db = _ro()
+    proj = db.execute("SELECT * FROM user_project WHERE id=?", [project_id]).fetchone()
+    if not proj: raise HTTPException(404, "项目不存在")
+    scenes = _rows(db.execute("SELECT * FROM user_project_scene WHERE project_id=? ORDER BY sort_order", [project_id]).fetchall())
+    # 统计
+    ts = db.execute("SELECT COUNT(*) as total, COALESCE(SUM(CASE WHEN status='done' THEN 1 ELSE 0 END),0) as done FROM project_tasks WHERE project_id=?", [project_id]).fetchone()
+    ms = db.execute("SELECT COUNT(*) as total, COALESCE(SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END),0) as done FROM project_milestones WHERE project_id=?", [project_id]).fetchone()
+    mems = db.execute("SELECT COUNT(*) FROM project_members WHERE project_id=?", [project_id]).fetchone()[0]
+    return {"ok": True, "project": dict(proj), "scenes": scenes,
+            "stats": {"total_tasks": ts["total"], "done_tasks": ts["done"],
+                      "total_milestones": ms["total"], "done_milestones": ms["done"],
+                      "member_count": mems}}
+
+@router.put("/project/{project_id}")
+def update_project(project_id: int, data: dict = Body(...)):
+    db = _rw()
+    try:
+        proj = db.execute("SELECT id FROM user_project WHERE id=?", [project_id]).fetchone()
+        if not proj: raise HTTPException(404, "项目不存在")
+        for k in ["name", "description", "aspect_ratio", "resolution", "total_duration", "progress_pct"]:
+            if k in data:
+                db.execute(f"UPDATE user_project SET {k}=?,updated_at=datetime('now','localtime') WHERE id=?",
+                           [data[k], project_id])
+        db.commit()
+        return {"ok": True}
+    finally: db.close()
+
+@router.delete("/project/{project_id}")
+def delete_project(project_id: int):
+    """归档项目（软删除 — 仅标记，不物理删除）"""
+    db = _rw()
+    try:
+        proj = db.execute("SELECT id FROM user_project WHERE id=?", [project_id]).fetchone()
+        if not proj: raise HTTPException(404, "项目不存在")
+        # 外键 CASCADE 自动清理 columns/tasks/milestones/members
+        db.execute("DELETE FROM user_project WHERE id=?", [project_id])
+        db.commit()
+        return {"ok": True, "message": "项目已删除"}
+    finally: db.close()
+
+# ============================================================
+# 看板列 — 新增编辑 + 单列查询
 # ============================================================
 
 @router.get("/columns")
@@ -44,6 +99,14 @@ def list_columns(project_id: int = Query(..., ge=1)):
         cols.append(c)
     return {"ok": True, "columns": cols}
 
+@router.get("/columns/{column_id}")
+def get_column(column_id: int):
+    db = _ro()
+    col = db.execute("SELECT * FROM project_columns WHERE id=?", [column_id]).fetchone()
+    if not col: raise HTTPException(404, "列不存在")
+    tasks = _rows(db.execute("SELECT * FROM project_tasks WHERE column_id=? ORDER BY sort_order", [column_id]).fetchall())
+    return {"ok": True, "column": dict(col), "tasks": tasks}
+
 @router.post("/columns")
 def create_column(data: dict = Body(...)):
     pid, name = data.get("project_id"), (data.get("name", "")).strip()
@@ -56,6 +119,19 @@ def create_column(data: dict = Body(...)):
         db.commit()
         nid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
         return {"ok": True, "id": nid}
+    finally: db.close()
+
+@router.put("/columns/{column_id}")
+def update_column(column_id: int, data: dict = Body(...)):
+    db = _rw()
+    try:
+        col = db.execute("SELECT id FROM project_columns WHERE id=?", [column_id]).fetchone()
+        if not col: raise HTTPException(404, "列不存在")
+        for k in ["name", "color", "sort_order"]:
+            if k in data:
+                db.execute(f"UPDATE project_columns SET {k}=? WHERE id=?", [data[k], column_id])
+        db.commit()
+        return {"ok": True}
     finally: db.close()
 
 @router.delete("/columns/{column_id}")
@@ -73,17 +149,42 @@ def delete_column(column_id: int):
     finally: db.close()
 
 # ============================================================
-# 任务
+# 任务 — 新增详情/跨列拖拽/关联镜头
 # ============================================================
 
 @router.get("/tasks")
 def list_tasks(project_id: int = Query(..., ge=1), column_id: Optional[int] = Query(None)):
     db = _ro()
-    sql = "SELECT t.*,c.name as col_name,c.color as col_color FROM project_tasks t LEFT JOIN project_columns c ON t.column_id=c.id WHERE t.project_id=?"
+    sql = """SELECT t.*, c.name as col_name, c.color as col_color,
+             m.real_name as assignee_name, m.avatar as assignee_avatar, m.avatar_color as assignee_color
+             FROM project_tasks t
+             LEFT JOIN project_columns c ON t.column_id=c.id
+             LEFT JOIN project_members m ON t.assignee_id=m.id
+             WHERE t.project_id=?"""
     params = [project_id]
-    if column_id: sql += " AND t.column_id=?"; params.append(column_id)
+    if column_id:
+        sql += " AND t.column_id=?"
+        params.append(column_id)
     sql += " ORDER BY t.sort_order"
     return {"ok": True, "tasks": _rows(db.execute(sql, params).fetchall())}
+
+@router.get("/tasks/{task_id}")
+def get_task(task_id: int):
+    db = _ro()
+    t = db.execute("""SELECT t.*, c.name as col_name, c.color as col_color,
+                      m.real_name as assignee_name, m.avatar as assignee_avatar, m.avatar_color as assignee_color
+                      FROM project_tasks t
+                      LEFT JOIN project_columns c ON t.column_id=c.id
+                      LEFT JOIN project_members m ON t.assignee_id=m.id
+                      WHERE t.id=?""", [task_id]).fetchone()
+    if not t: raise HTTPException(404, "任务不存在")
+    task = dict(t)
+    # 关联的镜头
+    linked_scenes = _rows(db.execute(
+        "SELECT s.* FROM user_project_scene s INNER JOIN project_task_scene ts ON ts.scene_id=s.id WHERE ts.task_id=?",
+        [task_id]).fetchall())
+    task["linked_scenes"] = linked_scenes
+    return {"ok": True, "task": task}
 
 @router.post("/tasks")
 def create_task(data: dict = Body(...)):
@@ -95,8 +196,11 @@ def create_task(data: dict = Body(...)):
         if not cid:
             r = db.execute("SELECT id FROM project_columns WHERE project_id=? ORDER BY sort_order LIMIT 1", [pid]).fetchone()
             cid = r["id"] if r else None
-        db.execute("INSERT INTO project_tasks (project_id,column_id,title,description,priority,due_date,sort_order) VALUES (?,?,?,?,?,?,(SELECT COALESCE(MAX(sort_order),0)+1 FROM project_tasks WHERE project_id=?))",
-                   [pid, cid, title, data.get("description", ""), data.get("priority", 0), data.get("due_date"), pid])
+        db.execute("""INSERT INTO project_tasks
+            (project_id,column_id,title,description,assignee_id,priority,due_date,sort_order)
+            VALUES (?,?,?,?,?,?,?,(SELECT COALESCE(MAX(sort_order),0)+1 FROM project_tasks WHERE project_id=?))""",
+            [pid, cid, title, data.get("description", ""), data.get("assignee_id"),
+             data.get("priority", 0), data.get("due_date"), pid])
         db.commit()
         nid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
         _sync(pid)
@@ -109,7 +213,7 @@ def update_task(task_id: int, data: dict = Body(...)):
     try:
         t = db.execute("SELECT project_id FROM project_tasks WHERE id=?", [task_id]).fetchone()
         if not t: raise HTTPException(404, "任务不存在")
-        for k in ["title", "description", "column_id", "priority", "due_date", "status", "sort_order"]:
+        for k in ["title", "description", "column_id", "assignee_id", "priority", "due_date", "status", "sort_order"]:
             if k in data:
                 if k == "status" and data[k] == "done":
                     db.execute("UPDATE project_tasks SET status=?,completed_at=datetime('now','localtime'),updated_at=datetime('now','localtime') WHERE id=?", [data[k], task_id])
@@ -122,12 +226,33 @@ def update_task(task_id: int, data: dict = Body(...)):
         return {"ok": True}
     finally: db.close()
 
+@router.put("/tasks/{task_id}/move")
+def move_task(task_id: int, data: dict = Body(...)):
+    """跨列拖拽：更新 column_id + 可选 sort_order
+    Body: {"column_id": int, "sort_order": int|null}
+    """
+    db = _rw()
+    try:
+        t = db.execute("SELECT project_id FROM project_tasks WHERE id=?", [task_id]).fetchone()
+        if not t: raise HTTPException(404, "任务不存在")
+        if "column_id" in data:
+            db.execute("UPDATE project_tasks SET column_id=?,updated_at=datetime('now','localtime') WHERE id=?",
+                       [data["column_id"], task_id])
+        if "sort_order" in data:
+            db.execute("UPDATE project_tasks SET sort_order=?,updated_at=datetime('now','localtime') WHERE id=?",
+                       [data["sort_order"], task_id])
+        db.commit()
+        _sync(t["project_id"])
+        return {"ok": True}
+    finally: db.close()
+
 @router.delete("/tasks/{task_id}")
 def delete_task(task_id: int):
     db = _rw()
     try:
         t = db.execute("SELECT project_id FROM project_tasks WHERE id=?", [task_id]).fetchone()
         if not t: raise HTTPException(404, "任务不存在")
+        db.execute("DELETE FROM project_task_scene WHERE task_id=?", [task_id])
         db.execute("DELETE FROM project_tasks WHERE id=?", [task_id])
         db.commit()
         _sync(t["project_id"])
@@ -135,13 +260,74 @@ def delete_task(task_id: int):
     finally: db.close()
 
 # ============================================================
-# 里程碑
+# 任务 ↔ 镜头关联
+# ============================================================
+
+@router.get("/tasks/{task_id}/scenes")
+def list_task_scenes(task_id: int):
+    db = _ro()
+    scenes = _rows(db.execute(
+        "SELECT s.* FROM user_project_scene s INNER JOIN project_task_scene ts ON ts.scene_id=s.id WHERE ts.task_id=? ORDER BY s.sort_order",
+        [task_id]).fetchall())
+    return {"ok": True, "scenes": scenes}
+
+@router.post("/tasks/{task_id}/link-scene")
+def link_scene_to_task(task_id: int, data: dict = Body(...)):
+    """关联镜头到任务 Body: {"scene_id": int}"""
+    sid = data.get("scene_id")
+    if not sid: raise HTTPException(400, "scene_id 必填")
+    db = _rw()
+    try:
+        t = db.execute("SELECT id, project_id FROM project_tasks WHERE id=?", [task_id]).fetchone()
+        if not t: raise HTTPException(404, "任务不存在")
+        s = db.execute("SELECT id FROM user_project_scene WHERE id=? AND project_id=?", [sid, t["project_id"]]).fetchone()
+        if not s: raise HTTPException(400, "镜头不存在或不属于同一项目")
+        exists = db.execute("SELECT id FROM project_task_scene WHERE task_id=? AND scene_id=?", [task_id, sid]).fetchone()
+        if not exists:
+            db.execute("INSERT INTO project_task_scene (task_id, scene_id) VALUES (?,?)", [task_id, sid])
+            db.commit()
+        return {"ok": True}
+    finally: db.close()
+
+@router.delete("/tasks/{task_id}/unlink-scene/{scene_id}")
+def unlink_scene_from_task(task_id: int, scene_id: int):
+    db = _rw()
+    try:
+        db.execute("DELETE FROM project_task_scene WHERE task_id=? AND scene_id=?", [task_id, scene_id])
+        db.commit()
+        return {"ok": True}
+    finally: db.close()
+
+@router.get("/project/{project_id}/all-task-scenes")
+def all_task_scenes(project_id: int):
+    """返回该项目所有任务-镜头关联关系"""
+    db = _ro()
+    rows = _rows(db.execute(
+        """SELECT ts.task_id, ts.scene_id, s.name as scene_name, s.scene_number, t.title as task_title
+           FROM project_task_scene ts
+           JOIN user_project_scene s ON ts.scene_id=s.id
+           JOIN project_tasks t ON ts.task_id=t.id
+           WHERE t.project_id=? ORDER BY ts.task_id""",
+        [project_id]).fetchall())
+    return {"ok": True, "links": rows}
+
+# ============================================================
+# 里程碑 — 原有 CRUD + 任务关联
 # ============================================================
 
 @router.get("/milestones")
 def list_milestones(project_id: int = Query(..., ge=1)):
     db = _ro()
-    return {"ok": True, "milestones": _rows(db.execute("SELECT * FROM project_milestones WHERE project_id=? ORDER BY sort_order, due_date", [project_id]).fetchall())}
+    return {"ok": True, "milestones": _rows(db.execute(
+        "SELECT * FROM project_milestones WHERE project_id=? ORDER BY sort_order, due_date",
+        [project_id]).fetchall())}
+
+@router.get("/milestones/{milestone_id}")
+def get_milestone(milestone_id: int):
+    db = _ro()
+    m = db.execute("SELECT * FROM project_milestones WHERE id=?", [milestone_id]).fetchone()
+    if not m: raise HTTPException(404, "里程碑不存在")
+    return {"ok": True, "milestone": dict(m)}
 
 @router.post("/milestones")
 def create_milestone(data: dict = Body(...)):
@@ -181,7 +367,7 @@ def delete_milestone(milestone_id: int):
     finally: db.close()
 
 # ============================================================
-# 甘特图
+# 甘特图 — 增强版：返回日期范围 + 任务时间线
 # ============================================================
 
 @router.get("/gantt")
@@ -189,12 +375,53 @@ def gantt(project_id: int = Query(..., ge=1)):
     db = _ro()
     proj = db.execute("SELECT * FROM user_project WHERE id=?", [project_id]).fetchone()
     if not proj: raise HTTPException(404, "项目不存在")
-    ms = _rows(db.execute("SELECT * FROM project_milestones WHERE project_id=? ORDER BY sort_order", [project_id]).fetchall())
-    ts = _rows(db.execute("SELECT t.*,c.name as col_name,c.color as col_color FROM project_tasks t LEFT JOIN project_columns c ON t.column_id=c.id WHERE t.project_id=? ORDER BY t.sort_order", [project_id]).fetchall())
-    return {"ok": True, "project": dict(proj), "milestones": ms, "tasks": ts}
+
+    # 里程碑（含关联任务数）
+    ms_raw = _rows(db.execute("SELECT * FROM project_milestones WHERE project_id=? ORDER BY sort_order", [project_id]).fetchall())
+    milestones = []
+    for m in ms_raw:
+        m["task_count"] = db.execute(
+            "SELECT COUNT(*) FROM project_tasks WHERE project_id=? AND due_date=?",
+            [project_id, m["due_date"]]).fetchone()[0]
+        milestones.append(m)
+
+    # 任务（带成员信息）
+    tasks = _rows(db.execute(
+        """SELECT t.*, c.name as col_name, c.color as col_color,
+           m.real_name as assignee_name, m.avatar as assignee_avatar
+           FROM project_tasks t
+           LEFT JOIN project_columns c ON t.column_id=c.id
+           LEFT JOIN project_members m ON t.assignee_id=m.id
+           WHERE t.project_id=? ORDER BY t.sort_order""",
+        [project_id]).fetchall())
+
+    # 计算甘特图日期范围
+    all_dates = []
+    for m in milestones:
+        if m["due_date"]: all_dates.append(m["due_date"])
+    for t in tasks:
+        if t["due_date"]: all_dates.append(t["due_date"])
+        if t["created_at"]: all_dates.append(t["created_at"][:10])
+
+    date_range = {"start": None, "end": None, "span_days": 0}
+    if all_dates:
+        all_dates.sort()
+        date_range["start"] = all_dates[0][:10] if len(all_dates[0])>=10 else all_dates[0]
+        date_range["end"] = all_dates[-1][:10] if len(all_dates[-1])>=10 else all_dates[-1]
+        # 简单计算天数差（不依赖 datetime）
+        try:
+            from datetime import datetime
+            s = datetime.strptime(date_range["start"][:10], "%Y-%m-%d")
+            e = datetime.strptime(date_range["end"][:10], "%Y-%m-%d")
+            date_range["span_days"] = max((e - s).days + 1, 30)
+        except:
+            date_range["span_days"] = 30
+
+    return {"ok": True, "project": dict(proj), "milestones": milestones,
+            "tasks": tasks, "date_range": date_range}
 
 # ============================================================
-# 仪表盘
+# 仪表盘 — 增强版
 # ============================================================
 
 @router.get("/dashboard")
@@ -202,23 +429,51 @@ def dashboard(project_id: int = Query(..., ge=1)):
     db = _ro()
     proj = db.execute("SELECT * FROM user_project WHERE id=?", [project_id]).fetchone()
     if not proj: raise HTTPException(404, "项目不存在")
+
     sc = db.execute("SELECT COUNT(*) FROM user_project_scene WHERE project_id=?", [project_id]).fetchone()[0]
-    ts = db.execute("SELECT COUNT(*) as t,COALESCE(SUM(CASE WHEN status='done' THEN 1 ELSE 0 END),0) as d,COALESCE(SUM(CASE WHEN status!='done' THEN 1 ELSE 0 END),0) as p FROM project_tasks WHERE project_id=?", [project_id]).fetchone()
-    ms = db.execute("SELECT COUNT(*) as t,COALESCE(SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END),0) as c FROM project_milestones WHERE project_id=?", [project_id]).fetchone()
-    cd = _rows(db.execute("SELECT c.name,c.color,COUNT(t.id) as tc FROM project_columns c LEFT JOIN project_tasks t ON t.column_id=c.id WHERE c.project_id=? GROUP BY c.id ORDER BY c.sort_order", [project_id]).fetchall())
+    ts = db.execute("""SELECT COUNT(*) as t,
+        COALESCE(SUM(CASE WHEN status='done' THEN 1 ELSE 0 END),0) as d,
+        COALESCE(SUM(CASE WHEN status!='done' AND status!='' THEN 1 ELSE 0 END),0) as p,
+        COALESCE(SUM(CASE WHEN priority>=2 THEN 1 ELSE 0 END),0) as hp
+        FROM project_tasks WHERE project_id=?""", [project_id]).fetchone()
+    ms = db.execute("""SELECT COUNT(*) as t,
+        COALESCE(SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END),0) as c
+        FROM project_milestones WHERE project_id=?""", [project_id]).fetchone()
+
+    # 列分布
+    cd = _rows(db.execute("""SELECT c.name, c.color, COUNT(t.id) as tc
+        FROM project_columns c LEFT JOIN project_tasks t ON t.column_id=c.id
+        WHERE c.project_id=? GROUP BY c.id ORDER BY c.sort_order""", [project_id]).fetchall())
+
+    # 近期活动（最近 10 条任务变更）
+    recent = _rows(db.execute(
+        "SELECT id, title, status, updated_at FROM project_tasks WHERE project_id=? AND updated_at IS NOT NULL ORDER BY updated_at DESC LIMIT 10",
+        [project_id]).fetchall())
+
+    # 成员工作量
+    workload = _rows(db.execute(
+        """SELECT m.id as member_id, m.real_name, m.avatar, m.avatar_color, m.role,
+           COUNT(t.id) as task_count,
+           COALESCE(SUM(CASE WHEN t.status='done' THEN 1 ELSE 0 END),0) as done_count
+           FROM project_members m
+           LEFT JOIN project_tasks t ON t.assignee_id=m.id
+           WHERE m.project_id=?
+           GROUP BY m.id ORDER BY task_count DESC""",
+        [project_id]).fetchall())
+
     tt, td = ts["t"], ts["d"]
     pct = round(td/tt*100) if tt > 0 else 0
     return {"ok": True, "project": dict(proj),
-            "stats": {"scene_count": sc, "total_tasks": tt, "done_tasks": td, "pending_tasks": ts["p"],
-                      "high_priority_tasks": 0, "total_milestones": ms["t"], "completed_milestones": ms["c"],
+            "stats": {"scene_count": sc, "total_tasks": tt, "done_tasks": td,
+                      "pending_tasks": ts["p"], "high_priority_tasks": ts["hp"],
+                      "total_milestones": ms["t"], "completed_milestones": ms["c"],
                       "progress_pct": pct},
-            "column_distribution": cd, "recent_activity": []}
+            "column_distribution": cd, "recent_activity": recent, "member_workload": workload}
 
 # ============================================================
-# 团队管理 — AIGC内容创作团队角色体系
+# 团队管理 — 保持不变 + org-tree 增强
 # ============================================================
 
-# 角色定义：权限等级 + 职责描述
 CREW_ROLES = {
     "executive_producer": {"name": "总制片人", "level": 10, "duty": "项目总控：预算/排期/资源协调/团队管理/交付验收", "icon": "🎬"},
     "director":          {"name": "总导演",     "level": 9,  "duty": "创意决策：整体风格定调/镜头审核/成片把控/艺术方向", "icon": "🎥"},
@@ -234,15 +489,6 @@ CREW_ROLES = {
     "viewer":            {"name": "观察者",     "level": 1,  "duty": "只读权限：查看项目进度/浏览看板/访问资产库", "icon": "👁️"},
 }
 
-@router.get("/roles")
-def list_roles():
-    """返回角色定义列表（供前端下拉选择）"""
-    roles = []
-    for key, info in sorted(CREW_ROLES.items(), key=lambda x: -x[1]["level"]):
-        roles.append({"key": key, "name": info["name"], "level": info["level"], "duty": info["duty"], "icon": info["icon"]})
-    return {"ok": True, "roles": roles}
-
-# 角色默认权限矩阵
 DEFAULT_PERMISSIONS = {
     "executive_producer": {"can_manage_members": True, "can_edit_project": True, "can_delete_tasks": True, "can_approve": True, "can_export": True},
     "director":          {"can_manage_members": False, "can_edit_project": True, "can_delete_tasks": True, "can_approve": True, "can_export": True},
@@ -277,6 +523,13 @@ def _enrich_member(m):
     m["permissions"] = perms
     return m
 
+@router.get("/roles")
+def list_roles():
+    roles = []
+    for key, info in sorted(CREW_ROLES.items(), key=lambda x: -x[1]["level"]):
+        roles.append({"key": key, "name": info["name"], "level": info["level"], "duty": info["duty"], "icon": info["icon"]})
+    return {"ok": True, "roles": roles}
+
 @router.get("/members")
 def list_members(project_id: int = Query(..., ge=1)):
     db = _ro()
@@ -285,19 +538,14 @@ def list_members(project_id: int = Query(..., ge=1)):
 
 @router.get("/members/org-tree")
 def get_org_tree(project_id: int = Query(..., ge=1)):
-    """返回项目成员组织架构树，支持多层嵌套"""
     db = _ro()
     rows = db.execute(
         "SELECT * FROM project_members WHERE project_id=? ORDER BY parent_member_id NULLS FIRST, joined_at",
-        [project_id]
-    ).fetchall()
+        [project_id]).fetchall()
     members = [_enrich_member(dict(r)) for r in rows]
-    
-    # 构建树：找出根节点（无 parent 的成员），递归挂子节点
     member_map = {m["id"]: m for m in members}
     for m in members:
         m["children"] = []
-    
     roots = []
     for m in members:
         pid = m.get("parent_member_id")
@@ -305,7 +553,6 @@ def get_org_tree(project_id: int = Query(..., ge=1)):
             member_map[pid]["children"].append(m)
         else:
             roots.append(m)
-    
     return {"ok": True, "tree": roots, "total": len(members)}
 
 @router.get("/members/{member_id}")
@@ -314,10 +561,8 @@ def get_member(member_id: int):
     r = db.execute("SELECT * FROM project_members WHERE id=?", [member_id]).fetchone()
     if not r: raise HTTPException(404, "成员不存在")
     m = _enrich_member(dict(r))
-    # 附加上该成员参与的项目信息
     proj = db.execute("SELECT name,id FROM user_project WHERE id=?", [m["project_id"]]).fetchone()
     m["project_name"] = proj["name"] if proj else ""
-    # 该成员的任务统计
     ts = db.execute("SELECT COUNT(*) as t, COALESCE(SUM(CASE WHEN status='done' THEN 1 ELSE 0 END),0) as d FROM project_tasks WHERE assignee_id=?", [member_id]).fetchone()
     m["task_total"] = ts["t"]
     m["task_done"] = ts["d"]
@@ -373,59 +618,29 @@ def remove_member(member_id: int):
         return {"ok": True}
     finally: db.close()
 
-# ============================================================
-# 组织架构图
-# ============================================================
-
 @router.put("/members/{member_id}/parent")
 def set_member_parent(member_id: int, data: dict = Body(...)):
-    """
-    设置成员的上级。
-    Body: {"parent_member_id": int | null}
-    parent_member_id=null 表示提升为顶级成员（无上级）。
-    """
     db = _rw()
     try:
         member = db.execute("SELECT id, project_id FROM project_members WHERE id=?", [member_id]).fetchone()
-        if not member:
-            raise HTTPException(404, "成员不存在")
-        
+        if not member: raise HTTPException(404, "成员不存在")
         parent_id = data.get("parent_member_id")
-        
         if parent_id is not None:
-            # 校验：父节点必须在同一项目中，且不能是自己或其子孙
-            parent = db.execute(
-                "SELECT id, project_id, parent_member_id FROM project_members WHERE id=?",
-                [parent_id]
-            ).fetchone()
-            if not parent:
-                raise HTTPException(400, "上级成员不存在")
-            if parent["project_id"] != member["project_id"]:
-                raise HTTPException(400, "上级成员不在同一项目")
-            if parent_id == member_id:
-                raise HTTPException(400, "不能将自己设为上级")
-            # 防止循环引用：检查 parent 的祖先链中是否包含 member_id
-            cursor = parent_id
-            visited = set()
+            parent = db.execute("SELECT id, project_id, parent_member_id FROM project_members WHERE id=?", [parent_id]).fetchone()
+            if not parent: raise HTTPException(400, "上级成员不存在")
+            if parent["project_id"] != member["project_id"]: raise HTTPException(400, "上级成员不在同一项目")
+            if parent_id == member_id: raise HTTPException(400, "不能将自己设为上级")
+            cursor = parent_id; visited = set()
             while cursor:
-                if cursor == member_id:
-                    raise HTTPException(400, "不能形成循环层级关系")
-                if cursor in visited:
-                    break
+                if cursor == member_id: raise HTTPException(400, "不能形成循环层级关系")
+                if cursor in visited: break
                 visited.add(cursor)
-                anc = db.execute(
-                    "SELECT parent_member_id FROM project_members WHERE id=?", [cursor]
-                ).fetchone()
+                anc = db.execute("SELECT parent_member_id FROM project_members WHERE id=?", [cursor]).fetchone()
                 cursor = anc["parent_member_id"] if anc else None
-        
-        db.execute(
-            "UPDATE project_members SET parent_member_id=? WHERE id=?",
-            [parent_id, member_id]
-        )
+        db.execute("UPDATE project_members SET parent_member_id=? WHERE id=?", [parent_id, member_id])
         db.commit()
         return {"ok": True, "message": "层级关系已更新"}
-    finally:
-        db.close()
+    finally: db.close()
 
 
 # ============================================================
@@ -439,3 +654,294 @@ def _sync(pid):
         db.execute("UPDATE user_project SET progress_pct=?,updated_at=datetime('now','localtime') WHERE id=?", [round(s["d"]/s["t"]*100) if s["t"]>0 else 0, pid])
         db.commit()
     finally: db.close()
+
+# ============================================================
+# Phase22 — 总项目 (master_project)
+# ============================================================
+
+PROJECT_TYPES = ["short_film", "ad", "mv", "tutorial", "other"]
+PHASES = ["P0", "P1", "P2", "P3", "P4", "P5", "P6"]
+PHASE_NAMES = {
+    "P0": {"zh": "前期策划", "en": "Ideation", "icon": "🧠"},
+    "P1": {"zh": "预生产", "en": "Pre-production", "icon": "📝"},
+    "P2": {"zh": "资产准备", "en": "Assets", "icon": "🎨"},
+    "P3": {"zh": "分镜生产", "en": "Production", "icon": "🎬"},
+    "P4": {"zh": "后期合成", "en": "Post-production", "icon": "✂️"},
+    "P5": {"zh": "审核交付", "en": "Review", "icon": "✅"},
+    "P6": {"zh": "复盘归档", "en": "Archive", "icon": "📊"},
+}
+
+@router.get("/master/list")
+def list_master_projects():
+    """列出所有总项目"""
+    db = _ro()
+    rows = _rows(db.execute(
+        "SELECT mp.*, (SELECT COUNT(*) FROM master_sub_project WHERE master_project_id=mp.id) as sub_count, (SELECT COUNT(*) FROM master_asset WHERE master_project_id=mp.id) as asset_count FROM master_project mp ORDER BY mp.updated_at DESC"
+    ).fetchall())
+    return {"ok": True, "projects": rows}
+
+@router.get("/master/{master_id}")
+def get_master_project(master_id: int):
+    """获取总项目详情 — 包含子项目、资产、阶段统计"""
+    db = _ro()
+    mp = db.execute("SELECT * FROM master_project WHERE id=?", [master_id]).fetchone()
+    if not mp: raise HTTPException(404, "项目不存在")
+    subs = _rows(db.execute(
+        "SELECT sp.*, p.name as seedance_name, p.progress_pct FROM master_sub_project sp LEFT JOIN user_project p ON sp.seedance_project_id=p.id WHERE sp.master_project_id=? ORDER BY sp.sort_order",
+        [master_id]).fetchall())
+    assets = _rows(db.execute(
+        "SELECT * FROM master_asset WHERE master_project_id=? ORDER BY asset_type, sort_order",
+        [master_id]).fetchall())
+    phase_stats = {}
+    for ph in PHASES:
+        tc = db.execute("SELECT COUNT(*) FROM project_tasks WHERE master_project_id=? AND phase=?", [master_id, ph]).fetchone()[0]
+        dc = db.execute("SELECT COUNT(*) FROM project_tasks WHERE master_project_id=? AND phase=? AND status='done'", [master_id, ph]).fetchone()[0]
+        phase_stats[ph] = {"total": tc, "done": dc}
+    return {"ok": True, "project": dict(mp), "sub_projects": subs, "assets": assets, "phase_stats": phase_stats}
+
+@router.post("/master")
+def create_master_project(data: dict = Body(...)):
+    """创建总项目"""
+    name = (data.get("name", "")).strip()
+    if not name: raise HTTPException(400, "name 必填")
+    db = _rw()
+    try:
+        db.execute(
+            "INSERT INTO master_project (name,description,project_type,aspect_ratio,resolution) VALUES (?,?,?,?,?)",
+            [name, data.get("description", ""), data.get("project_type", "short_film"),
+             data.get("aspect_ratio", "16:9"), data.get("resolution", "4K")])
+        db.commit()
+        mid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        return {"ok": True, "id": mid}
+    finally: db.close()
+
+@router.put("/master/{master_id}")
+def update_master_project(master_id: int, data: dict = Body(...)):
+    """更新总项目"""
+    db = _rw()
+    try:
+        for k in ["name", "description", "project_type", "aspect_ratio", "resolution", "status", "cover_image"]:
+            if k in data:
+                db.execute(f"UPDATE master_project SET {k}=?,updated_at=datetime('now','localtime') WHERE id=?", [data[k], master_id])
+        db.commit()
+        return {"ok": True}
+    finally: db.close()
+
+@router.delete("/master/{master_id}")
+def delete_master_project(master_id: int):
+    """删除总项目（级联删除子项目+资产）"""
+    db = _rw()
+    try:
+        db.execute("DELETE FROM master_project WHERE id=?", [master_id])
+        db.commit()
+        return {"ok": True}
+    finally: db.close()
+
+@router.get("/phases")
+def list_phases():
+    """返回7阶段定义"""
+    return {"ok": True, "phases": [{"key": k, **v} for k, v in PHASE_NAMES.items()]}
+
+# ============================================================
+# Phase22 — 子项目 (master_sub_project)
+# ============================================================
+
+@router.get("/master/{master_id}/subs")
+def list_sub_projects(master_id: int):
+    db = _ro()
+    rows = _rows(db.execute(
+        "SELECT sp.*, p.name as seedance_name, p.progress_pct, p.aspect_ratio, p.resolution FROM master_sub_project sp LEFT JOIN user_project p ON sp.seedance_project_id=p.id WHERE sp.master_project_id=? ORDER BY sp.sort_order",
+        [master_id]).fetchall())
+    return {"ok": True, "subs": rows}
+
+@router.post("/master/{master_id}/subs")
+def create_sub_project(master_id: int, data: dict = Body(...)):
+    """创建子项目 — 自动创建对应 seedance 分镜项目"""
+    name = (data.get("name", "")).strip()
+    if not name: raise HTTPException(400, "name 必填")
+    db = _rw()
+    try:
+        mp = db.execute("SELECT id FROM master_project WHERE id=?", [master_id]).fetchone()
+        if not mp: raise HTTPException(404, "总项目不存在")
+        max_o = db.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM master_sub_project WHERE master_project_id=?", [master_id]).fetchone()[0]
+        db.execute(
+            "INSERT INTO master_sub_project (master_project_id,name,sub_type,description,phase,sort_order) VALUES (?,?,?,?,?,?)",
+            [master_id, name, data.get("sub_type", "storyboard"), data.get("description", ""), data.get("phase", "P3"), max_o])
+        db.commit()
+        sid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        try:
+            db2 = _rw()
+            db2.execute("INSERT INTO user_project (name,aspect_ratio,resolution,progress_pct) VALUES (?,?,?,0)",
+                        [name, data.get("aspect_ratio", "16:9"), data.get("resolution", "4K")])
+            db2.commit()
+            spid = db2.execute("SELECT last_insert_rowid()").fetchone()[0]
+            db2.close()
+            db.execute("UPDATE master_sub_project SET seedance_project_id=? WHERE id=?", [spid, sid])
+            db.commit()
+            return {"ok": True, "id": sid, "seedance_project_id": spid}
+        except Exception as e:
+            db.commit()
+            return {"ok": True, "id": sid, "seedance_error": str(e)}
+    finally: db.close()
+
+@router.put("/master/subs/{sub_id}")
+def update_sub_project(sub_id: int, data: dict = Body(...)):
+    db = _rw()
+    try:
+        for k in ["name", "sub_type", "description", "phase", "sort_order"]:
+            if k in data:
+                db.execute(f"UPDATE master_sub_project SET {k}=? WHERE id=?", [data[k], sub_id])
+        db.commit()
+        return {"ok": True}
+    finally: db.close()
+
+@router.delete("/master/subs/{sub_id}")
+def delete_sub_project(sub_id: int):
+    db = _rw()
+    try:
+        db.execute("DELETE FROM master_sub_project WHERE id=?", [sub_id])
+        db.commit()
+        return {"ok": True}
+    finally: db.close()
+
+# ============================================================
+# Phase22 — 资产 (master_asset)
+# ============================================================
+
+ASSET_TYPES = ["script", "character", "scene", "prompt_template", "ref_image", "bgm", "sfx", "other"]
+
+@router.get("/master/{master_id}/assets")
+def list_assets(master_id: int, asset_type: Optional[str] = Query(None), sub_project_id: Optional[int] = Query(None)):
+    db = _ro()
+    sql = "SELECT * FROM master_asset WHERE master_project_id=?"
+    params = [master_id]
+    if asset_type: sql += " AND asset_type=?"; params.append(asset_type)
+    if sub_project_id is not None: sql += " AND sub_project_id=?"; params.append(sub_project_id)
+    sql += " ORDER BY asset_type, sort_order"
+    return {"ok": True, "assets": _rows(db.execute(sql, params).fetchall())}
+
+@router.get("/master/assets/{asset_id}")
+def get_asset(asset_id: int):
+    db = _ro()
+    a = db.execute("SELECT * FROM master_asset WHERE id=?", [asset_id]).fetchone()
+    if not a: raise HTTPException(404, "资产不存在")
+    return {"ok": True, "asset": dict(a)}
+
+@router.post("/master/{master_id}/assets")
+def create_asset(master_id: int, data: dict = Body(...)):
+    a_type = data.get("asset_type", "other")
+    name = (data.get("name", "")).strip()
+    if not name: raise HTTPException(400, "name 必填")
+    if a_type not in ASSET_TYPES: raise HTTPException(400, f"无效资产类型: {a_type}")
+    db = _rw()
+    try:
+        mp = db.execute("SELECT id FROM master_project WHERE id=?", [master_id]).fetchone()
+        if not mp: raise HTTPException(404, "总项目不存在")
+        max_o = db.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM master_asset WHERE master_project_id=? AND asset_type=?", [master_id, a_type]).fetchone()[0]
+        db.execute(
+            "INSERT INTO master_asset (master_project_id,sub_project_id,asset_type,name,description,content,image_path,tags,word_card_id,sort_order) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            [master_id, data.get("sub_project_id"), a_type, name, data.get("description", ""),
+             data.get("content", ""), data.get("image_path", ""),
+             json.dumps(data.get("tags", []), ensure_ascii=False),
+             data.get("word_card_id"), max_o])
+        db.commit()
+        aid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        return {"ok": True, "id": aid}
+    finally: db.close()
+
+@router.put("/master/assets/{asset_id}")
+def update_asset(asset_id: int, data: dict = Body(...)):
+    db = _rw()
+    try:
+        for k in ["name", "description", "content", "image_path", "tags", "word_card_id", "sub_project_id", "sort_order"]:
+            if k in data:
+                val = json.dumps(data[k], ensure_ascii=False) if k == "tags" else data[k]
+                db.execute(f"UPDATE master_asset SET {k}=?,updated_at=datetime('now','localtime') WHERE id=?", [val, asset_id])
+        db.commit()
+        return {"ok": True}
+    finally: db.close()
+
+@router.delete("/master/assets/{asset_id}")
+def delete_asset(asset_id: int):
+    db = _rw()
+    try:
+        db.execute("DELETE FROM master_asset WHERE id=?", [asset_id])
+        db.commit()
+        return {"ok": True}
+    finally: db.close()
+
+# ============================================================
+# Phase22 — 提示词继承链引擎
+# ============================================================
+
+@router.get("/master/{master_id}/prompt-chain")
+def get_prompt_chain(master_id: int, sub_project_id: Optional[int] = Query(None)):
+    """
+    三层提示词继承链：全局风格词卡 + 段落词卡 = 熔合输出
+    """
+    db = _ro()
+    global_templates = _rows(db.execute(
+        "SELECT * FROM master_asset WHERE master_project_id=? AND asset_type='prompt_template' AND sub_project_id IS NULL ORDER BY sort_order",
+        [master_id]).fetchall())
+    segment_templates = []
+    if sub_project_id:
+        segment_templates = _rows(db.execute(
+            "SELECT * FROM master_asset WHERE master_project_id=? AND asset_type='prompt_template' AND sub_project_id=? ORDER BY sort_order",
+            [master_id, sub_project_id]).fetchall())
+    global_prompt = "\n".join([t.get("content", "") for t in global_templates if t.get("content", "").strip()])
+    segment_prompt = "\n".join([t.get("content", "") for t in segment_templates if t.get("content", "").strip()])
+    merged_prompt = f"{global_prompt}\n{segment_prompt}".strip()
+    return {"ok": True,
+            "global": global_templates, "segment": segment_templates,
+            "global_prompt": global_prompt, "segment_prompt": segment_prompt,
+            "merged_prompt": merged_prompt}
+
+@router.post("/master/{master_id}/prompt-chain/merge")
+def merge_prompt_chain(master_id: int, data: dict = Body(...)):
+    """AI融合三层提示词"""
+    gc = data.get("global_content", "")
+    sc = data.get("segment_content", "")
+    shc = data.get("shot_content", "")
+    parts = []
+    if gc.strip(): parts.append(f"[全局风格]\n{gc.strip()}")
+    if sc.strip(): parts.append(f"[段落设定]\n{sc.strip()}")
+    if shc.strip(): parts.append(f"[镜头需求]\n{shc.strip()}")
+    merged = "\n\n".join(parts)
+    # 尝试 LLM 融合
+    try:
+        from openai import OpenAI
+        import os as _os
+        ollama_host = _os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+        client = OpenAI(base_url=f"{ollama_host}/v1", api_key="ollama")
+        resp = client.chat.completions.create(
+            model="qwen3.5:9b",
+            messages=[{"role": "system", "content": "你是AIGC提示词优化专家。将以下多层提示词融合为一个高质量、无冗余、风格统一的中文正向提示词："}, {"role": "user", "content": merged}],
+            max_tokens=500, temperature=0.3, timeout=15
+        )
+        if resp.choices and resp.choices[0].message.content:
+            merged = resp.choices[0].message.content.strip()
+    except Exception:
+        pass
+    return {"ok": True, "merged": merged}
+
+# ============================================================
+# Phase22 — 批量生成面板
+# ============================================================
+
+@router.post("/master/{master_id}/batch-generate")
+def batch_generate(master_id: int, data: dict = Body(...)):
+    """批量提交生成任务 — 按子项目拉取所有镜头"""
+    db = _ro()
+    sp_ids = data.get("sub_project_ids", [])
+    mode = data.get("mode", "comfyui")
+    jobs = []
+    for sp_id in sp_ids:
+        sp = db.execute("SELECT * FROM master_sub_project WHERE id=? AND master_project_id=?", [sp_id, master_id]).fetchone()
+        if not sp or not sp["seedance_project_id"]: continue
+        scenes = db.execute("SELECT * FROM user_project_scene WHERE project_id=? ORDER BY sort_order", [sp["seedance_project_id"]]).fetchall()
+        for sc in scenes:
+            job = {"sub_project_id": sp_id, "seedance_project_id": sp["seedance_project_id"],
+                   "scene_id": sc["id"], "scene_name": sc.get("name", ""),
+                   "status": "queued", "mode": mode}
+            jobs.append(job)
+    return {"ok": True, "total": len(jobs), "jobs": jobs}

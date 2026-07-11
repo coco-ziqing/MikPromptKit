@@ -1,466 +1,452 @@
-// PromptKit Project Manager v1.0.6 — i18n dual language
+// PromptKit Project Manager v2.0.0 — Phase22 Master Project Architecture
+// 三栏布局：总项目列表(左) + 7阶段面板(主) + 子项目/资产(右)
 (function(){'use strict';
 
 var PK = {
-VERSION: '1.0.6',
-_activeProjectId: null,
-_activeTab: 'dashboard',
-_projects: [],
-_projectCache: {},
+VERSION: '2.0.0',
+_masterId: null,
+_masterList: [],
+_masterCache: {},
+_activePhase: 'P0',
+_selectedSubId: null,
+_activeAssetTab: 'script',
 
 _avatarEmojis: '🦊🐱🐶🐼🐨🐯🦁🐸🐵🐰🐻🐧🦄🐙🦉🐳🐬🦋🐞🐝🎨🎬🎧🎮💎🔥⭐🌈🎯'.split(''),
 _avatarColors: '#7c3aed,#dc2626,#2563eb,#059669,#d97706,#db2777,#4f46e5,#0891b2,#ea580c,#65a30d,#6d28d9,#be123c'.split(','),
 
 _apiBase: '/api/plugins/com.promptkit.project',
 
-// ---- i18n ----
-_isEN: function() { try { return (localStorage.getItem('promptkit_lang') || 'zh-CN') === 'en'; } catch(e) { return false; } },
-_L: function(zh, en) { return this._isEN() ? (en || zh) : zh; },
+_isEN: function() { try { return (localStorage.getItem('promptkit_lang')||'zh-CN')==='en'; } catch(e) { return false; } },
+_L: function(zh, en) { return this._isEN() ? (en||zh) : zh; },
 
 open: function() {
   var vp = document.getElementById('viewProjectMgmt');
   if (!vp) {
-    vp = document.createElement('div');
-    vp.id = 'viewProjectMgmt';
-    vp.className = 'view-panel active-view';
-    vp.style.display = 'flex';
-    var mc = document.getElementById('mainContent');
-    if (mc) mc.appendChild(vp);
+    vp = document.createElement('div'); vp.id = 'viewProjectMgmt';
+    vp.className = 'view-panel active-view'; vp.style.display = 'flex';
+    var mc = document.getElementById('mainContent'); if (mc) mc.appendChild(vp);
   }
-  document.querySelectorAll('#mainContent > .view-panel').forEach(function(p) { p.style.display = 'none'; });
+  document.querySelectorAll('#mainContent > .view-panel').forEach(function(p){p.style.display='none';});
   vp.style.display = 'flex';
   this._init();
 },
-
 close: function() {
   var vp = document.getElementById('viewProjectMgmt');
   if (vp) vp.style.display = 'none';
-  if (typeof App !== 'undefined' && App.switchView) App.switchView('home');
 },
 
 _init: async function() {
-  var self = this;
-  var vp = document.getElementById('viewProjectMgmt');
-  if (!vp) return;
-  var L = this._L.bind(this);
-  vp.innerHTML = '<div class="pk-proj-sidebar" id="pkProjSidebar"><div class="pk-proj-sidebar-header"><h5>'+L('项目列表','Projects')+'</h5><button class="btn btn-sm btn-primary" onclick="PK_ProjectDashboard._createProject()">+ '+L('新建','New')+'</button></div><div class="pk-proj-list" id="pkProjList"><div class="pk-empty-state"><p>'+L('加载中...','Loading...')+'</p></div></div></div><div class="pk-proj-main" id="pkProjMain"><div class="pk-empty-state" style="flex:1;display:flex;align-items:center;justify-content:center;"><div><h4>'+L('选择一个项目开始','Select a Project')+'</h4><p>'+L('从左侧列表中点击项目','Click a project from the sidebar')+'</p></div></div></div>';
-  await this._loadProjects();
-  this._renderProjectList();
-  if (this._activeProjectId) this._selectProject(this._activeProjectId);
-  else if (this._projects.length > 0) this._selectProject(this._projects[0].id);
+  var L = this._L.bind(this), self = this;
+  var vp = document.getElementById('viewProjectMgmt'); if (!vp) return;
+  vp.innerHTML = '<div class="pk-proj-sidebar" id="pkMasterList"><div class="pk-proj-sidebar-header"><h5>📦 '+L('总项目','Projects')+'</h5><button class="btn btn-sm btn-primary" onclick="PK_ProjectDashboard._showMasterForm()">+ '+L('新建','New')+'</button></div><div class="pk-proj-list" id="pkMasterListInner"><p style="padding:20px;color:var(--text-muted);">'+L('加载中...','Loading...')+'</p></div></div><div class="pk-proj-main" id="pkMasterMain"><div class="pk-master-welcome"><h4>📦 '+L('选择一个总项目开始','Select a Project')+'</h4><p>'+L('或创建新项目','or create new')+'</p></div></div>';
+  await this._loadMasters();
 },
 
-_api: async function(path) {
-  try { var r = await fetch(this._apiBase + path); return await r.json(); } catch(e) { return {ok:false}; }
-},
-_apiPost: async function(path, data) {
-  try { var r = await fetch(this._apiBase + path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}); return await r.json(); } catch(e) { return {ok:false}; }
-},
-_apiPut: async function(path, data) {
-  try { var r = await fetch(this._apiBase + path, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}); return await r.json(); } catch(e) { return {ok:false}; }
-},
-_apiDelete: async function(path) {
-  try { var r = await fetch(this._apiBase + path, {method:'DELETE'}); return await r.json(); } catch(e) { return {ok:false}; }
-},
-_toast: function(msg, type) {
-  if (typeof App !== 'undefined' && App.showToast) App.showToast(msg, type);
-  else console.log('[PK]', type, msg);
-},
-_esc: function(s) {
-  if (!s) return '';
-  var div = document.createElement('div');
-  div.textContent = s;
-  return div.innerHTML;
-},
+// ============================================================
+// API helpers
+// ============================================================
+_api: async function(path) { try { var r=await fetch(this._apiBase+path); return await r.json(); } catch(e) { return {ok:false}; } },
+_apiPost: async function(path, data) { try { var r=await fetch(this._apiBase+path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}); return await r.json(); } catch(e) { return {ok:false}; } },
+_apiPut: async function(path, data) { try { var r=await fetch(this._apiBase+path, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}); return await r.json(); } catch(e) { return {ok:false}; } },
+_apiDelete: async function(path) { try { var r=await fetch(this._apiBase+path, {method:'DELETE'}); return await r.json(); } catch(e) { return {ok:false}; } },
+_toast: function(msg, type) { if (typeof App!=='undefined' && App.showToast) App.showToast(msg, type); },
+_esc: function(s) { if (!s) return ''; var d=document.createElement('div'); d.textContent=s; return d.innerHTML; },
+_overlay: function() { var o=document.createElement('div'); o.className='pk-modal-overlay'; o.onclick=function(e){if(e.target===o)o.remove();}; return o; },
 
-// Project list
-_loadProjects: async function() {
-  try { var r = await fetch('/api/seedance/v2/projects?page_size=100'); var d = await r.json(); this._projects = d.items || []; } catch(e) { this._projects = []; }
+// ============================================================
+// Master list
+// ============================================================
+_loadMasters: async function() {
+  var r = await this._api('/master/list');
+  this._masterList = r.projects||[];
+  this._renderMasterList();
+  if (this._masterId) this._selectMaster(this._masterId);
+  else if (this._masterList.length>0) this._selectMaster(this._masterList[0].id);
 },
-_renderProjectList: function() {
-  var c = document.getElementById('pkProjList');
+_renderMasterList: function() {
+  var c = document.getElementById('pkMasterListInner'), L = this._L.bind(this), self = this;
   if (!c) return;
-  var L = this._L.bind(this);
-  if (this._projects.length === 0) {
-    c.innerHTML = '<div class="pk-empty-state"><p>'+L('暂无项目','No projects')+'</p><button class="btn btn-sm btn-primary mt-2" onclick="PK_ProjectDashboard._createProject()">'+L('创建第一个项目','Create first project')+'</button></div>';
-    return;
-  }
-  var self = this, h = '';
-  this._projects.forEach(function(p) {
-    var act = p.id === self._activeProjectId ? ' active' : '';
-    h += '<div class="pk-proj-item'+act+'" data-pid="'+p.id+'"><div class="pk-proj-item-info" onclick="PK_ProjectDashboard._selectProject('+p.id+')"><div class="pk-proj-item-icon">🎬</div><div class="pk-proj-item-name">'+self._esc(p.name||L('未命名','Unnamed'))+'</div><div class="pk-proj-item-meta">'+(p.scene_count||0)+' '+L('镜头','scenes')+'</div><div class="pk-proj-progress"><div class="pk-proj-progress-bar" style="width:'+(p.progress_pct||0)+'%"></div></div></div></div>';
+  if (!this._masterList.length) { c.innerHTML='<div class="pk-empty-state" style="padding:40px 20px;"><p>'+L('暂无总项目','No projects')+'</p><button class="btn btn-sm btn-primary mt-2" onclick="PK_ProjectDashboard._showMasterForm()">'+L('创建第一个项目','Create')+'</button></div>'; return; }
+  var h = '';
+  this._masterList.forEach(function(p) {
+    var act = p.id===self._masterId?' active':'';
+    var typeIcon = {short_film:'🎬',ad:'📢',mv:'🎵',tutorial:'📚',other:'📁'}[p.project_type]||'📁';
+    var stIcon = {draft:'📝',in_progress:'⚙',review:'🔍',completed:'✅'}[p.status]||'📝';
+    h += '<div class="pk-proj-item'+act+'" data-pid="'+p.id+'"><div class="pk-proj-item-info" onclick="PK_ProjectDashboard._selectMaster('+p.id+')"><div class="pk-proj-item-icon">'+typeIcon+'</div><div class="pk-proj-item-name">'+self._esc(p.name||L('未命名','Unnamed'))+'</div><div class="pk-proj-item-meta">'+(p.sub_count||0)+' '+L('分段','seg')+' · '+(p.asset_count||0)+' '+L('资产','assets')+'</div></div><div class="pk-proj-item-actions"><button class="pk-proj-action-btn" onclick="event.stopPropagation();PK_ProjectDashboard._showMasterForm('+p.id+')" title="'+L('编辑','Edit')+'">✏️</button><button class="pk-proj-action-btn pk-proj-action-del" onclick="event.stopPropagation();PK_ProjectDashboard._deleteMaster('+p.id+')" title="'+L('删除','Delete')+'">🗑</button></div></div>';
   });
   c.innerHTML = h;
 },
-_createProject: async function() {
-  var L = this._L.bind(this);
-  var name = prompt(L('项目名称：','Project name:'), L('新项目 ','New Project ')+(this._projects.length+1));
-  if (!name) return;
-  try {
-    var r = await fetch('/api/seedance/v2/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})});
-    var d = await r.json();
-    if (d&&d.ok) { this._toast(L('项目已创建','Project created'),'success'); await this._loadProjects(); this._renderProjectList(); this._selectProject(d.id); }
-  } catch(e) { this._toast(L('创建失败','Create failed'),'error'); }
-},
-_selectProject: async function(projectId) {
-  this._activeProjectId = projectId;
-  this._renderProjectList();
-  if (!this._projectCache[projectId]) {
-    try {
-      var pr = await fetch('/api/seedance/v2/projects/'+projectId);
-      var projResp = await pr.json();
-      var dashResp = await this._api('/dashboard?project_id='+projectId);
-      this._projectCache[projectId] = { project: projResp.project||projResp, scenes: projResp.scenes||[], dashboard: dashResp.ok?dashResp:null };
-    } catch(e) { this._projectCache[projectId] = { project: null, scenes: [], dashboard: null }; }
-  }
-  this._renderMain();
+
+_showMasterForm: function(id) {
+  var L = this._L.bind(this), self = this, isNew = !id;
+  var p = id ? this._masterList.find(function(x){return x.id===id;})||{} : {};
+  var types = [{v:'short_film',zh:'🎬 短片',en:'🎬 Short Film'},{v:'ad',zh:'📢 广告',en:'📢 Ad'},{v:'mv',zh:'🎵 MV',en:'🎵 MV'},{v:'tutorial',zh:'📚 教程',en:'📚 Tutorial'},{v:'other',zh:'📁 其他',en:'📁 Other'}];
+  var tOpts = types.map(function(t){ return '<option value="'+t.v+'"'+((p.project_type||'short_film')===t.v?' selected':'')+'>'+L(t.zh,t.en)+'</option>'; }).join('');
+  var ov = self._overlay();
+  ov.innerHTML = '<div class="pk-modal" onclick="event.stopPropagation()"><h4>'+(isNew?L('📦 创建总项目','Create Project'):L('📦 编辑项目','Edit Project'))+'</h4><div class="form-group"><label>✏ '+L('项目名称','Name')+'</label><input type="text" id="mf_name" value="'+self._esc(p.name||'')+'" autofocus></div><div class="form-group"><label>📄 '+L('描述','Description')+'</label><textarea id="mf_desc" rows="2" style="resize:vertical;">'+self._esc(p.description||'')+'</textarea></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;"><div class="form-group"><label>🏷 '+L('类型','Type')+'</label><select id="mf_type" style="width:100%;">'+tOpts+'</select></div><div class="form-group"><label>📐 '+L('画幅','Ratio')+'</label><select id="mf_ratio" style="width:100%;"><option value="16:9"'+(p.aspect_ratio!=='9:16'&&p.aspect_ratio!=='1:1'?' selected':'')+'>16:9</option><option value="9:16"'+(p.aspect_ratio==='9:16'?' selected':'')+'>9:16</option><option value="1:1"'+(p.aspect_ratio==='1:1'?' selected':'')+'>1:1</option></select></div><div class="form-group"><label>🖥 '+L('分辨率','Resolution')+'</label><select id="mf_res" style="width:100%;"><option value="4K"'+(p.resolution!=='1080p'?' selected':'')+'>4K</option><option value="1080p"'+(p.resolution==='1080p'?' selected':'')+'>1080p</option></select></div></div><div class="pk-modal-actions"><button class="btn btn-secondary" onclick="this.closest(\'.pk-modal-overlay\').remove()">'+L('取消','Cancel')+'</button><button class="btn btn-primary" id="mf_save">'+L('保存','Save')+'</button></div></div>';
+  document.body.appendChild(ov);
+  document.getElementById('mf_save').onclick = async function() {
+    var data = { name: document.getElementById('mf_name').value.trim(), description: document.getElementById('mf_desc').value.trim(), project_type: document.getElementById('mf_type').value, aspect_ratio: document.getElementById('mf_ratio').value, resolution: document.getElementById('mf_res').value };
+    if (!data.name) { self._toast(L('请输入名称','Name required'),'warning'); return; }
+    var r2;
+    if (isNew) r2 = await self._apiPost('/master', data);
+    else r2 = await self._apiPut('/master/'+id, data);
+    if (r2.ok) { ov.remove(); self._toast(L('已保存','Saved'),'success'); await self._loadMasters(); if (isNew) self._selectMaster(r2.id||self._masterId); }
+    else self._toast(L('保存失败','Failed'),'error');
+  };
 },
 
-// Main panel with tabs
-_renderMain: function() {
-  var main = document.getElementById('pkProjMain');
+_deleteMaster: async function(id) {
+  var L = this._L.bind(this);
+  if (!confirm(L('确定删除此总项目？所有子项目和资产将被永久删除。','Delete this project? All sub-projects and assets will be permanently deleted.'))) return;
+  var r = await this._apiDelete('/master/'+id);
+  if (r.ok) { this._toast(L('已删除','Deleted'),'info'); this._masterId=null; this._masterCache={}; await this._loadMasters(); document.getElementById('pkMasterMain').innerHTML='<div class="pk-master-welcome"><h4>📦 '+L('选择一个总项目开始','Select a Project')+'</h4></div>'; }
+},
+
+_selectMaster: async function(id) {
+  this._masterId = id; this._renderMasterList();
+  var main = document.getElementById('pkMasterMain'); if (!main) return;
+  var L = this._L.bind(this);
+  main.innerHTML = '<div style="padding:40px;text-align:center;"><p>'+L('加载中...','Loading...')+'</p></div>';
+  if (!this._masterCache[id]) {
+    var r = await this._api('/master/'+id);
+    this._masterCache[id] = r;
+  }
+  this._activePhase = 'P0';
+  this._renderPhaseView();
+},
+
+// ============================================================
+// 7-Phase tab navigation
+// ============================================================
+_renderPhaseView: function() {
+  var main = document.getElementById('pkMasterMain'), L = this._L.bind(this), self = this;
   if (!main) return;
-  var L = this._L.bind(this);
-  var proj = this._projectCache[this._activeProjectId] ? this._projectCache[this._activeProjectId].project : null;
-  if (!proj) { main.innerHTML = '<div class="pk-empty-state"><p>'+L('加载项目失败','Load failed')+'</p></div>'; return; }
-  var tabs = [
-    {id:'dashboard', zh:'📊 仪表盘', en:'📊 Dashboard'},
-    {id:'kanban', zh:'📋 看板', en:'📋 Kanban'},
-    {id:'gantt', zh:'📅 甘特图', en:'📅 Gantt'},
-    {id:'milestones', zh:'🏁 里程碑', en:'🏁 Milestones'},
-    {id:'team', zh:'👥 团队', en:'👥 Team'},
-    {id:'orgchart', zh:'🏛 组织架构', en:'🏛 Org Chart'}
+  var data = this._masterCache[this._masterId];
+  if (!data||!data.project) { main.innerHTML = '<div class="pk-master-welcome"><p>'+L('加载失败','Load failed')+'</p></div>'; return; }
+  var proj = data.project, stats = data.phase_stats||{};
+  var phases = [
+    {id:'P0',zh:'🧠 策划',en:'🧠 Plan'},
+    {id:'P1',zh:'📝 预生产',en:'📝 Pre-prod'},
+    {id:'P2',zh:'🎨 资产',en:'🎨 Assets'},
+    {id:'P3',zh:'🎬 生产',en:'🎬 Production'},
+    {id:'P4',zh:'✂ 后期',en:'✂ Post'},
+    {id:'P5',zh:'✅ 交付',en:'✅ Delivery'},
+    {id:'P6',zh:'📊 归档',en:'📊 Archive'}
   ];
-  var self = this;
-  var tH = tabs.map(function(t) {
-    var act = t.id===self._activeTab?' active':'';
-    return '<button class="pk-proj-tab'+act+'" onclick="PK_ProjectDashboard._switchTab(\''+t.id+'\')">'+L(t.zh,t.en)+'</button>';
-  }).join('');
-  main.innerHTML = '<div class="pk-proj-tabs">'+tH+'</div><div class="pk-proj-content" id="pkProjContent"></div>';
-  this._renderActiveTab();
+
+  // Phase tab bar with progress
+  var tabHTML = '';
+  phases.forEach(function(ph) {
+    var act = ph.id===self._activePhase?' active':'';
+    var st = stats[ph.id]||{total:0,done:0};
+    var pct = st.total>0 ? Math.round(st.done/st.total*100) : 0;
+    var barColor = pct===100?'#10b981':pct>0?'#3b82f6':'transparent';
+    tabHTML += '<button class="pk-phase-tab'+act+'" onclick="PK_ProjectDashboard._switchPhase(\''+ph.id+'\')"><span>'+L(ph.zh,ph.en)+'</span><div class="pk-phase-dot" style="background:'+barColor+';border:2px solid '+(barColor==='transparent'?'var(--border-color)':barColor)+';" title="'+st.done+'/'+st.total+'"></div></button>';
+  });
+
+  main.innerHTML = '<div class="pk-master-header"><div class="pk-master-title"><h4>'+self._esc(proj.name)+'</h4><span class="pk-master-meta">'+(proj.aspect_ratio||'16:9')+' · '+(proj.resolution||'4K')+' · '+(proj.project_type||'short_film')+'</span></div><div style="display:flex;gap:8px;"><button class="btn btn-sm btn-outline-secondary" onclick="PK_ProjectDashboard._showMasterForm('+self._masterId+')" title="'+L('编辑项目','Edit Project')+'">✏</button><button class="btn btn-sm btn-outline-secondary" onclick="PK_ProjectDashboard._refreshMaster()" title="'+L('刷新','Refresh')+'">🔄</button></div></div><div class="pk-phase-tabs">'+tabHTML+'</div><div class="pk-phase-content" id="pkPhaseContent"></div>';
+  this._renderPhaseContent();
 },
-_switchTab: function(tabId) { this._activeTab = tabId; this._renderMain(); },
-_renderActiveTab: function() {
-  switch (this._activeTab) {
-    case 'dashboard': this._renderDashboard(); break;
-    case 'kanban': this._renderKanban(); break;
-    case 'gantt': this._renderGantt(); break;
-    case 'milestones': this._renderMilestones(); break;
-    case 'team': this._renderTeam(); break;
-    case 'orgchart': this._renderOrgChart(); break;
+_switchPhase: function(ph) { this._activePhase=ph; this._renderPhaseView(); },
+_refreshMaster: async function() {
+  this._masterCache[this._masterId] = await this._api('/master/'+this._masterId);
+  this._renderPhaseView();
+},
+
+_renderPhaseContent: function() {
+  switch (this._activePhase) {
+    case 'P0': this._renderP0_Plan(); break;
+    case 'P1': this._renderP1_PreProd(); break;
+    case 'P2': this._renderP2_Assets(); break;
+    case 'P3': this._renderP3_Production(); break;
+    case 'P4': this._renderP4_Post(); break;
+    case 'P5': this._renderP5_Delivery(); break;
+    case 'P6': this._renderP6_Archive(); break;
   }
 },
 
-// Dashboard
-_renderDashboard: function() {
-  var cache = this._projectCache[this._activeProjectId], proj = cache?cache.project:null, dash = cache?cache.dashboard:null;
-  var c = document.getElementById('pkProjContent');
-  if (!c) return;
-  var L = this._L.bind(this);
-  var stats = dash?(dash.stats||{}):{};
-  var pct = stats.progress_pct||0, circ = 2*Math.PI*32, off = circ-(pct/100)*circ;
-  c.innerHTML = '<div class="pk-dashboard-grid"><div class="pk-stat-card"><div class="pk-stat-icon blue">🎬</div><div class="pk-stat-body"><h3>'+(stats.scene_count||0)+'</h3><p>'+L('镜头总数','Scenes')+'</p></div></div><div class="pk-stat-card"><div class="pk-stat-icon green">✅</div><div class="pk-stat-body"><h3>'+(stats.done_tasks||0)+'</h3><p>'+L('已完成任务','Done')+'</p></div></div><div class="pk-stat-card"><div class="pk-stat-icon amber">⏳</div><div class="pk-stat-body"><h3>'+(stats.pending_tasks||0)+'</h3><p>'+L('待处理任务','Pending')+'</p></div></div><div class="pk-stat-card"><div class="pk-stat-icon purple">🚩</div><div class="pk-stat-body"><h3>'+(stats.completed_milestones||0)+'/'+(stats.total_milestones||0)+'</h3><p>'+L('已完成里程碑','Milestones')+'</p></div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;"><div class="pk-stat-card" style="flex-direction:column;align-items:center;"><p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">'+L('项目总进度','Progress')+'</p><svg class="pk-ring-svg" viewBox="0 0 80 80"><circle class="pk-ring-bg" cx="40" cy="40" r="32"/><circle class="pk-ring-fill" cx="40" cy="40" r="32" stroke-dasharray="'+circ+'" stroke-dashoffset="'+off+'" transform="rotate(-90 40 40)"/><text class="pk-ring-text" x="40" y="40">'+pct+'%</text></svg><p style="font-size:11px;color:var(--text-muted);margin-top:8px;">'+(stats.done_tasks||0)+' / '+(stats.total_tasks||0)+' '+L('任务完成','tasks')+'</p></div><div class="pk-stat-card" style="flex-direction:column;"><p style="font-size:12px;font-weight:600;color:var(--text-primary);margin:0 0 12px;">📋 '+this._esc(proj?proj.name:'')+'</p><div style="display:flex;gap:24px;font-size:12px;color:var(--text-muted);"><span>🖼 '+L('画幅','Ratio')+': '+(proj?proj.aspect_ratio:'16:9')+'</span><span>📐 '+L('分辨率','Resolution')+': '+(proj?proj.resolution:'4K')+'</span><span>⏱ '+L('总时长','Duration')+': '+(proj?proj.total_duration:15)+'s</span></div></div></div>';
+// ============================================================
+// P0 — 项目策划
+// ============================================================
+_renderP0_Plan: function() {
+  var L = this._L.bind(this), self = this;
+  var data = this._masterCache[this._masterId];
+  var proj = data.project||{}, subs = data.sub_projects||[], assets = data.assets||[];
+  var stats = data.phase_stats||{};
+
+  // Advance stats
+  var totalTasks = 0, doneTasks = 0;
+  for (var k in stats) { totalTasks += stats[k].total; doneTasks += stats[k].done; }
+  var pct = totalTasks>0 ? Math.round(doneTasks/totalTasks*100) : 0;
+  var circ = 2*Math.PI*44, off = circ-(pct/100)*circ;
+
+  var content = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;"><div class="pk-stat-card" style="grid-column:1/-1;"><div class="pk-stat-icon blue">📊</div><div class="pk-stat-body"><h3>'+proj.name+'</h3><p>'+(proj.description||L('暂无描述','No description'))+'</p></div></div>';
+
+  // Progress ring
+  content += '<div class="pk-stat-card" style="flex-direction:column;align-items:center;"><p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">'+L('总进度','Total Progress')+'</p><svg viewBox="0 0 100 100" style="width:100px;height:100px;"><circle cx="50" cy="50" r="44" fill="none" stroke="var(--border-color)" stroke-width="8"/><circle cx="50" cy="50" r="44" fill="none" stroke="#3b82f6" stroke-width="8" stroke-linecap="round" stroke-dasharray="'+circ+'" stroke-dashoffset="'+off+'" transform="rotate(-90 50 50)"/><text x="50" y="50" text-anchor="middle" dominant-baseline="central" font-size="20" font-weight="800" fill="var(--text-primary)">'+pct+'%</text></svg><p style="font-size:11px;color:var(--text-muted);margin-top:8px;">'+doneTasks+'/'+totalTasks+' '+L('任务','tasks')+'</p></div>';
+
+  // Quick stats
+  var stItems = [
+    {label:L('分镜段落','Segments'), val:subs.length, icon:'🎬', color:'blue'},
+    {label:L('资产总数','Assets'), val:assets.length, icon:'📚', color:'purple'},
+    {label:L('项目类型','Type'), val:L({short_film:'短片',ad:'广告',mv:'MV',tutorial:'教程',other:'其他'}[proj.project_type]||proj.project_type, proj.project_type||'—'), icon:'🏷', color:'amber'},
+    {label:L('状态','Status'), val:L({draft:'草稿',in_progress:'进行中',review:'审核中',completed:'已完成'}[proj.status]||proj.status, proj.status||'—'), icon:'📌', color:'green'}
+  ];
+  stItems.forEach(function(s){
+    content += '<div class="pk-stat-card"><div class="pk-stat-icon '+s.color+'">'+s.icon+'</div><div class="pk-stat-body"><h3>'+s.val+'</h3><p>'+s.label+'</p></div></div>';
+  });
+
+  // Phase breakdown
+  content += '<div class="pk-stat-card" style="grid-column:1/-1;flex-direction:column;"><p style="font-size:12px;font-weight:600;color:var(--text-primary);margin:0 0 12px;">📊 '+L('各阶段进度','Phase Progress')+'</p>';
+  var phaseNames = {P0:L('前期策划','Ideation'),P1:L('预生产','Pre-prod'),P2:L('资产准备','Assets'),P3:L('分镜生产','Production'),P4:L('后期合成','Post'),P5:L('审核交付','Review'),P6:L('复盘归档','Archive')};
+  for (var k in stats) {
+    var s = stats[k];
+    var phasePct = s.total>0?Math.round(s.done/s.total*100):0;
+    content += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;"><span style="width:80px;color:var(--text-primary);">'+phaseNames[k]+'</span><div style="flex:1;height:6px;border-radius:3px;background:var(--border-color);overflow:hidden;"><div style="height:100%;border-radius:3px;background:'+(phasePct===100?'#10b981':'#3b82f6')+';width:'+phasePct+'%;transition:width .4s;"></div></div><span style="width:32px;text-align:right;color:var(--text-muted);">'+phasePct+'%</span></div>';
+  }
+  content += '</div></div>';
+
+  document.getElementById('pkPhaseContent').innerHTML = content;
 },
 
-// Team
-_roleColor: function(role) {
-  var c = {executive_producer:'#7c3aed',director:'#dc2626',screenwriter:'#2563eb',prompt_engineer:'#059669',storyboard_artist:'#d97706',visual_designer:'#db2777',animator:'#4f46e5',sound_designer:'#0891b2',editor:'#ea580c',qa_reviewer:'#65a30d',coordinator:'#6b7280',viewer:'#94a3b8'};
-  return c[role]||'#94a3b8';
-},
-_renderTeam: async function() {
-  var c = document.getElementById('pkProjContent'), L = this._L.bind(this);
+// ============================================================
+// P1 — 预生产（剧本编辑器）
+// ============================================================
+_renderP1_PreProd: async function() {
+  var c = document.getElementById('pkPhaseContent'), L = this._L.bind(this), self = this;
   if (!c) return;
-  var mr = await this._api('/members?project_id='+this._activeProjectId), membs = mr.members||[];
-  var self = this;
-  var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;"><h5 style="margin:0;">👥 '+L('团队成员','Team Members')+'</h5><button class="btn btn-sm btn-primary" onclick="PK_ProjectDashboard._addMember()">+ '+L('添加成员','Add Member')+'</button></div>';
-  if (membs.length===0) {
-    c.innerHTML = h+'<div class="pk-empty-state"><p style="font-size:48px;display:block;margin-bottom:12px;">👥</p><h4>'+L('暂无团队成员','No team members')+'</h4><p>'+L('AIGC创作团队角色体系','AIGC Production Team Roles')+'</p><button class="btn btn-primary mt-3" onclick="PK_ProjectDashboard._addMember()">+ '+L('添加第一位成员','Add First Member')+'</button></div>';
+  var assets = await this._api('/master/'+this._masterId+'/assets?asset_type=script');
+  var scripts = assets.assets||[];
+
+  var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;"><h5 style="margin:0;">📝 '+L('剧本编辑器','Script Editor')+'</h5><div style="display:flex;gap:8px;"><button class="btn btn-sm btn-primary" onclick="PK_ProjectDashboard._showAssetForm(\'script\')">+ '+L('新建剧本','New Script')+'</button></div></div>';
+
+  if (!scripts.length) {
+    c.innerHTML = h+'<div class="pk-empty-state"><p style="font-size:48px;display:block;margin-bottom:12px;">📝</p><h4>'+L('暂无剧本','No scripts')+'</h4><p>'+L('在此创建剧本、大纲、旁白文本','Create scripts, outlines, or narration')+'</p><button class="btn btn-primary mt-3" onclick="PK_ProjectDashboard._showAssetForm(\'script\')">+ '+L('创建第一个剧本','Create First Script')+'</button></div>';
     return;
   }
-  membs.sort(function(a,b) { return (b.role_level||0)-(a.role_level||0); });
-  h += '<div class="pk-team-grid">';
-  membs.forEach(function(m) {
-    var av = m.avatar||m.role_icon||'👤', ac = m.avatar_color||self._roleColor(m.role);
-    h += '<div class="pk-member-card-v2" onclick="PK_ProjectDashboard._showProfile('+m.id+')"><div class="pk-member-header"><div class="pk-member-avatar-v2" style="background:'+ac+';">'+av+'</div><div class="pk-member-name-v2"><div class="pk-member-realname">'+self._esc(m.real_name||(L('用户#','User#')+m.user_id))+'</div><div class="pk-member-badge-v2" style="background:'+ac+'20;color:'+ac+';">'+(m.role_icon||'')+' '+(m.role_name||m.role)+'</div></div><button class="pk-member-action" onclick="event.stopPropagation();PK_ProjectDashboard._editMember('+m.id+')" title="'+L('编辑','Edit')+'">✏️</button><button class="pk-member-action" onclick="event.stopPropagation();PK_ProjectDashboard._removeMember('+m.id+')" title="'+L('移除','Remove')+'">🗑</button></div></div>';
+
+  // Script list with preview
+  scripts.forEach(function(s, i) {
+    h += '<div class="pk-asset-card" onclick="PK_ProjectDashboard._editAsset('+s.id+')"><div class="pk-asset-header"><span class="pk-asset-icon">📄</span><div class="pk-asset-info"><div class="pk-asset-name">'+self._esc(s.name)+'</div><div class="pk-asset-meta">'+(s.description||L('无描述','No description'))+'</div></div><div class="pk-asset-actions"><button class="pk-task-action-btn" onclick="event.stopPropagation();PK_ProjectDashboard._deleteAsset('+s.id+')" title="'+L('删除','Delete')+'">🗑</button></div></div>'+(s.content?'<div class="pk-asset-content">'+self._esc(s.content.substring(0,200))+(s.content.length>200?'...':'')+'</div>':'')+'</div>';
+  });
+  c.innerHTML = h;
+},
+
+// ============================================================
+// P2 — 资产准备（角色/场景/词卡模板/参考图）
+// ============================================================
+_renderP2_Assets: async function() {
+  var c = document.getElementById('pkPhaseContent'), L = this._L.bind(this), self = this;
+  if (!c) return;
+  var tabs = [
+    {type:'character', zh:'👤 '+L('角色','Characters'), en:'👤 Characters'},
+    {type:'scene', zh:'🌍 '+L('场景','Scenes'), en:'🌍 Scenes'},
+    {type:'prompt_template', zh:'📋 '+L('词卡模板','Templates'), en:'📋 Templates'},
+    {type:'ref_image', zh:'🖼 '+L('参考图','References'), en:'🖼 References'}
+  ];
+  var tabHTML = tabs.map(function(t){ var act=t.type===self._activeAssetTab?' active':''; return '<button class="pk-sub-tab'+act+'" onclick="PK_ProjectDashboard._switchAssetTab(\''+t.type+'\')">'+L(t.zh,t.en)+'</button>'; }).join('');
+  var h = '<div class="pk-sub-tabs">'+tabHTML+'</div><div id="pkAssetContent" style="margin-top:16px;"></div>';
+  c.innerHTML = h;
+  this._renderAssetTab();
+},
+_switchAssetTab: function(type) { this._activeAssetTab=type; this._renderP2_Assets(); },
+_renderAssetTab: async function() {
+  var c = document.getElementById('pkAssetContent'), L = this._L.bind(this), self = this;
+  if (!c) return;
+  c.innerHTML = '<p style="color:var(--text-muted);">'+L('加载中...','Loading...')+'</p>';
+  var r = await this._api('/master/'+this._masterId+'/assets?asset_type='+this._activeAssetTab);
+  var assets = r.assets||[];
+  var typeName = {character:L('角色','Character'),scene:L('场景','Scene'),prompt_template:L('词卡模板','Prompt Template'),ref_image:L('参考图','Reference Image')}[this._activeAssetTab]||'';
+  var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><h5 style="margin:0;">'+typeName+' <span style="font-size:12px;color:var(--text-muted);font-weight:400;">('+assets.length+')</span></h5><button class="btn btn-sm btn-primary" onclick="PK_ProjectDashboard._showAssetForm(\''+self._activeAssetTab+'\')">+ '+L('新建','New')+'</button></div>';
+  if (!assets.length) {
+    h += '<div class="pk-empty-state"><p>'+L('暂无资产','No assets')+'</p><button class="btn btn-sm btn-primary mt-2" onclick="PK_ProjectDashboard._showAssetForm(\''+self._activeAssetTab+'\')">'+L('创建','Create')+'</button></div>';
+  } else {
+    h += '<div class="pk-asset-grid">';
+    assets.forEach(function(a){
+      var icon = {character:'👤',scene:'🌍',prompt_template:'📋',ref_image:'🖼'}[a.asset_type]||'📄';
+      h += '<div class="pk-asset-card" onclick="PK_ProjectDashboard._editAsset('+a.id+')"><div class="pk-asset-header"><span class="pk-asset-icon">'+icon+'</span><div class="pk-asset-info"><div class="pk-asset-name">'+self._esc(a.name)+'</div>'+(a.description?'<div class="pk-asset-meta">'+self._esc(a.description.substring(0,50))+'</div>':'')+'</div><div class="pk-asset-actions"><button class="pk-task-action-btn" onclick="event.stopPropagation();PK_ProjectDashboard._deleteAsset('+a.id+')" title="'+L('删除','Delete')+'">🗑</button></div></div>'+(a.image_path?'<div class="pk-asset-thumb"><img src="'+a.image_path+'" style="width:100%;border-radius:6px;max-height:120px;object-fit:cover;" onerror="this.style.display=\'none\'"></div>':'')+'</div>';
+    });
+    h += '</div>';
+  }
+  c.innerHTML = h;
+},
+
+// Asset form (shared for all types)
+_showAssetForm: function(assetType) {
+  var L = this._L.bind(this), self = this;
+  var typeLabels = {script:L('文稿','Script'),character:L('角色','Character'),scene:L('场景','Scene'),prompt_template:L('词卡模板','Prompt Template'),ref_image:L('参考图','Reference Image'),bgm:L('背景音乐','BGM'),sfx:L('音效','SFX')};
+  var typeName = typeLabels[assetType]||assetType;
+  var ov = this._overlay();
+  ov.innerHTML = '<div class="pk-modal pk-modal-2col" onclick="event.stopPropagation()"><h4>➕ '+L('新建资产','New Asset')+' — '+typeName+'</h4><div class="pk-edit-2col"><div class="pk-edit-left"><div class="form-group"><label>✏ '+L('名称','Name')+'</label><input type="text" id="af_name" autofocus></div><div class="form-group"><label>📄 '+L('描述','Description')+'</label><textarea id="af_desc" rows="2" style="resize:vertical;"></textarea></div><div class="form-group"><label>📝 '+L('内容','Content')+'</label><textarea id="af_content" rows="6" style="resize:vertical;" placeholder="'+L('剧本/提示词/描述文本...','Script/prompt/description text...')+'"></textarea></div></div><div class="pk-edit-right"><div class="form-group"><label>🖼 '+L('图片路径','Image path')+'</label><input type="text" id="af_image" placeholder="'+L('可选','Optional')+'"></div><div class="form-group"><label>🔗 '+L('关联子项目','Linked to sub')+'</label><select id="af_sub"><option value="">'+L('全局（不关联）','Global (none)')+'</option></select></div><div class="form-group"><label>🏷 '+L('标签（逗号分隔）','Tags (comma sep)')+'</label><input type="text" id="af_tags" placeholder="'+L('例：主角,日系,高细节','e.g. hero,japanese,detailed')+'"></div></div></div><div class="pk-modal-actions"><button class="btn btn-secondary" onclick="this.closest(\'.pk-modal-overlay\').remove()">'+L('取消','Cancel')+'</button><button class="btn btn-primary" id="af_save">'+L('创建','Create')+'</button></div></div>';
+  document.body.appendChild(ov);
+
+  // Populate sub project selector
+  this._api('/master/'+this._masterId+'/subs').then(function(r){
+    var sel = document.getElementById('af_sub');
+    (r.subs||[]).forEach(function(sp){ var o=document.createElement('option'); o.value=sp.id; o.textContent='🎬 '+sp.name; sel.appendChild(o); });
+  });
+
+  document.getElementById('af_save').onclick = async function() {
+    var data = {
+      asset_type: assetType,
+      name: document.getElementById('af_name').value.trim(),
+      description: document.getElementById('af_desc').value.trim(),
+      content: document.getElementById('af_content').value.trim(),
+      image_path: document.getElementById('af_image').value.trim(),
+      sub_project_id: document.getElementById('af_sub').value ? parseInt(document.getElementById('af_sub').value) : null,
+      tags: (document.getElementById('af_tags').value||'').split(',').map(function(x){return x.trim();}).filter(Boolean)
+    };
+    if (!data.name) { self._toast(L('请输入名称','Name required'),'warning'); return; }
+    var r2 = await self._apiPost('/master/'+self._masterId+'/assets', data);
+    if (r2.ok) { ov.remove(); self._toast(L('已创建','Created'),'success'); self._renderPhaseContent(); self._refreshMaster(); }
+    else self._toast(L('创建失败','Failed'),'error');
+  };
+},
+
+// Edit asset
+_editAsset: function(assetId) {
+  var self = this, L = this._L.bind(this);
+  this._api('/master/assets/'+assetId).then(function(r){
+    if (!r.ok) return;
+    var a = r.asset;
+    var typeName = {script:L('文稿','Script'),character:L('角色','Character'),scene:L('场景','Scene'),prompt_template:L('词卡模板','Prompt Template'),ref_image:L('参考图','Ref'),other:L('其他','Other')}[a.asset_type]||a.asset_type;
+    var ov = self._overlay();
+    ov.innerHTML = '<div class="pk-modal pk-modal-2col" onclick="event.stopPropagation()"><h4>✏ '+L('编辑资产','Edit Asset')+' — '+typeName+'</h4><div class="pk-edit-2col"><div class="pk-edit-left"><div class="form-group"><label>✏ '+L('名称','Name')+'</label><input type="text" id="ea_name" value="'+self._esc(a.name||'')+'"></div><div class="form-group"><label>📄 '+L('描述','Description')+'</label><textarea id="ea_desc" rows="2" style="resize:vertical;">'+self._esc(a.description||'')+'</textarea></div><div class="form-group"><label>📝 '+L('内容','Content')+'</label><textarea id="ea_content" rows="8" style="resize:vertical;">'+self._esc(a.content||'')+'</textarea></div></div><div class="pk-edit-right"><div class="form-group"><label>🖼 '+L('图片路径','Image')+'</label><input type="text" id="ea_image" value="'+self._esc(a.image_path||'')+'">'+(a.image_path?'<img src="'+a.image_path+'" style="max-width:100%;border-radius:8px;margin-top:8px;max-height:150px;object-fit:cover;" onerror="this.style.display=\'none\'">':'')+'</div><div class="form-group"><label>🏷 '+L('标签','Tags')+'</label><input type="text" id="ea_tags" value="'+(JSON.parse(a.tags||'[]')||[]).join(',')+'"></div></div></div><div class="pk-modal-actions"><button class="btn btn-danger btn-sm" style="margin-right:auto;" onclick="PK_ProjectDashboard._deleteAsset('+assetId+');this.closest(\'.pk-modal-overlay\').remove();">🗑 '+L('删除','Delete')+'</button><button class="btn btn-secondary" onclick="this.closest(\'.pk-modal-overlay\').remove()">'+L('取消','Cancel')+'</button><button class="btn btn-primary" id="ea_save">'+L('保存','Save')+'</button></div></div>';
+    document.body.appendChild(ov);
+    document.getElementById('ea_save').onclick = async function() {
+      var data = { name: document.getElementById('ea_name').value.trim(), description: document.getElementById('ea_desc').value.trim(), content: document.getElementById('ea_content').value.trim(), image_path: document.getElementById('ea_image').value.trim(), tags: (document.getElementById('ea_tags').value||'').split(',').map(function(x){return x.trim();}).filter(Boolean) };
+      var r2 = await self._apiPut('/master/assets/'+assetId, data);
+      if (r2.ok) { ov.remove(); self._toast(L('已保存','Saved'),'success'); self._renderPhaseView(); }
+      else self._toast(L('保存失败','Failed'),'error');
+    };
+  });
+},
+_deleteAsset: async function(id) {
+  if (!confirm(this._L('确定删除此资产？','Delete this asset?'))) return;
+  await this._apiDelete('/master/assets/'+id);
+  this._toast(this._L('已删除','Deleted'),'info');
+  this._renderPhaseView();
+},
+
+// ============================================================
+// P3 — 分镜生产（子项目 + 批量生成）
+// ============================================================
+_renderP3_Production: async function() {
+  var c = document.getElementById('pkPhaseContent'), L = this._L.bind(this), self = this;
+  if (!c) return;
+  var r = await this._api('/master/'+this._masterId+'/subs');
+  var subs = r.subs||[];
+  var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;"><h5 style="margin:0;">🎬 '+L('分镜段落','Storyboard Segments')+' <span style="font-size:12px;color:var(--text-muted);font-weight:400;">('+subs.length+')</span></h5><div style="display:flex;gap:8px;"><button class="btn btn-sm btn-primary" onclick="PK_ProjectDashboard._showSubForm()">+ '+L('新建段落','New Segment')+'</button>'+(subs.length>0?'<button class="btn btn-sm btn-outline-secondary" onclick="PK_ProjectDashboard._showBatchGenerate()">⚡ '+L('批量生成','Batch Generate')+'</button>':'')+'</div></div>';
+
+  if (!subs.length) {
+    c.innerHTML = h+'<div class="pk-empty-state"><p style="font-size:48px;display:block;margin-bottom:12px;">🎬</p><h4>'+L('暂无分镜段落','No storyboard segments')+'</h4><p>'+L('每个段落对应一个 seedance 分镜项目','Each segment = one seedance storyboard project')+'</p><button class="btn btn-primary mt-3" onclick="PK_ProjectDashboard._showSubForm()">+ '+L('创建第一个段落','Create First Segment')+'</button></div>';
+    return;
+  }
+
+  // Prompt chain
+  h += '<div class="pk-prompt-chain" style="margin-bottom:16px;"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><span style="font-size:12px;font-weight:600;color:var(--text-primary);">🔗 '+L('提示词继承链','Prompt Chain')+'</span><span style="font-size:10px;color:var(--text-muted);">'+L('全局 → 段落 → 镜头','Global → Segment → Shot')+'</span></div><div style="display:flex;gap:8px;align-items:center;font-size:11px;color:var(--text-muted);"><span style="background:var(--primary-light,#eff6ff);padding:3px 10px;border-radius:6px;">'+L('全局风格','Global')+'</span><span>→</span><span style="background:#fef3c7;padding:3px 10px;border-radius:6px;">'+L('段落词卡','Segment')+'</span><span>→</span><span style="background:#ecfdf5;padding:3px 10px;border-radius:6px;">'+L('镜头词卡','Shot')+'</span></div></div>';
+
+  // Sub project grid
+  h += '<div class="pk-asset-grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr));">';
+  subs.forEach(function(sp){
+    var pct = sp.progress_pct||0;
+    var phases = {P0:L('策划','Plan'),P1:L('预生产','Pre'),P2:L('资产','Assets'),P3:L('生产','Prod'),P4:L('后期','Post'),P5:L('交付','Delivery'),P6:L('归档','Archive')};
+    h += '<div class="pk-asset-card" style="cursor:pointer;" onclick="PK_ProjectDashboard._openSubProject('+sp.id+')"><div class="pk-asset-header"><span class="pk-asset-icon" style="font-size:28px;">🎬</span><div class="pk-asset-info"><div class="pk-asset-name">'+self._esc(sp.name)+'</div><div class="pk-asset-meta">'+(sp.description||'')+' · '+(sp.seedance_name||L('分镜项目','Storyboard'))+'</div></div><div class="pk-asset-actions"><button class="pk-task-action-btn" onclick="event.stopPropagation();PK_ProjectDashboard._editSub('+sp.id+')" title="'+L('编辑','Edit')+'">✏</button><button class="pk-task-action-btn" onclick="event.stopPropagation();PK_ProjectDashboard._deleteSub('+sp.id+')" title="'+L('删除','Delete')+'">🗑</button></div></div><div style="width:100%;height:4px;border-radius:2px;background:var(--border-color);overflow:hidden;margin-top:4px;"><div style="height:100%;border-radius:2px;background:linear-gradient(90deg,#3b82f6,#6366f1);width:'+pct+'%;"></div></div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);padding:4px 8px;"><span>'+L('进度','Progress')+': '+pct+'%</span></div></div>';
   });
   h += '</div>';
   c.innerHTML = h;
 },
-_showProfile: function(id) {
-  var self = this, L = this._L.bind(this);
-  this._api('/members/'+id).then(function(r) {
-    if (!r.ok) return;
-    var m = r.member, a = m.avatar||m.role_icon||'👤', ac = m.avatar_color||self._roleColor(m.role);
-    var pl = ['can_manage_members','can_edit_project','can_delete_tasks','can_approve','can_export'];
-    var plZh = ['管理成员','编辑项目','删除任务','审核通过','导出数据'];
-    var plEn = ['Manage Members','Edit Project','Delete Tasks','Approve','Export'];
-    var ph = '';
-    for (var i=0; i<pl.length; i++) {
-      var v = (m.permissions||{})[pl[i]]===true;
-      ph += '<div class="pk-perm-i"><span>'+L(plZh[i],plEn[i])+'</span><span class="pk-perm-b '+(v?'g':'d')+'">'+L(v?'✅ 允许':'🚫 禁止',v?'✅ Allowed':'🚫 Denied')+'</span></div>';
-    }
-    var ov = document.createElement('div');
-    ov.className = 'pk-modal-overlay';
-    ov.onclick = function(e) { if (e.target===ov) ov.remove(); };
-    ov.innerHTML = '<div class="pk-modal pk-modal-2col" onclick="event.stopPropagation()"><h4 style="margin:0 0 14px;display:flex;align-items:center;gap:10px;"><span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;background:'+ac+';font-size:20px;flex-shrink:0;">'+a+'</span><span>'+self._esc(m.real_name||(L('用户#','User#')+m.user_id))+' — '+(m.role_icon||'')+' '+(m.role_name||m.role)+'</span></h4><div class="pk-edit-2col"><div class="pk-edit-left"><div class="pk-info-grid"><div class="pk-info-item"><span>'+L('用户ID','User ID')+'</span><strong>'+self._esc(m.user_id)+'</strong></div><div class="pk-info-item"><span>'+L('加入时间','Joined')+'</span><strong>'+(m.joined_at?m.joined_at.substring(0,10):'—')+'</strong></div><div class="pk-info-item"><span>'+L('电话','Phone')+'</span><strong>'+self._esc(m.phone||'—')+'</strong></div><div class="pk-info-item"><span>'+L('邮箱','Email')+'</span><strong>'+self._esc(m.email||'—')+'</strong></div></div></div><div class="pk-edit-right"><div class="form-group" style="margin-bottom:10px;"><label>📌 '+L('职责','Duty')+'</label><div class="pk-duty-box" style="font-size:12px;padding:10px;">'+self._esc(m.duty||m.role_duty||L('未设置','Not set'))+'</div></div><div class="pk-perm-wrap"><label>🔐 '+L('权限','Permissions')+'</label><div class="pk-perm-list">'+ph+'</div></div></div></div><div class="pk-modal-actions"><button class="btn btn-outline-primary" onclick="PK_ProjectDashboard._editMember('+m.id+');this.closest(\'.pk-modal-overlay\').remove();">✏️ '+L('编辑','Edit')+'</button><button class="btn btn-secondary" onclick="this.closest(\'.pk-modal-overlay\').remove()">'+L('关闭','Close')+'</button></div></div>';
-    document.body.appendChild(ov);
-  });
-},
-_overlay: function() {
-  var ov = document.createElement('div');
-  ov.className = 'pk-modal-overlay';
-  ov.onclick = function(e) { if (e.target===ov) ov.remove(); };
-  return ov;
-},
-_editMember: function(id) {
-  var self = this, L = this._L.bind(this);
-  this._api('/members/'+id).then(function(r) {
-    if (!r.ok) return;
-    var m = r.member, a = m.avatar||m.role_icon||'👤', ac = m.avatar_color||self._roleColor(m.role);
-    var eg='', cg='';
-    self._avatarEmojis.forEach(function(em) { eg += '<span class="pk-emoji-opt'+(em===a?' pk-emoji-selected':'')+'" data-e="'+em+'">'+em+'</span>'; });
-    self._avatarColors.forEach(function(cl) { cg += '<span class="pk-color-opt'+(cl===ac?' pk-color-selected':'')+'" data-c="'+cl+'" style="background:'+cl+';"></span>'; });
-    var pkKeys = ['can_manage_members','can_edit_project','can_delete_tasks','can_approve','can_export'];
-    var pkZh = ['管理成员','编辑项目','删除任务','审核通过','导出数据'];
-    var pkEn = ['Manage Members','Edit Project','Delete Tasks','Approve','Export'];
-    var perms = m.permissions||{}, pc = '';
-    for (var k=0; k<pkKeys.length; k++) { var key=pkKeys[k]; pc += '<label class="pk-perm-check"><input type="checkbox" id="chk_'+key+'" '+(perms[key]?'checked':'')+'> '+L(pkZh[k],pkEn[k])+'</label>'; }
-    var ov = self._overlay();
-    ov.innerHTML = '<div class="pk-modal pk-modal-2col" onclick="event.stopPropagation()"><h4 style="margin:0 0 14px;">✏️ '+L('编辑成员档案','Edit Member')+'</h4><div class="pk-edit-2col"><div class="pk-edit-left"><div id="av_preview" style="background:'+ac+';font-size:36px;width:72px;height:72px;border-radius:16px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;">'+a+'</div><label style="font-size:10px;font-weight:700;color:var(--text-muted);display:block;">'+L('🎭 头像','🎭 Avatar')+'</label><div class="pk-emoji-grid">'+eg+'</div><label style="font-size:10px;font-weight:700;color:var(--text-muted);margin-top:8px;display:block;">'+L('🎨 颜色','🎨 Color')+'</label><div class="pk-color-grid">'+cg+'</div><div class="form-group" style="margin-top:12px;"><label>👤 '+L('姓名','Name')+'</label><input type="text" id="fi_name" value="'+self._esc(m.real_name||'')+'"></div><div class="form-group"><label>🆔 '+L('用户ID','User ID')+'</label><input type="number" id="fi_uid" value="'+m.user_id+'" readonly></div></div><div class="pk-edit-right"><div class="form-group"><label>📞 '+L('电话','Phone')+'</label><input type="text" id="fi_phone" value="'+self._esc(m.phone||'')+'" placeholder="'+L('手机号','Phone')+'"></div><div class="form-group"><label>📧 '+L('邮箱','Email')+'</label><input type="email" id="fi_email" value="'+self._esc(m.email||'')+'" placeholder="email@example.com"></div><div class="form-group"><label>📌 '+L('项目职责描述','Duty')+'</label><textarea id="fi_duty" rows="3" style="resize:vertical;">'+self._esc(m.duty||'')+'</textarea></div><div class="pk-perm-wrap"><label>🔐 '+L('权限设置','Permissions')+'</label><div class="pk-perm-checks">'+pc+'</div></div></div></div><input type="hidden" id="fi_av" value="'+a+'"><input type="hidden" id="fi_ac" value="'+ac+'"><div class="pk-modal-actions"><button class="btn btn-secondary" onclick="this.closest(\'.pk-modal-overlay\').remove()">'+L('取消','Cancel')+'</button><button class="btn btn-primary" id="fi_save">💾 '+L('保存','Save')+'</button></div></div>';
-    document.body.appendChild(ov);
-    ov.querySelectorAll('.pk-emoji-opt').forEach(function(el) { el.onclick=function(){ov.querySelectorAll('.pk-emoji-opt').forEach(function(e){e.classList.remove('pk-emoji-selected');});this.classList.add('pk-emoji-selected');document.getElementById('fi_av').value=this.dataset.e;document.getElementById('av_preview').textContent=this.dataset.e;}; });
-    ov.querySelectorAll('.pk-color-opt').forEach(function(el) { el.onclick=function(){ov.querySelectorAll('.pk-color-opt').forEach(function(e){e.classList.remove('pk-color-selected');});this.classList.add('pk-color-selected');document.getElementById('fi_ac').value=this.dataset.c;document.getElementById('av_preview').style.background=this.dataset.c;}; });
-    document.getElementById('fi_save').onclick = async function() {
-      var data = { real_name: document.getElementById('fi_name').value.trim(), avatar: document.getElementById('fi_av').value, avatar_color: document.getElementById('fi_ac').value, phone: document.getElementById('fi_phone').value.trim(), email: document.getElementById('fi_email').value.trim(), duty: document.getElementById('fi_duty').value.trim(), permissions: {} };
-      for (var k2=0; k2<pkKeys.length; k2++) data.permissions[pkKeys[k2]] = document.getElementById('chk_'+pkKeys[k2]).checked;
-      var r2 = await self._apiPut('/members/'+id, data);
-      if (r2.ok) { ov.remove(); self._toast(L('档案已保存','Saved'),'success'); self._renderTeam(); }
-      else self._toast(L('保存失败','Save failed'),'error');
-    };
-  });
-},
-_addMember: function() {
-  var self = this, L = this._L.bind(this);
-  this._api('/roles').then(function(rr) {
-    var roles = rr.roles||[];
-    var ro = roles.map(function(r) { return '<option value="'+r.key+'">'+r.icon+' '+(L(r.name,r.name))+'</option>'; }).join('');
-    var ov = self._overlay();
-    ov.innerHTML = '<div class="pk-modal pk-modal-2col" onclick="event.stopPropagation()"><h4 style="margin:0 0 14px;">👥 '+L('添加团队成员','Add Team Member')+'</h4><div class="pk-edit-2col"><div class="pk-edit-left"><div class="form-group"><label>👤 '+L('姓名（必填）','Name (required)')+'</label><input type="text" id="am_name" placeholder="'+L('团队成员姓名','Member name')+'" autofocus></div><div class="form-group"><label>🆔 '+L('用户ID（必填）','User ID (required)')+'</label><input type="number" id="am_uid" placeholder="'+L('唯一数字ID','Unique ID')+'"></div></div><div class="pk-edit-right"><div class="form-group"><label>🎬 '+L('角色岗位','Role')+'</label><select id="am_role" style="font-size:13px;">'+ro+'</select></div><div class="form-group"><label>📌 '+L('职责描述（可选）','Duty (optional)')+'</label><textarea id="am_duty" rows="3" placeholder="'+L('例：负责第1-3集分镜设计...','e.g. Storyboarding episodes 1-3...')+'" style="resize:vertical;"></textarea></div></div></div><div class="pk-modal-actions"><button class="btn btn-secondary" onclick="this.closest(\'.pk-modal-overlay\').remove()">'+L('取消','Cancel')+'</button><button class="btn btn-primary" id="am_submit">'+L('添加成员','Add Member')+'</button></div></div>';
-    document.body.appendChild(ov);
-    document.getElementById('am_submit').onclick = async function() {
-      var name = document.getElementById('am_name').value.trim(), uid = parseInt(document.getElementById('am_uid').value), role = document.getElementById('am_role').value, duty = document.getElementById('am_duty').value.trim();
-      if (!name) { self._toast(L('请输入姓名','Name required'),'warning'); return; }
-      if (!uid) { self._toast(L('请输入用户ID','User ID required'),'warning'); return; }
-      var r2 = await self._apiPost('/members', {project_id:self._activeProjectId, user_id:uid, role:role, real_name:name, duty:duty});
-      if (r2.ok) { ov.remove(); self._toast(L('成员已添加','Member added'),'success'); self._renderTeam(); }
-      else self._toast(L('添加失败：','Failed: ')+(r2.detail||''),'error');
-    };
-  });
-},
-_removeMember: async function(id) {
-  var L = this._L.bind(this);
-  if (!confirm(L('确定移除此成员？','Remove this member?'))) return;
-  await this._apiDelete('/members/'+id);
-  this._renderTeam();
-  this._toast(L('已移除','Removed'),'info');
-},
 
-// Kanban
-_renderKanban: async function() {
-  var c = document.getElementById('pkProjContent'), L = this._L.bind(this);
-  if (!c) return;
-  var pid = this._activeProjectId, cols = await this._api('/columns?project_id='+pid), tasks = await this._api('/tasks?project_id='+pid);
-  var self = this, tbc = {};
-  (tasks.tasks||[]).forEach(function(t) { var cid = t.column_id||'none'; if (!tbc[cid]) tbc[cid]=[]; tbc[cid].push(t); });
-  var h = '<div class="pk-kanban-board">';
-  (cols.columns||[]).forEach(function(col) {
-    var ct = tbc[col.id]||[];
-    h += '<div class="pk-kanban-column"><div class="pk-kanban-col-header"><div class="pk-kanban-col-title"><span class="pk-kanban-col-dot" style="background:'+(col.color||'#6b7280')+';"></span>'+self._esc(col.name)+'</div><span class="pk-kanban-col-count">'+ct.length+'</span></div><div class="pk-kanban-col-tasks">';
-    ct.forEach(function(tk) { h += '<div class="pk-task-card"><div class="task-title">'+self._esc(tk.title)+'</div></div>'; });
-    h += '</div><div class="pk-kanban-add-task"><button class="pk-kanban-add-btn" onclick="PK_ProjectDashboard._showTaskForm('+col.id+')">+ '+L('添加任务','Add task')+'</button></div></div>';
-  });
-  h += '<div class="pk-kanban-column pk-kanban-add-col" style="background:transparent;border:2px dashed var(--border-color);"><div class="pk-empty-state" style="padding:40px 20px;"><button class="btn btn-sm btn-outline-secondary" onclick="PK_ProjectDashboard._showColumnForm()">+ '+L('添加列','Add column')+'</button></div></div></div>';
-  c.innerHTML = h;
-},
-_showTaskForm: function(columnId) {
-  var L = this._L.bind(this), self = this;
-  var title = prompt(L('任务标题：','Task title:'));
-  if (!title) return;
-  this._apiPost('/tasks', {project_id:this._activeProjectId, column_id:columnId, title:title, priority:0}).then(function(r) {
-    if (r.ok) { self._toast(L('任务已创建','Task created'),'success'); self._renderKanban(); }
-    else self._toast(L('创建失败','Failed'),'error');
-  });
-},
-_showColumnForm: function() {
-  var L = this._L.bind(this), self = this;
-  var name = prompt(L('列名称：','Column name:'));
+_showSubForm: function(subId) {
+  var L = this._L.bind(this), self = this, isNew = !subId;
+  // Simple form — reuse asset form pattern
+  var name = prompt(L('段落名称：','Segment name:'), L('第二幕·高潮','Act 2 Climax'));
   if (!name) return;
-  this._apiPost('/columns', {project_id:this._activeProjectId, name:name, color:'#6b7280'}).then(function(r) {
-    if (r.ok) { self._toast(L('列已添加','Column added'),'success'); self._renderKanban(); }
-    else self._toast(L('添加失败','Failed'),'error');
-  });
-},
-
-// Gantt
-_renderGantt: async function() {
-  var c = document.getElementById('pkProjContent'), L = this._L.bind(this);
-  if (!c) return;
-  var resp = await this._api('/gantt?project_id='+this._activeProjectId);
-  if (!resp.ok) { c.innerHTML = '<div class="pk-empty-state"><p>'+L('加载失败','Load failed')+'</p></div>'; return; }
-  var self = this, mil = resp.milestones||[], tsks = resp.tasks||[];
-  var h = '<div class="pk-gantt-container"><div class="pk-gantt-header"><h5 style="margin:0">📅 '+L('甘特图','Gantt Chart')+'</h5></div><div class="pk-gantt-body">';
-  if (mil.length>0) {
-    h += '<div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:8px;">🏁 '+L('里程碑','Milestones')+'</div>';
-    mil.forEach(function(m) { h += '<div class="pk-gantt-row"><div class="pk-gantt-label milestone">🏁 '+self._esc(m.title)+(m.completed_at?' ✅':'')+'</div><div class="pk-gantt-timeline"><span style="font-size:10px;color:var(--text-muted);">'+(m.due_date||'—')+'</span></div></div>'; });
-  }
-  if (tsks.length>0) {
-    h += '<div style="font-size:12px;font-weight:700;color:var(--text-muted);margin:12px 0 8px;">📋 '+L('任务','Tasks')+'</div>';
-    tsks.forEach(function(t) { h += '<div class="pk-gantt-row"><div class="pk-gantt-label">'+self._esc(t.title)+'</div><div class="pk-gantt-timeline"><span style="font-size:10px;color:var(--text-muted);">'+(t.due_date||'—')+'</span></div></div>'; });
-  }
-  if (!mil.length&&!tsks.length) h += '<div class="pk-empty-state"><p>'+L('暂无数据 — 先在「看板」中添加任务和里程碑','No data — add tasks and milestones in Kanban first')+'</p></div>';
-  h += '</div></div>';
-  c.innerHTML = h;
-},
-
-// Milestones
-_renderMilestones: async function() {
-  var c = document.getElementById('pkProjContent'), L = this._L.bind(this);
-  if (!c) return;
-  var resp = await this._api('/milestones?project_id='+this._activeProjectId), mil = resp.milestones||[];
-  var self = this;
-  var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;"><h5 style="margin:0;">🏁 '+L('里程碑','Milestones')+'</h5><button class="btn btn-sm btn-primary" onclick="PK_ProjectDashboard._showMilestoneForm()">+ '+L('添加','Add')+'</button></div>';
-  if (!mil.length) { c.innerHTML = h+'<div class="pk-empty-state"><p>'+L('暂无里程碑','No milestones yet')+'</p></div>'; return; }
-  h += '<div class="pk-milestone-list">';
-  mil.forEach(function(m) {
-    var done = m.completed_at?' completed':'';
-    h += '<div class="pk-milestone-item'+done+'"><div class="pk-milestone-check" onclick="PK_ProjectDashboard._toggleMilestone('+m.id+','+(m.completed_at?'false':'true')+')">'+(done?'✓':'')+'</div><div class="pk-milestone-info"><div class="pk-milestone-title">'+self._esc(m.title)+'</div><div class="pk-milestone-meta">'+(m.due_date?'📅 '+m.due_date:'')+(m.completed_at?' · ✅ '+m.completed_at:'')+'</div></div><button class="pk-task-action-btn" onclick="PK_ProjectDashboard._deleteMilestone('+m.id+')" title="'+L('删除','Delete')+'">🗑</button></div>';
-  });
-  h += '</div>';
-  c.innerHTML = h;
-},
-_showMilestoneForm: function() {
-  var L = this._L.bind(this), self = this;
-  var title = prompt(L('里程碑名称：','Milestone:'));
-  if (!title) return;
-  var due = prompt(L('截止日期（可选）：','Due date (optional):'));
-  this._apiPost('/milestones', {project_id:this._activeProjectId, title:title, due_date:due||null}).then(function(r) {
-    if (r.ok) { self._toast(L('里程碑已创建','Milestone created'),'success'); self._renderMilestones(); }
-    else self._toast(L('创建失败','Failed'),'error');
-  });
-},
-_toggleMilestone: async function(id, complete) { await this._apiPut('/milestones/'+id, {completed:complete}); this._renderMilestones(); },
-_deleteMilestone: async function(id) {
-  var L = this._L.bind(this);
-  if (!confirm(L('确定删除此里程碑？','Delete this milestone?'))) return;
-  await this._apiDelete('/milestones/'+id);
-  this._renderMilestones();
-  this._toast(L('已删除','Deleted'),'info');
-},
-
-// Organization Chart
-_renderOrgChart: function() {
-  var c = document.getElementById('pkProjContent'), L = this._L.bind(this), self = this;
-  if (!c) return;
-  c.innerHTML = '<div class="pk-empty-state"><p>'+L('加载组织架构...','Loading org chart...')+'</p></div>';
-  Promise.all([
-    this._api('/members/org-tree?project_id='+this._activeProjectId),
-    this._api('/members?project_id='+this._activeProjectId)
-  ]).then(function(res) {
-    var treeData = res[0], allData = res[1], allMembers = allData.members||[];
-    if (!allMembers.length) {
-      c.innerHTML = '<div class="pk-org-header"><h5>🏛 '+L('组织架构图','Organization Chart')+'</h5></div><div class="pk-empty-state"><p style="font-size:48px;display:block;margin-bottom:12px;">🏛</p><h4>'+L('暂无团队成员','No team members')+'</h4><p>'+L('先在「团队」标签中添加成员','Add members in the Team tab first')+'</p><button class="btn btn-primary mt-3" onclick="PK_ProjectDashboard._switchTab(\'team\')">👥 '+L('去添加成员','Go to Team')+'</button></div>';
-      return;
-    }
-    var tree = treeData.tree||[], treeIds = new Set();
-    function walkNodes(nodes) { nodes.forEach(function(n) { treeIds.add(n.id); if (n.children&&n.children.length) walkNodes(n.children); }); }
-    walkNodes(tree);
-    var ungrouped = allMembers.filter(function(m) { return !treeIds.has(m.id); });
-
-    function makeNode(node, level) {
-      var ac = node.avatar_color||self._roleColor(node.role), av = node.avatar||node.role_icon||'👤';
-      var cls = (node.role_level>=10)?' pk-org-node-exec':(node.role_level>=6)?' pk-org-node-lead':'';
-      var s = '<div class="pk-org-branch"><div class="pk-org-node'+cls+'" draggable="true" data-mid="'+node.id+'" onclick="PK_ProjectDashboard._showProfile('+node.id+')" ondragstart="PK_ProjectDashboard._orgDragStart(event)" ondragend="PK_ProjectDashboard._orgDragEnd(event)" ondragover="PK_ProjectDashboard._orgDragOver(event)" ondragleave="PK_ProjectDashboard._orgDragLeave(event)" ondrop="PK_ProjectDashboard._orgDrop(event,'+node.id+')"><div style="background:'+ac+';width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">'+av+'</div><div style="min-width:0;"><div style="font-size:13px;font-weight:600;color:var(--text-primary);white-space:nowrap;">'+self._esc(node.real_name||(L('用户#','User#')+node.user_id))+'</div><div style="font-size:11px;color:var(--text-muted);margin-top:1px;">'+(node.role_icon||'')+' '+(node.role_name||node.role)+'</div></div><div class="pk-org-node-actions"><button class="pk-org-action-btn" onclick="event.stopPropagation();PK_ProjectDashboard._orgPromote('+node.id+')" title="'+L('提升为顶层','Promote to top')+'">⬆</button><button class="pk-org-action-btn" onclick="event.stopPropagation();PK_ProjectDashboard._orgReassign('+node.id+')" title="'+L('更换上级','Change parent')+'">🔗</button></div></div>';
-      if (node.children&&node.children.length) { s += '<div class="pk-org-children">'; node.children.forEach(function(kid) { s += makeNode(kid, level+1); }); s += '</div>'; }
-      return s+'</div>';
-    }
-
-    var h = '<div class="pk-org-header"><h5>🏛 '+L('组织架构图','Organization Chart')+'</h5><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:11px;color:var(--text-muted);">'+L('拖拽卡片到目标上级调整汇报关系 | 点击卡片查看详情','Drag cards to reassign | Click for details')+'</span><button class="btn btn-sm btn-outline-secondary" onclick="PK_ProjectDashboard._renderOrgChart()" title="'+L('刷新','Refresh')+'">🔄</button></div></div><div class="pk-org-scroll"><div class="pk-org-tree">';
-    if (tree.length) { h += '<div class="pk-org-level-label">📌 '+L('已组织','Organized')+'</div>'; tree.forEach(function(n) { h += makeNode(n,0); }); }
-    if (ungrouped.length) {
-      h += '<div class="pk-org-level-label" style="margin-top:24px;">📋 '+L('待分配','Unassigned')+' ('+ungrouped.length+')</div>';
-      h += '<div class="pk-org-ungrouped" id="pkOrgUngrouped" ondragover="PK_ProjectDashboard._orgDragOverUngrouped(event)" ondragleave="PK_ProjectDashboard._orgDragLeaveUngrouped(event)" ondrop="PK_ProjectDashboard._orgDropUngrouped(event)">';
-      ungrouped.forEach(function(m) {
-        var ac = m.avatar_color||self._roleColor(m.role), av = m.avatar||m.role_icon||'👤';
-        h += '<div class="pk-org-node pk-org-node-sm" draggable="true" data-mid="'+m.id+'" ondragstart="PK_ProjectDashboard._orgDragStart(event)" onclick="PK_ProjectDashboard._showProfile('+m.id+')"><div style="background:'+ac+';width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">'+av+'</div><div style="min-width:0;"><div style="font-size:12px;font-weight:600;color:var(--text-primary);white-space:nowrap;">'+self._esc(m.real_name||(L('用户#','User#')+m.user_id))+'</div><div style="font-size:10px;color:var(--text-muted);margin-top:1px;">'+(m.role_icon||'')+' '+(m.role_name||m.role)+'</div></div></div>';
-      });
-      h += '</div>';
-    }
-    h += '</div></div><div class="pk-org-legend"><span>💡 '+L('拖拽成员卡片到目标上级 | 拖入「待分配」区解除上级 | 点击卡片查看详情','Drag card onto another to assign | Drag to Unassigned to remove parent | Click for details')+'</span></div>';
-    c.innerHTML = h;
-  });
-},
-
-// Drag & Drop handlers
-_orgDragStart: function(e) { var node=e.target.closest('.pk-org-node'); if(!node)return; e.dataTransfer.setData('text/plain',node.dataset.mid); e.dataTransfer.effectAllowed='move'; node.classList.add('pk-org-dragging'); },
-_orgDragEnd: function(e) { var node=e.target.closest('.pk-org-node'); if(node)node.classList.remove('pk-org-dragging'); document.querySelectorAll('.pk-org-drop-target').forEach(function(el){el.classList.remove('pk-org-drop-target');}); },
-_orgDragOver: function(e) { e.preventDefault(); if(e.dataTransfer.types.indexOf('text/plain')<0)return; var node=e.target.closest('.pk-org-node'); if(node)node.classList.add('pk-org-drop-target'); },
-_orgDragLeave: function(e) { var node=e.target.closest('.pk-org-node'); if(node)node.classList.remove('pk-org-drop-target'); },
-_orgDragOverUngrouped: function(e) { e.preventDefault(); var el=document.getElementById('pkOrgUngrouped'); if(el)el.classList.add('pk-org-drop-target'); },
-_orgDragLeaveUngrouped: function(e) { var el=document.getElementById('pkOrgUngrouped'); if(el)el.classList.remove('pk-org-drop-target'); },
-_orgDrop: function(e, parentId) {
-  e.preventDefault(); e.stopPropagation();
-  var L = this._L.bind(this);
-  document.querySelectorAll('.pk-org-drop-target').forEach(function(el){el.classList.remove('pk-org-drop-target');});
-  var childId = parseInt(e.dataTransfer.getData('text/plain'));
-  if (!childId||childId===parentId) return;
-  var self = this;
-  this._apiPut('/members/'+childId+'/parent',{parent_member_id:parentId}).then(function(r) {
-    if (r.ok) { self._toast(L('层级已更新','Hierarchy updated'),'success'); self._renderOrgChart(); }
+  (isNew
+    ? self._apiPost('/master/'+self._masterId+'/subs', {name:name, sub_type:'storyboard', phase:'P3'})
+    : self._apiPut('/master/subs/'+subId, {name:name})
+  ).then(function(r){
+    if (r.ok) { self._toast(L('已保存','Saved'),'success'); self._refreshMaster(); }
     else self._toast(L('操作失败','Failed'),'error');
   });
 },
-_orgDropUngrouped: function(e) {
-  e.preventDefault(); e.stopPropagation();
+_editSub: function(subId) {
   var L = this._L.bind(this);
-  var el=document.getElementById('pkOrgUngrouped'); if(el)el.classList.remove('pk-org-drop-target');
-  var childId = parseInt(e.dataTransfer.getData('text/plain'));
-  if (!childId) return;
+  var name = prompt(L('段落名称：','Segment name:'));
+  if (!name) return;
   var self = this;
-  this._apiPut('/members/'+childId+'/parent',{parent_member_id:null}).then(function(r) {
-    if (r.ok) { self._toast(L('已解除上级关系','Unlinked from parent'),'success'); self._renderOrgChart(); }
-    else self._toast(L('操作失败','Failed'),'error');
+  this._apiPut('/master/subs/'+subId, {name:name}).then(function(r){
+    if (r.ok) { self._toast(L('已更新','Updated'),'success'); self._refreshMaster(); }
   });
 },
-_orgPromote: function(memberId) {
-  var L = this._L.bind(this), self = this;
-  this._apiPut('/members/'+memberId+'/parent',{parent_member_id:null}).then(function(r) {
-    if (r.ok) { self._toast(L('已提升为顶层','Promoted to top'),'success'); self._renderOrgChart(); }
-    else self._toast(L('操作失败','Failed'),'error');
-  });
+_deleteSub: async function(subId) {
+  if (!confirm(this._L('确定删除此段落？','Delete this segment?'))) return;
+  await this._apiDelete('/master/subs/'+subId);
+  this._toast(this._L('已删除','Deleted'),'info');
+  this._refreshMaster();
 },
-_orgReassign: function(memberId) {
+
+// Open seedance project for sub
+_openSubProject: function(subId) {
+  // Navigate to existing kanban view for this sub-project
+  var L = this._L.bind(this);
+  this._toast(L('进入分镜项目编辑器...','Opening storyboard editor...'),'info');
+  // This would navigate to seedance project view — placeholder for now
+},
+
+// Batch generate
+_showBatchGenerate: function() {
   var self = this, L = this._L.bind(this);
-  this._api('/members?project_id='+this._activeProjectId).then(function(r) {
-    if (!r.ok||!r.members) return;
-    var others = r.members.filter(function(m) { return m.id!==memberId; });
-    if (!others.length) { self._toast(L('没有其他成员可分配','No other members'),'warning'); return; }
-    var opts = others.map(function(m) { return '<option value="'+m.id+'">'+(m.role_icon||'')+' '+self._esc(m.real_name||(L('用户#','User#')+m.user_id))+' ('+(m.role_name||m.role)+')</option>'; }).join('');
+  this._api('/master/'+this._masterId+'/subs').then(function(r){
+    var subs = r.subs||[];
+    if (!subs.length) { self._toast(L('无子项目可生成','No sub-projects'),'warning'); return; }
+    var spOpts = subs.map(function(sp){ return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:6px;"><input type="checkbox" value="'+sp.id+'" checked> 🎬 '+self._esc(sp.name)+' ('+(sp.seedance_name||'—')+')</label>'; }).join('');
     var ov = self._overlay();
-    ov.innerHTML = '<div class="pk-modal" onclick="event.stopPropagation()" style="max-width:400px;"><h4>🔗 '+L('更换上级','Change Parent')+'</h4><div class="form-group"><label>'+L('新上级','New parent')+'</label><select id="ra_parent" style="width:100%;">'+opts+'</select></div><div class="pk-modal-actions"><button class="btn btn-secondary" onclick="this.closest(\'.pk-modal-overlay\').remove()">'+L('取消','Cancel')+'</button><button class="btn btn-primary" id="ra_save">'+L('保存','Save')+'</button></div></div>';
+    ov.innerHTML = '<div class="pk-modal" onclick="event.stopPropagation()"><h4>⚡ '+L('批量生成','Batch Generate')+'</h4><p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">'+L('选择要批量生成的子项目，每个镜头发起一个生成任务','Select segments to generate. Each scene = 1 job.')+'</p><div class="form-group"><label>🎬 '+L('选择段落','Select Segments')+'</label><div style="max-height:200px;overflow-y:auto;padding:8px;border:1px solid var(--border-color);border-radius:8px;">'+spOpts+'</div></div><div class="form-group"><label>🖥 '+L('生成引擎','Engine')+'</label><select id="bg_engine" style="width:100%;"><option value="comfyui">ComfyUI</option><option value="seedance">Seedance</option></select></div><div class="pk-modal-actions"><button class="btn btn-secondary" onclick="this.closest(\'.pk-modal-overlay\').remove()">'+L('取消','Cancel')+'</button><button class="btn btn-primary" id="bg_go">'+L('开始生成','Generate')+'</button></div></div>';
     document.body.appendChild(ov);
-    document.getElementById('ra_save').onclick = async function() {
-      var pid = parseInt(document.getElementById('ra_parent').value);
-      if (!pid) { ov.remove(); return; }
-      var r2 = await self._apiPut('/members/'+memberId+'/parent',{parent_member_id:pid});
-      if (r2.ok) { ov.remove(); self._toast(L('上级已更新','Parent updated'),'success'); self._renderOrgChart(); }
-      else self._toast(L('操作失败','Failed'),'error');
+    document.getElementById('bg_go').onclick = async function() {
+      var checked = [];
+      ov.querySelectorAll('input[type=checkbox]:checked').forEach(function(cb){checked.push(parseInt(cb.value));});
+      if (!checked.length) { self._toast(L('请选择段落','Select a segment'),'warning'); return; }
+      var mode = document.getElementById('bg_engine').value;
+      var r2 = await self._apiPost('/master/'+self._masterId+'/batch-generate', {sub_project_ids:checked, mode:mode});
+      if (r2.ok) { ov.remove(); self._toast(L('已提交','Submitted')+': '+r2.total+' '+L('个任务','jobs'),'success'); }
+      else self._toast(L('提交失败','Failed'),'error');
     };
   });
+},
+
+// ============================================================
+// P4 — 后期合成
+// ============================================================
+_renderP4_Post: function() {
+  var c = document.getElementById('pkPhaseContent'), L = this._L.bind(this);
+  if (!c) return;
+  c.innerHTML = '<div class="pk-phase-placeholder"><h4>✂ '+L('后期合成','Post-production')+'</h4><p>'+L('时间轴组装 / 音频配乐 / 色彩统一 / 字幕叠加 / 成片渲染','Timeline assembly / Audio scoring / Color grading / Subtitles / Final render')+'</p><div class="pk-phase-coming">'+L('Phase23 规划中...','Coming in Phase23...')+'</div></div>';
+},
+
+// ============================================================
+// P5 — 审核交付
+// ============================================================
+_renderP5_Delivery: function() {
+  var c = document.getElementById('pkPhaseContent'), L = this._L.bind(this);
+  if (!c) return;
+  c.innerHTML = '<div class="pk-phase-placeholder"><h4>✅ '+L('审核交付','Review & Delivery')+'</h4><p>'+L('逐级审核 / 标注反馈 / 交付包导出 / 局域网审阅链接','Multi-level review / Annotations / Delivery package / LAN review link')+'</p><div class="pk-phase-coming">'+L('Phase23 规划中...','Coming in Phase23...')+'</div></div>';
+},
+
+// ============================================================
+// P6 — 复盘归档
+// ============================================================
+_renderP6_Archive: function() {
+  var c = document.getElementById('pkPhaseContent'), L = this._L.bind(this);
+  if (!c) return;
+  c.innerHTML = '<div class="pk-phase-placeholder"><h4>📊 '+L('复盘归档','Retrospective & Archive')+'</h4><p>'+L('数据统计 / 提示词复盘 / 项目归档 / 经验库 / 克隆项目','Analytics / Prompt review / Archive / Knowledge base / Clone project')+'</p><div class="pk-phase-coming">'+L('Phase23 规划中...','Coming in Phase23...')+'</div></div>';
 }
 };
 
 window.PK_ProjectDashboard = PK;
 if (window.__PK_PLUGINS__) { window.__PK_PLUGINS__._views = window.__PK_PLUGINS__._views||{}; window.__PK_PLUGINS__._views.project_mgmt = function() { PK.open(); }; }
 if (window.__PK_VIEW_REGISTRY__) { window.__PK_VIEW_REGISTRY__.register('project_mgmt', function() { PK.open(); }); }
-console.log('[PK_ProjectDashboard] v'+PK.VERSION+' loaded');
+console.log('[PK_ProjectDashboard] v'+PK.VERSION+' loaded (Phase22)');
 })();
