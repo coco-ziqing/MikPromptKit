@@ -3454,3 +3454,46 @@ body.dark-theme .license-status.error { background: #450a0a; color: #fca5a5; bor
 #pkUserMenu .pk-menu-item:hover{background:var(--bg-hover,#f1f5f9);color:var(--text-primary)}
 body.dark-theme #pkUserMenu .pk-menu-item:hover{background:#334155;color:#f1f5f9}
 
+
+
+/* ===== Phase23.7 封面 ===== */
+.pk-cover-overlay{position:fixed;inset:0;z-index:9999;background:var(--bg-main,#0f172a);display:flex;align-items:center;justify-content:center;overflow-y:auto;opacity:1;transition:opacity .3s}
+.pk-cover-page{max-width:720px;width:90%;padding:48px 32px;text-align:center}
+.pk-cover-top{margin-bottom:32px}
+.pk-cover-logo-icon{font-size:64px;display:block;margin-bottom:12px}
+.pk-cover-title{font-size:32px;font-weight:900;color:var(--text-main,#f1f5f9);margin:0 0 8px;letter-spacing:-1px}
+.pk-cover-subtitle{font-size:15px;color:var(--text-muted,#94a3b8);margin:0 0 8px}
+.pk-cover-version{display:inline-block;padding:2px 12px;border-radius:12px;background:var(--primary-light,#1e3a5f);color:var(--primary,#3b82f6);font-size:12px;font-weight:600}
+.pk-cover-bottom{text-align:center}
+.pk-cover-desc{font-size:14px;color:var(--text-muted,#94a3b8);line-height:1.8;margin-bottom:24px;max-width:500px;margin-left:auto;margin-right:auto}
+.pk-cover-gallery{display:flex;gap:16px;justify-content:center;margin-bottom:28px;flex-wrap:wrap}
+.pk-cover-gallery-item{width:180px}
+.pk-cover-gallery-img{height:120px;border-radius:12px;background:var(--bg-card,#1e293b);border:1px solid var(--border-color,#334155);overflow:hidden;margin-bottom:8px;display:flex;align-items:center;justify-content:center}
+.pk-cover-gallery-img img{width:100%;height:100%;object-fit:cover}
+.pk-cover-fallback{font-size:40px;color:var(--text-muted)}
+.pk-cover-gallery-label{font-size:11px;color:var(--text-muted)}
+.pk-cover-actions{margin-top:8px}
+.pk-cover-btn{display:inline-block;padding:14px 40px;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s}
+.pk-cover-btn-primary{background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;box-shadow:0 4px 20px rgba(59,130,246,.3)}
+.pk-cover-btn-primary:hover{transform:translateY(-2px);box-shadow:0 6px 28px rgba(59,130,246,.45)}
+
+/* 登录弹窗 */
+.pk-auth-modal-overlay{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center}
+.pk-auth-modal{background:var(--bg-card,#1e293b);border-radius:16px;padding:28px 24px 20px;max-width:400px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.3)}
+.pk-auth-header{text-align:center;margin-bottom:16px}
+.pk-auth-brand{font-size:16px;font-weight:700;color:var(--text-main,#f1f5f9)}
+.pk-auth-tabs{display:flex;border-bottom:2px solid var(--border-color);margin-bottom:16px}
+.pk-auth-tab{flex:1;padding:8px;font-size:13px;font-weight:600;color:var(--text-muted);border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;transition:all .2s}
+.pk-auth-tab:hover{color:var(--text-main)}
+.pk-auth-tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+.pk-auth-form .form-group{margin-bottom:12px}
+.pk-auth-form .form-group label{display:block;font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px}
+.pk-auth-form .form-group input{width:100%;padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:14px;background:var(--bg-main,#0f172a);color:var(--text-main);outline:none;box-sizing:border-box}
+.pk-auth-form .form-group input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-light)}
+.pk-auth-form .remember-row{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);margin-bottom:12px}
+.pk-auth-form .remember-row input[type=checkbox]{accent-color:var(--primary)}
+.pk-auth-hint{padding:8px 12px;background:var(--primary-light);border-radius:8px;font-size:11px;color:var(--primary);margin-bottom:12px;text-align:center}
+.pk-auth-submit{width:100%;padding:11px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s}
+.pk-auth-submit:hover{background:#2563eb}
+.pk-auth-submit:disabled{opacity:.6;cursor:not-allowed}
+.pk-auth-error{text-align:center;font-size:12px;color:var(--danger);margin-top:8px;min-height:20px}

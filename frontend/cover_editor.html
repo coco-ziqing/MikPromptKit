@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>封面内容编辑 — 咪卡Mik词库</title>
+<style>
+:root{--bg:#0f172a;--card-bg:#1e293b;--text:#f1f5f9;--text-muted:#64748b;--border:#334155;--primary:#3b82f6;--danger:#ef4444;--success:#10b981}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.nav-bar{background:var(--card-bg);border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.nav-bar h4{margin:0;font-size:15px;font-weight:700}.nav-bar a{color:var(--text-muted);text-decoration:none;font-size:13px}
+.nav-bar a:hover{color:var(--primary)}
+.container{max-width:720px;margin:0 auto;padding:24px 20px}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px}
+.form-group input,.form-group textarea{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box;resize:vertical}
+.form-group input:focus,.form-group textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+.form-group textarea{min-height:60px}
+.btn{padding:8px 20px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:#2563eb}
+.btn-secondary{background:var(--border);color:var(--text)}.btn-secondary:hover{opacity:.8}
+.btn-outline{padding:6px 12px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer}
+.btn-outline:hover{border-color:var(--primary);color:var(--primary)}
+.preview-box{padding:16px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;margin-bottom:16px}
+.preview-box h3{font-size:13px;color:var(--text-muted);margin:0 0 8px}
+.image-list{margin-top:8px}
+.image-item{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--card-bg)}
+.image-item .preview{width:80px;height:50px;border-radius:6px;background:var(--bg);overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.image-item .preview img{width:100%;height:100%;object-fit:cover}
+.toast{position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.2);opacity:0;transform:translateY(-10px);transition:all .3s}
+.toast.show{opacity:1;transform:translateY(0)}.toast-success{background:var(--success);color:#fff}.toast-error{background:var(--danger);color:#fff}
+</style>
+</head>
+<body>
+<div class="nav-bar">
+  <div style="display:flex;align-items:center;gap:16px;"><a href="/">← 返回首页</a><h4>🎨 封面内容编辑</h4></div>
+  <div><button class="btn btn-primary" onclick="CVE.save()">💾 保存</button></div>
+</div>
+<div class="container" id="app"><p style="color:var(--text-muted);">加载中...</p></div>
+<div class="toast" id="toast"></div>
+
+<script>
+var CVE = {
+  _data: {},
+  _imgCount: 3,
+
+  async init(){
+    var t=localStorage.getItem('pk_token');if(!t){location.href='/login.html';return;}
+    try{var r=await fetch('/api/cover');var d=await r.json();if(d.ok)this._data=d.cover||{};}catch(e){}
+    this.render();
+  },
+
+  toast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast toast-'+(t||'success')+' show';setTimeout(function(){el.classList.remove('show')},2000);},
+
+  render(){
+    var d=this._data;
+    var images=Array.isArray(d.cover_images)?d.cover_images:[];
+    this._imgCount=images.length||3;
+    var h='';
+    h+='<div class="form-group"><label>🔍 工具名称（左上角标题）</label><input type="text" id="cv_title" value="'+esc(d.title||'咪卡Mik词库')+'"></div>';
+    h+='<div class="form-group"><label>📌 副标题</label><input type="text" id="cv_subtitle" value="'+esc(d.subtitle||'')+'"></div>';
+    h+='<div class="form-group"><label>📄 描述（支持分行）</label><textarea id="cv_desc" rows="4">'+esc(d.description||'')+'</textarea></div>';
+    h+='<div class="form-group"><label>🏷 版本号</label><input type="text" id="cv_version" value="'+esc(d.version||'')+'"></div>';
+    h+='<div class="form-group"><label>🔐 登录按钮文字</label><input type="text" id="cv_hint" value="'+esc(d.login_hint||'登录以使用全部功能')+'"></div>';
+
+    h+='<div class="form-group"><label>🖼 封面示例图片 ('+this._imgCount+'张)</label><div class="image-list">';
+    for(var i=0;i<this._imgCount;i++){
+      var img=images[i]||{};
+      h+='<div class="image-item"><div class="preview">'+(img.src?'<img src="'+esc(img.src)+'">':'🎬')+'</div><div style="flex:1;"><input type="text" id="cv_img_src_'+i+'" placeholder="图片路径" value="'+esc(img.src||'')+'" style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);"><div style="display:flex;gap:4px;margin-top:4px;"><input type="text" id="cv_img_alt_'+i+'" placeholder="替代文字" value="'+esc(img.alt||'')+'" style="flex:1;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);"><input type="text" id="cv_img_label_'+i+'" placeholder="标签" value="'+esc(img.label||'')+'" style="width:120px;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);"></div></div></div>';
+    }
+    h+='</div><button class="btn btn-outline" onclick="CVE.addImage()">+ 添加图片位</button></div>';
+
+    h+='<div class="preview-box"><h3>👁 封面预览</h3><div style="font-size:28px;font-weight:900;color:var(--text);">'+esc(d.title||'咪卡Mik词库')+'</div><div style="font-size:13px;color:var(--text-muted);margin:4px 0;">'+esc(d.subtitle||'')+'</div><div style="font-size:12px;color:var(--text-muted);line-height:1.6;white-space:pre-line;">'+esc(d.description||'')+'</div><div style="margin-top:8px;font-size:11px;color:var(--primary);">['+esc(d.login_hint||'登录以使用全部功能')+']</div></div>';
+
+    document.getElementById('app').innerHTML=h;
+  },
+
+  addImage(){this._imgCount++;this.render();},
+
+  async save(){
+    var d={};
+    d.title=document.getElementById('cv_title').value.trim();
+    d.subtitle=document.getElementById('cv_subtitle').value.trim();
+    d.description=document.getElementById('cv_desc').value;
+    d.version=document.getElementById('cv_version').value.trim();
+    d.login_hint=document.getElementById('cv_hint').value.trim();
+    var images=[];
+    for(var i=0;i<this._imgCount;i++){
+      var src=(document.getElementById('cv_img_src_'+i)||{}).value||'';
+      var alt=(document.getElementById('cv_img_alt_'+i)||{}).value||'';
+      var lbl=(document.getElementById('cv_img_label_'+i)||{}).value||'';
+      if(src||alt||lbl)images.push({src:src,alt:alt,label:lbl});
+    }
+    d.cover_images=images;
+    try{
+      var r=await fetch('/api/cover',{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'***'+localStorage.getItem('pk_token')},body:JSON.stringify(d)});
+      var rd=await r.json();
+      if(rd.ok){this.toast('封面内容已保存');this._data=d;}
+      else this.toast(rd.detail||'保存失败','error');
+    }catch(e){this.toast('网络错误','error');}
+  }
+};
+function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+CVE.init();
+</script>
+</body>
+</html>

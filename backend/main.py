@@ -384,6 +384,8 @@ from auth import router as auth_router
 app.include_router(auth_router)
 from api.users import router as users_router
 app.include_router(users_router)
+from api.cover_api import router as cover_router
+app.include_router(cover_router)
 
 # Phase18: 插件系统由 lifespan 初始化（db/app 就绪后）
 
@@ -547,6 +549,14 @@ def serve_index():
     return JSONResponse(status_code=404, content={"error": "前端页面未找到"})
 
 
+@app.get("/cover_editor.html")
+def serve_cover_editor():
+    editor_path = os.path.join(FRONTEND_DIR, "cover_editor.html")
+    if os.path.exists(editor_path):
+        return FileResponse(editor_path)
+    return JSONResponse(status_code=404, content={"error": "编辑器页面未找到"})
+
+
 @app.get("/login.html")
 def serve_login():
     login_path = os.path.join(FRONTEND_DIR, "login.html")
@@ -569,7 +579,6 @@ def serve_join():
     join_path = os.path.join(FRONTEND_DIR, "join.html")
     if os.path.exists(join_path):
         return FileResponse(join_path)
-    # 回退：显示简单加入页面
     from fastapi.responses import HTMLResponse
     return HTMLResponse(content='''<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>加入工作空间 — 咪卡Mik词库</title>
