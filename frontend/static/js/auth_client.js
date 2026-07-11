@@ -94,7 +94,12 @@
       menu.style.right = (window.innerWidth - e.target.getBoundingClientRect().right) + 'px';
 
       var user = this._user || {};
-      menu.innerHTML = '<div style="padding:8px 16px;font-size:12px;color:var(--text-muted);border-bottom:1px solid var(--border-color);">👤 ' + (user.display_name||user.username||'User') + '<br><span style="font-size:10px;">' + (user.role||'—') + '</span></div><button class="pk-menu-item" onclick="PK_AUTH_CLIENT.logout()">🔓 退出登录</button>';
+      var menuHTML = '<div style="padding:8px 16px;font-size:12px;color:var(--text-muted);border-bottom:1px solid var(--border-color);">👤 ' + (user.display_name||user.username||'User') + '<br><span style="font-size:10px;">' + (user.role||'—') + '</span></div>';
+      if (user.role === 'admin') {
+        menuHTML += '<button class="pk-menu-item" onclick="window.location.href=\'/admin_users.html\'">👥 用户管理</button>';
+      }
+      menuHTML += '<button class="pk-menu-item" onclick="PK_AUTH_CLIENT.logout()">🔓 退出登录</button>';
+      menu.innerHTML = menuHTML;
 
       document.body.appendChild(menu);
 
