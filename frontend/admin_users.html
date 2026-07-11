@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PromptKit — 用户管理</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+:root{--bg:#f8fafc;--card-bg:#fff;--text:#1e293b;--text-muted:#94a3b8;--border:#e5e7eb;--primary:#3b82f6;--danger:#ef4444;--success:#10b981;--warning:#f59e0b}
+@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--card-bg:#1e293b;--text:#f1f5f9;--text-muted:#64748b;--border:#334155}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;transition:background .3s}
+.nav-bar{background:var(--card-bg);border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.nav-bar h4{margin:0;font-size:16px;font-weight:700}
+.nav-bar a{color:var(--text-muted);text-decoration:none;font-size:13px}
+.nav-bar a:hover{color:var(--primary)}
+.container{max-width:1000px;margin:0 auto;padding:20px}
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px}
+.toolbar-left{display:flex;gap:8px;flex:1}
+.toolbar-right{display:flex;gap:8px}
+.search-box{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:240px;background:var(--bg);color:var(--text);outline:none}
+.search-box:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+.filter-btn{padding:7px 14px;border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer;background:var(--bg);color:var(--text-muted);font-weight:600}
+.filter-btn:hover{border-color:var(--primary);color:var(--primary)}
+.filter-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.btn{padding:7px 14px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:#2563eb}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover{background:#dc2626}
+.btn-outline{padding:5px 10px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer}
+.btn-outline:hover{border-color:var(--primary);color:var(--primary)}
+.user-table{width:100%;border-collapse:collapse;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.user-table th,.user-table td{padding:12px 16px;text-align:left;font-size:13px;border-bottom:1px solid var(--border)}
+.user-table th{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;background:var(--bg)}
+.user-table td{color:var(--text)}
+.user-table tr:last-child td{border-bottom:none}
+.user-table tr:hover{background:var(--bg)}
+.badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600}
+.badge-admin{background:#eff6ff;color:#3b82f6}
+.badge-editor{background:#ecfdf5;color:#10b981}
+.badge-viewer{background:#f1f5f9;color:#64748b}
+.user-avatar{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;font-size:14px;margin-right:8px;flex-shrink:0}
+.user-cell{display:flex;align-items:center;gap:8px}
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
+.status-dot.active{background:var(--success)}
+.status-dot.inactive{background:var(--text-muted)}
+.empty-state{text-align:center;padding:60px 20px;color:var(--text-muted)}
+.empty-state .icon{font-size:48px;display:block;margin-bottom:12px}
+.toast{position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.12);transition:all .3s;opacity:0;transform:translateY(-10px)}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast-success{background:var(--success);color:#fff}
+.toast-error{background:var(--danger);color:#fff}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;display:flex;align-items:center;justify-content:center}
+.modal-box{background:var(--card-bg);border-radius:12px;padding:24px;max-width:480px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.16)}
+.modal-box h4{margin:0 0 16px;font-size:15px;font-weight:700;color:var(--text)}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px}
+.form-group input,.form-group select{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--bg);color:var(--text);outline:none}
+.form-group input:focus,.form-group select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+<div class="nav-bar">
+  <h4>👥 用户管理</h4>
+  <a href="/">← 返回首页</a>
+</div>
+<div class="container" id="app">
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <input type="text" class="search-box" id="searchQ" placeholder="搜索用户名/显示名..." oninput="PK_Users.render()">
+      <button class="filter-btn active" data-role="" onclick="PK_Users.setFilter('',this)">全部</button>
+      <button class="filter-btn" data-role="admin" onclick="PK_Users.setFilter('admin',this)">管理员</button>
+      <button class="filter-btn" data-role="editor" onclick="PK_Users.setFilter('editor',this)">编辑员</button>
+      <button class="filter-btn" data-role="viewer" onclick="PK_Users.setFilter('viewer',this)">观察者</button>
+    </div>
+    <div class="toolbar-right">
+      <button class="btn btn-primary" onclick="PK_Users.showForm()">+ 添加用户</button>
+    </div>
+  </div>
+  <div id="userTable"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+var PK_Users = {
+  _users: [], _filter: '', _query: '',
+
+  init: async function() {
+    var token = localStorage.getItem('pk_token');
+    if (!token) { window.location.href = '/login.html'; return; }
+
+    // Verify admin
+    try {
+      var r = await this._api('/me');
+      if (r.user.role !== 'admin') {
+        document.getElementById('app').innerHTML = '<div class="empty-state"><span class="icon">🚫</span><p>仅管理员可访问此页面</p><a href="/">返回首页</a></div>';
+        return;
+      }
+    } catch(e) {}
+
+    this.render();
+  },
+
+  _api: async function(path, method, data) {
+    try {
+      var opts = {headers:{'Content-Type':'application/json'}};
+      opts.method = method || 'GET';
+      if (data) opts.body = JSON.stringify(data);
+      var r = await fetch('/api/auth' + path, opts);
+      return await r.json();
+    } catch(e) { return {ok:false}; }
+  },
+
+  setFilter: function(role, el) {
+    this._filter = role;
+    document.querySelectorAll('.filter-btn').forEach(function(b){b.classList.toggle('active',b.dataset.role===role);});
+    this.render();
+  },
+
+  toast: function(msg, type) {
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.className = 'toast toast-' + (type||'success') + ' show';
+    setTimeout(function(){t.classList.remove('show');},2000);
+  },
+
+  render: async function() {
+    var q = document.getElementById('searchQ').value.trim();
+    var url = '/users?role='+this._filter+(q?'&q='+encodeURIComponent(q):'');
+    var r = await this._api(url);
+    this._users = r.users||[];
+
+    var h = '';
+    if (!this._users.length) {
+      h = '<div class="empty-state"><span class="icon">👤</span><h4>暂无用户</h4><p>点击「添加用户」创建新账户</p></div>';
+    } else {
+      h = '<table class="user-table"><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>最后登录</th><th>操作</th></tr></thead><tbody>';
+      var self = this;
+      this._users.forEach(function(u){
+        var roleCls = 'badge-'+u.role, roleName = {admin:'管理员',editor:'编辑员',viewer:'观察者'}[u.role]||u.role;
+        var status = u.is_active ? '<span class="status-dot active"></span>正常' : '<span class="status-dot inactive"></span>已禁用';
+        var lastLogin = u.last_login_at ? u.last_login_at.substring(0,10) : '从未';
+        h += '<tr><td><div class="user-cell"><div class="user-avatar" style="background:'+(u.avatar_color||'#6366f1')+';color:#fff;">'+(u.display_name||u.username).charAt(0).toUpperCase()+'</div><div><div style="font-weight:600;">'+self._esc(u.display_name||u.username)+'</div><div style="font-size:11px;color:var(--text-muted);">@'+u.username+'</div></div></div></td><td><span class="badge '+roleCls+'">'+roleName+'</span></td><td>'+status+'</td><td style="font-size:11px;color:var(--text-muted);">'+lastLogin+'</td><td style="white-space:nowrap;"><button class="btn-outline" onclick="PK_Users.showForm('+u.id+')">✏</button><button class="btn-outline" onclick="PK_Users.toggleActive('+u.id+','+(u.is_active?0:1)+')" style="color:'+(u.is_active?'var(--danger)':'var(--success)')+';">'+(u.is_active?'停用':'启用')+'</button><button class="btn-outline" onclick="PK_Users.deleteUser('+u.id+')" style="color:var(--danger)">🗑</button></td></tr>';
+      });
+      h += '</tbody></table>';
+    }
+    document.getElementById('userTable').innerHTML = h;
+  },
+
+  _esc: function(s) { if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML; },
+
+  showForm: function(userId) {
+    var self = this, isNew = !userId;
+    var u = userId ? this._users.find(function(x){return x.id===userId;}) || {} : {};
+
+    var el = document.createElement('div');
+    el.className = 'modal-overlay';
+    el.onclick = function(e){if(e.target===el)el.remove();};
+    el.innerHTML = '<div class="modal-box" onclick="event.stopPropagation()"><h4>'+(isNew?'➕ 添加用户':'✏ 编辑用户')+'</h4>'
+      + (!isNew?'':
+        '<div class="form-group"><label>用户名</label><input type="text" id="uf_username" placeholder="字母/数字/下划线" autofocus></div>'
+        +'<div class="form-group"><label>密码</label><input type="password" id="uf_password" placeholder="至少4个字符"></div>')
+      +'<div class="form-group"><label>显示名称</label><input type="text" id="uf_display" value="'+self._esc(u.display_name||'')+'"></div>'
+      +'<div class="form-group"><label>角色</label><select id="uf_role"><option value="admin"'+(u.role==='admin'?' selected':'')+'>管理员</option><option value="editor"'+(u.role==='editor'?' selected':'')+'>编辑员</option><option value="viewer"'+(u.role==='viewer'?' selected':'')+'>观察者</option></select></div>'
+      +(!isNew?'<div class="form-group"><label>密码重置（留空不修改）</label><input type="password" id="uf_pw_reset" placeholder="至少4个字符"></div>':'')
+      +'<div class="modal-actions"><button class="btn-outline" onclick="this.closest(\'.modal-overlay\').remove()">取消</button><button class="btn btn-primary" id="uf_save">保存</button></div></div>';
+    document.body.appendChild(el);
+
+    document.getElementById('uf_save').onclick = async function() {
+      var data = { display_name: document.getElementById('uf_display').value.trim(), role: document.getElementById('uf_role').value };
+      if (!isNew) {
+        var pw = document.getElementById('uf_pw_reset').value;
+        if (pw) data.new_password = pw;
+        var r2 = await self._api('/users/'+userId, 'PUT', data);
+        if (r2.ok) { el.remove(); self.toast('已更新'); self.render(); } else self.toast(r2.detail||'保存失败','error');
+      } else {
+        data.username = document.getElementById('uf_username').value.trim().toLowerCase();
+        data.password = document.getElementById('uf_password').value;
+        if (!data.username||data.username.length<2){self.toast('用户名至少2个字符','error');return;}
+        if (!data.password||data.password.length<4){self.toast('密码至少4个字符','error');return;}
+        var r2 = await self._api('/register','POST',data);
+        if (r2.ok){el.remove();self.toast('已创建');self.render();}else self.toast(r2.detail||'创建失败','error');
+      }
+    };
+  },
+
+  toggleActive: async function(userId, active) {
+    var self = this;
+    if (!confirm(active?'确定启用此用户？':'确定停用此用户？')) return;
+    var r = await this._api('/users/'+userId, 'PUT', {is_active: active});
+    if (r.ok) { self.toast(active?'已启用':'已停用'); self.render(); }
+  },
+
+  deleteUser: async function(userId) {
+    if (!confirm('确定永久删除此用户？此操作不可撤销。')) return;
+    var r = await this._api('/users/'+userId, 'DELETE');
+    if (r.ok) { this.toast('已删除'); this.render(); }
+    else this.toast(r.detail||'删除失败','error');
+  }
+};
+
+document.addEventListener('DOMContentLoaded', function(){ PK_Users.init(); });
+
+// Search with Enter
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && document.activeElement.id === 'searchQ') PK_Users.render();
+});
+</script>
+</body>
+</html>

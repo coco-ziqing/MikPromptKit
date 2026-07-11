@@ -382,6 +382,8 @@ app.include_router(ws_collab_router)
 # Phase23: 团队协作 — 用户认证
 from auth import router as auth_router
 app.include_router(auth_router)
+from api.users import router as users_router
+app.include_router(users_router)
 
 # Phase18: 插件系统由 lifespan 初始化（db/app 就绪后）
 
