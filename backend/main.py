@@ -379,6 +379,10 @@ app.include_router(atom_filler_router)
 app.include_router(plugins_api_router)
 app.include_router(ws_collab_router)
 
+# Phase23: 团队协作 — 用户认证
+from auth import router as auth_router
+app.include_router(auth_router)
+
 # Phase18: 插件系统由 lifespan 初始化（db/app 就绪后）
 
 

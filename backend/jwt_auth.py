@@ -7,6 +7,7 @@ Phase21 团队版: 启用强制验证
 """
 
 import time
+import os
 import hashlib
 import hmac
 import base64
@@ -33,12 +34,13 @@ except ImportError:
 _JWT_SECRET = "promptkit-jwt-secret-change-in-production"
 _JWT_ALGORITHM = "HS256"
 # Team 模式是否强制验证（Phase21 启用）
-_ENFORCE_AUTH = False
+_ENFORCE_AUTH = os.environ.get("PK_ENFORCE_AUTH", "0") == "1"
 
 # 公开路径白名单（无需认证）
 _PUBLIC_PATHS = {
-    "/", "/index.html", "/favicon.ico",
+    "/", "/index.html", "/favicon.ico", "/login.html",
     "/static", "/api/health", "/api/plugin-system/manifest",
+    "/api/auth/login", "/api/auth/register",
     "/api/plugins",  # License 激活不需要登录
 }
 

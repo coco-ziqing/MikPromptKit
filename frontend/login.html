@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PromptKit — 团队登录</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+:root{--bg:#f8fafc;--card-bg:#fff;--text:#1e293b;--text-muted:#94a3b8;--border:#e5e7eb;--primary:#3b82f6;--primary-light:#eff6ff}
+body.dark-theme{--bg:#0f172a;--card-bg:#1e293b;--text:#f1f5f9;--text-muted:#64748b;--border:#334155}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;transition:background .3s}
+.login-wrap{width:100%;max-width:420px;padding:20px}
+.login-card{background:var(--card-bg);border:1px solid var(--border);border-radius:16px;padding:40px 32px;box-shadow:0 4px 24px rgba(0,0,0,.06);transition:background .3s,border .3s}
+.login-logo{text-align:center;margin-bottom:28px}
+.login-logo .icon{font-size:48px;display:block;margin-bottom:8px}
+.login-logo h2{font-size:22px;font-weight:800;color:var(--text);margin:0}
+.login-logo p{font-size:13px;color:var(--text-muted);margin:4px 0 0}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px}
+.form-group input{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);transition:border .2s;outline:none}
+.form-group input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-light)}
+.form-group input::placeholder{color:var(--text-muted)}
+.btn-login{width:100%;padding:12px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:background .2s;margin-top:8px}
+.btn-login:hover{background:#2563eb}
+.btn-login:disabled{opacity:.6;cursor:not-allowed}
+.login-error{text-align:center;font-size:12px;color:#ef4444;margin-top:12px;min-height:20px}
+.login-footer{text-align:center;margin-top:20px;font-size:12px;color:var(--text-muted)}
+.login-footer a{color:var(--primary);text-decoration:none;cursor:pointer}
+.login-footer a:hover{text-decoration:underline}
+.tab-switch{display:flex;gap:0;margin-bottom:24px;border-bottom:2px solid var(--border)}
+.tab-btn{flex:1;padding:10px;font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--primary);border-bottom-color:var(--primary)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.register-info{padding:12px;background:var(--primary-light);border-radius:8px;font-size:12px;color:var(--primary);margin-bottom:16px;text-align:center}
+.server-info{font-size:11px;color:var(--text-muted);text-align:center;margin-top:24px}
+.server-info span{background:var(--border);padding:2px 8px;border-radius:4px;font-family:monospace}
+</style>
+</head>
+<body>
+<div class="login-wrap" id="app">
+  <div class="login-card">
+    <div class="login-logo">
+      <span class="icon">📦</span>
+      <h2>PromptKit</h2>
+      <p>局域网团队协作 · AIGC全流程管理</p>
+    </div>
+
+    <div class="tab-switch">
+      <button class="tab-btn active" onclick="PK_Auth.switchTab('login')">登录</button>
+      <button class="tab-btn" onclick="PK_Auth.switchTab('register')">注册</button>
+    </div>
+
+    <!-- Login form -->
+    <div class="tab-content active" id="tab-login">
+      <div class="form-group"><label>用户名</label><input type="text" id="login_username" placeholder="输入用户名" autofocus></div>
+      <div class="form-group"><label>密码</label><input type="password" id="login_password" placeholder="输入密码"></div>
+      <button class="btn-login" id="btn-login" onclick="PK_Auth.doLogin()">登 录</button>
+      <div class="login-error" id="login_error"></div>
+    </div>
+
+    <!-- Register form -->
+    <div class="tab-content" id="tab-register">
+      <div class="register-info">💡 新用户注册默认为「编辑员」角色，管理员可后续调整</div>
+      <div class="form-group"><label>用户名</label><input type="text" id="reg_username" placeholder="2-20位字母/数字/下划线"></div>
+      <div class="form-group"><label>显示名称</label><input type="text" id="reg_display" placeholder="你的昵称"></div>
+      <div class="form-group"><label>密码</label><input type="password" id="reg_password" placeholder="至少4个字符"></div>
+      <button class="btn-login" id="btn-register" onclick="PK_Auth.doRegister()">注 册</button>
+      <div class="login-error" id="reg_error"></div>
+    </div>
+
+    <div class="login-footer" style="margin-top:16px;">
+      <small>管理员: <code>admin</code> / <code>admin</code></small>
+    </div>
+  </div>
+  <div class="server-info">🌐 服务主机: <span id="server_ip">检测中...</span> · 端口: <span>8080</span></div>
+</div>
+
+<script>
+var PK_Auth = {
+  _activeTab: 'login',
+
+  switchTab: function(tab) {
+    this._activeTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.toggle('active', b.textContent.includes(tab==='login'?'登录':'注册'));});
+    document.querySelectorAll('.tab-content').forEach(function(c){c.classList.toggle('active', c.id==='tab-'+tab);});
+    document.getElementById('login_error').textContent = '';
+    document.getElementById('reg_error').textContent = '';
+  },
+
+  doLogin: async function() {
+    var u = document.getElementById('login_username').value.trim();
+    var p = document.getElementById('login_password').value;
+    var err = document.getElementById('login_error');
+    var btn = document.getElementById('btn-login');
+
+    if (!u || !p) { err.textContent = '请输入用户名和密码'; return; }
+
+    btn.disabled = true; btn.textContent = '登录中...'; err.textContent = '';
+
+    try {
+      var resp = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username: u, password: p})
+      });
+      var data = await resp.json();
+
+      if (data.ok) {
+        localStorage.setItem('pk_token', data.token);
+        localStorage.setItem('pk_user', JSON.stringify(data.user));
+        // 重定向到主页
+        window.location.href = '/';
+      } else {
+        err.textContent = data.detail || '登录失败';
+      }
+    } catch(e) {
+      err.textContent = '网络错误，请检查服务是否运行';
+    } finally {
+      btn.disabled = false; btn.textContent = '登 录';
+    }
+  },
+
+  doRegister: async function() {
+    var u = document.getElementById('reg_username').value.trim().toLowerCase();
+    var d = document.getElementById('reg_display').value.trim();
+    var p = document.getElementById('reg_password').value;
+    var err = document.getElementById('reg_error');
+    var btn = document.getElementById('btn-register');
+
+    if (!u || u.length < 2) { err.textContent = '用户名至少2个字符'; return; }
+    if (!p || p.length < 4) { err.textContent = '密码至少4个字符'; return; }
+    if (!/^[a-z0-9_]+$/.test(u)) { err.textContent = '用户名只能包含字母/数字/下划线'; return; }
+
+    btn.disabled = true; btn.textContent = '注册中...'; err.textContent = '';
+
+    try {
+      var resp = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username: u, password: p, display_name: d || u})
+      });
+      var data = await resp.json();
+
+      if (data.ok) {
+        err.style.color = '#10b981';
+        err.textContent = '注册成功! 请切换到登录标签登录';
+        // Auto-fill login form
+        document.getElementById('login_username').value = u;
+        document.getElementById('login_password').value = '';
+      } else {
+        err.textContent = data.detail || '注册失败';
+      }
+    } catch(e) {
+      err.textContent = '网络错误，请检查服务是否运行';
+    } finally {
+      btn.disabled = false; btn.textContent = '注 册';
+    }
+  }
+};
+
+// 显示服务IP + 回车键登录
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('server_ip').textContent = window.location.hostname;
+
+  document.getElementById('login_password').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') PK_Auth.doLogin();
+  });
+  document.getElementById('reg_password').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') PK_Auth.doRegister();
+  });
+
+  // 自动检测是否已登录
+  var token = localStorage.getItem('pk_token');
+  if (token) {
+    fetch('/api/auth/me', {headers: {'Authorization': 'Bearer ' + token}})
+      .then(function(r){return r.json();})
+      .then(function(d){if(d.authenticated){window.location.href='/';}})
+      .catch(function(){});
+  }
+});
+</script>
+</body>
+</html>
