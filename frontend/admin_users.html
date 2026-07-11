@@ -98,7 +98,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <script>
 var PMU = { users:[], filter:'', query:'', sel:new Set(), _colors: ['#7c3aed','#dc2626','#2563eb','#059669','#d97706','#db2777','#4f46e5','#0891b2','#ea580c','#65a30d'], _emojis: '🦊🐱🐶🐼🐨🐯🦁🐸🐵🐰🐻🐧🦄🐙🦉🐳🦋🎨🎬🎧🎮💎⭐🌈'.split(''), _tab:'all' };
 
-  function init() { var t = localStorage.getItem('pk_token'); if (!t) { location.href='/login.html'; return; }
+  function init() { var t = localStorage.getItem('pk_token'); if (!t) { location.href='/'; return; }
     fetch('/api/auth/me',{headers:{'Authorization':'***'+t}}).then(function(r){return r.json();}).then(function(d){if(!d.authenticated||d.user.role!=='admin'){document.getElementById('app').innerHTML='<div class="empty"><div class="icon">🚫</div><p>仅管理员可访问</p><a href="/">返回首页</a></div>';return;}PMU._me=d.user;PMU.render();}); }
   function toast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast toast-'+(t||'success')+' show';setTimeout(function(){el.classList.remove('show')},2000);}
 
