@@ -14,10 +14,34 @@
     init: function() {
       this._token = localStorage.getItem('pk_token');
       try { this._user = JSON.parse(localStorage.getItem('pk_user')); } catch(e) { this._user = null; }
-      this._enforce = false; // 默认非强制模式（兼容局部部署）
+
+      // 认证门禁：未登录用户跳转到登录页
+      this._enforceAuth();
 
       // 导航栏注入登录/用户按钮
       this._injectNavButton();
+    },
+
+    _enforceAuth: function() {
+      var self = this;
+      if (!this._token) {
+        // 无 token，直接跳转
+        window.location.href = '/login.html';
+        return;
+      }
+      // 有 token，验证有效性
+      fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + this._token } })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.authenticated) {
+            localStorage.removeItem('pk_token');
+            localStorage.removeItem('pk_user');
+            window.location.href = '/login.html';
+          }
+        })
+        .catch(function() {
+          // 网络错误不强制跳转（离线可用）
+        });
     },
 
     isLoggedIn: function() {
@@ -57,28 +81,18 @@
       var btn = document.createElement('button');
       btn.id = 'btnAuthUser';
       btn.className = 'btn btn-sm';
-      btn.style.cssText = 'border-radius:20px;font-size:12px;margin-left:8px;';
+      btn.style.cssText = 'border-radius:20px;font-size:12px;';
 
-      if (this._token && this._user) {
-        // 已登录：显示用户名 + 下拉菜单
-        btn.style.background = 'var(--primary-light,#eff6ff)';
-        btn.style.color = 'var(--primary,#3b82f6)';
-        btn.textContent = '👤 ' + (this._user.display_name || this._user.username);
-        btn.title = '点击查看选项';
-        btn.onclick = function(e) {
-          e.stopPropagation();
-          self._showUserMenu(e);
-        };
-      } else {
-        // 未登录：显示登录按钮
-        btn.style.background = 'var(--bg-card)';
-        btn.style.color = 'var(--text-muted)';
-        btn.style.border = '1px solid var(--border-color)';
-        btn.textContent = '🔐 登录';
-        btn.onclick = function() { window.location.href = '/login.html'; };
-      }
+      // 必须登录才能到达此处 — 直接显示用户菜单
+      btn.style.background = 'var(--primary-light,#eff6ff)';
+      btn.style.color = 'var(--primary,#3b82f6)';
+      btn.textContent = '👤 ' + (this._user.display_name || this._user.username || 'User');
+      btn.title = '点击查看选项';
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        self._showUserMenu(e);
+      };
 
-      // 插入到右侧第一个位置
       navRight.appendChild(btn);
     },
 

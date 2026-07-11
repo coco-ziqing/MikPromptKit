@@ -80,7 +80,7 @@ var PK = {
 
   render: function() {
     var h = '<div class="login-card"><div class="login-logo"><span class="icon">🔍</span><h2>咪卡Mik词库</h2><p>提示词快捷检索 · 团队协作管理</p></div>';
-    h += '<div class="top-nav"><a href="/">← 返回首页</a></div>';
+    h += '<div class="top-nav"><span></span></div>';
     h += '<div class="tab-switch"><button class="tab-btn'+(this._tab==='login'?' active':'')+'" onclick="PK.switchTab(\'login\')">登录</button><button class="tab-btn'+(this._tab==='register'?' active':'')+'" onclick="PK.switchTab(\'register\')">注册</button></div>';
 
     if (this._tab === 'login') {
