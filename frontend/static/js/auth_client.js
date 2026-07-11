@@ -278,20 +278,6 @@
       btn.title = '点击查看选项';
       btn.onclick = function(e) { e.stopPropagation(); self._showUserMenu(e); };
       navRight.appendChild(btn);
-
-      // 管理员：在用户按钮后面添加独立的"用户管理"快捷按钮
-      if ((this._user.role === 'admin') && !document.getElementById('btnAdminUsers')) {
-        var adminBtn = document.createElement('button');
-        adminBtn.id = 'btnAdminUsers';
-        adminBtn.className = 'header-btn';
-        adminBtn.style.cssText = 'border-radius:20px;font-size:12px;padding:4px 12px;'
-        adminBtn.style.background = 'rgba(139,92,246,.15)';
-        adminBtn.style.color = '#8b5cf6';
-        adminBtn.textContent = '👥 用户';
-        adminBtn.title = '用户管理';
-        adminBtn.onclick = function() { window.location.href = '/admin_users.html'; };
-        navRight.appendChild(adminBtn);
-      }
     },
 
     _showUserMenu: function(e) {
@@ -315,8 +301,9 @@
 
       // 菜单项
       var items = [
+        {icon:'🔑', label:'用户管理', action:"window.location.href='/admin_users.html'", show:isAdmin},
+        {divider:true, show:isAdmin},
         {icon:'👤', label:'个人详情', action:'PK_AUTH_CLIENT._showProfile()', show:true},
-        {divider:true, show:true},
         {icon:'🔄', label:'切换账户', action:'PK_AUTH_CLIENT._switchAccount()', show:true},
         {icon:'🔓', label:'退出登录', action:'PK_AUTH_CLIENT._doLogout()', show:true, danger:true},
       ];
@@ -370,7 +357,6 @@
       localStorage.removeItem('pk_token'); localStorage.removeItem('pk_user');
       this._token = null; this._user = null; this._loggedIn = false;
       var b = document.getElementById('btnAuthUser'); if (b) b.remove();
-      var ab = document.getElementById('btnAdminUsers'); if (ab) ab.remove();
       this._showCover();
     },
 
