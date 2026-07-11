@@ -547,6 +547,67 @@ def serve_index():
     return JSONResponse(status_code=404, content={"error": "前端页面未找到"})
 
 
+@app.get("/login.html")
+def serve_login():
+    login_path = os.path.join(FRONTEND_DIR, "login.html")
+    if os.path.exists(login_path):
+        return FileResponse(login_path)
+    return JSONResponse(status_code=404, content={"error": "登录页面未找到"})
+
+
+@app.get("/admin_users.html")
+def serve_admin_users():
+    admin_path = os.path.join(FRONTEND_DIR, "admin_users.html")
+    if os.path.exists(admin_path):
+        return FileResponse(admin_path)
+    return JSONResponse(status_code=404, content={"error": "管理页面未找到"})
+
+
+@app.get("/join")
+def serve_join():
+    """邀请加入页面"""
+    join_path = os.path.join(FRONTEND_DIR, "join.html")
+    if os.path.exists(join_path):
+        return FileResponse(join_path)
+    # 回退：显示简单加入页面
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content='''<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>加入工作空间 — PromptKit</title>
+<style>
+:root{--bg:#f8fafc;--card-bg:#fff;--text:#1e293b;--text-muted:#94a3b8;--border:#e5e7eb;--primary:#3b82f6}
+@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--card-bg:#1e293b;--text:#f1f5f9;--text-muted:#64748b;--border:#334155}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);display:flex;align-items:center;justify-content:center;min-height:100vh}
+.card{background:var(--card-bg);border:1px solid var(--border);border-radius:16px;padding:40px 32px;max-width:420px;width:90%;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.06)}
+h2{font-size:20px;font-weight:800;color:var(--text);margin:0 0 8px}
+p{font-size:13px;color:var(--text-muted);margin:0 0 24px}
+input{padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;width:100%;background:var(--bg);color:var(--text);text-align:center;letter-spacing:4px;font-weight:700;outline:none}
+input:focus{border-color:var(--primary)}
+button{width:100%;padding:12px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;margin-top:12px}
+button:hover{background:#2563eb}
+#msg{margin-top:12px;font-size:12px;min-height:20px}
+</style></head><body>
+<div class="card">
+<h2>🔗 加入工作空间</h2>
+<p>输入邀请码加入团队，开始 AIGC 协作</p>
+<input type="text" id="code" placeholder="输入6位邀请码" maxlength="6" autofocus>
+<button onclick="doJoin()">加 入</button>
+<div id="msg"></div>
+</div>
+<script>
+var params=new URLSearchParams(location.search);var c=params.get('code');if(c)document.getElementById('code').value=c.toUpperCase();
+async function doJoin(){
+var code=document.getElementById('code').value.trim().toUpperCase();var ws=params.get('ws')||'1';var m=document.getElementById('msg');
+if(!code||code.length<4){m.textContent='请输入有效邀请码';m.style.color='var(--text-muted)';return;}
+try{var r=await fetch('/api/plugins/com.promptkit.project/master/'+ws+'/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code})});var d=await r.json();
+if(d.ok){m.textContent='✅ 已加入! 跳转回主页...';m.style.color='#10b981';setTimeout(function(){location.href='/';},1500);}
+else{m.textContent=d.detail||'加入失败';m.style.color='#ef4444';}
+}catch(e){m.textContent='网络错误';m.style.color='#ef4444';}
+}
+document.getElementById('code').addEventListener('keydown',function(e){if(e.key==='Enter')doJoin();});
+</script></body></html>''')
+
+
 @app.post("/api/utils/check-path")
 def check_path(data: dict = None):
     """验证本地路径是否存在且为目录"""

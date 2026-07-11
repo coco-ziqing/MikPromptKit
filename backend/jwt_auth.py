@@ -38,7 +38,7 @@ _ENFORCE_AUTH = os.environ.get("PK_ENFORCE_AUTH", "0") == "1"
 
 # 公开路径白名单（无需认证）
 _PUBLIC_PATHS = {
-    "/", "/index.html", "/favicon.ico", "/login.html",
+    "/", "/index.html", "/favicon.ico", "/login.html", "/admin_users.html", "/join",
     "/static", "/api/health", "/api/plugin-system/manifest",
     "/api/auth/login", "/api/auth/register",
     "/api/plugins",  # License 激活不需要登录
