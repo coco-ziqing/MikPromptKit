@@ -7,53 +7,101 @@
 :root{--bg:#0f172a;--card-bg:#1e293b;--text:#f1f5f9;--text-muted:#64748b;--border:#334155;--primary:#3b82f6;--danger:#ef4444;--success:#10b981}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+h1{font-size:15px;font-weight:700}h2{margin:0;font-size:15px;font-weight:700}
+a{color:var(--text-muted);text-decoration:none;font-size:13px}a:hover{color:var(--primary)}
 .nav-bar{background:var(--card-bg);border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
-.nav-bar h4{margin:0;font-size:15px;font-weight:700}.nav-bar a{color:var(--text-muted);text-decoration:none;font-size:13px}.nav-bar a:hover{color:var(--primary)}
-.container{max-width:720px;margin:0 auto;padding:24px 20px}
+.container{max-width:760px;margin:0 auto;padding:24px 20px}
 .form-group{margin-bottom:16px}
 .form-group label{display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px}
-.form-group input,.form-group textarea{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box;resize:vertical}.form-group input:focus,.form-group textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,130,246,.15)}.form-group textarea{min-height:60px}
+.form-group input,.form-group textarea{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box;resize:vertical}
+.form-group input:focus,.form-group textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,130,246,.15)}.form-group textarea{min-height:60px}
 .btn{padding:8px 20px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:#2563eb}.btn-secondary{background:var(--border);color:var(--text)}.btn-outline{padding:6px 12px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer}.btn-outline:hover{border-color:var(--primary);color:var(--primary)}
 .preview-box{padding:16px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;margin-bottom:16px}.preview-box h3{font-size:13px;color:var(--text-muted);margin:0 0 8px}
 .image-item{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--border);border-radius:10px;margin-bottom:10px;background:var(--card-bg)}
-.image-item .preview{width:100px;height:66px;border-radius:8px;background:var(--bg);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--border)}
-.image-item .preview img{width:100%;height:100%;object-fit:cover}
+.image-item .preview{width:100px;height:66px;border-radius:8px;background:var(--bg);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);position:relative}
+.image-item .preview img,.image-item .preview video{width:100%;height:100%;object-fit:cover}
+.image-item .preview .vid-badge{position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,.6);color:#fff;font-size:9px;padding:1px 5px;border-radius:3px}
 .toast{position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.2);opacity:0;transform:translateY(-10px);transition:all .3s}.toast.show{opacity:1;transform:translateY(0)}.toast-success{background:var(--success);color:#fff}.toast-error{background:var(--danger);color:#fff}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center}
-.modal-box{background:var(--card-bg);border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto}.modal-box h4{margin:0 0 12px;font-size:15px}
-.gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
-.gallery-item{cursor:pointer;padding:8px;border:2px solid var(--border);border-radius:10px;transition:.15s;text-align:center}.gallery-item:hover{border-color:var(--primary)}.gallery-preview{height:90px;border-radius:6px;overflow:hidden;margin-bottom:4px}.gallery-preview img{width:100%;height:100%;object-fit:cover}.gallery-name{font-size:10px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modal-box{background:var(--card-bg);border-radius:12px;padding:24px;max-width:680px;width:92%;max-height:85vh;overflow-y:auto}.modal-box h4{margin:0 0 12px;font-size:15px}
+.modal-tabs{display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid var(--border)}
+.modal-tab{flex:1;padding:8px 0;font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-2px;transition:.15s;text-align:center}
+.modal-tab:hover{color:var(--text)}.modal-tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+.gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.gallery-item{cursor:pointer;padding:6px;border:2px solid var(--border);border-radius:10px;transition:.15s;text-align:center}.gallery-item:hover{border-color:var(--primary)}.gallery-preview{height:80px;border-radius:6px;overflow:hidden;margin-bottom:4px;position:relative}.gallery-preview img,.gallery-preview video{width:100%;height:100%;object-fit:cover}.gallery-preview .type-badge{position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,.6);color:#fff;font-size:9px;padding:1px 5px;border-radius:3px}.gallery-name{font-size:10px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
-<div class="nav-bar"><div style="display:flex;align-items:center;gap:16px;"><a href="/">← 返回首页</a><h4>🎨 封面内容编辑</h4></div><div><button class="btn btn-primary" onclick="CVE.save()">💾 保存</button></div></div>
+<div class="nav-bar"><div style="display:flex;align-items:center;gap:16px;"><a href="/">← 返回首页</a><h2>🎨 封面内容编辑</h2></div><button class="btn btn-primary" onclick="CVE.save()">💾 保存</button></div>
 <div class="container" id="app"><p style="color:var(--text-muted);">加载中...</p></div>
 <div class="toast" id="toast"></div>
 <script>
 function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 var CVE={_data:{},_imgCount:3,
-async init(){var t=localStorage.getItem('pk_token');if(!t){location.href='/login.html';return;}try{var r=await fetch('/api/cover');var d=await r.json();if(d.ok)this._data=d.cover||{};}catch(e){}this.render();},
+async init(){var t=localStorage.getItem('pk_token');if(!t){location.href='/';return;}try{var r=await fetch('/api/cover');var d=await r.json();if(d.ok)this._data=d.cover||{};}catch(e){}this.render();},
 toast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast toast-'+(t||'success')+' show';setTimeout(function(){el.classList.remove('show')},2000);},
-render(){var d=this._data;var images=Array.isArray(d.cover_images)?d.cover_images:[];this._imgCount=images.length||3;
-var h='<div class="form-group"><label>🔍 工具名称</label><input type="text" id="cv_title" value="'+esc(d.title||'咪卡Mik词库')+'"></div>';
-h+='<div class="form-group"><label>📌 副标题</label><input type="text" id="cv_subtitle" value="'+esc(d.subtitle||'')+'"></div>';
-h+='<div class="form-group"><label>📄 描述</label><textarea id="cv_desc" rows="4">'+esc(d.description||'')+'</textarea></div>';
-h+='<div class="form-group"><label>🏷 版本号</label><input type="text" id="cv_version" value="'+esc(d.version||'')+'"></div>';
-h+='<div class="form-group"><label>🔐 登录按钮文字</label><input type="text" id="cv_hint" value="'+esc(d.login_hint||'登录以使用全部功能')+'"></div>';
-h+='<div class="form-group"><label>🖼 封面示例图片 ('+this._imgCount+'张)</label>';
-for(var i=0;i<this._imgCount;i++){var img=images[i]||{};
-h+='<div class="image-item"><div class="preview" id="cvPreview_'+i+'">'+(img.src?'<img src="'+esc(img.src)+'">':'🎬')+'</div><div style="flex:1;">';
-h+='<input type="text" id="cv_img_src_'+i+'" value="'+esc(img.src||'')+'" placeholder="图片路径" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);margin-bottom:4px;">';
-h+='<div style="display:flex;gap:4px;margin-bottom:4px;"><input type="text" id="cv_img_alt_'+i+'" value="'+esc(img.alt||'')+'" placeholder="替代文字" style="flex:1;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);"><input type="text" id="cv_img_label_'+i+'" value="'+esc(img.label||'')+'" placeholder="标签" style="width:120px;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);"></div>';
-h+='<div style="display:flex;gap:4px;"><button class="btn-outline" onclick="CVE.pickFromGallery('+i+')" style="font-size:10px;">🖼 图库选取</button><button class="btn-outline" onclick="CVE.uploadImage('+i+')" style="font-size:10px;">📤 上传图片</button><input type="file" id="cv_upload_'+i+'" accept="image/*" style="display:none;" onchange="CVE.doUpload('+i+')"></div></div></div>';}
-h+='<button class="btn btn-outline" onclick="CVE.addImage()">+ 添加图片位</button></div>';
-h+='<div class="preview-box"><h3>👁 封面预览</h3><div style="font-size:28px;font-weight:900;color:var(--text);">'+esc(d.title||'咪卡Mik词库')+'</div><div style="font-size:13px;color:var(--text-muted);margin:4px 0;">'+esc(d.subtitle||'')+'</div><div style="font-size:12px;color:var(--text-muted);line-height:1.6;white-space:pre-line;">'+esc(d.description||'')+'</div><div style="margin-top:8px;font-size:11px;color:var(--primary);">['+esc(d.login_hint||'登录以使用全部功能')+']</div></div>';
-document.getElementById('app').innerHTML=h;},
+
+render(){
+  var d=this._data,images=Array.isArray(d.cover_images)?d.cover_images:[];this._imgCount=images.length||3;
+  var h='<div class="form-group"><label>🔍 工具名称</label><input type="text" id="cv_title" value="'+esc(d.title||'咪卡Mik词库')+'"></div>';
+  h+='<div class="form-group"><label>📌 副标题</label><input type="text" id="cv_subtitle" value="'+esc(d.subtitle||'')+'"></div>';
+  h+='<div class="form-group"><label>📄 描述</label><textarea id="cv_desc" rows="4">'+esc(d.description||'')+'</textarea></div>';
+  h+='<div class="form-group"><label>🏷 版本号</label><input type="text" id="cv_version" value="'+esc(d.version||'')+'"></div>';
+  h+='<div class="form-group"><label>🔐 登录按钮文字</label><input type="text" id="cv_hint" value="'+esc(d.login_hint||'登录以使用全部功能')+'"></div>';
+  h+='<div class="form-group"><label>🖼 封面媒体素材 ('+this._imgCount+'个)</label>';
+  for(var i=0;i<this._imgCount;i++){var img=images[i]||{},isVid=img.src&&(/\.mp4|\.webm|video\//i).test(img.src);
+    h+='<div class="image-item"><div class="preview" id="cvPreview_'+i+'">';
+    if(img.src){h+=isVid?'<video src="'+esc(img.src)+'" muted loop></video><div class="vid-badge">▶</div>':'<img src="'+esc(img.src)+'">';}
+    else h+='🎬';
+    h+='</div><div style="flex:1;">';
+    h+='<input type="text" id="cv_img_src_'+i+'" value="'+esc(img.src||'')+'" placeholder="图片/视频路径" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);margin-bottom:4px;">';
+    h+='<div style="display:flex;gap:4px;margin-bottom:4px;"><input type="text" id="cv_img_alt_'+i+'" value="'+esc(img.alt||'')+'" placeholder="替代文字" style="flex:1;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);"><input type="text" id="cv_img_label_'+i+'" value="'+esc(img.label||'')+'" placeholder="标签" style="width:120px;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);"></div>';
+    h+='<div style="display:flex;gap:4px;"><button class="btn-outline" onclick="CVE.pickFromGallery('+i+')" style="font-size:10px;">🖼 媒体库</button><button class="btn-outline" onclick="CVE.uploadImage('+i+')" style="font-size:10px;">📤 上传</button><input type="file" id="cv_upload_'+i+'" accept="image/*,video/*" style="display:none;" onchange="CVE.doUpload('+i+')"></div></div></div>';
+  }
+  h+='<button class="btn-outline" onclick="CVE.addImage()">+ 添加媒体位</button></div>';
+  h+='<div class="preview-box"><h3>👁 封面预览</h3><div style="font-size:28px;font-weight:900;color:var(--text);">'+esc(d.title||'咪卡Mik词库')+'</div><div style="font-size:13px;color:var(--text-muted);margin:4px 0;">'+esc(d.subtitle||'')+'</div><div style="font-size:12px;color:var(--text-muted);line-height:1.6;white-space:pre-line;">'+esc(d.description||'')+'</div><div style="margin-top:8px;font-size:11px;color:var(--primary);">['+esc(d.login_hint||'登录以使用全部功能')+']</div></div>';
+  document.getElementById('app').innerHTML=h;
+},
 addImage(){this._imgCount++;this.render();},
-async pickFromGallery(idx){var imgs;try{var r=await fetch('/api/cover/gallery');imgs=(await r.json()).images||[];}catch(e){return this.toast('加载图库失败','error');}if(!imgs.length)return this.toast('暂无可选图片，请先上传','error');var h=imgs.map(function(img){return'<div class="gallery-item" onclick="CVE._onPick('+idx+',\''+img.url+'\')"><div class="gallery-preview"><img src="'+img.url+'"></div><div class="gallery-name">'+img.filename+'</div></div>';}).join('');var ov=document.createElement('div');ov.className='modal-overlay';ov.innerHTML='<div class="modal-box" onclick="event.stopPropagation()"><h4>🖼 选取封面图片</h4><div class="gallery-grid">'+h+'</div><button class="btn btn-secondary" style="margin-top:12px;" onclick="this.closest(\'.modal-overlay\').remove()">取消</button></div>';ov.onclick=function(e){if(e.target===ov)ov.remove();};document.body.appendChild(ov);},
-_onPick(idx,url){var el=document.getElementById('cv_img_src_'+idx);if(el)el.value=url;var prev=document.getElementById('cvPreview_'+idx);if(prev)prev.innerHTML='<img src="'+url+'">';document.querySelectorAll('.modal-overlay').forEach(function(o){o.remove();});},
+
+// 图库选取 — 双Tab（图片/视频），来源 media_assets
+pickFromGallery(idx){
+  var self=this;
+  fetch('/api/cover/gallery').then(function(r){return r.json();}).then(function(r){
+    var imgs=(r.images||[]).filter(function(x){return x.type==='image';});
+    var vids=(r.images||[]).filter(function(x){return x.type==='video';});
+    var ov=document.createElement('div');ov.className='modal-overlay';
+    ov.innerHTML='<div class="modal-box" onclick="event.stopPropagation()"><h4>🖼 媒体素材库</h4>'+
+      '<div class="modal-tabs"><button class="modal-tab active" data-t="image" onclick="CVE._switchGalleryTab(event,\'image\','+idx+')">📷 图片 ('+imgs.length+')</button>'+
+      '<button class="modal-tab" data-t="video" onclick="CVE._switchGalleryTab(event,\'video\','+idx+')">🎬 视频 ('+vids.length+')</button></div>'+
+      '<div id="cvGalContent"></div>'+
+      '<button class="btn btn-secondary" style="margin-top:12px;" onclick="this.closest(\'.modal-overlay\').remove()">关闭</button></div>';
+    ov.onclick=function(e){if(e.target===ov)ov.remove();};document.body.appendChild(ov);
+    self._renderGalleryContent('image',imgs,vids,idx);
+  }).catch(function(e){self.toast('加载失败','error');});
+},
+_switchGalleryTab: function(e,type,idx){document.querySelectorAll('.modal-tab').forEach(function(b){b.classList.toggle('active',b.dataset.t===type);});var imgs=[],vids=[];fetch('/api/cover/gallery').then(function(r){return r.json();}).then(function(r){imgs=(r.images||[]).filter(function(x){return x.type==='image';});vids=(r.images||[]).filter(function(x){return x.type==='video';});this._renderGalleryContent(type,imgs,vids,idx);}.bind(this));},
+_renderGalleryContent: function(type,imgs,vids,idx){
+  var c=document.getElementById('cvGalContent'),items=type==='video'?vids:imgs;
+  if(!items.length){c.innerHTML='<p style="color:var(--text-muted);text-align:center;padding:20px;">暂无素材</p>';return;}
+  var h='<div class="gallery-grid">';
+  items.forEach(function(it){
+    var isVid=it.type==='video';
+    h+='<div class="gallery-item" onclick="CVE._onPick('+idx+',\''+it.url+'\')\"><div class="gallery-preview">'+
+      (isVid?'<video src="'+it.url+'" muted></video><div class="type-badge">▶ 视频</div>':'<img src="'+it.url+'">')+
+      '</div><div class="gallery-name">'+it.filename+'</div></div>';
+  });h+='</div>';c.innerHTML=h;
+},
+_onPick(idx,url){
+  var el=document.getElementById('cv_img_src_'+idx);if(el)el.value=url;
+  var prev=document.getElementById('cvPreview_'+idx);var isVid=(/\.mp4|\.webm|video\//i).test(url);
+  if(prev)prev.innerHTML=url?(isVid?'<video src="'+url+'" muted loop></video><div class="vid-badge">▶</div>':'<img src="'+url+'">'):'🎬';
+  document.querySelectorAll('.modal-overlay').forEach(function(o){o.remove();});
+},
+
 uploadImage(idx){document.getElementById('cv_upload_'+idx).click();},
-async doUpload(idx){var file=document.getElementById('cv_upload_'+idx).files[0];if(!file)return;var fd=new FormData();fd.append('file',file);try{var r=await fetch('/api/cover/upload',{method:'POST',body:fd});var d=await r.json();if(d.ok){var el=document.getElementById('cv_img_src_'+idx);if(el)el.value=d.url;var prev=document.getElementById('cvPreview_'+idx);if(prev)prev.innerHTML='<img src="'+d.url+'">';this.toast('上传成功');}else this.toast(d.detail||'上传失败','error');}catch(e){this.toast('网络错误','error');}},
+async doUpload(idx){var file=document.getElementById('cv_upload_'+idx).files[0];if(!file)return;var fd=new FormData();fd.append('file',file);try{var r=await fetch('/api/cover/upload',{method:'POST',body:fd});var d=await r.json();if(d.ok){var el=document.getElementById('cv_img_src_'+idx);if(el)el.value=d.url;var prev=document.getElementById('cvPreview_'+idx);var isVid=(/\.mp4|\.webm/i).test(d.url);if(prev)prev.innerHTML=isVid?'<video src="'+d.url+'" muted loop></video><div class="vid-badge">▶</div>':'<img src="'+d.url+'">';this.toast('上传成功');}else this.toast(d.detail||'上传失败','error');}catch(e){this.toast('网络错误','error');}},
+
 async save(){var d={};d.title=document.getElementById('cv_title').value.trim();d.subtitle=document.getElementById('cv_subtitle').value.trim();d.description=document.getElementById('cv_desc').value;d.version=document.getElementById('cv_version').value.trim();d.login_hint=document.getElementById('cv_hint').value.trim();var images=[];for(var i=0;i<this._imgCount;i++){var src=(document.getElementById('cv_img_src_'+i)||{}).value||'';var alt=(document.getElementById('cv_img_alt_'+i)||{}).value||'';var lbl=(document.getElementById('cv_img_label_'+i)||{}).value||'';if(src||alt||lbl)images.push({src:src,alt:alt,label:lbl});}d.cover_images=images;try{var r=await fetch('/api/cover',{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'***'+localStorage.getItem('pk_token')},body:JSON.stringify(d)});var rd=await r.json();if(rd.ok){this.toast('封面内容已保存');this._data=d;}else this.toast(rd.detail||'保存失败','error');}catch(e){this.toast('网络错误','error');}}};
 CVE.init();
 </script>

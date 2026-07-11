@@ -3,8 +3,8 @@
 封面内容管理 API — 首页封面页的标题/描述/图片可编辑存储
 表: app_cover_content
 """
-import json, os, sqlite3, time
-from fastapi import APIRouter, HTTPException, Body, Request
+import json, os, sqlite3, time, shutil, uuid
+from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File
 
 router = APIRouter(tags=["封面管理"], prefix="/api/cover")
 
@@ -93,35 +93,55 @@ def update_cover(data: dict = Body(...)):
 
 
 # ============================================================
-# 图片上传 + 库
+# 封面图片库 — 聚合 media_assets（与词卡媒体库一致）
 # ============================================================
 
-import shutil, uuid
-from fastapi import UploadFile, File
+@router.get("/gallery")
+def list_cover_gallery(media_type: str = ""):
+    """列出可用于封面的媒体（复用 media_assets 表）"""
+    db = _ro()
+    try:
+        sql = "SELECT * FROM media_assets WHERE (file_exists"
+        if media_type:
+            sql += f" AND media_type='{media_type}'"
+        else:
+            sql += " OR file_exists IS NULL"  # 兼容旧数据
+        sql += ") ORDER BY updated_at DESC LIMIT 100"
+        try:
+            rows = db.execute(sql).fetchall()
+        except Exception:
+            rows = db.execute("SELECT * FROM media_assets ORDER BY updated_at DESC LIMIT 100").fetchall()
 
-COVER_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "frontend", "static", "img", "covers")
-os.makedirs(COVER_UPLOAD_DIR, exist_ok=True)
+        items = []
+        for r in rows:
+            d = dict(r)
+            fn = d.get("filename", "")
+            mt = d.get("media_type", "image")
+            item = {
+                "url": f"/api/thumbnails/file/{fn}" if mt != "video" else f"/api/thumbnails/video/{fn}",
+                "thumb_url": f"/api/thumbnails/file/{fn}" if mt == "video" else f"/api/thumbnails/file/{fn}",
+                "filename": d.get("original_filename", fn),
+                "type": mt,
+            }
+            items.append(item)
+        return {"ok": True, "images": items}
+    finally: db.close()
+
 
 @router.post("/upload")
-async def upload_cover_image(file: UploadFile = File(...)):
-    """上传封面图片到 frontend/static/img/covers/"""
-    ext = os.path.splitext(file.filename or "image.png")[1] or ".png"
-    if ext.lower() not in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"):
-        raise HTTPException(400, "仅支持 png/jpg/jpeg/gif/webp/svg 格式")
-    fname = f"{uuid.uuid4().hex[:8]}{ext.lower()}"
-    fpath = os.path.join(COVER_UPLOAD_DIR, fname)
-    with open(fpath, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    url = f"/static/img/covers/{fname}"
-    return {"ok": True, "url": url, "filename": fname}
+async def upload_cover_image(file: UploadFile = File(None)):
+    """上传封面图片 — 复用 thumbnails 模块基础设施"""
+    import shutil, uuid
+    UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "frontend", "static", "img", "covers")
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-
-@router.get("/gallery")
-def list_cover_images():
-    """列出所有已上传的封面图片"""
-    images = []
-    if os.path.isdir(COVER_UPLOAD_DIR):
-        for f in sorted(os.listdir(COVER_UPLOAD_DIR)):
-            if f.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")):
-                images.append({"url": f"/static/img/covers/{f}", "filename": f})
-    return {"ok": True, "images": images}
+    if file and file.filename:
+        ext = os.path.splitext(file.filename)[1] or ".png"
+        if ext.lower() not in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".mp4", ".webm"):
+            raise HTTPException(400, "不支持的格式")
+        fname = f"{uuid.uuid4().hex[:8]}{ext.lower()}"
+        fpath = os.path.join(UPLOAD_DIR, fname)
+        with open(fpath, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+        return {"ok": True, "url": f"/static/img/covers/{fname}", "filename": fname}
+    return {"ok": False, "detail": "无文件"}

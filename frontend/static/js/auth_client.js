@@ -68,7 +68,16 @@
       if (images.length) {
         imgHTML = '<div class="pk-cover-gallery">';
         images.forEach(function(img, i){
-          imgHTML += '<div class="pk-cover-gallery-item"><div class="pk-cover-gallery-img">'+(img.src?'<img src="'+img.src+'" alt="'+(img.alt||'')+'" onerror="this.parentElement.innerHTML=\'<div class=pk-cover-fallback>🎬</div>\'">':'<div class="pk-cover-fallback">🎬</div>')+'</div><div class="pk-cover-gallery-label">'+(img.label||'')+'</div></div>';
+          var isVideo = img.src && (/\.mp4|\.webm|video\//i).test(img.src);
+          if (isVideo) {
+            imgHTML += '<div class="pk-cover-gallery-item"><div class="pk-cover-gallery-img pk-cover-video-wrapper" onmouseenter="PK_AUTH_CLIENT._coverPlayVideo(this)" onmouseleave="PK_AUTH_CLIENT._coverPauseVideo(this)">'+
+              '<img src="'+((img.poster||img.thumb_url)||'')+'" alt="'+(img.alt||'')+'" class="pk-cover-poster" onerror="this.style.display=\'none\'">'+
+              '<video src="'+img.src+'" muted loop preload="metadata" class="pk-cover-video"></video>'+
+              '<div class="pk-cover-play-overlay"><span>▶</span></div>'+
+            '</div><div class="pk-cover-gallery-label">'+(img.label||'')+'</div></div>';
+          } else {
+            imgHTML += '<div class="pk-cover-gallery-item"><div class="pk-cover-gallery-img">'+(img.src?'<img src="'+img.src+'" alt="'+(img.alt||'')+'" onerror="this.parentElement.innerHTML=\'<div class=pk-cover-fallback>🎬</div>\'">':'<div class="pk-cover-fallback">🎬</div>')+'</div><div class="pk-cover-gallery-label">'+(img.label||'')+'</div></div>';
+          }
         });
         imgHTML += '</div>';
       }
@@ -98,6 +107,24 @@
     _hideCover: function() {
       var el = document.getElementById('pkCoverOverlay');
       if (el) { el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(function(){ el.remove(); }, 300); }
+    },
+
+    // 封面视频悬停播放
+    _coverPlayVideo: function(wrapper) {
+      var video = wrapper.querySelector('video');
+      var poster = wrapper.querySelector('.pk-cover-poster');
+      var overlay = wrapper.querySelector('.pk-cover-play-overlay');
+      if (video) { video.play().catch(function(){}); }
+      if (poster) poster.style.opacity = '0';
+      if (overlay) overlay.style.opacity = '0';
+    },
+    _coverPauseVideo: function(wrapper) {
+      var video = wrapper.querySelector('video');
+      var poster = wrapper.querySelector('.pk-cover-poster');
+      var overlay = wrapper.querySelector('.pk-cover-play-overlay');
+      if (video) { video.pause(); video.currentTime = 0; }
+      if (poster) poster.style.opacity = '1';
+      if (overlay) overlay.style.opacity = '1';
     },
 
     // ---- 登录/注册弹窗 ----
@@ -135,6 +162,7 @@
             '<button class="pk-auth-tab active" data-tab="login" onclick="PK_AUTH_CLIENT._switchAuthTab(\'login\')">登录</button>'+
             '<button class="pk-auth-tab" data-tab="register" onclick="PK_AUTH_CLIENT._switchAuthTab(\'register\')">注册</button>'+
           '</div>'+
+          '<div style="text-align:right;margin-bottom:8px;"><span style="font-size:11px;color:var(--text-muted);cursor:pointer;" onclick="var m=document.getElementById(\'pkAuthModal\');var c=document.getElementById(\'pkCoverOverlay\');if(m)m.remove();if(c)c.style.display=\'\';">✕ 关闭</span></div>'+
           '<div id="pkAuthTabContent"></div>'+
         '</div>';
       document.body.appendChild(modal);
@@ -267,7 +295,7 @@
       // 菜单项
       var items = [
         {icon:'👤', label:'个人详情', action:'PK_AUTH_CLIENT._showProfile()', show:true},
-        {icon:'🔑', label:isAdmin?'用户管理':'用户列表', action:"window.location.href='"+(isAdmin?"/admin_users.html":"/admin_users.html")+"'", show:isAdmin},
+        {icon:'🔑', label:'用户管理', action:"window.location.href='/admin_users.html'", show:isAdmin},
         {divider:true, show:true},
         {icon:'🔄', label:'切换账户', action:'PK_AUTH_CLIENT._switchAccount()', show:true},
         {icon:'🔓', label:'退出登录', action:'PK_AUTH_CLIENT._doLogout()', show:true, danger:true},
