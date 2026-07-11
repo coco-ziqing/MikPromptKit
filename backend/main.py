@@ -557,7 +557,11 @@ def serve_index():
 def serve_cover_editor():
     editor_path = os.path.join(FRONTEND_DIR, "cover_editor.html")
     if os.path.exists(editor_path):
-        return FileResponse(editor_path)
+        resp = FileResponse(editor_path)
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
     return JSONResponse(status_code=404, content={"error": "编辑器页面未找到"})
 
 
@@ -565,7 +569,11 @@ def serve_cover_editor():
 def serve_login():
     login_path = os.path.join(FRONTEND_DIR, "login.html")
     if os.path.exists(login_path):
-        return FileResponse(login_path)
+        resp = FileResponse(login_path)
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
     return JSONResponse(status_code=404, content={"error": "登录页面未找到"})
 
 
