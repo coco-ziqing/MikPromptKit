@@ -289,4 +289,15 @@ class ProjectManagerPlugin(PromptKitPlugin):
                 ws_spec.loader.exec_module(ws_module)
                 router.include_router(ws_module.router)
 
+        # Phase23.6: 挂载团队小组子路由
+        sq_path = Path(__file__).parent / "api_squads.py"
+        if sq_path.exists():
+            sq_spec = importlib.util.spec_from_file_location(
+                "promptkit_plugin_squad_api", str(sq_path)
+            )
+            if sq_spec and sq_spec.loader:
+                sq_module = importlib.util.module_from_spec(sq_spec)
+                sq_spec.loader.exec_module(sq_module)
+                router.include_router(sq_module.router)
+
         return router
