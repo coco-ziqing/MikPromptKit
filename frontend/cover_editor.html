@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -104,7 +104,7 @@ _onPick(idx,url){
 },
 
 uploadImage(idx){document.getElementById('cv_upload_'+idx).click();},
-async doUpload(idx){var file=document.getElementById('cv_upload_'+idx).files[0];if(!file)return;var fd=new FormData();fd.append('file',file);try{var r=await fetch('/api/cover/upload',{method:'POST',body:fd,headers:{'Authorization':'***'+localStorage.getItem('pk_token')}});var d=await r.json();if(d.ok){var el=document.getElementById('cv_img_src_'+idx);if(el)el.value=d.url;var prev=document.getElementById('cvPreview_'+idx);var isVid=(/\.mp4|\.webm/i).test(d.url);if(prev)prev.innerHTML=isVid?'<video src="'+d.url+'" muted loop></video><div class="vid-badge">▶</div>':'<img src="'+d.url+'">';this.toast('上传成功');}else this.toast(d.detail||'上传失败','error');}catch(e){this.toast('网络错误','error');}},
+async doUpload(idx){var file=document.getElementById('cv_upload_'+idx).files[0];if(!file)return;var fd=new FormData();fd.append('file',file);try{var r=await fetch('/api/cover/upload',{method:'POST',body:fd,headers:{'Authorization':'Bearer '+localStorage.getItem('pk_token')}});var d=await r.json();if(d.ok){var el=document.getElementById('cv_img_src_'+idx);if(el)el.value=d.url;var prev=document.getElementById('cvPreview_'+idx);var isVid=(/\.mp4|\.webm/i).test(d.url);if(prev)prev.innerHTML=isVid?'<video src="'+d.url+'" muted loop></video><div class="vid-badge">▶</div>':'<img src="'+d.url+'">';this.toast('上传成功');}else this.toast(d.detail||'上传失败','error');}catch(e){this.toast('网络错误','error');}},
 
 async save(){var d={};d.title=document.getElementById('cv_title').value.trim();d.subtitle=document.getElementById('cv_subtitle').value.trim();d.description=document.getElementById('cv_desc').value;d.version=document.getElementById('cv_version').value.trim();d.login_hint=document.getElementById('cv_hint').value.trim();var images=[];for(var i=0;i<this._imgCount;i++){var src=(document.getElementById('cv_img_src_'+i)||{}).value||'';var alt=(document.getElementById('cv_img_alt_'+i)||{}).value||'';var lbl=(document.getElementById('cv_img_label_'+i)||{}).value||'';if(src||alt||lbl)images.push({src:src,alt:alt,label:lbl});}d.cover_images=images;var tok=localStorage.getItem('pk_token');if(!tok){this.toast('未登录，请先登录','error');return;}try{var r=await fetch('/api/cover',{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'***'+tok},body:JSON.stringify(d)});var rd=await r.json();if(rd.ok){this.toast('封面内容已保存');this._data=d;}else this.toast(rd.detail||'保存失败','error');}catch(e){this.toast('网络错误: '+e.message,'error');}}};
 CVE.init();
