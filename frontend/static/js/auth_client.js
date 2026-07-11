@@ -103,14 +103,19 @@
     // ---- 登录/注册弹窗 ----
     _showLoginModal: function() {
       var self = this;
-      // 移除已有弹窗
       var old = document.getElementById('pkAuthModal');
       if (old) old.remove();
+
+      // 隐藏封面层，只留登录弹窗
+      var cover = document.getElementById('pkCoverOverlay');
+      if (cover) cover.style.display = 'none';
 
       var modal = document.createElement('div');
       modal.id = 'pkAuthModal';
       modal.className = 'pk-auth-modal-overlay';
-      modal.onclick = function(e) { if (e.target===modal) modal.remove(); };
+      modal.onclick = function(e) {
+        if (e.target===modal) { modal.remove(); if (cover) cover.style.display = ''; }
+      };
       modal.innerHTML =
         '<div class="pk-auth-modal" onclick="event.stopPropagation()">'+
           '<div class="pk-auth-header">'+
