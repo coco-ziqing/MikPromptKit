@@ -46,7 +46,7 @@
 
     _injectNavButton: function() {
       // 在导航栏右侧添加登录/用户按钮
-      var navRight = document.getElementById('pageHeaderRight');
+      var navRight = document.getElementById('pluginNavRight');
       if (!navRight) {
         // 等 DOM 加载完再试
         setTimeout(this._injectNavButton.bind(this), 500);
@@ -79,7 +79,7 @@
       }
 
       // 插入到右侧第一个位置
-      navRight.insertBefore(btn, navRight.firstChild);
+      navRight.appendChild(btn);
     },
 
     _showUserMenu: function(e) {
