@@ -545,7 +545,11 @@ if os.path.exists(STATIC_DIR):
 def serve_index():
     index_path = os.path.join(FRONTEND_DIR, "index.html")
     if os.path.exists(index_path):
-        return FileResponse(index_path)
+        resp = FileResponse(index_path)
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
     return JSONResponse(status_code=404, content={"error": "前端页面未找到"})
 
 
@@ -569,7 +573,11 @@ def serve_login():
 def serve_admin_users():
     admin_path = os.path.join(FRONTEND_DIR, "admin_users.html")
     if os.path.exists(admin_path):
-        return FileResponse(admin_path)
+        resp = FileResponse(admin_path)
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
     return JSONResponse(status_code=404, content={"error": "管理页面未找到"})
 
 
