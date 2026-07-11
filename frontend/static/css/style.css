@@ -162,6 +162,50 @@ body {
 }
 .header-btn-sm { background: none; border: none; font-size: 20px; cursor: pointer; padding: 2px 6px; color: inherit; }
 
+/* ============ 导航栏下拉菜单 ============ */
+.nav-dropdown { position: relative; }
+.nav-dropdown-btn { width: auto; padding: 0 6px; gap: 2px; font-size: 17px; }
+.nav-dd-text { font-size: 12px; font-weight: 600; margin: 0 1px; }
+.nav-dd-label:hover { color: var(--primary, #4f46e5); }
+.nav-dropdown-btn .nav-dd-arrow { font-size: 8px; margin-left: -2px; transition: transform 0.2s; }
+.nav-dropdown.open > .nav-dropdown-btn .nav-dd-arrow { transform: rotate(180deg); }
+
+.nav-dropdown-menu {
+    position: absolute; top: 100%; right: 0;
+    min-width: 200px; max-width: 260px;
+    background: var(--bg-card, #fff);
+    border: 1px solid var(--border-color); border-radius: 10px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.12);
+    padding: 6px;
+    display: none;
+    z-index: 200;
+    animation: nav-dd-in 0.15s ease;
+}
+@keyframes nav-dd-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+.nav-dropdown.open > .nav-dropdown-menu { display: block; }
+
+.nav-dropdown-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: 7px;
+    font-size: 13px; font-weight: 500;
+    color: var(--text-primary, #1e293b);
+    cursor: pointer; white-space: nowrap;
+    transition: all 0.15s;
+}
+.nav-dropdown-item i { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+.nav-dropdown-item:hover { background: var(--primary-light, #eff6ff); color: var(--primary, #3b82f6); }
+.nav-dd-sep { height: 1px; background: var(--border-color); margin: 4px 8px; }
+.nav-dd-badge {
+    margin-left: auto; background: var(--danger, #ef4444); color: #fff;
+    font-size: 10px; padding: 1px 6px; border-radius: 10px;
+}
+
+/* 暗色模式下拉菜单 */
+body.dark-theme .nav-dropdown-menu { background: #1e293b; border-color: #334155; box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+body.dark-theme .nav-dropdown-item { color: #e2e8f0; }
+body.dark-theme .nav-dropdown-item:hover { background: #334155; color: #a5b4fc; }
+body.dark-theme .nav-dd-sep { background: #334155; }
+
 /* ============ 侧边栏 ============ */
 .sidebar {
     position: fixed; top: var(--nav-height); left: 0; bottom: 0;
@@ -3403,4 +3447,10 @@ body.dark-theme .license-status.success { background: #064e3b; color: #6ee7b7; b
 body.dark-theme .license-status.inactive { background: #1e293b; color: #94a3b8; border-color: #334155; }
 body.dark-theme .license-status.warning { background: #422006; color: #fbbf24; border-color: #78350f; }
 body.dark-theme .license-status.error { background: #450a0a; color: #fca5a5; border-color: #7f1d1d; }
+
+
+/* Phase23 auth user menu */
+#pkUserMenu .pk-menu-item{display:block;width:100%;padding:10px 16px;border:none;background:transparent;color:var(--text-muted);font-size:13px;text-align:left;cursor:pointer;transition:background .15s}
+#pkUserMenu .pk-menu-item:hover{background:var(--bg-hover,#f1f5f9);color:var(--text-primary)}
+body.dark-theme #pkUserMenu .pk-menu-item:hover{background:#334155;color:#f1f5f9}
 
