@@ -252,32 +252,45 @@
     // ---- 工具 JS ----
     _esc: function(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML;},
 
-    // ---- 导航栏用户按钮 ----
+    // ---- 导航栏用户按钮（风格匹配词库/组装/工具） ----
     _injectNavButton: function(attempt) {
       if (!this._loggedIn) return;
       attempt = attempt || 0;
-      var navRight = document.getElementById('pluginNavRight');
-      if (!navRight) {
-        // 登录后DOM可能尚未就绪，重试最多15次（3秒）
-        if (attempt < 15) {
-          setTimeout(this._injectNavButton.bind(this, attempt + 1), 200);
-        }
+
+      // 直接找 header-actions 作为插入锚点
+      var actions = document.querySelector('.header-actions');
+      var existing = document.getElementById('navDropdownUser');
+      if (!actions) {
+        if (attempt < 30) setTimeout(this._injectNavButton.bind(this, attempt + 1), 200);
         return;
       }
-      // 已有按钮则跳过
-      if (document.getElementById('btnAuthUser')) return;
+      if (existing) return;
 
       var self = this;
+      var user = this._user || {};
+      var isAdmin = user.role === 'admin';
+
+      // 下拉组容器 — 匹配词库/组装/工具的 .nav-dropdown 结构
+      var wrap = document.createElement('div');
+      wrap.id = 'navDropdownUser';
+      wrap.className = 'nav-dropdown';
+
+      // 按钮 — 匹配 header-btn nav-dropdown-btn nav-dd-label 样式
       var btn = document.createElement('button');
       btn.id = 'btnAuthUser';
-      btn.className = 'header-btn';
-      btn.style.cssText = 'border-radius:20px;font-size:12px;padding:4px 12px;';
-      btn.style.background = 'var(--primary-light,#1e3a5f)';
-      btn.style.color = 'var(--primary,#3b82f6)';
-      btn.textContent = '👤 ' + (this._user.display_name || this._user.username || 'User');
-      btn.title = '点击查看选项';
+      btn.className = 'header-btn nav-dropdown-btn nav-dd-label';
+      btn.title = '用户选项';
+      btn.innerHTML = '<i class="bi bi-person-circle"></i><span class="nav-dd-text">用户</span><i class="bi bi-chevron-down nav-dd-arrow"></i>';
       btn.onclick = function(e) { e.stopPropagation(); self._showUserMenu(e); };
-      navRight.appendChild(btn);
+      wrap.appendChild(btn);
+
+      // 下拉菜单（按需创建，点击时生成到 body）
+      wrap._userMenuHandler = function(e) { self._showUserMenu(e); };
+
+      // 插入 pluginNavRight 前面
+      var ref = document.getElementById('pluginNavRight');
+      if (ref) ref.parentNode.insertBefore(wrap, ref);
+      else actions.appendChild(wrap);
     },
 
     _showUserMenu: function(e) {
@@ -356,7 +369,7 @@
       }
       localStorage.removeItem('pk_token'); localStorage.removeItem('pk_user');
       this._token = null; this._user = null; this._loggedIn = false;
-      var b = document.getElementById('btnAuthUser'); if (b) b.remove();
+      var w = document.getElementById('navDropdownUser'); if (w) w.remove();
       this._showCover();
     },
 
