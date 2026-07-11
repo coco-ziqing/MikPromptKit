@@ -3573,3 +3573,4 @@ body.dark-theme #pkUserMenu .pk-menu-item:hover{background:#334155;color:#f1f5f9
 .aum-container .user-footer{font-size:10px;color:var(--text-muted)}
 .aum-container .empty{text-align:center;padding:60px 20px;color:var(--text-muted);grid-column:1/-1}
 .aum-container .empty .icon{font-size:48px;display:block;margin-bottom:12px}
+.admin-only{display:none}

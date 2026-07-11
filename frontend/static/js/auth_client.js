@@ -370,6 +370,8 @@
       localStorage.removeItem('pk_token'); localStorage.removeItem('pk_user');
       this._token = null; this._user = null; this._loggedIn = false;
       var w = document.getElementById('navDropdownUser'); if (w) w.remove();
+      // 隐藏管理员专属入口（退出登录后）
+      document.querySelectorAll('.admin-only').forEach(function(el){ el.style.display = 'none'; });
       this._showCover();
     },
 

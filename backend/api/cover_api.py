@@ -3,7 +3,7 @@
 封面内容管理 API — 首页封面页的标题/描述/图片可编辑存储
 表: app_cover_content
 """
-import json, os, sqlite3, time, shutil, uuid
+import json, os, sqlite3, time, shutil, uuid, base64
 from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File
 
 router = APIRouter(tags=["封面管理"], prefix="/api/cover")
@@ -77,9 +77,31 @@ def get_cover():
     finally: db.close()
 
 
+def _verify_admin(request: Request):
+    """验证管理员权限"""
+    token = None
+    ah = request.headers.get("Authorization", "")
+    if ah.startswith("Bearer "): token = ah[7:]
+    if not token:
+        raise HTTPException(401, "请先登录")
+    try:
+        parts = token.split(".")
+        if len(parts) == 3:
+            payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+            if payload.get("exp", 0) > time.time():
+                role = payload.get("role", "")
+                if role == "admin":
+                    return payload
+    except: pass
+    raise HTTPException(403, "仅管理员可编辑封面内容")
+
+
 @router.put("")
-def update_cover(data: dict = Body(...)):
-    """更新封面内容"""
+def update_cover(data: dict = Body(...), request: Request = None):
+    """更新封面内容 — 仅管理员"""
+    if request:
+        _verify_admin(request)
     db = _rw()
     try:
         for k, v in data.items():
