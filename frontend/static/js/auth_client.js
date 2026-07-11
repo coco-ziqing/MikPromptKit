@@ -45,7 +45,7 @@
           localStorage.setItem('pk_user', JSON.stringify(d.user));
           // 显示管理员专属入口
           if (d.user.role === 'admin') {
-            document.querySelectorAll('.admin-only').forEach(function(el){ el.style.display = ''; });
+            document.querySelectorAll('.admin-only').forEach(function(el){ el.style.display = 'block'; });
           }
           this._checkDone = true;
           return;
@@ -219,7 +219,7 @@
           localStorage.setItem('pk_user', JSON.stringify(d.user));
           this._token = d.token; this._user = d.user; this._loggedIn = true;
           if (d.user.role === 'admin') {
-            document.querySelectorAll('.admin-only').forEach(function(el){ el.style.display = ''; });
+            document.querySelectorAll('.admin-only').forEach(function(el){ el.style.display = 'block'; });
           }
           var m = document.getElementById('pkAuthModal'); if (m) m.remove();
           this._hideCover();
