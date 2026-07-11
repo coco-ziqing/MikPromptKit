@@ -572,7 +572,7 @@ def serve_join():
     # 回退：显示简单加入页面
     from fastapi.responses import HTMLResponse
     return HTMLResponse(content='''<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>加入工作空间 — PromptKit</title>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>加入工作空间 — 咪卡Mik词库</title>
 <style>
 :root{--bg:#f8fafc;--card-bg:#fff;--text:#1e293b;--text-muted:#94a3b8;--border:#e5e7eb;--primary:#3b82f6}
 @media (prefers-color-scheme:dark){:root{--bg:#0f172a;--card-bg:#1e293b;--text:#f1f5f9;--text-muted:#64748b;--border:#334155}}

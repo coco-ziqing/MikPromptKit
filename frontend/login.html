@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PromptKit — 团队登录</title>
+<title>咪卡Mik词库 — 团队登录</title>
 <style>
 :root{--bg:#0f172a;--card-bg:#1e293b;--text:#f1f5f9;--text-muted:#64748b;--border:#334155;--primary:#3b82f6;--primary-light:#1e3a5f;--danger:#ef4444;--success:#10b981;--warning:#f59e0b}
 body.light-theme{--bg:#f8fafc;--card-bg:#fff;--text:#1e293b;--text-muted:#94a3b8;--border:#e5e7eb;--primary-light:#eff6ff}
@@ -79,7 +79,7 @@ var PK = {
   },
 
   render: function() {
-    var h = '<div class="login-card"><div class="login-logo"><span class="icon">📦</span><h2>PromptKit</h2><p>局域网团队协作 · AIGC全流程管理</p></div>';
+    var h = '<div class="login-card"><div class="login-logo"><span class="icon">🔍</span><h2>咪卡Mik词库</h2><p>提示词快捷检索 · 团队协作管理</p></div>';
     h += '<div class="top-nav"><a href="/">← 返回首页</a><button class="theme-btn" onclick="PK.toggleTheme()">' + (this._theme==='dark'?'☀ 亮色':'🌙 深色') + '</button></div>';
     h += '<div class="tab-switch"><button class="tab-btn'+(this._tab==='login'?' active':'')+'" onclick="PK.switchTab(\'login\')">登录</button><button class="tab-btn'+(this._tab==='register'?' active':'')+'" onclick="PK.switchTab(\'register\')">注册</button></div>';
 
