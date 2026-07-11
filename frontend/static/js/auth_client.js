@@ -43,9 +43,9 @@
           this._user = d.user;
           this._loggedIn = true;
           localStorage.setItem('pk_user', JSON.stringify(d.user));
-          // 显示管理员专属入口
+          // 管理员可见元素
           if (d.user.role === 'admin') {
-            document.querySelectorAll('.admin-only').forEach(function(el){ el.style.display = 'block'; });
+            document.querySelectorAll('.admin-only').forEach(function(el){ el.classList.remove('admin-only'); });
           }
           this._checkDone = true;
           return;
@@ -219,7 +219,7 @@
           localStorage.setItem('pk_user', JSON.stringify(d.user));
           this._token = d.token; this._user = d.user; this._loggedIn = true;
           if (d.user.role === 'admin') {
-            document.querySelectorAll('.admin-only').forEach(function(el){ el.style.display = 'block'; });
+            document.querySelectorAll('.admin-only').forEach(function(el){ el.classList.remove('admin-only'); });
           }
           var m = document.getElementById('pkAuthModal'); if (m) m.remove();
           this._hideCover();
@@ -378,7 +378,7 @@
       this._token = null; this._user = null; this._loggedIn = false;
       var w = document.getElementById('navDropdownUser'); if (w) w.remove();
       // 隐藏管理员专属入口（退出登录后）
-      document.querySelectorAll('.admin-only').forEach(function(el){ el.style.display = 'none'; });
+      document.querySelectorAll('.nav-dropdown-item.admin-only').forEach(function(el){ el.classList.add('admin-only'); });
       this._showCover();
     },
 
