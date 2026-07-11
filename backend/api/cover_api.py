@@ -83,17 +83,19 @@ def _verify_admin(request: Request):
     ah = request.headers.get("Authorization", "")
     if ah.startswith("Bearer "): token = ah[7:]
     if not token:
-        raise HTTPException(401, "请先登录")
+        raise HTTPException(401, "请先登录，封面内容仅管理员可编辑")
     try:
         parts = token.split(".")
         if len(parts) == 3:
-            payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
+            payload_b64 = parts[1]
+            payload_b64 = payload_b64 + "=" * (-len(payload_b64) % 4)
             payload = json.loads(base64.urlsafe_b64decode(payload_b64))
             if payload.get("exp", 0) > time.time():
                 role = payload.get("role", "")
                 if role == "admin":
                     return payload
-    except: pass
+    except Exception:
+        pass
     raise HTTPException(403, "仅管理员可编辑封面内容")
 
 
@@ -120,34 +122,73 @@ def update_cover(data: dict = Body(...), request: Request = None):
 
 @router.get("/gallery")
 def list_cover_gallery(media_type: str = ""):
-    """列出可用于封面的媒体（复用 media_assets 表）"""
-    db = _ro()
-    try:
-        sql = "SELECT * FROM media_assets WHERE (file_exists"
-        if media_type:
-            sql += f" AND media_type='{media_type}'"
-        else:
-            sql += " OR file_exists IS NULL"  # 兼容旧数据
-        sql += ") ORDER BY updated_at DESC LIMIT 100"
-        try:
-            rows = db.execute(sql).fetchall()
-        except Exception:
-            rows = db.execute("SELECT * FROM media_assets ORDER BY updated_at DESC LIMIT 100").fetchall()
+    """列出可用于封面的媒体 — 直接从磁盘+DB扫描"""
+    BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    THUMB_DIR = os.path.join(BASE, "data", "thumbnails")
+    VIDEO_DIR = os.path.join(BASE, "data", "videos")
+    WC_THUMB_DIR = os.path.join(BASE, "data", "wc_media", "thumbs")
+    WC_VIDEO_DIR = os.path.join(BASE, "data", "wc_media", "videos")
 
-        items = []
-        for r in rows:
-            d = dict(r)
-            fn = d.get("filename", "")
-            mt = d.get("media_type", "image")
-            item = {
-                "url": f"/api/thumbnails/file/{fn}" if mt != "video" else f"/api/thumbnails/video/{fn}",
-                "thumb_url": f"/api/thumbnails/file/{fn}" if mt == "video" else f"/api/thumbnails/file/{fn}",
-                "filename": d.get("original_filename", fn),
-                "type": mt,
-            }
-            items.append(item)
-        return {"ok": True, "images": items}
-    finally: db.close()
+    items = []
+    seen = set()
+
+    # 用独立的只读连接，避免 WAL 锁
+    db = sqlite3.connect(DB_PATH, timeout=2)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA busy_timeout=2000")
+
+    try:
+        rows = db.execute("SELECT * FROM media_assets ORDER BY updated_at DESC LIMIT 500").fetchall()
+        img_rows = db.execute("SELECT * FROM media_assets WHERE media_type='image' ORDER BY updated_at DESC LIMIT 300").fetchall()
+        vid_rows = db.execute("SELECT * FROM media_assets WHERE media_type='video' ORDER BY updated_at DESC LIMIT 100").fetchall()
+    except Exception:
+        rows = []; img_rows = []; vid_rows = []
+
+    # 合并：先全部图片，再全部视频
+    all_rows = list(img_rows) + list(vid_rows)
+    db.close()
+
+    for r in all_rows:
+        d = dict(r)
+        fn = d.get("filename", "")
+        mt = d.get("media_type", "image")
+        if not fn or fn in seen:
+            continue
+        seen.add(fn)
+
+        # 确定文件实际存在的目录
+        thumb_path = os.path.join(THUMB_DIR, fn)
+        video_path = os.path.join(VIDEO_DIR, fn)
+        wc_thumb = os.path.join(WC_THUMB_DIR, fn)
+        wc_video = os.path.join(WC_VIDEO_DIR, fn)
+
+        url = None
+        if mt == "video":
+            if os.path.exists(video_path):
+                url = f"/api/thumbnails/video/{fn}"
+                thumb_url = f"/api/thumbnails/file/{fn}"
+            elif os.path.exists(wc_video):
+                url = f"/api/thumbnails/file/{fn}"
+                thumb_url = url
+            else:
+                continue  # skip missing video
+        else:
+            if os.path.exists(thumb_path) or os.path.exists(wc_thumb):
+                url = f"/api/thumbnails/file/{fn}"
+                thumb_url = url
+            else:
+                continue  # skip missing image
+
+        items.append({
+            "url": url,
+            "thumb_url": thumb_url,
+            "filename": d.get("original_filename", fn),
+            "type": mt,
+        })
+
+    print(f"[CoverGallery] scanned {len(rows)} rows from DB, returned {len(items)} items (images={sum(1 for i in items if i['type']=='image')}, videos={sum(1 for i in items if i['type']=='video')})")
+    return {"ok": True, "images": items}
 
 
 @router.post("/upload")
