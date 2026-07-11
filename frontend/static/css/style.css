@@ -3503,3 +3503,73 @@ body.dark-theme #pkUserMenu .pk-menu-item:hover{background:#334155;color:#f1f5f9
 #pkUserMenu .pk-menu-danger{color:var(--danger,#ef4444)}
 #pkUserMenu .pk-menu-danger:hover{background:rgba(239,68,68,.1);color:var(--danger)}
 .pk-cover-video-wrapper{position:relative}.pk-cover-video-wrapper .pk-cover-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;transition:opacity .3s}.pk-cover-video-wrapper .pk-cover-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}.pk-cover-video-wrapper .pk-cover-play-overlay{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.2);border-radius:12px;transition:opacity .3s}.pk-cover-play-overlay span{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.85);color:#3b82f6;font-size:18px}
+
+#viewAdminUsers{overflow-y:auto}
+#viewAdminUsers .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap}
+#viewAdminUsers .search-box{padding:9px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:13px;width:220px;background:var(--bg-main);color:var(--text-main);outline:none}
+#viewAdminUsers .search-box:focus{border-color:var(--primary)}
+#viewAdminUsers .filter-btn{padding:6px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:11px;cursor:pointer;background:var(--bg-main);color:var(--text-muted);font-weight:600}
+#viewAdminUsers .filter-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+#viewAdminUsers .stat-bar{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+#viewAdminUsers .stat-chip{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--bg-card);border:1px solid var(--border-color);color:var(--text-muted)}
+#viewAdminUsers .stat-chip .num{color:var(--text-main);font-size:15px}
+#viewAdminUsers .user-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+#viewAdminUsers .user-card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;padding:16px;cursor:pointer}
+#viewAdminUsers .user-card:hover{border-color:var(--primary)}
+#viewAdminUsers .user-card-header{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+#viewAdminUsers .user-avatar{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;font-size:20px;flex-shrink:0;color:#fff}
+#viewAdminUsers .user-info{flex:1;min-width:0}
+#viewAdminUsers .user-name{font-size:14px;font-weight:700;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#viewAdminUsers .user-username{font-size:11px;color:var(--text-muted)}
+#viewAdminUsers .user-meta{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+#viewAdminUsers .badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600}
+#viewAdminUsers .badge-admin{background:rgba(59,130,246,.15);color:#3b82f6}
+#viewAdminUsers .badge-editor{background:rgba(16,185,129,.15);color:#10b981}
+#viewAdminUsers .badge-viewer{background:rgba(148,163,184,.15);color:#94a3b8}
+#viewAdminUsers .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
+#viewAdminUsers .status-active{background:var(--success,#10b981)}
+#viewAdminUsers .status-inactive{background:var(--text-muted)}
+#viewAdminUsers .user-card-actions{display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-color)}
+#viewAdminUsers .user-footer{font-size:10px;color:var(--text-muted)}
+#viewAdminUsers .btn-outline{padding:6px 12px;font-size:11px;border:1px solid var(--border-color);border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer}
+#viewAdminUsers .btn-outline:hover{border-color:var(--primary);color:var(--primary)}
+#viewAdminUsers .btn-outline-danger:hover{border-color:var(--danger,#ef4444);color:var(--danger)}
+#viewAdminUsers .empty{text-align:center;padding:60px 20px;color:var(--text-muted);grid-column:1/-1}
+#viewAdminUsers .empty .icon{font-size:48px;display:block;margin-bottom:12px}
+#viewAdminUsers .batch-bar{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--primary);border-radius:12px;padding:10px 20px;z-index:999;gap:12px;align-items:center}
+#viewAdminUsers .batch-bar.show{display:flex}
+#viewAdminUsers .pk-auth-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center}
+#viewAdminUsers .pk-auth-modal{background:var(--bg-card);border-radius:12px;padding:24px;max-width:480px;width:90%}
+#viewAdminUsers .form-group{margin-bottom:12px}
+#viewAdminUsers .form-group label{display:block;font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px}
+#viewAdminUsers .form-group input,#viewAdminUsers .form-group select{width:100%;padding:9px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:13px;background:var(--bg-main);color:var(--text-main);outline:none}
+#viewAdminUsers .pk-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border-color)}
+/* ===== AUM 用户管理面板 (embedded SPA) ===== */
+.aum-container .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap}
+.aum-container .search-box{padding:9px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:13px;width:220px;background:var(--bg-main);color:var(--text-main);outline:none}
+.aum-container .search-box:focus{border-color:var(--primary)}
+.aum-container .filter-btn{padding:6px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:11px;cursor:pointer;background:var(--bg-main);color:var(--text-muted);font-weight:600}
+.aum-container .filter-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.aum-container .stat-bar{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.aum-container .stat-chip{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--bg-card);border:1px solid var(--border-color);color:var(--text-muted)}
+.aum-container .stat-chip .num{color:var(--text-main);font-size:15px}
+.aum-container .user-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.aum-container .user-card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:12px;padding:16px;cursor:pointer;transition:all .15s}
+.aum-container .user-card:hover{border-color:var(--primary);box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.aum-container .user-card-header{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.aum-container .user-avatar{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;font-size:20px;flex-shrink:0;color:#fff}
+.aum-container .user-info{flex:1;min-width:0}
+.aum-container .user-name{font-size:14px;font-weight:700;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.aum-container .user-username{font-size:11px;color:var(--text-muted)}
+.aum-container .user-meta{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.aum-container .badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600}
+.aum-container .badge-admin{background:rgba(59,130,246,.15);color:#3b82f6}
+.aum-container .badge-editor{background:rgba(16,185,129,.15);color:#10b981}
+.aum-container .badge-viewer{background:rgba(148,163,184,.15);color:#94a3b8}
+.aum-container .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
+.aum-container .status-active{background:var(--success,#10b981)}
+.aum-container .status-inactive{background:var(--text-muted)}
+.aum-container .user-card-actions{display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-color)}
+.aum-container .user-footer{font-size:10px;color:var(--text-muted)}
+.aum-container .empty{text-align:center;padding:60px 20px;color:var(--text-muted);grid-column:1/-1}
+.aum-container .empty .icon{font-size:48px;display:block;margin-bottom:12px}

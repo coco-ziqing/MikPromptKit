@@ -314,7 +314,7 @@
 
       // 菜单项
       var items = [
-        {icon:'🔑', label:'用户管理', action:"window.location.href='/admin_users.html'", show:isAdmin},
+        {icon:'🔑', label:'用户管理', action:"if(window.AUM)AUM.open()", show:isAdmin},
         {divider:true, show:isAdmin},
         {icon:'👤', label:'个人详情', action:'PK_AUTH_CLIENT._showProfile()', show:true},
         {icon:'🔄', label:'切换账户', action:'PK_AUTH_CLIENT._switchAccount()', show:true},
