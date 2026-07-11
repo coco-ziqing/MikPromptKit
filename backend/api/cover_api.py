@@ -90,3 +90,38 @@ def update_cover(data: dict = Body(...)):
         db.commit()
         return {"ok": True, "message": "封面内容已更新"}
     finally: db.close()
+
+
+# ============================================================
+# 图片上传 + 库
+# ============================================================
+
+import shutil, uuid
+from fastapi import UploadFile, File
+
+COVER_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "frontend", "static", "img", "covers")
+os.makedirs(COVER_UPLOAD_DIR, exist_ok=True)
+
+@router.post("/upload")
+async def upload_cover_image(file: UploadFile = File(...)):
+    """上传封面图片到 frontend/static/img/covers/"""
+    ext = os.path.splitext(file.filename or "image.png")[1] or ".png"
+    if ext.lower() not in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"):
+        raise HTTPException(400, "仅支持 png/jpg/jpeg/gif/webp/svg 格式")
+    fname = f"{uuid.uuid4().hex[:8]}{ext.lower()}"
+    fpath = os.path.join(COVER_UPLOAD_DIR, fname)
+    with open(fpath, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    url = f"/static/img/covers/{fname}"
+    return {"ok": True, "url": url, "filename": fname}
+
+
+@router.get("/gallery")
+def list_cover_images():
+    """列出所有已上传的封面图片"""
+    images = []
+    if os.path.isdir(COVER_UPLOAD_DIR):
+        for f in sorted(os.listdir(COVER_UPLOAD_DIR)):
+            if f.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")):
+                images.append({"url": f"/static/img/covers/{f}", "filename": f})
+    return {"ok": True, "images": images}
