@@ -134,3 +134,92 @@ body.dark-theme .btn-secondary{background:#334155;color:#f1f5f9}
 /* ===== 任务操作按钮 ===== */
 .pk-task-action-btn{width:24px;height:24px;border-radius:4px;border:none;background:transparent;color:var(--text-muted,#94a3b8);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
 .pk-task-action-btn:hover{background:var(--bg-hover,#f1f5f9);color:var(--text-primary)}
+
+/* ===== 看板 ===== */
+.pk-kanban-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:20px;min-height:300px;align-items:flex-start}
+.pk-kanban-column{min-width:280px;max-width:320px;flex-shrink:0;background:var(--bg-secondary,#f1f5f9);border-radius:12px;padding:12px;display:flex;flex-direction:column}
+body.dark-theme .pk-kanban-column{background:#0f172a}
+.pk-kanban-col-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:4px 4px 8px}
+.pk-kanban-col-title{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--text-primary)}
+.pk-kanban-col-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.pk-kanban-col-count{font-size:11px;color:var(--text-muted);background:var(--bg-card,#fff);padding:2px 8px;border-radius:10px}
+body.dark-theme .pk-kanban-col-count{background:#334155}
+.pk-kanban-col-tasks{flex:1;display:flex;flex-direction:column;gap:8px;min-height:40px}
+.pk-task-card{background:var(--bg-card,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:8px;padding:12px;cursor:grab;transition:var(--proj-transition)}
+body.dark-theme .pk-task-card{background:#1e293b;border-color:#334155}
+.pk-task-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.1);border-color:var(--primary,#3b82f6)}
+.pk-task-card .task-title{font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:6px}
+body.dark-theme .pk-task-card .task-title{color:#f1f5f9}
+.pk-task-card .task-meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted)}
+.pk-task-dragging{opacity:.4;border-style:dashed}
+.pk-kanban-col-dragover{background:var(--primary-light,#eff6ff);box-shadow:inset 0 0 0 2px var(--primary,#3b82f6)}
+.pk-kanban-add-task{margin-top:auto;padding-top:8px}
+.pk-kanban-add-btn{width:100%;padding:8px;border:1px dashed var(--border-color,#cbd5e1);border-radius:8px;background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer}
+.pk-kanban-add-btn:hover{border-color:var(--primary,#3b82f6);color:var(--primary)}
+.pk-kanban-add-col{min-width:200px;flex-shrink:0}
+
+/* ===== 甘特图 ===== */
+.pk-gantt-container{background:var(--bg-card,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:10px;overflow:hidden}
+body.dark-theme .pk-gantt-container{background:#1e293b;border-color:#334155}
+.pk-gantt-header{padding:16px 20px;border-bottom:1px solid var(--border-color,#e5e7eb)}
+.pk-gantt-body{padding:16px 20px}
+.pk-gantt-row{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border-color,#f1f5f9)}
+body.dark-theme .pk-gantt-row{border-color:#1e293b}
+.pk-gantt-label{width:200px;flex-shrink:0;font-size:13px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-gantt-label.milestone{font-weight:700;color:var(--primary,#3b82f6)}
+.pk-gantt-timeline{flex:1;height:28px;position:relative;display:flex;align-items:center}
+
+/* ===== 里程碑 ===== */
+.pk-milestone-list{display:flex;flex-direction:column;gap:8px}
+.pk-milestone-item{background:var(--bg-card,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:8px;padding:16px;display:flex;align-items:center;gap:14px}
+body.dark-theme .pk-milestone-item{background:#1e293b;border-color:#334155}
+.pk-milestone-item.completed{opacity:.6}
+.pk-milestone-item.completed .pk-milestone-title{text-decoration:line-through}
+.pk-milestone-check{width:28px;height:28px;border-radius:50%;border:2px solid var(--border-color,#cbd5e1);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;color:transparent}
+.pk-milestone-check:hover{border-color:#10b981}
+.pk-milestone-item.completed .pk-milestone-check{background:#10b981;border-color:#10b981;color:#fff}
+.pk-milestone-info{flex:1;min-width:0}
+.pk-milestone-title{font-size:14px;font-weight:600;color:var(--text-primary)}
+body.dark-theme .pk-milestone-title{color:#f1f5f9}
+.pk-milestone-meta{font-size:12px;color:var(--text-muted);margin-top:4px}
+
+/* ===== 团队卡片 ===== */
+.pk-team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+.pk-member-card-v2{background:var(--bg-card,#fff);border:1px solid var(--border-color,#e5e7eb);border-radius:12px;overflow:hidden;cursor:pointer}
+.pk-member-card-v2:hover{box-shadow:0 4px 16px rgba(0,0,0,.06)}
+body.dark-theme .pk-member-card-v2{background:#1e293b;border-color:#334155}
+.pk-member-header{display:flex;align-items:center;gap:12px;padding:16px 16px 12px}
+.pk-member-avatar-v2{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;color:#fff}
+.pk-member-name-v2{flex:1;min-width:0}
+.pk-member-realname{font-size:15px;font-weight:700;color:var(--text-primary)}
+body.dark-theme .pk-member-realname{color:#f1f5f9}
+.pk-member-badge-v2{display:inline-block;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;margin-top:4px}
+.pk-member-action{width:30px;height:30px;border:none;border-radius:6px;background:transparent;color:var(--text-muted);font-size:14px;cursor:pointer}
+.pk-member-action:hover{background:var(--bg-hover,#f1f5f9)}
+
+/* ===== 组织架构 ===== */
+.pk-org-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.pk-org-header h5{margin:0;font-size:15px;font-weight:700;color:var(--text-primary)}
+.pk-org-scroll{overflow-x:auto;padding:8px 0}
+.pk-org-tree{padding:10px 0}
+.pk-org-level-label{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:10px}
+.pk-org-branch{position:relative;padding-left:28px;margin-bottom:2px}
+.pk-org-branch::before{content:'';position:absolute;left:12px;top:0;bottom:0;width:2px;background:var(--border-color,#e5e7eb)}
+.pk-org-branch:last-child::before{height:28px}
+.pk-org-node{display:inline-flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:2px solid var(--border-color,#e5e7eb);background:var(--bg-card,#fff);cursor:grab;position:relative;min-width:200px}
+.pk-org-node:hover{border-color:var(--primary,#3b82f6)}
+.pk-org-node::after{content:'';position:absolute;left:-18px;top:50%;width:16px;height:2px;background:var(--border-color,#e5e7eb)}
+.pk-org-dragging{opacity:.4;border-style:dashed}
+.pk-org-drop-target{border-color:var(--primary,#3b82f6);box-shadow:0 0 0 3px rgba(59,130,246,.2)}
+.pk-org-children{padding-left:0;margin-top:6px}
+.pk-org-node-actions{margin-left:auto;display:flex;gap:4px;opacity:0;transition:opacity .15s}
+.pk-org-node:hover .pk-org-node-actions{opacity:1}
+.pk-org-action-btn{width:26px;height:26px;border:none;border-radius:6px;background:var(--bg-hover,#f1f5f9);cursor:pointer;font-size:13px}
+.pk-org-action-btn:hover{background:var(--primary,#3b82f6);color:#fff}
+.pk-org-ungrouped{display:flex;flex-wrap:wrap;gap:8px;padding:12px;border:2px dashed var(--border-color,#e5e7eb);border-radius:10px;min-height:60px}
+.pk-org-ungrouped.pk-org-drop-target{border-color:var(--primary,#3b82f6);background:var(--primary-light,#eff6ff)}
+.pk-org-node-sm{padding:6px 10px;min-width:160px;gap:6px}
+body.dark-theme .pk-org-node{background:#1e293b;border-color:#334155}
+body.dark-theme .pk-org-branch::before,body.dark-theme .pk-org-node::after{background:#334155}
+body.dark-theme .pk-org-action-btn{background:#334155}
+body.dark-theme .pk-org-ungrouped{border-color:#334155}
