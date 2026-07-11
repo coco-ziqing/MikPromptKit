@@ -26,8 +26,10 @@
       // 验证登录态
       await this._checkLogin();
 
-      // 注入用户按钮到导航栏
-      this._injectNavButton();
+      // 登录后延迟注入导航按钮，确保 DOM 已渲染
+      if (this._loggedIn) {
+        this._injectNavButton(0);
+      }
     },
 
     _checkLogin: async function() {
@@ -214,8 +216,6 @@
           this._token = d.token; this._user = d.user; this._loggedIn = true;
           var m = document.getElementById('pkAuthModal'); if (m) m.remove();
           this._hideCover();
-          this._injectNavButton();
-          // 刷新页面以加载完整功能
           setTimeout(function(){ location.reload(); }, 300);
         } else {
           this._setAuthError('al_error', d.detail||'用户名或密码错误');
@@ -253,10 +253,17 @@
     _esc: function(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML;},
 
     // ---- 导航栏用户按钮 ----
-    _injectNavButton: function() {
+    _injectNavButton: function(attempt) {
       if (!this._loggedIn) return;
+      attempt = attempt || 0;
       var navRight = document.getElementById('pluginNavRight');
-      if (!navRight) { setTimeout(this._injectNavButton.bind(this), 300); return; }
+      if (!navRight) {
+        // 登录后DOM可能尚未就绪，重试最多15次（3秒）
+        if (attempt < 15) {
+          setTimeout(this._injectNavButton.bind(this, attempt + 1), 200);
+        }
+        return;
+      }
       // 已有按钮则跳过
       if (document.getElementById('btnAuthUser')) return;
 
