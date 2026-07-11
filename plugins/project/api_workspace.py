@@ -16,10 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
 router = APIRouter(tags=["工作空间管理"])
 
 # 复用插件 API 的 DB 路径
-_THIS = os.path.dirname(os.path.abspath(__file__))
-_PLUGIN = os.path.dirname(_THIS)  # plugins/project/
-_ROOT = os.path.dirname(os.path.dirname(_PLUGIN))  # project root
-DB_PATH = os.path.join(_ROOT, "data", "prompts.db")
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "prompts.db")
 
 def _rw():
     conn = sqlite3.connect(DB_PATH, timeout=2)
@@ -79,8 +76,15 @@ def _require_ws_admin(master_id: int, user_id: int):
         if not member:
             raise HTTPException(403, "你不是该工作空间的成员")
         # 检查角色等级
-        from plugins.project.api import CREW_ROLES
-        role_info = CREW_ROLES.get(member["role"], {})
+        CREW_ROLES = {
+            "executive_producer": {"level": 10}, "director": {"level": 9},
+            "screenwriter": {"level": 8}, "prompt_engineer": {"level": 7},
+            "storyboard_artist": {"level": 6}, "visual_designer": {"level": 5},
+            "animator": {"level": 5}, "sound_designer": {"level": 4},
+            "editor": {"level": 4}, "qa_reviewer": {"level": 3},
+            "coordinator": {"level": 2}, "viewer": {"level": 1},
+        }
+        role_info = CREW_ROLES.get(member.get("role", "viewer"), {})
         if role_info.get("level", 0) < 9:
             raise HTTPException(403, "仅总导演以上角色可管理成员")
     finally:

@@ -267,14 +267,26 @@ class ProjectManagerPlugin(PromptKitPlugin):
     # ===== API 路由 =====
 
     def get_api_router(self):
-        """返回 FastAPI APIRouter，挂载到 /api/plugins/com.promptkit.project/"""
+        """返回主 API 路由（含工作空间管理）"""
         import importlib.util
         api_path = Path(__file__).parent / "api.py"
         spec = importlib.util.spec_from_file_location(
             "promptkit_plugin_project_api", str(api_path)
         )
-        if spec is None or spec.loader is None:
-            return None
+        if spec is None or spec.loader is None: return None
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        return module.router
+        router = module.router
+
+        # Phase23.3: 挂载工作空间管理子路由
+        ws_path = Path(__file__).parent / "api_workspace.py"
+        if ws_path.exists():
+            ws_spec = importlib.util.spec_from_file_location(
+                "promptkit_plugin_workspace_api", str(ws_path)
+            )
+            if ws_spec and ws_spec.loader:
+                ws_module = importlib.util.module_from_spec(ws_spec)
+                ws_spec.loader.exec_module(ws_module)
+                router.include_router(ws_module.router)
+
+        return router
