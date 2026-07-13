@@ -20,6 +20,23 @@ Phase31 后 P4 工作台已有清单但 `_renderPhaseExtra` 唯独 P4 无专属�
 
 ---
 
+## Phase33 封面图替换 + 基表-视图漂移审计（2026-07-13 晚）
+
+### 封面占位图 → 真实媒体截图
+- `PUT /api/cover` 更新 cover_images: 3 张占位 `/static/img/covers/*.png` → `/api/thumbnails/file/{uuid}.jpg`(真实缩略图,从 369 张中选,各约 600KB 高清)。
+- 纯数据操作,无代码改动；封面 `/api/cover` 返回数据确认已更新,缩略图 URL 均可 200 访问。用户需强刷看新封面。
+
+### 基表 vs 视图/迁移漂移审计
+- **发现**：`database.py` 中 `prompt_library` 和 `prompt_word_card` 仍定义为 `CREATE TABLE IF NOT EXISTS`，但实时库已被迁移改为 **VIEW**(底层映射 `word_card_group`/`word_card`)。
+- 实时库另有 `_old_prompt_library`+`_old_prompt_word_card` 两张备份表(迁移重命名产物),证实迁移过程存在但 database.py 没跟进。
+- **新装风险**：新库执行 `CREATE VIEW IF NOT EXISTS`(SQLite 3.50+ 支持)方可保 schema 正确；当前 `CREATE TABLE IF NOT EXISTS` 在新库会确实建表(因为无同名视图可跳),导致后续迁移需纠正,产生 schema 抖动。
+- **方案记录**：database.py 中这 2 处应改为 `CREATE VIEW IF NOT EXISTS`(定义与实时库视图一致) + 确保 word_card_group/word_card 建在前。列为中等技术债,适合下阶段专项清理。
+
+### 遗留
+- 封面数据已更新但**需强刷**浏览器才能看到新图。
+
+---
+
 ## Phase31 P4-P6 阶段工作台落地 — 7 阶段流程闭环（2026-07-13 晚）
 
 ### 背景
