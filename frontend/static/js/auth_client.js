@@ -116,8 +116,8 @@
           '</div>'+
           (subtitle?'<p class="pk-cover-subtitle">'+self._esc(subtitle)+'</p>':'')+
           (desc?'<div class="pk-cover-desc">'+desc+'</div>':'')+
-          featHTML+
           imgHTML+
+          featHTML+
           '<div class="pk-cover-actions">'+
             '<button class="pk-cover-btn pk-cover-btn-primary" onclick="PK_AUTH_CLIENT._showLoginModal()">'+self._esc(hint)+'</button>'+
           '</div>'+

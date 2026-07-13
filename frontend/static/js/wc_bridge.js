@@ -25,6 +25,16 @@ App.loadGroupTree = async function() {
             this.renderSidebar();
             // 延迟 Hook 搜索框（此时 DOM 已就绪）
             setTimeout(function() { App._wcHookSearchAndRestore(); }, 100);
+            // 修复竞态：树到达后，若主区仍停在“加载分组中”占位且处于首页陈列架(无分组)，补渲染
+            try {
+                var pl = document.getElementById('promptList');
+                var vh = document.getElementById('viewHome');
+                var homeActive = vh && vh.classList.contains('active-view');
+                if (pl && homeActive && !App.state.currentGroupId &&
+                    /加载分组中|showcase\.loading|loading-spinner/.test(pl.innerHTML)) {
+                    if (typeof App._showShowcase === 'function') App._showShowcase();
+                }
+            } catch(e2) {}
         }
     } catch(e) { console.warn('[wc-bridge] loadGroupTree error:', e.message); }
 };
