@@ -459,7 +459,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS user_scene_prompt (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 scene_id INTEGER NOT NULL REFERENCES user_project_scene(id) ON DELETE CASCADE,
-                word_card_id INTEGER NOT NULL REFERENCES prompt_word_card(id),
+                word_card_id INTEGER NOT NULL,  -- 注: prompt_word_card 是视图且 id 经 seedance_id_map 重映射，不可作 FK 目标(Phase28.1)
                 dimension_key TEXT NOT NULL,
                 created_at TEXT DEFAULT (datetime('now','localtime'))
             );
@@ -467,7 +467,7 @@ def init_db():
             -- 7. 用户自定义词条表
             CREATE TABLE IF NOT EXISTS user_custom_word (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                library_id INTEGER NOT NULL REFERENCES prompt_library(id),
+                library_id INTEGER NOT NULL REFERENCES word_card_group(id) ON DELETE CASCADE,  -- 修正: prompt_library 是视图，改指真表 word_card_group(Phase28.1)
                 word_text TEXT NOT NULL,
                 definition TEXT,
                 preview_image TEXT,

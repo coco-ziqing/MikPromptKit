@@ -26,6 +26,26 @@
 
 ---
 
+## Phase28.1 遗留外键修复 — 结构性坏 FK + 悬空孤儿行（2026-07-13 傍晚）
+
+### 根因(比预期严重)
+- `prompt_library` / `prompt_word_card` **都是视图(VIEW)**，不是表。`user_custom_word.library_id REFERENCES prompt_library(id)` → **外键引用视图，结构上无法成立** → SQLite 报 "foreign key mismatch"，也是 Phase28 整库 foreign_key_check 直接崩溃的元凶。
+- `prompt_library` 视图 id = `word_card_group.id`(干净1:1)；`prompt_word_card` 视图 id = `COALESCE(seedance_id_map.old_id, word_card.id)`(重映射，不可作 FK 目标)。
+
+### 修复
+1. **实时库**：重建 `user_custom_word`(0行)，`library_id` FK 由视图 `prompt_library` → 真表 `word_card_group(id) ON DELETE CASCADE`。备份 phase28_1_fkfix_*.db。
+2. **database.py(新装源头)**：`user_custom_word.library_id` 改指 word_card_group；`user_scene_prompt.word_card_id` 去掉 `REFERENCES prompt_word_card(id)` 死 FK(对齐实时库已在用的正常结构)。
+3. **整库 foreign_key_check 跑通后暴露 3 条真实悬空行**，均 Phase23 测试残留，已按条件清除：workspace_invites×1(指已删 master1 的死邀请) + user_sessions×2(已删测试用户 uid4/6 的会话)。备份 phase28_1_orphans_*.db。
+
+### 结果
+- **整库 `PRAGMA foreign_key_check` violations=0**（从崩溃 → 3 悬空 → 0），integrity_check=ok。
+- 活数据完好：workspace_invites 4→3、user_sessions 80→78（仅删孤儿）。服务 health 200。
+
+### 未处理技术债
+- database.py 中 `prompt_word_card` 仍以 `CREATE TABLE IF NOT EXISTS` 定义，但实时库已被迁移改为 **视图**(基表与迁移后现状漂移)。新装走 CREATE IF NOT EXISTS 因同名视图存在而自动跳过，不报错；彻底校正需一次专项「基表 vs 视图/迁移漂移」梳理，已记录，低优先。
+
+---
+
 ## ⚠️ 暂停开发触发器
 - **触发词**: 用户说「暂停开发」「停止开发」「先不做了」「休息一下」或关闭 OpenClaw
 - **必须执行**: ① git status 确认干净 ② git push origin master ③ WAL checkpoint ④ 确认最新 tag 已推送 ⑤ 输出安全关闭清单
