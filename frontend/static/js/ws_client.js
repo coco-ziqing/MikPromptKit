@@ -141,6 +141,11 @@
       window.PK_ProjectDashboard._renderP3Kanban();
     }
   });
+  PK_WS.on('comment', function(msg) {
+    if (window.PK_ProjectDashboard && window.PK_ProjectDashboard._onRemoteComment) {
+      window.PK_ProjectDashboard._onRemoteComment(msg);
+    }
+  });
   PK_WS.on('milestone_update', function(msg) {
     if (window.PK_ProjectDashboard && window.PK_ProjectDashboard._p3ActiveTab === 'milestones') {
       window.PK_ProjectDashboard._renderP3Milestones();

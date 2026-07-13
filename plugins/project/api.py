@@ -121,7 +121,7 @@ def create_column(data: dict = Body(...)):
     try:
         if mid:
             max_o = db.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM project_columns WHERE master_project_id=?", [mid]).fetchone()[0]
-            db.execute("INSERT INTO project_columns (master_project_id,name,color,sort_order,phase) VALUES (?,?,?,?,'P3')",
+            db.execute("INSERT INTO project_columns (project_id,master_project_id,name,color,sort_order,phase) VALUES (0,?,?,?,?,'P3')",
                        [mid, name, data.get("color", "#6b7280"), max_o])
         else:
             max_o = db.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM project_columns WHERE project_id=?", [pid]).fetchone()[0]
@@ -225,7 +225,7 @@ def create_task(data: dict = Body(...)):
         db.execute("""INSERT INTO project_tasks
             (project_id,master_project_id,column_id,title,description,assignee_id,priority,due_date,sort_order,phase)
             VALUES (?,?,?,?,?,?,?,?,(SELECT COALESCE(MAX(sort_order),0)+1 FROM project_tasks WHERE master_project_id=? OR project_id=?),'P3')""",
-            [pid, mid, cid, title, data.get("description", ""), data.get("assignee_id"),
+            [pid if pid else 0, mid, cid, title, data.get("description", ""), data.get("assignee_id"),
              data.get("priority", 0), data.get("due_date"), mid or pid, pid])
         db.commit()
         nid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -367,7 +367,7 @@ def create_milestone(data: dict = Body(...)):
     try:
         max_o = db.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM project_milestones WHERE master_project_id=? OR project_id=?", [mid or pid, pid]).fetchone()[0]
         db.execute("INSERT INTO project_milestones (project_id,master_project_id,title,description,due_date,sort_order,phase) VALUES (?,?,?,?,?,?,'P3')",
-                   [pid, mid, title, data.get("description", ""), data.get("due_date"), max_o])
+                   [pid if pid else 0, mid, title, data.get("description", ""), data.get("due_date"), max_o])
         db.commit()
         return {"ok": True, "id": db.execute("SELECT last_insert_rowid()").fetchone()[0]}
     finally: db.close()

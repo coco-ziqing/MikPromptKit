@@ -300,4 +300,15 @@ class ProjectManagerPlugin(PromptKitPlugin):
                 sq_spec.loader.exec_module(sq_module)
                 router.include_router(sq_module.router)
 
+        # Phase25 P3: 挂载协作(评论/通知/活动流)子路由
+        cb_path = Path(__file__).parent / "api_collab.py"
+        if cb_path.exists():
+            cb_spec = importlib.util.spec_from_file_location(
+                "promptkit_plugin_collab_api", str(cb_path)
+            )
+            if cb_spec and cb_spec.loader:
+                cb_module = importlib.util.module_from_spec(cb_spec)
+                cb_spec.loader.exec_module(cb_module)
+                router.include_router(cb_module.router)
+
         return router
