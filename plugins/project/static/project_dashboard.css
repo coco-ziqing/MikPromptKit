@@ -223,3 +223,14 @@ body.dark-theme .pk-org-node{background:#1e293b;border-color:#334155}
 body.dark-theme .pk-org-branch::before,body.dark-theme .pk-org-node::after{background:#334155}
 body.dark-theme .pk-org-action-btn{background:#334155}
 body.dark-theme .pk-org-ungrouped{border-color:#334155}
+
+/* ===== Phase25 Track B: 在线状态头像条 ===== */
+.pk-presence-bar{display:flex;align-items:center;gap:6px;flex:1;justify-content:center;flex-wrap:wrap;}
+.pk-presence-bar:empty{display:none;}
+.pk-presence-live{width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 0 0 rgba(16,185,129,.6);animation:pkPulse 1.8s infinite;}
+@keyframes pkPulse{0%{box-shadow:0 0 0 0 rgba(16,185,129,.5);}70%{box-shadow:0 0 0 7px rgba(16,185,129,0);}100%{box-shadow:0 0 0 0 rgba(16,185,129,0);}}
+.pk-presence-count{font-size:12px;color:var(--text-muted,#6b7280);margin-right:4px;}
+.pk-presence-ava{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;margin-left:-6px;border:2px solid var(--bg-card,#fff);box-shadow:0 1px 3px rgba(0,0,0,.2);}
+.pk-presence-ava:first-of-type{margin-left:0;}
+.pk-presence-more{font-size:11px;color:var(--text-muted,#6b7280);background:var(--bg-secondary,#f1f5f9);border-radius:12px;padding:2px 8px;margin-left:2px;}
+body.dark-theme .pk-presence-ava{border-color:#1e293b;}

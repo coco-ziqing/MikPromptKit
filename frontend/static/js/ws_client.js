@@ -21,6 +21,7 @@
 
       self._masterId = masterId;
       var token = localStorage.getItem('pk_token') || '';
+      if (!token) { console.log('[PK_WS] no auth token, skip WS connect'); return; }
       var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       var url = proto + '//' + location.host + '/ws/collab/' + masterId + '?token=' + token;
 
@@ -54,6 +55,9 @@
           console.log('[PK_WS] Disconnected (code=' + ev.code + ')');
           clearInterval(self._heartbeat);
           self._conn = null;
+          self._fire('_closed', {code: ev.code});
+          // 4001 = 鉴权失败，不重连以避免风暴
+          if (ev.code === 4001) { self._masterId = null; return; }
           // Auto-reconnect after 3s
           if (!self._reconnectTimer) {
             self._reconnectTimer = setTimeout(function() {
@@ -118,15 +122,8 @@
 
   window.PK_WS = PK_WS;
 
-  // Auto-connect when PM dashboard opens master project
-  var _origSelectMaster = window.PK_ProjectDashboard && window.PK_ProjectDashboard._selectMaster;
-  if (_origSelectMaster) {
-    var orig = _origSelectMaster.bind(window.PK_ProjectDashboard);
-    window.PK_ProjectDashboard._selectMaster = function(id) {
-      PK_WS.connect(String(id));
-      return orig(id);
-    };
-  }
+  // 说明: 自动连接由 project_dashboard._selectMaster 直接调用 PK_WS.connect(id) 触发
+  // (旧的猴子补丁因脚本加载顺序问题从未生效，已移除)
 
   // Register WS event handlers for kanban sync
   PK_WS.on('task_update', function(msg) {
