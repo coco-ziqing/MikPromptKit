@@ -48,10 +48,12 @@ def get_project(project_id: int):
     proj = db.execute("SELECT * FROM user_project WHERE id=?", [project_id]).fetchone()
     if not proj: raise HTTPException(404, "项目不存在")
     scenes = _rows(db.execute("SELECT * FROM user_project_scene WHERE project_id=? ORDER BY sort_order", [project_id]).fetchall())
-    # 统计
-    ts = db.execute("SELECT COUNT(*) as total, COALESCE(SUM(CASE WHEN status='done' THEN 1 ELSE 0 END),0) as done FROM project_tasks WHERE project_id=?", [project_id]).fetchone()
-    ms = db.execute("SELECT COUNT(*) as total, COALESCE(SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END),0) as done FROM project_milestones WHERE project_id=?", [project_id]).fetchone()
-    mems = db.execute("SELECT COUNT(*) FROM project_members WHERE project_id=?", [project_id]).fetchone()[0]
+    # 团队数据统一挂 master 层：由该 seedance 分镜项目反查所属总项目
+    sub = db.execute("SELECT master_project_id FROM master_sub_project WHERE seedance_project_id=?", [project_id]).fetchone()
+    mid = sub["master_project_id"] if sub else 0
+    ts = db.execute("SELECT COUNT(*) as total, COALESCE(SUM(CASE WHEN status='done' THEN 1 ELSE 0 END),0) as done FROM project_tasks WHERE master_project_id=?", [mid]).fetchone()
+    ms = db.execute("SELECT COUNT(*) as total, COALESCE(SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END),0) as done FROM project_milestones WHERE master_project_id=?", [mid]).fetchone()
+    mems = db.execute("SELECT COUNT(*) FROM project_members WHERE master_project_id=?", [mid]).fetchone()[0]
     return {"ok": True, "project": dict(proj), "scenes": scenes,
             "stats": {"total_tasks": ts["total"], "done_tasks": ts["done"],
                       "total_milestones": ms["total"], "done_milestones": ms["done"],
@@ -89,12 +91,9 @@ def delete_project(project_id: int):
 # ============================================================
 
 @router.get("/columns")
-def list_columns(project_id: int = Query(0), master_project_id: Optional[int] = Query(None)):
+def list_columns(master_project_id: int = Query(..., description="总项目ID")):
     db = _ro()
-    if master_project_id:
-        rows = db.execute("SELECT * FROM project_columns WHERE master_project_id=? ORDER BY sort_order", [master_project_id]).fetchall()
-    else:
-        rows = db.execute("SELECT * FROM project_columns WHERE project_id=? ORDER BY sort_order", [project_id]).fetchall()
+    rows = db.execute("SELECT * FROM project_columns WHERE master_project_id=? ORDER BY sort_order", [master_project_id]).fetchall()
     cols = []
     for r in rows:
         c = dict(r)
@@ -112,21 +111,15 @@ def get_column(column_id: int):
 
 @router.post("/columns")
 def create_column(data: dict = Body(...)):
-    pid = data.get("project_id")
     mid = data.get("master_project_id")
     name = (data.get("name", "")).strip()
     if not name: raise HTTPException(400, "name 必填")
-    if not pid and not mid: raise HTTPException(400, "project_id 或 master_project_id 必填")
+    if not mid: raise HTTPException(400, "master_project_id 必填")
     db = _rw()
     try:
-        if mid:
-            max_o = db.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM project_columns WHERE master_project_id=?", [mid]).fetchone()[0]
-            db.execute("INSERT INTO project_columns (project_id,master_project_id,name,color,sort_order,phase) VALUES (0,?,?,?,?,'P3')",
-                       [mid, name, data.get("color", "#6b7280"), max_o])
-        else:
-            max_o = db.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM project_columns WHERE project_id=?", [pid]).fetchone()[0]
-            db.execute("INSERT INTO project_columns (project_id,name,color,sort_order) VALUES (?,?,?,?)",
-                       [pid, name, data.get("color", "#6b7280"), max_o])
+        max_o = db.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM project_columns WHERE master_project_id=?", [mid]).fetchone()[0]
+        db.execute("INSERT INTO project_columns (master_project_id,name,color,sort_order,phase) VALUES (?,?,?,?,'P3')",
+                   [mid, name, data.get("color", "#6b7280"), max_o])
         db.commit()
         nid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
         return {"ok": True, "id": nid}
@@ -149,10 +142,10 @@ def update_column(column_id: int, data: dict = Body(...)):
 def delete_column(column_id: int):
     db = _rw()
     try:
-        col = db.execute("SELECT project_id FROM project_columns WHERE id=?", [column_id]).fetchone()
+        col = db.execute("SELECT master_project_id FROM project_columns WHERE id=?", [column_id]).fetchone()
         if not col: raise HTTPException(404, "列不存在")
-        first = db.execute("SELECT id FROM project_columns WHERE project_id=? AND id!=? ORDER BY sort_order LIMIT 1",
-                           [col["project_id"], column_id]).fetchone()
+        first = db.execute("SELECT id FROM project_columns WHERE master_project_id=? AND id!=? ORDER BY sort_order LIMIT 1",
+                           [col["master_project_id"], column_id]).fetchone()
         if first: db.execute("UPDATE project_tasks SET column_id=? WHERE column_id=?", [first["id"], column_id])
         db.execute("DELETE FROM project_columns WHERE id=?", [column_id])
         db.commit()
@@ -164,24 +157,15 @@ def delete_column(column_id: int):
 # ============================================================
 
 @router.get("/tasks")
-def list_tasks(project_id: int = Query(0), master_project_id: Optional[int] = Query(None), column_id: Optional[int] = Query(None)):
+def list_tasks(master_project_id: int = Query(..., description="总项目ID"), column_id: Optional[int] = Query(None)):
     db = _ro()
-    if master_project_id:
-        sql = """SELECT t.*, c.name as col_name, c.color as col_color,
-                 m.real_name as assignee_name, m.avatar as assignee_avatar, m.avatar_color as assignee_color
-                 FROM project_tasks t
-                 LEFT JOIN project_columns c ON t.column_id=c.id
-                 LEFT JOIN project_members m ON t.assignee_id=m.id
-                 WHERE t.master_project_id=?"""
-        params = [master_project_id]
-    else:
-        sql = """SELECT t.*, c.name as col_name, c.color as col_color,
-                 m.real_name as assignee_name, m.avatar as assignee_avatar, m.avatar_color as assignee_color
-                 FROM project_tasks t
-                 LEFT JOIN project_columns c ON t.column_id=c.id
-                 LEFT JOIN project_members m ON t.assignee_id=m.id
-                 WHERE t.project_id=?"""
-        params = [project_id]
+    sql = """SELECT t.*, c.name as col_name, c.color as col_color,
+             m.real_name as assignee_name, m.avatar as assignee_avatar, m.avatar_color as assignee_color
+             FROM project_tasks t
+             LEFT JOIN project_columns c ON t.column_id=c.id
+             LEFT JOIN project_members m ON t.assignee_id=m.id
+             WHERE t.master_project_id=?"""
+    params = [master_project_id]
     if column_id:
         sql += " AND t.column_id=?"
         params.append(column_id)
@@ -208,25 +192,21 @@ def get_task(task_id: int):
 
 @router.post("/tasks")
 def create_task(data: dict = Body(...)):
-    pid = data.get("project_id")
     mid = data.get("master_project_id")
     title = (data.get("title", "")).strip()
     if not title: raise HTTPException(400, "title 必填")
-    if not pid and not mid: raise HTTPException(400, "project_id 或 master_project_id 必填")
+    if not mid: raise HTTPException(400, "master_project_id 必填")
     db = _rw()
     try:
         cid = data.get("column_id")
         if not cid:
-            if mid:
-                r = db.execute("SELECT id FROM project_columns WHERE master_project_id=? ORDER BY sort_order LIMIT 1", [mid]).fetchone()
-            else:
-                r = db.execute("SELECT id FROM project_columns WHERE project_id=? ORDER BY sort_order LIMIT 1", [pid]).fetchone()
+            r = db.execute("SELECT id FROM project_columns WHERE master_project_id=? ORDER BY sort_order LIMIT 1", [mid]).fetchone()
             cid = r["id"] if r else None
         db.execute("""INSERT INTO project_tasks
-            (project_id,master_project_id,column_id,title,description,assignee_id,priority,due_date,sort_order,phase)
-            VALUES (?,?,?,?,?,?,?,?,(SELECT COALESCE(MAX(sort_order),0)+1 FROM project_tasks WHERE master_project_id=? OR project_id=?),'P3')""",
-            [pid if pid else 0, mid, cid, title, data.get("description", ""), data.get("assignee_id"),
-             data.get("priority", 0), data.get("due_date"), mid or pid, pid])
+            (master_project_id,column_id,title,description,assignee_id,priority,due_date,sort_order,phase)
+            VALUES (?,?,?,?,?,?,?,(SELECT COALESCE(MAX(sort_order),0)+1 FROM project_tasks WHERE master_project_id=?),'P3')""",
+            [mid, cid, title, data.get("description", ""), data.get("assignee_id"),
+             data.get("priority", 0), data.get("due_date"), mid])
         db.commit()
         nid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
         return {"ok": True, "id": nid}
@@ -236,7 +216,7 @@ def create_task(data: dict = Body(...)):
 def update_task(task_id: int, data: dict = Body(...)):
     db = _rw()
     try:
-        t = db.execute("SELECT project_id FROM project_tasks WHERE id=?", [task_id]).fetchone()
+        t = db.execute("SELECT master_project_id FROM project_tasks WHERE id=?", [task_id]).fetchone()
         if not t: raise HTTPException(404, "任务不存在")
         for k in ["title", "description", "column_id", "assignee_id", "priority", "due_date", "status", "sort_order"]:
             if k in data:
@@ -247,7 +227,7 @@ def update_task(task_id: int, data: dict = Body(...)):
                 else:
                     db.execute(f"UPDATE project_tasks SET {k}=?,updated_at=datetime('now','localtime') WHERE id=?", [data[k], task_id])
         db.commit()
-        _sync(t["project_id"])
+        _sync(t["master_project_id"])
         return {"ok": True}
     finally: db.close()
 
@@ -258,7 +238,7 @@ def move_task(task_id: int, data: dict = Body(...)):
     """
     db = _rw()
     try:
-        t = db.execute("SELECT project_id FROM project_tasks WHERE id=?", [task_id]).fetchone()
+        t = db.execute("SELECT master_project_id FROM project_tasks WHERE id=?", [task_id]).fetchone()
         if not t: raise HTTPException(404, "任务不存在")
         if "column_id" in data:
             db.execute("UPDATE project_tasks SET column_id=?,updated_at=datetime('now','localtime') WHERE id=?",
@@ -267,7 +247,7 @@ def move_task(task_id: int, data: dict = Body(...)):
             db.execute("UPDATE project_tasks SET sort_order=?,updated_at=datetime('now','localtime') WHERE id=?",
                        [data["sort_order"], task_id])
         db.commit()
-        _sync(t["project_id"])
+        _sync(t["master_project_id"])
         return {"ok": True}
     finally: db.close()
 
@@ -275,12 +255,12 @@ def move_task(task_id: int, data: dict = Body(...)):
 def delete_task(task_id: int):
     db = _rw()
     try:
-        t = db.execute("SELECT project_id FROM project_tasks WHERE id=?", [task_id]).fetchone()
+        t = db.execute("SELECT master_project_id FROM project_tasks WHERE id=?", [task_id]).fetchone()
         if not t: raise HTTPException(404, "任务不存在")
         db.execute("DELETE FROM project_task_scene WHERE task_id=?", [task_id])
         db.execute("DELETE FROM project_tasks WHERE id=?", [task_id])
         db.commit()
-        _sync(t["project_id"])
+        _sync(t["master_project_id"])
         return {"ok": True}
     finally: db.close()
 
@@ -303,10 +283,10 @@ def link_scene_to_task(task_id: int, data: dict = Body(...)):
     if not sid: raise HTTPException(400, "scene_id 必填")
     db = _rw()
     try:
-        t = db.execute("SELECT id, project_id FROM project_tasks WHERE id=?", [task_id]).fetchone()
+        t = db.execute("SELECT id FROM project_tasks WHERE id=?", [task_id]).fetchone()
         if not t: raise HTTPException(404, "任务不存在")
-        s = db.execute("SELECT id FROM user_project_scene WHERE id=? AND project_id=?", [sid, t["project_id"]]).fetchone()
-        if not s: raise HTTPException(400, "镜头不存在或不属于同一项目")
+        s = db.execute("SELECT id FROM user_project_scene WHERE id=?", [sid]).fetchone()
+        if not s: raise HTTPException(400, "镜头不存在")
         exists = db.execute("SELECT id FROM project_task_scene WHERE task_id=? AND scene_id=?", [task_id, sid]).fetchone()
         if not exists:
             db.execute("INSERT INTO project_task_scene (task_id, scene_id) VALUES (?,?)", [task_id, sid])
@@ -325,15 +305,17 @@ def unlink_scene_from_task(task_id: int, scene_id: int):
 
 @router.get("/project/{project_id}/all-task-scenes")
 def all_task_scenes(project_id: int):
-    """返回该项目所有任务-镜头关联关系"""
+    """返回该项目所有任务-镜头关联关系（团队任务挂 master 层，经子项目映射）"""
     db = _ro()
+    sub = db.execute("SELECT master_project_id FROM master_sub_project WHERE seedance_project_id=?", [project_id]).fetchone()
+    mid = sub["master_project_id"] if sub else 0
     rows = _rows(db.execute(
         """SELECT ts.task_id, ts.scene_id, s.name as scene_name, s.scene_number, t.title as task_title
            FROM project_task_scene ts
            JOIN user_project_scene s ON ts.scene_id=s.id
            JOIN project_tasks t ON ts.task_id=t.id
-           WHERE t.project_id=? ORDER BY ts.task_id""",
-        [project_id]).fetchall())
+           WHERE t.master_project_id=? ORDER BY ts.task_id""",
+        [mid]).fetchall())
     return {"ok": True, "links": rows}
 
 # ============================================================
@@ -341,12 +323,9 @@ def all_task_scenes(project_id: int):
 # ============================================================
 
 @router.get("/milestones")
-def list_milestones(project_id: int = Query(0), master_project_id: Optional[int] = Query(None)):
+def list_milestones(master_project_id: int = Query(..., description="总项目ID")):
     db = _ro()
-    if master_project_id:
-        rows = db.execute("SELECT * FROM project_milestones WHERE master_project_id=? ORDER BY sort_order, due_date", [master_project_id]).fetchall()
-    else:
-        rows = db.execute("SELECT * FROM project_milestones WHERE project_id=? ORDER BY sort_order, due_date", [project_id]).fetchall()
+    rows = db.execute("SELECT * FROM project_milestones WHERE master_project_id=? ORDER BY sort_order, due_date", [master_project_id]).fetchall()
     return {"ok": True, "milestones": _rows(rows)}
 
 @router.get("/milestones/{milestone_id}")
@@ -358,16 +337,15 @@ def get_milestone(milestone_id: int):
 
 @router.post("/milestones")
 def create_milestone(data: dict = Body(...)):
-    pid = data.get("project_id")
     mid = data.get("master_project_id")
     title = (data.get("title", "")).strip()
     if not title: raise HTTPException(400, "title 必填")
-    if not pid and not mid: raise HTTPException(400, "project_id 或 master_project_id 必填")
+    if not mid: raise HTTPException(400, "master_project_id 必填")
     db = _rw()
     try:
-        max_o = db.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM project_milestones WHERE master_project_id=? OR project_id=?", [mid or pid, pid]).fetchone()[0]
-        db.execute("INSERT INTO project_milestones (project_id,master_project_id,title,description,due_date,sort_order,phase) VALUES (?,?,?,?,?,?,'P3')",
-                   [pid if pid else 0, mid, title, data.get("description", ""), data.get("due_date"), max_o])
+        max_o = db.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM project_milestones WHERE master_project_id=?", [mid]).fetchone()[0]
+        db.execute("INSERT INTO project_milestones (master_project_id,title,description,due_date,sort_order,phase) VALUES (?,?,?,?,?,'P3')",
+                   [mid, title, data.get("description", ""), data.get("due_date"), max_o])
         db.commit()
         return {"ok": True, "id": db.execute("SELECT last_insert_rowid()").fetchone()[0]}
     finally: db.close()
@@ -401,18 +379,19 @@ def delete_milestone(milestone_id: int):
 # ============================================================
 
 @router.get("/gantt")
-def gantt(project_id: int = Query(..., ge=1)):
+def gantt(master_project_id: int = Query(0), project_id: int = Query(0)):
     db = _ro()
-    proj = db.execute("SELECT * FROM user_project WHERE id=?", [project_id]).fetchone()
+    mid = master_project_id or project_id  # 兼容前端历史传参（project_id 实为 masterId）
+    proj = db.execute("SELECT * FROM master_project WHERE id=?", [mid]).fetchone()
     if not proj: raise HTTPException(404, "项目不存在")
 
     # 里程碑（含关联任务数）
-    ms_raw = _rows(db.execute("SELECT * FROM project_milestones WHERE project_id=? ORDER BY sort_order", [project_id]).fetchall())
+    ms_raw = _rows(db.execute("SELECT * FROM project_milestones WHERE master_project_id=? ORDER BY sort_order", [mid]).fetchall())
     milestones = []
     for m in ms_raw:
         m["task_count"] = db.execute(
-            "SELECT COUNT(*) FROM project_tasks WHERE project_id=? AND due_date=?",
-            [project_id, m["due_date"]]).fetchone()[0]
+            "SELECT COUNT(*) FROM project_tasks WHERE master_project_id=? AND due_date=?",
+            [mid, m["due_date"]]).fetchone()[0]
         milestones.append(m)
 
     # 任务（带成员信息）
@@ -422,8 +401,8 @@ def gantt(project_id: int = Query(..., ge=1)):
            FROM project_tasks t
            LEFT JOIN project_columns c ON t.column_id=c.id
            LEFT JOIN project_members m ON t.assignee_id=m.id
-           WHERE t.project_id=? ORDER BY t.sort_order""",
-        [project_id]).fetchall())
+           WHERE t.master_project_id=? ORDER BY t.sort_order""",
+        [mid]).fetchall())
 
     # 计算甘特图日期范围
     all_dates = []
@@ -455,62 +434,34 @@ def gantt(project_id: int = Query(..., ge=1)):
 # ============================================================
 
 @router.get("/dashboard")
-def dashboard(project_id: int = Query(0), master_project_id: Optional[int] = Query(None)):
+def dashboard(master_project_id: int = Query(..., description="总项目ID")):
     db = _ro()
-    if master_project_id:
-        proj = db.execute("SELECT * FROM master_project WHERE id=?", [master_project_id]).fetchone()
-        if not proj: raise HTTPException(404, "总项目不存在")
-        sc = db.execute("SELECT COUNT(*) FROM user_project_scene WHERE project_id IN (SELECT seedance_project_id FROM master_sub_project WHERE master_project_id=?)", [master_project_id]).fetchone()[0]
-        ts = db.execute("""SELECT COUNT(*) as t,
-            COALESCE(SUM(CASE WHEN status='done' THEN 1 ELSE 0 END),0) as d,
-            COALESCE(SUM(CASE WHEN status!='done' AND status!='' THEN 1 ELSE 0 END),0) as p,
-            COALESCE(SUM(CASE WHEN priority>=2 THEN 1 ELSE 0 END),0) as hp
-            FROM project_tasks WHERE master_project_id=?""", [master_project_id]).fetchone()
-        ms = db.execute("""SELECT COUNT(*) as t,
-            COALESCE(SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END),0) as c
-            FROM project_milestones WHERE master_project_id=?""", [master_project_id]).fetchone()
-        cd = _rows(db.execute("""SELECT c.name, c.color, COUNT(t.id) as tc
-            FROM project_columns c LEFT JOIN project_tasks t ON t.column_id=c.id
-            WHERE c.master_project_id=? GROUP BY c.id ORDER BY c.sort_order""", [master_project_id]).fetchall())
-        recent = _rows(db.execute(
-            "SELECT id, title, status, updated_at FROM project_tasks WHERE master_project_id=? AND updated_at IS NOT NULL ORDER BY updated_at DESC LIMIT 10",
-            [master_project_id]).fetchall())
-        workload = _rows(db.execute(
-            """SELECT m.id as member_id, m.real_name, m.avatar, m.avatar_color, m.role,
-               COUNT(t.id) as task_count,
-               COALESCE(SUM(CASE WHEN t.status='done' THEN 1 ELSE 0 END),0) as done_count
-               FROM project_members m
-               LEFT JOIN project_tasks t ON t.assignee_id=m.id
-               WHERE m.master_project_id=?
-               GROUP BY m.id ORDER BY task_count DESC""",
-            [master_project_id]).fetchall())
-    else:
-        proj = db.execute("SELECT * FROM user_project WHERE id=?", [project_id]).fetchone()
-        if not proj: raise HTTPException(404, "项目不存在")
-        sc = db.execute("SELECT COUNT(*) FROM user_project_scene WHERE project_id=?", [project_id]).fetchone()[0]
-        ts = db.execute("""SELECT COUNT(*) as t,
-            COALESCE(SUM(CASE WHEN status='done' THEN 1 ELSE 0 END),0) as d,
-            COALESCE(SUM(CASE WHEN status!='done' AND status!='' THEN 1 ELSE 0 END),0) as p,
-            COALESCE(SUM(CASE WHEN priority>=2 THEN 1 ELSE 0 END),0) as hp
-            FROM project_tasks WHERE project_id=?""", [project_id]).fetchone()
-        ms = db.execute("""SELECT COUNT(*) as t,
-            COALESCE(SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END),0) as c
-            FROM project_milestones WHERE project_id=?""", [project_id]).fetchone()
-        cd = _rows(db.execute("""SELECT c.name, c.color, COUNT(t.id) as tc
-            FROM project_columns c LEFT JOIN project_tasks t ON t.column_id=c.id
-            WHERE c.project_id=? GROUP BY c.id ORDER BY c.sort_order""", [project_id]).fetchall())
-        recent = _rows(db.execute(
-            "SELECT id, title, status, updated_at FROM project_tasks WHERE project_id=? AND updated_at IS NOT NULL ORDER BY updated_at DESC LIMIT 10",
-            [project_id]).fetchall())
-        workload = _rows(db.execute(
-            """SELECT m.id as member_id, m.real_name, m.avatar, m.avatar_color, m.role,
-               COUNT(t.id) as task_count,
-               COALESCE(SUM(CASE WHEN t.status='done' THEN 1 ELSE 0 END),0) as done_count
-               FROM project_members m
-               LEFT JOIN project_tasks t ON t.assignee_id=m.id
-               WHERE m.project_id=?
-               GROUP BY m.id ORDER BY task_count DESC""",
-            [project_id]).fetchall())
+    proj = db.execute("SELECT * FROM master_project WHERE id=?", [master_project_id]).fetchone()
+    if not proj: raise HTTPException(404, "总项目不存在")
+    sc = db.execute("SELECT COUNT(*) FROM user_project_scene WHERE project_id IN (SELECT seedance_project_id FROM master_sub_project WHERE master_project_id=?)", [master_project_id]).fetchone()[0]
+    ts = db.execute("""SELECT COUNT(*) as t,
+        COALESCE(SUM(CASE WHEN status='done' THEN 1 ELSE 0 END),0) as d,
+        COALESCE(SUM(CASE WHEN status!='done' AND status!='' THEN 1 ELSE 0 END),0) as p,
+        COALESCE(SUM(CASE WHEN priority>=2 THEN 1 ELSE 0 END),0) as hp
+        FROM project_tasks WHERE master_project_id=?""", [master_project_id]).fetchone()
+    ms = db.execute("""SELECT COUNT(*) as t,
+        COALESCE(SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END),0) as c
+        FROM project_milestones WHERE master_project_id=?""", [master_project_id]).fetchone()
+    cd = _rows(db.execute("""SELECT c.name, c.color, COUNT(t.id) as tc
+        FROM project_columns c LEFT JOIN project_tasks t ON t.column_id=c.id
+        WHERE c.master_project_id=? GROUP BY c.id ORDER BY c.sort_order""", [master_project_id]).fetchall())
+    recent = _rows(db.execute(
+        "SELECT id, title, status, updated_at FROM project_tasks WHERE master_project_id=? AND updated_at IS NOT NULL ORDER BY updated_at DESC LIMIT 10",
+        [master_project_id]).fetchall())
+    workload = _rows(db.execute(
+        """SELECT m.id as member_id, m.real_name, m.avatar, m.avatar_color, m.role,
+           COUNT(t.id) as task_count,
+           COALESCE(SUM(CASE WHEN t.status='done' THEN 1 ELSE 0 END),0) as done_count
+           FROM project_members m
+           LEFT JOIN project_tasks t ON t.assignee_id=m.id
+           WHERE m.master_project_id=?
+           GROUP BY m.id ORDER BY task_count DESC""",
+        [master_project_id]).fetchall())
 
     tt, td = ts["t"], ts["d"]
     pct = round(td/tt*100) if tt > 0 else 0
@@ -582,25 +533,17 @@ def list_roles():
     return {"ok": True, "roles": roles}
 
 @router.get("/members")
-def list_members(project_id: int = Query(0), master_project_id: Optional[int] = Query(None)):
+def list_members(master_project_id: int = Query(..., description="总项目ID")):
     db = _ro()
-    if master_project_id:
-        rows = db.execute("SELECT * FROM project_members WHERE master_project_id=? ORDER BY joined_at", [master_project_id]).fetchall()
-    else:
-        rows = db.execute("SELECT * FROM project_members WHERE project_id=? ORDER BY joined_at", [project_id]).fetchall()
+    rows = db.execute("SELECT * FROM project_members WHERE master_project_id=? ORDER BY joined_at", [master_project_id]).fetchall()
     return {"ok": True, "members": [_enrich_member(dict(r)) for r in rows]}
 
 @router.get("/members/org-tree")
-def get_org_tree(project_id: int = Query(0), master_project_id: Optional[int] = Query(None)):
+def get_org_tree(master_project_id: int = Query(..., description="总项目ID")):
     db = _ro()
-    if master_project_id:
-        rows = db.execute(
-            "SELECT * FROM project_members WHERE master_project_id=? ORDER BY parent_member_id NULLS FIRST, joined_at",
-            [master_project_id]).fetchall()
-    else:
-        rows = db.execute(
-            "SELECT * FROM project_members WHERE project_id=? ORDER BY parent_member_id NULLS FIRST, joined_at",
-            [project_id]).fetchall()
+    rows = db.execute(
+        "SELECT * FROM project_members WHERE master_project_id=? ORDER BY parent_member_id NULLS FIRST, joined_at",
+        [master_project_id]).fetchall()
     members = [_enrich_member(dict(r)) for r in rows]
     member_map = {m["id"]: m for m in members}
     for m in members:
@@ -620,7 +563,7 @@ def get_member(member_id: int):
     r = db.execute("SELECT * FROM project_members WHERE id=?", [member_id]).fetchone()
     if not r: raise HTTPException(404, "成员不存在")
     m = _enrich_member(dict(r))
-    proj = db.execute("SELECT name,id FROM user_project WHERE id=?", [m["project_id"]]).fetchone()
+    proj = db.execute("SELECT name,id FROM master_project WHERE id=?", [m["master_project_id"]]).fetchone()
     m["project_name"] = proj["name"] if proj else ""
     ts = db.execute("SELECT COUNT(*) as t, COALESCE(SUM(CASE WHEN status='done' THEN 1 ELSE 0 END),0) as d FROM project_tasks WHERE assignee_id=?", [member_id]).fetchone()
     m["task_total"] = ts["t"]
@@ -629,7 +572,6 @@ def get_member(member_id: int):
 
 @router.post("/members")
 def add_member(data: dict = Body(...)):
-    pid = data.get("project_id")
     mid = data.get("master_project_id")
     uid = data.get("user_id")
     role = data.get("role", "viewer")
@@ -640,18 +582,18 @@ def add_member(data: dict = Body(...)):
     phone = data.get("phone", "")
     email = data.get("email", "")
     permissions = data.get("permissions")
-    if not pid and not mid: raise HTTPException(400, "project_id 或 master_project_id 必填")
+    if not mid: raise HTTPException(400, "master_project_id 必填")
     if not uid: raise HTTPException(400, "user_id 必填")
     if role not in CREW_ROLES:
         raise HTTPException(400, f"无效角色: {role}")
     db = _rw()
     try:
-        if db.execute("SELECT id FROM project_members WHERE (project_id=? OR master_project_id=?) AND user_id=?", [pid, mid, uid]).fetchone():
+        if db.execute("SELECT id FROM project_members WHERE master_project_id=? AND user_id=?", [mid, uid]).fetchone():
             raise HTTPException(409, "该用户已在项目中")
         perms_json = json.dumps(permissions or DEFAULT_PERMISSIONS.get(role, {}), ensure_ascii=False)
         db.execute(
-            "INSERT INTO project_members (project_id,master_project_id,user_id,role,real_name,duty,avatar,avatar_color,phone,email,permissions_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            [pid if pid else 0, mid, uid, role, real_name, duty, avatar, avatar_color, phone, email, perms_json])
+            "INSERT INTO project_members (master_project_id,user_id,role,real_name,duty,avatar,avatar_color,phone,email,permissions_json) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            [mid, uid, role, real_name, duty, avatar, avatar_color, phone, email, perms_json])
         db.commit()
         return {"ok": True}
     finally: db.close()
@@ -683,13 +625,13 @@ def remove_member(member_id: int):
 def set_member_parent(member_id: int, data: dict = Body(...)):
     db = _rw()
     try:
-        member = db.execute("SELECT id, project_id FROM project_members WHERE id=?", [member_id]).fetchone()
+        member = db.execute("SELECT id, master_project_id FROM project_members WHERE id=?", [member_id]).fetchone()
         if not member: raise HTTPException(404, "成员不存在")
         parent_id = data.get("parent_member_id")
         if parent_id is not None:
-            parent = db.execute("SELECT id, project_id, parent_member_id FROM project_members WHERE id=?", [parent_id]).fetchone()
+            parent = db.execute("SELECT id, master_project_id, parent_member_id FROM project_members WHERE id=?", [parent_id]).fetchone()
             if not parent: raise HTTPException(400, "上级成员不存在")
-            if parent["project_id"] != member["project_id"]: raise HTTPException(400, "上级成员不在同一项目")
+            if parent["master_project_id"] != member["master_project_id"]: raise HTTPException(400, "上级成员不在同一项目")
             if parent_id == member_id: raise HTTPException(400, "不能将自己设为上级")
             cursor = parent_id; visited = set()
             while cursor:
@@ -708,13 +650,9 @@ def set_member_parent(member_id: int, data: dict = Body(...)):
 # 辅助
 # ============================================================
 
-def _sync(pid):
-    db = _rw()
-    try:
-        s = db.execute("SELECT COUNT(*) as t,COALESCE(SUM(CASE WHEN status='done' THEN 1 ELSE 0 END),0) as d FROM project_tasks WHERE project_id=?", [pid]).fetchone()
-        db.execute("UPDATE user_project SET progress_pct=?,updated_at=datetime('now','localtime') WHERE id=?", [round(s["d"]/s["t"]*100) if s["t"]>0 else 0, pid])
-        db.commit()
-    finally: db.close()
+def _sync(mid):
+    """进度在 dashboard 读取时按 master 实时计算，无需写回 user_project；保留占位以兼容调用点"""
+    return
 
 # ============================================================
 # Phase22 — 总项目 (master_project)

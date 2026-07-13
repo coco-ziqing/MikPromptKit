@@ -1,5 +1,31 @@
 # PromptKit — 提示词检索工具
 
+## Phase28 数据模型迁移 — project_id/master_project_id 彻底收敛（2026-07-13 下午）
+
+### 背景
+团队协作 4 表(project_members/columns/tasks/milestones)历史上同时带 `project_id`(旧 seedance/projects 维度) + `master_project_id`(Phase22 新顶层)。project_id 现值全是死值 29(已删项目)。前端 project_dashboard.js 100% 只用 master_project_id;后端 `else project_id` 是死路径。→ 定案:master_project_id 单一主键,project_id 退役。
+
+### 执行(3 阶段,每步备份+API回归)
+| Phase | 内容 | 备份 |
+|-------|------|------|
+| 1 数据归一化 | 4 表死值 project_id 29→0,13 行,零风险无改码 | phase28_premigration_20260713_174049.db |
+| 2 代码收敛 | api.py 删全部 else 死分支+INSERT去project_id;`_on_project_created`中和;gantt改master(顺带修前端`?project_id=masterId`bug);`_sync`→no-op;api_workspace.py:178去project_id;插件`_ensure_tables`新装schema改master模型 | — |
+| 3 Schema收敛 | 4表整表重建移除project_id(因idx_pt_project索引+members UNIQUE,DROP COLUMN不可行)。保留id维持project_task_scene外键;新idx_pt_master;新UNIQUE(master_project_id,user_id)。integrity=ok,行数4/3/3/3零丢失 | phase28_dropcol_20260713_180846.db |
+
+### 前向迁移
+- `plugins/project/migrations/003_phase28_converge_master.py`:幂等,检测到project_id列即整表重建收敛。已在实时库验证「已收敛,跳过」。用于旧库/新机重部署自动收敛。
+- **未改写** db_migrate_phase18.py(保留历史迁移);Phase4 废表清理**有意推迟**(project_assets 是资产插件活跃表;projects/project_templates/review_requests 仅迁移文件引用,删除收益极小且引发schema漂移)。
+
+### API 回归(master 2「特种兵学校」)
+- 读 columns/tasks/members/milestones = 4/3/3/3;dashboard/org-tree 正常。
+- gantt `?master_project_id=2` 与 `?project_id=2` 均正确解析(前端bug修复)。
+- 建/改/删生命周期:列/任务/里程碑/成员全通过,**无 project_id NOT NULL 报错**;成员新 UNIQUE 去重返回 409。
+
+### 已知遗留(非本次)
+- 库内预存无关外键违规:`user_custom_word` → `prompt_library`(foreign_key_check 全库扫描会命中,本次用表级 foreign_key_check(表名) 规避)。低优先技术债。
+
+---
+
 ## ⚠️ 暂停开发触发器
 - **触发词**: 用户说「暂停开发」「停止开发」「先不做了」「休息一下」或关闭 OpenClaw
 - **必须执行**: ① git status 确认干净 ② git push origin master ③ WAL checkpoint ④ 确认最新 tag 已推送 ⑤ 输出安全关闭清单
@@ -7,12 +33,12 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit) / 咪卡Mik词库
-- 版本：v5.3.8-phase19-dual-column (2026-07-08)
+- 版本：v5.10.0-phase28-data-migration (2026-07-13)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
 - 默认端口：8080（自增 8080→8089）
 - 局域网地址：http://192.168.0.101:8080
-- 当前tag: `v5.3.7-phase17-word-editor-video` (词卡编辑器视频上传按钮 + 视频库选取 + assign-video热修复 + .gitignore加固)
+- 当前tag: `v5.10.0-phase28-data-migration` (团队协作4表 project_id/master_project_id 割裂彻底收敛)
 
 ## Phase17.1 视频首帧封面修复（2026-07-02 13:10）
 

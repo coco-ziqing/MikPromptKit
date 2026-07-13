@@ -78,65 +78,69 @@ class ProjectManagerPlugin(PromptKitPlugin):
             return
 
         tables = [
-            # 看板列
+            # 看板列（Phase28：团队协作统一挂 master_project 层，无 project_id）
             """CREATE TABLE IF NOT EXISTS project_columns (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id INTEGER NOT NULL,
-                name       TEXT NOT NULL,
-                color      TEXT DEFAULT '#6b7280',
-                sort_order INTEGER DEFAULT 0,
-                created_at TEXT DEFAULT (datetime('now','localtime')),
-                FOREIGN KEY (project_id) REFERENCES user_project(id) ON DELETE CASCADE
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                master_project_id INTEGER NOT NULL,
+                name              TEXT NOT NULL,
+                color             TEXT DEFAULT '#6b7280',
+                sort_order        INTEGER DEFAULT 0,
+                phase             TEXT DEFAULT 'P3',
+                created_at        TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (master_project_id) REFERENCES master_project(id) ON DELETE CASCADE
             )""",
 
             # 任务卡片
             """CREATE TABLE IF NOT EXISTS project_tasks (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id   INTEGER NOT NULL,
-                column_id    INTEGER,
-                title        TEXT NOT NULL,
-                description  TEXT DEFAULT '',
-                assignee_id  INTEGER,
-                priority     INTEGER DEFAULT 0,
-                status       TEXT DEFAULT 'pending',
-                due_date     TEXT,
-                sort_order   INTEGER DEFAULT 0,
-                completed_at TEXT,
-                created_at   TEXT DEFAULT (datetime('now','localtime')),
-                updated_at   TEXT DEFAULT (datetime('now','localtime')),
-                FOREIGN KEY (project_id) REFERENCES user_project(id) ON DELETE CASCADE,
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                master_project_id INTEGER NOT NULL,
+                column_id         INTEGER,
+                title             TEXT NOT NULL,
+                description       TEXT DEFAULT '',
+                assignee_id       INTEGER,
+                priority          INTEGER DEFAULT 0,
+                status            TEXT DEFAULT 'pending',
+                due_date          TEXT,
+                sort_order        INTEGER DEFAULT 0,
+                completed_at      TEXT,
+                phase             TEXT DEFAULT 'P3',
+                task_type         TEXT DEFAULT '',
+                created_at        TEXT DEFAULT (datetime('now','localtime')),
+                updated_at        TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (master_project_id) REFERENCES master_project(id) ON DELETE CASCADE,
                 FOREIGN KEY (column_id) REFERENCES project_columns(id) ON DELETE SET NULL
             )""",
 
             # 里程碑
             """CREATE TABLE IF NOT EXISTS project_milestones (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id   INTEGER NOT NULL,
-                title        TEXT NOT NULL,
-                description  TEXT DEFAULT '',
-                due_date     TEXT,
-                completed_at TEXT,
-                sort_order   INTEGER DEFAULT 0,
-                created_at   TEXT DEFAULT (datetime('now','localtime')),
-                FOREIGN KEY (project_id) REFERENCES user_project(id) ON DELETE CASCADE
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                master_project_id INTEGER NOT NULL,
+                title             TEXT NOT NULL,
+                description       TEXT DEFAULT '',
+                due_date          TEXT,
+                completed_at      TEXT,
+                sort_order        INTEGER DEFAULT 0,
+                phase             TEXT DEFAULT 'P3',
+                created_at        TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (master_project_id) REFERENCES master_project(id) ON DELETE CASCADE
             )""",
 
             # 团队成员
             """CREATE TABLE IF NOT EXISTS project_members (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id INTEGER NOT NULL,
-                user_id    INTEGER NOT NULL,
-                role       TEXT DEFAULT 'viewer',
-                real_name  TEXT DEFAULT '',
-                duty       TEXT DEFAULT '',
-                avatar     TEXT DEFAULT '',
-                avatar_color TEXT DEFAULT '',
-                phone      TEXT DEFAULT '',
-                email      TEXT DEFAULT '',
-                parent_member_id INTEGER,
-                permissions_json TEXT DEFAULT '{}',
-                joined_at  TEXT DEFAULT (datetime('now','localtime')),
-                FOREIGN KEY (project_id) REFERENCES user_project(id) ON DELETE CASCADE,
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                master_project_id INTEGER NOT NULL,
+                user_id           INTEGER NOT NULL,
+                role              TEXT DEFAULT 'viewer',
+                real_name         TEXT DEFAULT '',
+                duty              TEXT DEFAULT '',
+                avatar            TEXT DEFAULT '',
+                avatar_color      TEXT DEFAULT '',
+                phone             TEXT DEFAULT '',
+                email             TEXT DEFAULT '',
+                parent_member_id  INTEGER,
+                permissions_json  TEXT DEFAULT '{}',
+                joined_at         TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (master_project_id) REFERENCES master_project(id) ON DELETE CASCADE,
                 FOREIGN KEY (parent_member_id) REFERENCES project_members(id) ON DELETE SET NULL
             )""",
 
@@ -215,25 +219,9 @@ class ProjectManagerPlugin(PromptKitPlugin):
     # ===== Hook 回调 =====
 
     def _on_project_created(self, project_id: int, name: str):
-        """项目创建时：自动初始化默认看板列"""
-        db = self._db
-        if db is None:
-            return
-
-        # 从 config 读取默认列名
-        default_cols = self.manifest.config.get("default_kanban_columns",
-            ["待办", "进行中", "审核中", "已完成"]) if self.manifest else ["待办", "进行中", "审核中", "已完成"]
-
-        colors = ["#e5e7eb", "#dbeafe", "#fef3c7", "#d1fae5"]
-        for i, col_name in enumerate(default_cols):
-            db.execute(
-                "INSERT INTO project_columns (project_id, name, color, sort_order) VALUES (?,?,?,?)",
-                [project_id, col_name, colors[i % len(colors)], i]
-            )
-        try:
-            db.commit()
-        except Exception:
-            pass
+        """[Phase28 已停用] 旧逻辑：seedance 项目创建时按 project_id 播种看板列。
+        团队协作已收敛到 master_project 层，看板列由总项目面板管理，此钩子不再建表写入。"""
+        return
 
     def _on_project_deleted(self, project_id: int):
         """项目删除时清理（由外键 CASCADE 自动处理，此处为日志）"""
