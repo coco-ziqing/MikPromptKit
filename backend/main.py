@@ -621,10 +621,13 @@ button:hover{background:#2563eb}
 </div>
 <script>
 var params=new URLSearchParams(location.search);var c=params.get('code');if(c)document.getElementById('code').value=c.toUpperCase();
+var token=localStorage.getItem('pk_token');
+if(!token){var m0=document.getElementById('msg');m0.textContent='请先登录后再加入团队';m0.style.color='var(--text-muted)';localStorage.setItem('pk_pending_join',location.search);var b0=document.querySelector('button');b0.textContent='去登录';b0.onclick=function(){location.href='/login.html';};}
 async function doJoin(){
 var code=document.getElementById('code').value.trim().toUpperCase();var ws=params.get('ws')||'1';var m=document.getElementById('msg');
+if(!token){localStorage.setItem('pk_pending_join',location.search);location.href='/login.html';return;}
 if(!code||code.length<4){m.textContent='请输入有效邀请码';m.style.color='var(--text-muted)';return;}
-try{var r=await fetch('/api/plugins/com.promptkit.project/master/'+ws+'/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code})});var d=await r.json();
+try{var r=await fetch('/api/plugins/com.promptkit.project/master/'+ws+'/join',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({code:code})});var d=await r.json();
 if(d.ok){m.textContent='✅ 已加入! 跳转回主页...';m.style.color='#10b981';setTimeout(function(){location.href='/';},1500);}
 else{m.textContent=d.detail||'加入失败';m.style.color='#ef4444';}
 }catch(e){m.textContent='网络错误';m.style.color='#ef4444';}

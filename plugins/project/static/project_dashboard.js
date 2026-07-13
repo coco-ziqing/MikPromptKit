@@ -211,6 +211,7 @@ _odPromote: function(mid){var self=this;this._apiPut('/members/'+mid+'/parent',{
 _renderP4P6: function(phase){var c=document.getElementById('pkPhaseContent'),L=this._L.bind(this);if(!c)return;var titles={P4:'✂ '+L('后期合成','Post-production'),P5:'✅ '+L('审核交付','Review & Delivery'),P6:'📊 '+L('复盘归档','Retrospective & Archive')},descs={P4:L('时间轴组装 / 音频配乐','Timeline / Audio'),P5:L('逐级审核 / 交付包导出','Review / Export'),P6:L('数据统计 / 提示词复盘','Analytics / Archive')};c.innerHTML='<div class="pk-phase-placeholder"><h4>'+titles[phase]+'</h4><p>'+descs[phase]+'</p><div class="pk-phase-coming">'+L('Phase23 规划中...','Coming soon...')+'</div></div>';}
 };
 
+window.PK = PK;
 window.PK_ProjectDashboard = PK;
 })();
 

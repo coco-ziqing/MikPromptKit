@@ -223,7 +223,7 @@
           }
           var m = document.getElementById('pkAuthModal'); if (m) m.remove();
           this._hideCover();
-          setTimeout(function(){ location.reload(); }, 300);
+          setTimeout(function(){ var pj=localStorage.getItem('pk_pending_join'); if(pj){ localStorage.removeItem('pk_pending_join'); location.href='/join'+pj; } else { location.reload(); } }, 300);
         } else {
           this._setAuthError('al_error', d.detail||'用户名或密码错误');
         }

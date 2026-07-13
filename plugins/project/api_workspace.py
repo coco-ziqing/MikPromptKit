@@ -175,7 +175,7 @@ def join_workspace(master_id: int, data: dict = Body(...), request: Request = No
 
         # 添加成员
         db.execute(
-            "INSERT INTO project_members (master_project_id, user_id, role, real_name, joined_at) VALUES (?,?,?,(SELECT COALESCE(display_name,username) FROM users WHERE id=?),datetime('now','localtime'))",
+            "INSERT INTO project_members (project_id, master_project_id, user_id, role, real_name, joined_at) VALUES (0,?,?,?,(SELECT COALESCE(display_name,username) FROM users WHERE id=?),datetime('now','localtime'))",
             [master_id, uid, invite["role"], uid])
         # 标记邀请已使用
         db.execute(

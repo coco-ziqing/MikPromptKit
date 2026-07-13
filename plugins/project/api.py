@@ -651,7 +651,7 @@ def add_member(data: dict = Body(...)):
         perms_json = json.dumps(permissions or DEFAULT_PERMISSIONS.get(role, {}), ensure_ascii=False)
         db.execute(
             "INSERT INTO project_members (project_id,master_project_id,user_id,role,real_name,duty,avatar,avatar_color,phone,email,permissions_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            [pid, mid, uid, role, real_name, duty, avatar, avatar_color, phone, email, perms_json])
+            [pid if pid else 0, mid, uid, role, real_name, duty, avatar, avatar_color, phone, email, perms_json])
         db.commit()
         return {"ok": True}
     finally: db.close()
