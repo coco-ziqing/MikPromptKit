@@ -1,5 +1,25 @@
 # PromptKit — 提示词检索工具
 
+## Phase30 master3 团队看板初始化 + 可复用 init-board（2026-07-13 晚）
+
+### 发现（重要）
+master 3「宣传片」的 `master_project` 主行已不存在（只剩 id=2），但遗留 master_asset×2(测试/李白) + workspace_invites×3 悬空指向 master 3。根因：app 运行时 `PRAGMA foreign_keys` 默认 **OFF**，master 3 被（UI）删除时 `ON DELETE CASCADE` 未触发 → 子表变孤儿。（Phase28/29 从未动 master_project。）
+
+### 处理
+1. **重建 master 3**：显式回收 id=3 插入「宣传片」(draft, ad, 16:9/4K) → 遗留的 2 资产 + 3 邀请自动重新关联(因它们 ref 3)。备份 phase30_master3_*.db。foreign_key_check=0。
+2. **新增可复用端点** `POST /master/{id}/init-board`(api.py)：幂等初始化—默认看板列(待办/进行中/审核中/已完成，仅无列时) + 可选创始成员(founder_user_id/role，已在则跳) + 可选起始里程碑。返回 created 计数。
+3. **应用到 master 3**：created {columns:4, members:1(张鹏=总制片人 uid10), milestones:3(脚本定稿/样片初剪/成片交付)}。再次调用 created 全 0(幂等验证通过)。
+4. **前端**：团队成员空状态新增「🚀 一键初始化团队看板」按钮→ `_initBoard()` 调 init-board(以当前登录用户为创始总制片人)。版本 v2.3.0。
+
+### 验证
+master 3 dashboard ok，看板 4 列/成员 1/里程碑 3；master/list 显示 2+3。
+
+### 遗留
+- 该 accepted 邀请(D9EF6F, master3) 无对应 project_members(旧测试残留)，低优先。
+- 根本防范：app 运行时未开 `PRAGMA foreign_keys=ON`，删项目不级联 → 会持续产生孤儿。后续可考虑在删除端点手动级联或连接统一开 FK。
+
+---
+
 ## Phase28 数据模型迁移 — project_id/master_project_id 彻底收敛（2026-07-13 下午）
 
 ### 背景
@@ -75,12 +95,12 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit) / 咪卡Mik词库
-- 版本：v5.11.0-phase29-realtime-notif (2026-07-13)
+- 版本：v5.12.0-phase30-master3-initboard (2026-07-13)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
 - 默认端口：8080（自增 8080→8089）
 - 局域网地址：http://192.168.0.101:8080
-- 当前tag: `v5.11.0-phase29-realtime-notif` (通知 WebSocket 实时推送,取代 30s 轮询)
+- 当前tag: `v5.12.0-phase30-master3-initboard` (master3团队看板初始化 + 可复用 init-board 端点)
 
 ## Phase17.1 视频首帧封面修复（2026-07-02 13:10）
 

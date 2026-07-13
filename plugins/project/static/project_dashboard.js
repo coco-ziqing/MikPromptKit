@@ -1,9 +1,9 @@
-// PromptKit Project Manager v2.2.0 — Phase29 通知实时推送(WebSocket)
-// 7-phase tabs + P3 sub-tabs + Squad groups + Invite dialog + realtime notifications
+// PromptKit Project Manager v2.3.0 — Phase30 一键初始化团队看板
+// 7-phase tabs + P3 sub-tabs + Squad groups + Invite dialog + realtime notifications + init-board
 (function(){'use strict';
 
 var PK = {
-VERSION: '2.2.0',
+VERSION: '2.3.0',
 _masterId: null, _masterList: [], _masterCache: {},
 _activePhase: 'P0', _p3ActiveTab: 'segments', _p3TeamSub: 'members', _presence: [], _presenceBound: false,
 
@@ -145,7 +145,7 @@ _renderP3Team: async function(){
     }
   } else {
     if (!membs.length) {
-      h+='<div class="pk-empty-state"><p style="font-size:48px;">👥</p><h4>'+L('暂无成员','No members')+'</h4><button class="btn btn-primary mt-3" onclick="PK._addP3Member()">'+L('添加第一位成员','Add First Member')+'</button></div>';
+      h+='<div class="pk-empty-state"><p style="font-size:48px;">👥</p><h4>'+L('暂无成员','No members')+'</h4><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px;"><button class="btn btn-primary" onclick="PK._addP3Member()">'+L('添加第一位成员','Add First Member')+'</button><button class="btn btn-outline-primary" onclick="PK._initBoard()">🚀 '+L('一键初始化团队看板','Init Team Board')+'</button></div></div>';
     } else {
       membs.sort(function(a,b){return(b.role_level||0)-(a.role_level||0);});
       h+='<div class="pk-team-grid">';
@@ -192,6 +192,7 @@ _showAddToSquad: function(sqId){
 },
 _removeSquadMember: async function(sqId,smId){if(!confirm(this._L('从小组移除？','Remove from squad?')))return;await this._apiDelete('/master/squads/'+sqId+'/members/'+smId);this._renderP3Team();},
 
+_initBoard: function(){ var self=this,L=this._L.bind(this); if(!this._masterId){return;} if(!confirm(L('将为本项目初始化默认看板列＋将你设为总制片人，确认？','Initialize default board columns and set you as executive producer?'))){return;} var uid=null; try{uid=JSON.parse(localStorage.getItem('pk_user')).id;}catch(e){} this._apiPost('/master/'+this._masterId+'/init-board',{founder_user_id:uid,founder_role:'executive_producer'}).then(function(r){ if(r&&r.ok){ var c=r.created||{}; self._toast(L('已初始化','Initialized')+': '+(c.columns||0)+' '+L('列','cols')+' / '+(c.members||0)+' '+L('成员','members'),'success'); self._renderP3Team(); } else { self._toast(L('初始化失败','Init failed'),'error'); } }); },
 _addP3Member: function(){var self=this,L=this._L.bind(this);this._api('/roles').then(function(rr){var ro=(rr.roles||[]).map(function(r){return'<option value="'+r.key+'">'+r.icon+' '+r.name+'</option>';}).join('');var ov=self._overlay();ov.innerHTML='<div class="pk-modal" onclick="event.stopPropagation()"><h4>👥 '+L('添加成员','Add Member')+'</h4><div class="form-group"><label>👤 '+L('姓名','Name')+'</label><input type="text" id="am_name" autofocus></div><div class="form-group"><label>🆔 '+L('用户ID','User ID')+'</label><input type="number" id="am_uid"></div><div class="form-group"><label>🎬 '+L('角色','Role')+'</label><select id="am_role">'+ro+'</select></div><div class="pk-modal-actions"><button class="btn btn-secondary" onclick="this.closest(\'.pk-modal-overlay\').remove()">'+L('取消','Cancel')+'</button><button class="btn btn-primary" id="am_submit">'+L('添加','Add')+'</button></div></div>';document.body.appendChild(ov);document.getElementById('am_submit').onclick=async function(){var n=document.getElementById('am_name').value.trim(),u=parseInt(document.getElementById('am_uid').value),r=document.getElementById('am_role').value;if(!n||!u){self._toast(L('请填写完整','Fill all fields'),'warning');return;}var r2=await self._apiPost('/members',{master_project_id:self._masterId,user_id:u,role:r,real_name:n});if(r2.ok){ov.remove();self._renderP3Team();}};});},
 _removeP3Member: async function(id){if(!confirm(this._L('移除？','Remove?')))return;await this._apiDelete('/members/'+id);this._renderP3Team();},
 

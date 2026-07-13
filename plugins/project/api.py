@@ -741,6 +741,63 @@ def list_phases():
     """返回7阶段定义"""
     return {"ok": True, "phases": [{"key": k, **v} for k, v in PHASE_NAMES.items()]}
 
+
+@router.post("/master/{master_id}/init-board")
+def init_board(master_id: int, data: dict = Body(default={})):
+    """Phase30: 一键初始化总项目的团队看板—默认看板列 + 可选创始成员 + 可选起始里程碑。
+    幂等：已有看板列/成员则跳过，不重复创建。"""
+    data = data or {}
+    db = _rw()
+    try:
+        mp = db.execute("SELECT id, name FROM master_project WHERE id=?", [master_id]).fetchone()
+        if not mp:
+            raise HTTPException(404, "总项目不存在")
+        created = {"columns": 0, "members": 0, "milestones": 0}
+
+        # 1) 默认看板列（仅当当前无列时）
+        has_cols = db.execute("SELECT COUNT(*) FROM project_columns WHERE master_project_id=?", [master_id]).fetchone()[0]
+        if not has_cols:
+            cols = data.get("columns") or ["待办", "进行中", "审核中", "已完成"]
+            colors = ["#e5e7eb", "#dbeafe", "#fef3c7", "#d1fae5"]
+            for i, name in enumerate(cols):
+                nm = (name or "").strip()
+                if not nm:
+                    continue
+                db.execute("INSERT INTO project_columns (master_project_id,name,color,sort_order,phase) VALUES (?,?,?,?,'P3')",
+                           [master_id, nm, colors[i % len(colors)], i])
+                created["columns"] += 1
+
+        # 2) 创始成员（可选，已在项目则跳过）
+        founder = data.get("founder_user_id")
+        founder_role = data.get("founder_role", "executive_producer")
+        if founder and founder_role in CREW_ROLES:
+            dup = db.execute("SELECT id FROM project_members WHERE master_project_id=? AND user_id=?", [master_id, founder]).fetchone()
+            if not dup:
+                u = db.execute("SELECT COALESCE(display_name,username) n FROM users WHERE id=?", [founder]).fetchone()
+                rname = u["n"] if u else ("用户%d" % founder)
+                perms = json.dumps(DEFAULT_PERMISSIONS.get(founder_role, {}), ensure_ascii=False)
+                db.execute("INSERT INTO project_members (master_project_id,user_id,role,real_name,permissions_json) VALUES (?,?,?,?,?)",
+                           [master_id, founder, founder_role, rname, perms])
+                created["members"] += 1
+
+        # 3) 起始里程碑（可选）
+        ms = data.get("milestones") or []
+        if ms:
+            base = db.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM project_milestones WHERE master_project_id=?", [master_id]).fetchone()[0]
+            for i, m in enumerate(ms):
+                title = (m.get("title") if isinstance(m, dict) else str(m)).strip()
+                if not title:
+                    continue
+                due = m.get("due_date") if isinstance(m, dict) else None
+                db.execute("INSERT INTO project_milestones (master_project_id,title,description,due_date,sort_order,phase) VALUES (?,?,'',?,?,'P3')",
+                           [master_id, title, due, base + i])
+                created["milestones"] += 1
+
+        db.commit()
+        return {"ok": True, "master_id": master_id, "created": created}
+    finally:
+        db.close()
+
 # ============================================================
 # Phase22 — 子项目 (master_sub_project)
 # ============================================================
