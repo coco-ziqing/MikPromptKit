@@ -1,5 +1,25 @@
 # PromptKit — 提示词检索工具
 
+## Phase30.1 删除端点手动级联 — 根治孤儿问题（2026-07-13 晚）
+
+### 根因
+app 运行时 `PRAGMA foreign_keys` 默认 **OFF**，所有 `ON DELETE CASCADE` 均不触发 → 删除 master_project / user_project / 子项目 会遗留孤儿子行(本会话 master3 丢失、Phase28.1 三悬空行均源于此)。
+
+### 方案选择
+- **未**全局开 `foreign_keys=ON`：该库多年 FK OFF + 历史视图当 FK 等遗留，贸然全开可能让现有功能突然报错，风险高。
+- **采用**在删除端点手动级联清理，精准堵住产生孤儿的路径，零波及面。
+
+### 实现（api.py）
+- 新增 `_cascade_delete_master(db, master_id)`：按 FK 安全顺序删 project_task_scene→tasks→columns→milestones→members→squad_members→workspace_squads→invites→master_asset→master_sub_project→activity_feed→master_project。每步 `_try` 容忍表不存在。保留 seedance user_project(遵原 ON DELETE SET NULL 设计)。
+- `delete_master_project` 改调 `_cascade_delete_master`。
+- `delete_sub_project`：先 `UPDATE master_asset SET sub_project_id=NULL` 再删。
+- `delete_project`(user_project)：置空 master_sub_project.seedance_project_id + 删 project_task_scene/user_scene_prompt/user_project_scene 再删项目。
+
+### 验证
+一次性测试总项目(4列/1任务/2里程碑/1成员/1资产) → 删除后所有子表归零，foreign_key_check violations=0，master 2/3 未受影响。
+
+---
+
 ## Phase30 master3 团队看板初始化 + 可复用 init-board（2026-07-13 晚）
 
 ### 发现（重要）
@@ -100,7 +120,7 @@ master 3 dashboard ok，看板 4 列/成员 1/里程碑 3；master/list 显示 2
 - 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
 - 默认端口：8080（自增 8080→8089）
 - 局域网地址：http://192.168.0.101:8080
-- 当前tag: `v5.12.0-phase30-master3-initboard` (master3团队看板初始化 + 可复用 init-board 端点)
+- 当前tag: `v5.12.1-phase30.1-cascade-delete` (删除端点手动级联清理，根治孤儿问题)
 
 ## Phase17.1 视频首帧封面修复（2026-07-02 13:10）
 

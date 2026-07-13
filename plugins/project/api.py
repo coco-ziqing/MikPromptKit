@@ -75,12 +75,20 @@ def update_project(project_id: int, data: dict = Body(...)):
 
 @router.delete("/project/{project_id}")
 def delete_project(project_id: int):
-    """归档项目（软删除 — 仅标记，不物理删除）"""
+    """删除 seedance 镜头项目（手动级联清理分镜及关联，因运行时 FK 未开启）"""
     db = _rw()
     try:
         proj = db.execute("SELECT id FROM user_project WHERE id=?", [project_id]).fetchone()
         if not proj: raise HTTPException(404, "项目不存在")
-        # 外键 CASCADE 自动清理 columns/tasks/milestones/members
+        def _try(sql, p=()):
+            try: db.execute(sql, p)
+            except sqlite3.OperationalError: pass
+        # 子项目引用置空（原 ON DELETE SET NULL 设计）
+        _try("UPDATE master_sub_project SET seedance_project_id=NULL WHERE seedance_project_id=?", [project_id])
+        # 镜头及其关联（任务-镜头 / 镜头-词卡）
+        _try("DELETE FROM project_task_scene WHERE scene_id IN (SELECT id FROM user_project_scene WHERE project_id=?)", [project_id])
+        _try("DELETE FROM user_scene_prompt WHERE scene_id IN (SELECT id FROM user_project_scene WHERE project_id=?)", [project_id])
+        _try("DELETE FROM user_project_scene WHERE project_id=?", [project_id])
         db.execute("DELETE FROM user_project WHERE id=?", [project_id])
         db.commit()
         return {"ok": True, "message": "项目已删除"}
@@ -726,12 +734,41 @@ def update_master_project(master_id: int, data: dict = Body(...)):
         return {"ok": True}
     finally: db.close()
 
+def _cascade_delete_master(db, master_id: int):
+    """Phase30.1: 手动级联删除总项目及其所有子数据。
+    因 app 运行时 PRAGMA foreign_keys 默认 OFF，ON DELETE CASCADE 不会触发，故手动按 FK 安全顺序清理，避免孤儿。
+    保留 seedance user_project（遵循原 master_sub_project.seedance_project_id ON DELETE SET NULL 设计，镜头项目独立）。"""
+    def _try(sql, params=()):
+        try:
+            db.execute(sql, params)
+        except sqlite3.OperationalError:
+            pass  # 表不存在（不同部署 schema 变体）则跳过
+    # 看板/任务/里程碑/成员
+    _try("DELETE FROM project_task_scene WHERE task_id IN (SELECT id FROM project_tasks WHERE master_project_id=?)", [master_id])
+    _try("DELETE FROM project_tasks WHERE master_project_id=?", [master_id])
+    _try("DELETE FROM project_columns WHERE master_project_id=?", [master_id])
+    _try("DELETE FROM project_milestones WHERE master_project_id=?", [master_id])
+    _try("DELETE FROM project_members WHERE master_project_id=?", [master_id])
+    # 团队小组
+    _try("DELETE FROM squad_members WHERE squad_id IN (SELECT id FROM workspace_squads WHERE master_project_id=?)", [master_id])
+    _try("DELETE FROM workspace_squads WHERE master_project_id=?", [master_id])
+    # 邀请
+    _try("DELETE FROM workspace_invites WHERE master_project_id=?", [master_id])
+    # 资产 / 子项目
+    _try("DELETE FROM master_asset WHERE master_project_id=?", [master_id])
+    _try("DELETE FROM master_sub_project WHERE master_project_id=?", [master_id])
+    # 活动流
+    _try("DELETE FROM activity_feed WHERE project_id=?", [master_id])
+    # 主项目
+    db.execute("DELETE FROM master_project WHERE id=?", [master_id])
+
+
 @router.delete("/master/{master_id}")
 def delete_master_project(master_id: int):
-    """删除总项目（级联删除子项目+资产）"""
+    """删除总项目（手动级联清理：子项目/资产/看板/成员/里程碑/邀请/小组/活动）"""
     db = _rw()
     try:
-        db.execute("DELETE FROM master_project WHERE id=?", [master_id])
+        _cascade_delete_master(db, master_id)
         db.commit()
         return {"ok": True}
     finally: db.close()
@@ -855,6 +892,11 @@ def update_sub_project(sub_id: int, data: dict = Body(...)):
 def delete_sub_project(sub_id: int):
     db = _rw()
     try:
+        # 资产对该子项目的引用置空（原 ON DELETE SET NULL 设计），避免悬空
+        try:
+            db.execute("UPDATE master_asset SET sub_project_id=NULL WHERE sub_project_id=?", [sub_id])
+        except sqlite3.OperationalError:
+            pass
         db.execute("DELETE FROM master_sub_project WHERE id=?", [sub_id])
         db.commit()
         return {"ok": True}
