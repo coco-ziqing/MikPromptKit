@@ -1,5 +1,25 @@
 # PromptKit — 提示词检索工具
 
+## Phase32 P4 后期音频资产接入（2026-07-13 晚）
+
+### 背景
+Phase31 后 P4 工作台已有清单但 `_renderPhaseExtra` 唯独 P4 无专属面板(P5/P6 有)；而 master_asset 早支持 `bgm`/`sfx` 类型却无任何 UI 入口(P2 只渲染 character/scene/prompt_template/ref_image)。
+
+### 实现（纯前端，零后端改动）
+- project_dashboard.js **v2.5.0**：`_renderPhaseExtra` 新增 P4 分支 → `_renderP4Audio()`。
+- `_renderP4Audio`：并发拉 `?asset_type=bgm` + `?asset_type=sfx`，分组(BGM/音效)卡片列表；有 image_path 则渲染 `<audio controls preload=none src=path>` 预览，无则显“未设音频路径”。
+- `_showAudioForm(type)`：专用轻量弹窗(名称 + 音频路径/URL + 描述) → POST /master/{id}/assets（asset_type=bgm/sfx，音频路径存入 image_path 复用字段，无需新 schema）。`_deleteAudio` → DELETE /master/assets/{id}。
+- 设计分工：P2=视觉资产，P4=音频资产，干净隔离。
+
+### 验证(master 3, 前端依赖的 API 路径)
+创建 bgm/sfx→分类型拉取(bgm=1/sfx=1)→有路径渲染audio/空路径提示→P2视觉资产不受影响(character=1)→删除回零。master3 原资产(character李白/script测试)完好。
+- 纯静态资源，无需重启；用户强刷拿 v2.5.0。
+
+### 遗留/可扩展
+- 目前音频靠粘贴路径/URL（与封面编辑器同思路）；未接文件上传/媒体库选择器(媒体库当前只有图/视频，无音频)。后期可接 P4 时间轴。
+
+---
+
 ## Phase31 P4-P6 阶段工作台落地 — 7 阶段流程闭环（2026-07-13 晚）
 
 ### 背景
@@ -139,7 +159,7 @@ master 3 dashboard ok，看板 4 列/成员 1/里程碑 3；master/list 显示 2
 - 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
 - 默认端口：8080（自增 8080→8089）
 - 局域网地址：http://192.168.0.101:8080
-- 当前tag: `v5.13.0-phase31-p4p6-workspace` (P4后期/P5交付/P6归档 阶段工作台落地)
+- 当前tag: `v5.14.0-phase32-p4-audio` (P4 后期音频资产接入 BGM/SFX)
 
 ## Phase17.1 视频首帧封面修复（2026-07-02 13:10）
 
