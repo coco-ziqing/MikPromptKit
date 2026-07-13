@@ -173,11 +173,8 @@ var App = window.App || {
         // 恢复列数设置
         var savedCols = localStorage.getItem('promptkit_columns') || '3';
         this.state.columns = parseInt(savedCols);
-        var slider = document.getElementById('columnSlider');
-        if (slider) {
-            slider.value = savedCols;
-            document.getElementById('columnLabel').textContent = savedCols + App._t('layout.cols', '列');
-        }
+        var label = document.getElementById('columnLabel');
+        if (label) label.textContent = savedCols;
         this.applyColumns();
 
         // 恢复编辑模式状态（必须在 switchView 之前恢复，确保初始渲染正确）
@@ -337,7 +334,27 @@ var App = window.App || {
             }
         });
 
+        // 全局点击关闭下拉菜单
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.nav-dropdown')) {
+                document.querySelectorAll('.nav-dropdown.open').forEach(function(dd) {
+                    dd.classList.remove('open');
+                });
+            }
+        });
+
         setInterval(() => this.loadStats(), 30000);
+    },
+
+    // ============ 导航栏下拉菜单 ============
+    _toggleDropdown(dropdownId) {
+        var dd = document.getElementById(dropdownId);
+        if (!dd) return;
+        var isOpen = dd.classList.contains('open');
+        // 关闭所有
+        document.querySelectorAll('.nav-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+        // 切换当前
+        if (!isOpen) dd.classList.add('open');
     },
 
     // ============ 视图切换 ============
@@ -348,20 +365,12 @@ var App = window.App || {
 
         // 隐藏所有视图
         document.querySelectorAll('.view-panel').forEach(function(el) { el.classList.remove('active-view'); });
-        // 导航按钮状态
-        document.querySelectorAll('.header-btn[id^="nav"]').forEach(el => el.classList.remove('active'));
-
-        const navMap = {
-            home: 'navHome',
-            collections: 'navCollections',
-            wordpacks: 'navWordpacks',
-            history: 'navHistory',
-            trash: 'navTrash'
-        };
+        // 导航按钮状态（下拉菜单模式下，仅保留有独立按钮的）
+        document.querySelectorAll('.header-btn.nav-active').forEach(function(el) { el.classList.remove('nav-active'); });
 
         if (view === 'home') {
             document.getElementById('viewHome').classList.add('active-view');
-            document.getElementById(navMap[view]).classList.add('active');
+            if (document.getElementById('navHome')) document.getElementById('navHome').classList.add('active');
             document.getElementById('globalSearchBox').style.visibility = 'visible';
             this._showSidebar();
             this._expandSidebar();
@@ -370,29 +379,23 @@ var App = window.App || {
             this._updatePageTitle();
         } else if (view === 'collections') {
             document.getElementById('viewCollections').classList.add('active-view');
-            document.getElementById(navMap[view]).classList.add('active');
             this._hideSearchBox();
             this.renderCollections();
         } else if (view === 'wordpacks') {
             document.getElementById('viewWordpacks').classList.add('active-view');
-            document.getElementById(navMap[view]).classList.add('active');
             this._hideSearchBox();
             this.renderWordpacks();
         } else if (view === 'history') {
             document.getElementById('viewHistory').classList.add('active-view');
-            document.getElementById(navMap[view]).classList.add('active');
             this._hideSearchBox();
             this.loadHistory();
         } else if (view === 'trash') {
             document.getElementById('viewTrash').classList.add('active-view');
-            document.getElementById(navMap[view]).classList.add('active');
             this._hideSearchBox();
             this.loadTrash();
         } else if (view === 'v4media') {
             var el = document.getElementById('viewV4media');
             if (el) el.classList.add('active-view');
-            var navEl = document.getElementById('navV4Media');
-            if (navEl) navEl.classList.add('active');
             this._hideSearchBox();
             this._showSidebar();
             this._collapseSidebar();
@@ -441,6 +444,13 @@ var App = window.App || {
             this._showSidebar();
             this._collapseSidebar();
             // 猴补丁负责具体面板渲染；这里仅做通用清理 + 导航高亮
+        } else if (view === 'project_mgmt') {
+            // Phase18+: 项目管理插件视图 (com.promptkit.project)
+            var pmEl = document.getElementById('viewProjectMgmt');
+            if (pmEl) pmEl.classList.add('active-view');
+            this._hideSearchBox();
+            this._showSidebar();
+            this._collapseSidebar();
         }
 
         // 关闭推荐面板

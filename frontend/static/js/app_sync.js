@@ -787,8 +787,8 @@ Object.assign(App, {
 
     onColumnSlider(val) {
         this.state.columns = parseInt(val);
-        document.getElementById('columnSlider').value = val;
-        document.getElementById('columnLabel').textContent = val + App._t('layout.cols', '列');
+        var label = document.getElementById('columnLabel');
+        if (label) label.textContent = val;
         try { localStorage.setItem('promptkit_columns', val); } catch(e) {}
         this.applyColumns();
     },

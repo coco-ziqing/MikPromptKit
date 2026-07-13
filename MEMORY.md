@@ -757,9 +757,9 @@ with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as zf:
 | 新增 `body.dark-theme` 选择器 | 28 处 |
 | HTML 内联类覆盖 | 1 处（`#headerStats`） |
 
-## Promoted From Short-Term Memory (2026-07-10)
+## Promoted From Short-Term Memory (2026-07-12)
 
-<!-- openclaw-memory-promotion:memory:memory/2026-06-11.md:54:83 -->
-- - ⚠️ 尝试添加文本段落模式 (彩色段落+tooltip入库) 因括号不匹配问题反复失败 - ⚠️ 部分提交被 revert 或 reset 丢弃 ### 最终保留的稳定改动 (v4.0.0-phase8) | 文件 | 改动 | |------|------| | `app.js` | URL hash `#/seedance/composer` 自动切到组装器 tab | | `index.html` | JS 版本号 v=15 (防缓存) | | `seedance_v2.py` | shot_scale 从 extra_fields 移除 | | `style.css` | 右侧面板 position:relative | ### 未完成的尝试 | 功能 | 状态 | |------|------| | 移除编辑器 header | ⚠️ 恢复保留，移除时破坏 JS 结构 | | 文本段落彩色模式 | ⚠️ 已 revert，括号错配导致页面不加载 | | 项目名双击编辑 | ⚠️ 已部分实现但冲突，需重新干净实现 | | 全屏按钮 | ❌ 未开始 | | 输出面板移到右侧 | ❌ 未开始 | ### 当前运行状态 - 服务: http://127.0.0.1:8080 / http://192.168.0.103:8080 - 数据库: 213 提示词 / 189 卡片 / 322 词库 / 31 词库维度 - 演示项目: id=73 (4镜头) ### 下次打开建议 1. 读取 HEARTBEAT.md + MEMORY.md 恢复上下文 2. 启动服务: `start.bat` 或 Python 直接启动 3. 从 87fc6f4 (景别词库) 基准开始，**用脚本文件一次性完成所有改动** 4. 优先修复：项目名交互 (侧栏双击编辑+切换保存) [score=0.915 recalls=3 avg=1.000 source=memory/2026-06-11.md:54-83]
-<!-- openclaw-memory-promotion:memory:memory/2026-07-02.md:53:53 -->
-- **问题**：视频卡片只显示 ▶ 占位符，不显示首帧静态图。3层断链： [score=0.867 recalls=0 avg=0.620 source=memory/2026-07-02.md:53-53]
+<!-- openclaw-memory-promotion:memory:memory/2026-05-31.md:67:86 -->
+- 5. **批次模式 PNG 导出命名** — `batchExport('png')` 也走命名弹窗，与 .pt 一致 6. **`_doExportPreview()` 统一命名** — 预览导出也使用 `_makeExportFilename` 7. **`doExport()` PNG 命名修复** — 单条 PNG 导出使用 `_makeExportFilename`，批量引用命名弹窗 ### 取消的方案 - 曾尝试用 `showDirectoryPicker()` 获取 `_exportDirHandle` 并直接写入 → ✅ 已实现 - 旧方案用 `prompt()` 输入文本作为标识 → ❌ 已替换为真实目录选择 ### 当前状态 - 未解决：Firefox/Safari 不支持 `showDirectoryPicker()`，降级为浏览器下载 - 已解决：`_pickExportPath` 函数内重复/多余的大括号（line 1220 `},`）已清理 - 需要后续关注：Chrome 在混用 `showDirectoryPicker` 和 `createObjectURL` 时，大文件可能触发 QuotaExceededError（目前 ZIP 包 < 50MB 无问题） ### 待办 - [ ] v3.0.0.3 release: database auto-backup, console.log cleanup - [ ] 测试 Firefox/Safari 降级下载路径 - [ ] 考虑 `showSaveFilePicker` 替代方案（用户直接选保存位置而非目录） [score=0.869 recalls=3 avg=1.000 source=memory/2026-05-31.md:67-86]
+<!-- openclaw-memory-promotion:memory:memory/2026-07-07.md:4:4 -->
+- 修复新建词卡从创建→保存→删除→回收站→恢复/永久删除的完整生命周期故障，共 **15 项修复**，涉及前端 5 文件、后端 1 文件。 [score=0.851 recalls=0 avg=0.620 source=memory/2026-07-07.md:4-4]

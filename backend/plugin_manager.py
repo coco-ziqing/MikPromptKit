@@ -632,13 +632,10 @@ def init_plugin_system(app=None, db=None) -> PluginManager:
         if not ok:
             log_warn(f"[PluginManager] 插件 {pid} 加载失败")
     
-    # 3. 启用 (仅启用 license 校验通过的插件)
-    #    暂时：所有 free 插件自动启用，paid 插件等待激活
+    # 3. 启用所有已加载插件（付费插件前端License门控，后端API始终可用）
     for pid, plugin in pm.plugins.items():
         if plugin.status == PluginStatus.LOADED:
-            if plugin.manifest.license_tier == "free":
-                pm.enable(pid)
-            # paid 插件需等待 license 激活后手动启用
+            pm.enable(pid)
     
     # 4. 挂载 API 路由到 app
     if app is not None:
