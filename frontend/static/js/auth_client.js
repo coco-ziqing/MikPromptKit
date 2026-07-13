@@ -70,6 +70,14 @@
       var version = cd.version || '';
       var hint = cd.login_hint || '登录以使用全部功能';
 
+      var features = Array.isArray(cd.features) ? cd.features : [];
+      var featHTML = '';
+      if (features.length) {
+        featHTML = '<div class="pk-cover-features">' + features.map(function(f){
+          return '<div class="pk-cover-feature"><span class="pk-cover-feature-icon">'+(f.icon||'✨')+'</span><div class="pk-cover-feature-text"><div class="pk-cover-feature-title">'+self._esc(f.title||'')+'</div><div class="pk-cover-feature-desc">'+self._esc(f.desc||'')+'</div></div></div>';
+        }).join('') + '</div>';
+      }
+
       var imgHTML = '';
       if (images.length) {
         imgHTML = '<div class="pk-cover-gallery">';
@@ -82,7 +90,7 @@
               '<div class="pk-cover-play-overlay"><span>▶</span></div>'+
             '</div><div class="pk-cover-gallery-label">'+(img.label||'')+'</div></div>';
           } else {
-            imgHTML += '<div class="pk-cover-gallery-item"><div class="pk-cover-gallery-img">'+(img.src?'<img src="'+img.src+'" alt="'+(img.alt||'')+'" onerror="this.parentElement.innerHTML=\'<div class=pk-cover-fallback>🎬</div>\'">':'<div class="pk-cover-fallback">🎬</div>')+'</div><div class="pk-cover-gallery-label">'+(img.label||'')+'</div></div>';
+            imgHTML += '<div class="pk-cover-gallery-item"><div class="pk-cover-gallery-img">'+(img.src?'<img loading="lazy" src="'+img.src+'" alt="'+(img.alt||'')+'" onerror="this.parentElement.innerHTML=\'<div class=pk-cover-fallback>🎬</div>\'">':'<div class="pk-cover-fallback">🎬</div>')+'</div><div class="pk-cover-gallery-label">'+(img.label||'')+'</div></div>';
           }
         });
         imgHTML += '</div>';
@@ -101,6 +109,7 @@
           '</div>'+
           '<div class="pk-cover-bottom">'+
             '<div class="pk-cover-desc">'+(desc||'')+'</div>'+
+            featHTML+
             imgHTML+
             '<div class="pk-cover-actions">'+
               '<button class="pk-cover-btn pk-cover-btn-primary" onclick="PK_AUTH_CLIENT._showLoginModal()">'+self._esc(hint)+'</button>'+

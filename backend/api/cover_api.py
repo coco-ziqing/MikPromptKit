@@ -38,13 +38,21 @@ def _ensure_table():
             "subtitle": "AIGC 提示词全流程管理平台",
             "description": "专为 AI 影视创作者打造。从剧本构思到分镜输出，\n一站管理角色、场景、提示词，支持局域网多端协同。\n内置 Ollama 16 模型池 + ComfyUI 无缝集成。",
             "description_full": "AIGC影片制作全流程管理平台。\n\n核心能力：\n• 提示词快捷检索与复用\n• 角色/场景资产管理\n• 分镜段落编排\n• 团队协同与权限控制\n• 局域网多端同步",
-            "cover_images": json.dumps([
-                {"src":"/static/img/cover_hero.svg","alt":"工作台总览","label":"全流程看板"},
-                {"src":"/static/img/cover_search.svg","alt":"智能检索","label":"提示词检索"},
-                {"src":"/static/img/cover_assets.svg","alt":"资产管理","label":"角色场景资产库"}
+            "features": json.dumps([
+                {"icon":"🔍","title":"智能检索复用","desc":"关键词 + 语义双引擎，FTS5 全文叠加 AI 重排，700+ 词卡秒级精准调用"},
+                {"icon":"🎬","title":"图像·视频双词库","desc":"图像描述词与视频运镜词分类管理，自动首帧封面、悬停预览"},
+                {"icon":"🎞","title":"分镜全流程","desc":"总项目→分段→镜头三层提示词继承，剧本、角色、场景一体编排"},
+                {"icon":"📋","title":"项目 & 团队协同","desc":"7 阶段看板/甘特/里程碑，实时同步、在线状态、评论通知、邀请协作"},
+                {"icon":"🖼","title":"资产管理溯源","desc":"产出图片/视频入库，SHA256 去重、版本链、评分与提示词溯源"},
+                {"icon":"🤖","title":"本地 AI 引擎","desc":"Ollama 16 模型池（翻译/优化/自动标签/语义搜索）+ ComfyUI 无缝集成"}
             ], ensure_ascii=False),
-            "version": "v5.7",
-            "login_hint": "登录以使用全部功能",
+            "cover_images": json.dumps([
+                {"src":"/static/img/covers/06825845.png","alt":"工作台总览","label":"全流程工作台"},
+                {"src":"/static/img/covers/0127e752.png","alt":"提示词检索","label":"提示词词库"},
+                {"src":"/static/img/covers/98bec4b8.png","alt":"资产与分镜","label":"资产·分镜"}
+            ], ensure_ascii=False),
+            "version": "v5.8",
+            "login_hint": "登录，开启创作",
         }
         for k, v in defaults.items():
             db.execute(
@@ -69,7 +77,7 @@ def get_cover():
         data = {}
         for r in rows:
             k, v = r["config_key"], r["config_value"]
-            if k == "cover_images":
+            if k in ("cover_images", "features"):
                 try: data[k] = json.loads(v)
                 except: data[k] = []
             else:
