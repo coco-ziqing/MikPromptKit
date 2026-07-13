@@ -86,11 +86,13 @@ Object.assign(App, {
             if (!isCollView) this._populateEditFilterModules();
             this.updateBatchCount();
             try { localStorage.setItem('promptkit_editmode', '1'); } catch(e) {}
+            if (App.aiTools) App.aiTools.showToolbar();  // 编辑模式显示优化/翻译/适配/缩图工具栏
         } else {
             this.state.batchSelected.clear();
             if (eb) eb.style.display = 'none';
             if (fb) fb.style.display = 'none';
             try { localStorage.removeItem('promptkit_editmode'); } catch(e) {}
+            if (App.aiTools) App.aiTools.hideToolbar();  // 退出编辑模式隐藏工具栏
         }
         var btn = document.getElementById('btnEditMode');
         if (this.state.editMode) {

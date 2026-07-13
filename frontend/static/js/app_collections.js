@@ -448,7 +448,7 @@ Object.assign(App, {
                 <div class="prompt-card ${batchClass} ${selectedClass} ${editClass}" data-id="${p.id}" draggable="true">
                     <div class="card-body">
                         <div class="card-thumb">
-                            <div class="card-thumb-inner" onclick="${isEdit ? 'event.stopPropagation();App.toggleSelect(' + p.id + ')' : (isWordCard ? 'App.wordEditor.open({cardId:' + p.id + ',source:\'collection\',onSaved:function(){App.loadCollectionItems()}})' : 'App.showThumbnailPicker(' + p.id + ')')}">
+                            <div class="card-thumb-inner" onclick="${isEdit ? 'event.stopPropagation();App.toggleSelect(' + p.id + ')' : ''}">
                                 ${videoFile2
                                     ? `<div class="thumb-video-wrap-preview">`
                                       + (p.thumbnail

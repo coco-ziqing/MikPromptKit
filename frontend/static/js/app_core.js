@@ -49,6 +49,7 @@ var App = window.App || {
         currentPromptId: null,
         theme: 'dark',
         columns: 3,  // 卡片列数
+        _orientationLock: null,  // 移动端方向锁定: null=自动, 'portrait', 'landscape'
         // Seedance
         seedanceView: 'composer',
         seedanceCategory: null,
@@ -176,6 +177,7 @@ var App = window.App || {
         var label = document.getElementById('columnLabel');
         if (label) label.textContent = savedCols;
         this.applyColumns();
+        this._initOrientation();  // 移动端横竖屏检测+锁定
 
         // 恢复编辑模式状态（必须在 switchView 之前恢复，确保初始渲染正确）
         if ((typeof localStorage !== 'undefined' && localStorage.getItem('promptkit_editmode') === '1')) {
@@ -195,7 +197,6 @@ var App = window.App || {
         // 初始默认显示 home 视图（延迟到树加载完成后渲染）
         // 先不调用 switchView，等 tree 加载完再渲染
         document.getElementById('viewHome').classList.add('active-view');
-        if (document.getElementById('navHome')) document.getElementById('navHome').classList.add('active');
         document.getElementById('globalSearchBox').style.visibility = 'visible';
         
         try {
@@ -334,8 +335,16 @@ var App = window.App || {
             }
         });
 
-        // 全局点击关闭下拉菜单
+        // 全局点击关闭下拉菜单 + 菜单项点击自动收起
         document.addEventListener('click', function(e) {
+            // 点击菜单项 → 自动关闭所有下拉
+            if (e.target.closest('.nav-dropdown-item')) {
+                document.querySelectorAll('.nav-dropdown.open').forEach(function(dd) {
+                    dd.classList.remove('open');
+                });
+                return;
+            }
+            // 点击下拉菜单外部 → 关闭
             if (!e.target.closest('.nav-dropdown')) {
                 document.querySelectorAll('.nav-dropdown.open').forEach(function(dd) {
                     dd.classList.remove('open');
@@ -370,7 +379,6 @@ var App = window.App || {
 
         if (view === 'home') {
             document.getElementById('viewHome').classList.add('active-view');
-            if (document.getElementById('navHome')) document.getElementById('navHome').classList.add('active');
             document.getElementById('globalSearchBox').style.visibility = 'visible';
             this._showSidebar();
             this._expandSidebar();
@@ -945,6 +953,86 @@ var App = window.App || {
         div.textContent = msg;
         container.appendChild(div);
         setTimeout(() => { if (div.parentNode) div.parentNode.removeChild(div); }, 2500);
+    },
+
+    // 移动端识别（触屏 + 窄屏 ≤1024px）
+    _isMobileDevice() {
+        return ('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth <= 1024;
+    },
+
+    // ============ 移动端横竖屏检测+锁定 ============
+    _initOrientation() {
+        var self = this;
+        try { self.state._orientationLock = localStorage.getItem('promptkit_orientation_lock') || null; } catch(e) {}
+        if (self.state._orientationLock === 'null' || self.state._orientationLock === '') self.state._orientationLock = null;
+        // matchMedia 更可靠，无需等 resize
+        self._landscapeMql = window.matchMedia('(orientation: landscape)');
+        var _onChange = function() {
+            if (!self.state._orientationLock) self._applyOrientation();
+        };
+        if (self._landscapeMql.addEventListener) {
+            self._landscapeMql.addEventListener('change', _onChange);
+        } else {
+            self._landscapeMql.addListener(_onChange);
+        }
+        var _roTimer = null;
+        window.addEventListener('resize', function() {
+            clearTimeout(_roTimer);
+            _roTimer = setTimeout(function() {
+                if (!self.state._orientationLock) self._applyOrientation();
+            }, 200);
+        });
+        self._applyOrientation();
+    },
+
+    _applyOrientation() {
+        var isMobile = this._isMobileDevice();
+        var isLandscape = this._landscapeMql ? this._landscapeMql.matches : (window.innerWidth > window.innerHeight);
+        if (isMobile) {
+            document.body.classList.toggle('mobile-landscape', isLandscape);
+        } else {
+            document.body.classList.remove('mobile-landscape');
+        }
+        this.applyColumns();
+        this._updateOrientationBtn();
+    },
+
+    toggleOrientationLock() {
+        var lock = this.state._orientationLock;
+        if (!lock) {
+            var isLandscape = this._landscapeMql ? this._landscapeMql.matches : (window.innerWidth > window.innerHeight);
+            this.state._orientationLock = isLandscape ? 'landscape' : 'portrait';
+        } else if (lock === 'landscape') {
+            this.state._orientationLock = 'portrait';
+        } else {
+            this.state._orientationLock = null;
+        }
+        try { localStorage.setItem('promptkit_orientation_lock', this.state._orientationLock); } catch(e) {}
+        this.applyColumns();
+        this._updateOrientationBtn();
+    },
+
+    _updateOrientationBtn() {
+        var btn = document.getElementById('btnOrientationLock');
+        if (!btn) return;
+        var lock = this.state._orientationLock;
+        var isMobile = this._isMobileDevice();
+        if (!isMobile) { btn.style.display = 'none'; return; }
+        btn.style.display = 'inline-flex';
+        var isLandscape = (lock === 'landscape') || (!lock && this._landscapeMql && this._landscapeMql.matches) || (!lock && !this._landscapeMql && window.innerWidth > window.innerHeight);
+        if (lock === 'landscape') {
+            btn.innerHTML = '<i class="bi bi-lock-fill"></i>';
+            btn.title = '已锁定横屏 — 点按切换竖屏 / 再按解除锁定';
+            btn.style.color = 'var(--primary)';
+        } else if (lock === 'portrait') {
+            btn.innerHTML = '<i class="bi bi-lock-fill"></i>';
+            btn.title = '已锁定竖屏 — 点按解除锁定 / 再按切换横屏';
+            btn.style.color = '#f59e0b';
+        } else {
+            btn.innerHTML = isLandscape ? '<i class="bi bi-phone-landscape"></i>' : '<i class="bi bi-phone"></i>';
+            btn.title = isLandscape ? '横屏模式 · 点击锁定' : '竖屏模式 · 点击锁定';
+            btn.style.color = '';
+        }
     },
 
 };

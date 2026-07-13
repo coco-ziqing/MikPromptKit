@@ -117,7 +117,7 @@ body {
     display: flex;
     align-items: center;
     padding: 0 16px;
-    z-index: 100;
+    z-index: 210;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 .navbar-tool .brand {
@@ -570,7 +570,7 @@ body.dark-theme .diag-header { background: #111827; }
 /* ============ 模态框 ============ */
 .modal-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.5); z-index: 200;
+    background: rgba(0,0,0,0.5); z-index: 250;
     display: flex; align-items: center; justify-content: center;
 }
 .modal-content {
@@ -636,17 +636,23 @@ body.dark-theme .diag-header { background: #111827; }
     .sidebar.mobile-show { display: block; position: fixed; z-index: 200; width: 260px; top: var(--nav-height); left: 0; bottom: 0; background: var(--bg-sidebar,#f8fafc); overflow-y: auto; }
     #btnMenu { display: inline-flex !important; }
     .main-content { margin-left: 0; padding: 12px; }
+    body.sidebar-collapsed .main-content { margin-left: 0; }
     .main-content.with-rec { margin-right: 0; }
     .main-content.sidebar-open { margin-left: 0; }
     .prompt-grid { grid-template-columns: 1fr; }
     .search-box { max-width: 100%; }
     .header-actions .badge { display: none; }
     .recommend-panel { width: 100%; }
-    .navbar-tool { padding: 0 8px; overflow-x: auto; gap: 2px; }
+    .navbar-tool { padding: 0 8px; overflow-x: auto; overflow-y: clip; gap: 2px; -webkit-overflow-scrolling: touch; }
+    /* 下拉菜单打开时解除裁剪，关闭后自动恢复滑动 */
+    .navbar-tool:has(.nav-dropdown.open) { overflow: visible; }
     .navbar-tool .brand { font-size: 14px; margin-right: 8px; flex-shrink: 0; }
     .navbar-tool .brand small { display: none; }
     .header-btn { width: 32px; height: 32px; font-size: 14px; flex-shrink: 0; }
     .column-slider-wrap { display: none; }
+    .sidebar-toggle-btn { display: none !important; }
+    .nav-dd-text { display: none; }
+    #btnLang { display: none; }
     .search-box input { font-size: 12px; height: 30px; padding: 0 28px 0 10px; }
     .search-mode-btn { right: 24px; font-size: 12px; }
     .batch-bar { flex-wrap: nowrap; overflow-x: auto; padding: 8px 10px; gap: 4px; }
@@ -662,6 +668,36 @@ body.dark-theme .diag-header { background: #111827; }
     .header-actions .badge { display: none; }
     #headerStats { font-size: 10px; padding: 2px 6px; }
 }
+
+/* ============ 移动端横屏模式 ============ */
+/* 手机横屏超过768px时@media失效，body.mobile-landscape全面接管移动端样式 */
+body.mobile-landscape .sidebar { display: none; }
+body.mobile-landscape .sidebar.mobile-show { display: block; position: fixed; z-index: 200; width: 260px; top: var(--nav-height); left: 0; bottom: 0; background: var(--bg-sidebar,#f8fafc); overflow-y: auto; }
+body.mobile-landscape #btnMenu { display: inline-flex !important; }
+body.mobile-landscape .main-content { margin-left: 0 !important; padding: 12px; }
+body.mobile-landscape .main-content.with-rec { margin-right: 0; }
+body.mobile-landscape .main-content.sidebar-open { margin-left: 0; }
+body.mobile-landscape .prompt-grid { grid-template-columns: repeat(2, 1fr) !important; }
+body.mobile-landscape .prompt-card .card-content { font-size: 12px; }
+body.mobile-landscape .prompt-card .card-meaning { font-size: 11px; }
+body.mobile-landscape .card-thumb { aspect-ratio: 16 / 9; }
+body.mobile-landscape .search-box { max-width: 40%; }
+body.mobile-landscape .search-box input { font-size: 12px; height: 28px; }
+body.mobile-landscape .header-actions .badge { display: none; }
+body.mobile-landscape .recommend-panel { width: 100%; }
+body.mobile-landscape .navbar-tool { padding: 0 8px; overflow-x: auto; overflow-y: clip; gap: 2px; -webkit-overflow-scrolling: touch; }
+body.mobile-landscape .navbar-tool:has(.nav-dropdown.open) { overflow: visible; }
+body.mobile-landscape .navbar-tool .brand { font-size: 14px; margin-right: 8px; flex-shrink: 0; }
+body.mobile-landscape .navbar-tool .brand small { display: none; }
+body.mobile-landscape .header-btn { width: 32px; height: 32px; font-size: 14px; flex-shrink: 0; }
+body.mobile-landscape .column-slider-wrap { display: none; }
+body.mobile-landscape .sidebar-toggle-btn { display: none !important; }
+body.mobile-landscape .nav-dd-text { display: none; }
+body.mobile-landscape #btnLang { display: none; }
+body.mobile-landscape .view-home-scroll { padding: 0; }
+body.mobile-landscape #headerStats { font-size: 10px; padding: 2px 6px; }
+body.mobile-landscape .page-header h3 { font-size: 15px; }
+body.mobile-landscape .count-info { font-size: 11px; }
 
 /* 侧栏遮罩 */
 .sidebar-overlay {

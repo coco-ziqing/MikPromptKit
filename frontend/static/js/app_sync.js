@@ -793,8 +793,24 @@ Object.assign(App, {
         this.applyColumns();
     },
 
+    // 移动端识别（触屏 + 窄屏，覆盖所有手机横屏宽度 ≤1024px）
+    _isMobileDevice() {
+        return ('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth <= 1024;
+    },
+
     applyColumns() {
         var cols = this.state.columns || 3;
+        // 移动端（触屏设备 + 宽度 ≤1024px）自动适配列数
+        if (this._isMobileDevice()) {
+            var locked = this.state._orientationLock;
+            var isLandscape = locked === 'landscape' || (!locked && window.innerWidth > window.innerHeight);
+            cols = isLandscape ? 2 : 1;
+            // 同步 body class（CSS 层也做横屏适配）
+            if (isLandscape) { document.body.classList.add('mobile-landscape'); }
+            else { document.body.classList.remove('mobile-landscape'); }
+        } else {
+            document.body.classList.remove('mobile-landscape');
+        }
         // Phase17.4: 用 minmax(170px,1fr) 兜底，6列时如果页面不够宽自动折行
         var grids = document.querySelectorAll('.prompt-grid');
         for (var i = 0; i < grids.length; i++) {

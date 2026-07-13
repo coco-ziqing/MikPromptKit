@@ -381,7 +381,7 @@ App.renderSidebar = function() {
     // 统一入口：全部词组
     var allActive = this.state.currentGroupId === null ? 'active' : '';
     html += '<div class="module-item ' + allActive + '" onclick="App.switchAllGroups()" style="margin:0 8px 4px;font-size:14px;">' +
-        '<span class="icon">🏠</span><span>全部词组</span>' +
+        '<span class="icon">🏠</span><span>词库</span>' +
         '</div>';
     
     // 渲染树
@@ -1153,7 +1153,7 @@ App._updatePageTitle = function() {
     if (this.state.currentGroupId !== null && this.state.currentView === 'home') {
         document.getElementById('pageTitle').textContent = this.state.currentGroupName || '全部分组列表';
     } else if (this.state.currentView === 'home') {
-        document.getElementById('pageTitle').textContent = '全部词组';
+        document.getElementById('pageTitle').textContent = '词库';
     } else {
         if (_origUpdateTitle) _origUpdateTitle.call(this);
     }

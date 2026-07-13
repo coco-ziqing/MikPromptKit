@@ -45,6 +45,8 @@ App.aiTools.renderToolbar = function() {
 // ============ 工具栏显示/隐藏 ============
 
 App.aiTools.showToolbar = function() {
+    // 仅在编辑模式下显示
+    if (!App.state.editMode) return;
     if (App._aiToolbarSuppressed) return;
     var bar = this.renderToolbar();
     if (bar) bar.style.display = 'flex';
