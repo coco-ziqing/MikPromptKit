@@ -380,30 +380,11 @@ def init_db():
                 updated_at TEXT DEFAULT (datetime('now','localtime'))
             );
 
-            -- 2. 词库总表 (27套维度)
-            CREATE TABLE IF NOT EXISTS prompt_library (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                dimension_key TEXT UNIQUE NOT NULL,
-                dimension_name TEXT NOT NULL,
-                category TEXT NOT NULL DEFAULT 'basic',
-                sort_order INTEGER DEFAULT 0,
-                description TEXT,
-                updated_at TEXT DEFAULT (datetime('now','localtime'))
-            );
+            -- 2. 词库总表 (27套维度) — Phase34: 已迁移为 VIEW，见下方 word_card 相关表之后
+            -- 原 CREATE TABLE prompt_library 已改为 CREATE VIEW，基表为 word_card_group
 
-            -- 3. 词卡库存
-            CREATE TABLE IF NOT EXISTS prompt_word_card (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                library_id INTEGER NOT NULL REFERENCES prompt_library(id),
-                word_text TEXT NOT NULL,
-                definition TEXT,
-                preview_image TEXT,
-                preview_video TEXT DEFAULT '',
-                heat_weight REAL DEFAULT 0,
-                is_system INTEGER DEFAULT 1,
-                usage_count INTEGER DEFAULT 0,
-                created_at TEXT DEFAULT (datetime('now','localtime'))
-            );
+            -- 3. 词卡库存 — Phase34: 已迁移为 VIEW，见下方 word_card 相关表之后
+            -- 原 CREATE TABLE prompt_word_card 已改为 CREATE VIEW，基表为 word_card + word_card_group + seedance_id_map
 
             -- 4. 用户分镜项目总表
             CREATE TABLE IF NOT EXISTS user_project (
@@ -601,6 +582,44 @@ def init_db():
                 INSERT INTO word_card_fts(rowid, content, meaning, name, tags)
                 VALUES (new.id, new.content, new.meaning, new.name, new.tags);
             END;
+
+            -- Phase34: seedance ID 映射表 + prompt_* 视图（原为 CREATE TABLE，迁移已改为 VIEW）
+            CREATE TABLE IF NOT EXISTS seedance_id_map (
+                old_id INTEGER PRIMARY KEY,
+                new_id INTEGER NOT NULL,
+                UNIQUE(new_id)
+            );
+
+            -- prompt_library VIEW: 词库维度（基于 word_card_group）
+            CREATE VIEW IF NOT EXISTS prompt_library AS
+                SELECT
+                    id,
+                    group_key AS dimension_key,
+                    name AS dimension_name,
+                    COALESCE(NULLIF(seedance_subtype, ''), 'basic') AS category,
+                    sort_order,
+                    description,
+                    updated_at
+                FROM word_card_group
+                WHERE group_type = 'seedance' AND is_active = 1;
+
+            -- prompt_word_card VIEW: 词卡库存（基于 word_card + word_card_group + seedance_id_map）
+            CREATE VIEW IF NOT EXISTS prompt_word_card AS
+                SELECT
+                    COALESCE(sm.old_id, wc.id) AS id,
+                    wc.group_id AS library_id,
+                    wc.content AS word_text,
+                    wc.meaning AS definition,
+                    wc.thumbnail AS preview_image,
+                    wc.preview_media AS preview_video,
+                    wc.heat_weight,
+                    wc.is_builtin AS is_system,
+                    COALESCE(wc.usage_count, 0) AS usage_count,
+                    wc.created_at
+                FROM word_card wc
+                JOIN word_card_group wg ON wg.id = wc.group_id
+                LEFT JOIN seedance_id_map sm ON sm.new_id = wc.id
+                WHERE wg.group_type = 'seedance' AND wc.is_deleted = 0;
 
             -- 词卡→场景引用表（替代 user_scene_prompt）
             CREATE TABLE IF NOT EXISTS scene_card_ref (
