@@ -165,7 +165,7 @@ def delete_column(column_id: int):
 # ============================================================
 
 @router.get("/tasks")
-def list_tasks(master_project_id: int = Query(..., description="总项目ID"), column_id: Optional[int] = Query(None)):
+def list_tasks(master_project_id: int = Query(..., description="总项目ID"), column_id: Optional[int] = Query(None), phase: Optional[str] = Query(None)):
     db = _ro()
     sql = """SELECT t.*, c.name as col_name, c.color as col_color,
              m.real_name as assignee_name, m.avatar as assignee_avatar, m.avatar_color as assignee_color
@@ -177,6 +177,9 @@ def list_tasks(master_project_id: int = Query(..., description="总项目ID"), c
     if column_id:
         sql += " AND t.column_id=?"
         params.append(column_id)
+    if phase:
+        sql += " AND t.phase=?"
+        params.append(phase)
     sql += " ORDER BY t.sort_order"
     return {"ok": True, "tasks": _rows(db.execute(sql, params).fetchall())}
 
@@ -202,19 +205,20 @@ def get_task(task_id: int):
 def create_task(data: dict = Body(...)):
     mid = data.get("master_project_id")
     title = (data.get("title", "")).strip()
+    phase = data.get("phase", "P3")
     if not title: raise HTTPException(400, "title 必填")
     if not mid: raise HTTPException(400, "master_project_id 必填")
     db = _rw()
     try:
         cid = data.get("column_id")
-        if not cid:
+        if not cid and phase == "P3":
             r = db.execute("SELECT id FROM project_columns WHERE master_project_id=? ORDER BY sort_order LIMIT 1", [mid]).fetchone()
             cid = r["id"] if r else None
         db.execute("""INSERT INTO project_tasks
             (master_project_id,column_id,title,description,assignee_id,priority,due_date,sort_order,phase)
-            VALUES (?,?,?,?,?,?,?,(SELECT COALESCE(MAX(sort_order),0)+1 FROM project_tasks WHERE master_project_id=?),'P3')""",
+            VALUES (?,?,?,?,?,?,?,(SELECT COALESCE(MAX(sort_order),0)+1 FROM project_tasks WHERE master_project_id=?),?)""",
             [mid, cid, title, data.get("description", ""), data.get("assignee_id"),
-             data.get("priority", 0), data.get("due_date"), mid])
+             data.get("priority", 0), data.get("due_date"), mid, phase])
         db.commit()
         nid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
         return {"ok": True, "id": nid}

@@ -1,5 +1,24 @@
 # PromptKit — 提示词检索工具
 
+## Phase31 P4-P6 阶段工作台落地 — 7 阶段流程闭环（2026-07-13 晚）
+
+### 背景
+P4(后期)/P5(交付)/P6(归档) 一直是「Coming soon」占位。project_tasks 已有 `phase` 列，可分阶段。
+
+### 实现
+- **后端**(api.py)：`list_tasks` 新增 `phase` 过滤参；`create_task` 接受 `phase`(默认 P3)，且**仅 P3 自动分配看板列**（P4-P6 任务 column_id=NULL，不进看板）。
+- **前端**(project_dashboard.js v2.4.0)：`_renderP4P6` 重写为阶段工作台：
+  - 每阶段独立**工作项清单**(添加/勾选完成/删除/进度条)，基于 project_tasks(phase 过滤)。
+  - `_phaseMeta` 内置预设流程：P4[粗剪/精剪/调色/配乐音效/字幕/成片输出]、P5[内部审核/客户审核/修改反馈/终审/交付打包]、P6[复盘/提示词归档/素材归档/经验总结]，「✨生成流程清单」一键播种。
+  - **P5 专属**：交付摘要卡 + 「✅ 标记交付完成」(PUT /master/{id} status=completed)。
+  - **P6 专属**：项目复盘统计面板(各阶段完成度进度条 + 任务/分镜/资产总数，复用 phase_stats)。
+- **P3 看板隔离**：`_renderP3Kanban` 改拉 `?phase=P3`，P4-P6 任务不再混入看板。
+
+### 验证(master 3)
+P4 seed 4 项(column_id 均 None)；阶段隔离 P4=4/P3=0；勾选 2/4；P5 status draft→completed→回退；P6 phase_stats 正确(P4:4/2)；master2 P3 看板回归=3。
+
+---
+
 ## Phase30.1 删除端点手动级联 — 根治孤儿问题（2026-07-13 晚）
 
 ### 根因
@@ -120,7 +139,7 @@ master 3 dashboard ok，看板 4 列/成员 1/里程碑 3；master/list 显示 2
 - 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
 - 默认端口：8080（自增 8080→8089）
 - 局域网地址：http://192.168.0.101:8080
-- 当前tag: `v5.12.1-phase30.1-cascade-delete` (删除端点手动级联清理，根治孤儿问题)
+- 当前tag: `v5.13.0-phase31-p4p6-workspace` (P4后期/P5交付/P6归档 阶段工作台落地)
 
 ## Phase17.1 视频首帧封面修复（2026-07-02 13:10）
 
