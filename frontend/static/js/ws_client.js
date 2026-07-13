@@ -136,6 +136,11 @@
       window.PK_ProjectDashboard._renderP3Kanban();
     }
   });
+  PK_WS.on('column_update', function(msg) {
+    if (window.PK_ProjectDashboard && window.PK_ProjectDashboard._p3ActiveTab === 'kanban') {
+      window.PK_ProjectDashboard._renderP3Kanban();
+    }
+  });
   PK_WS.on('milestone_update', function(msg) {
     if (window.PK_ProjectDashboard && window.PK_ProjectDashboard._p3ActiveTab === 'milestones') {
       window.PK_ProjectDashboard._renderP3Milestones();
