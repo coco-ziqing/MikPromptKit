@@ -12,7 +12,16 @@
     _loggedIn: false,
     _checkDone: false,
 
+    _applyThemeEarly: function() {
+      try {
+        var t = localStorage.getItem('promptkit_theme');
+        if (t === 'dark') document.body.classList.add('dark-theme');
+        else if (t === 'light') document.body.classList.remove('dark-theme');
+      } catch(e) {}
+    },
+
     init: async function() {
+      this._applyThemeEarly();
       this._token = localStorage.getItem('pk_token');
       try { this._user = JSON.parse(localStorage.getItem('pk_user')); } catch(e) { this._user = null; }
 
@@ -101,19 +110,16 @@
       cover.className = 'pk-cover-overlay';
       cover.innerHTML =
         '<div class="pk-cover-page">'+
-          '<div class="pk-cover-top">'+
-            '<div class="pk-cover-logo"><span class="pk-cover-logo-icon">🔍</span></div>'+
-            '<h1 class="pk-cover-title">'+self._esc(title)+'</h1>'+
-            (subtitle?'<p class="pk-cover-subtitle">'+self._esc(subtitle)+'</p>':'')+
-            (version?'<div class="pk-cover-version">'+self._esc(version)+'</div>':'')+
+          '<div class="pk-cover-head">'+
+            '<span class="pk-cover-logo-icon">🔍</span>'+
+            '<h1 class="pk-cover-title">'+self._esc(title)+(version?' <span class="pk-cover-ver">'+self._esc(version)+'</span>':'')+'</h1>'+
           '</div>'+
-          '<div class="pk-cover-bottom">'+
-            '<div class="pk-cover-desc">'+(desc||'')+'</div>'+
-            featHTML+
-            imgHTML+
-            '<div class="pk-cover-actions">'+
-              '<button class="pk-cover-btn pk-cover-btn-primary" onclick="PK_AUTH_CLIENT._showLoginModal()">'+self._esc(hint)+'</button>'+
-            '</div>'+
+          (subtitle?'<p class="pk-cover-subtitle">'+self._esc(subtitle)+'</p>':'')+
+          (desc?'<div class="pk-cover-desc">'+desc+'</div>':'')+
+          featHTML+
+          imgHTML+
+          '<div class="pk-cover-actions">'+
+            '<button class="pk-cover-btn pk-cover-btn-primary" onclick="PK_AUTH_CLIENT._showLoginModal()">'+self._esc(hint)+'</button>'+
           '</div>'+
         '</div>';
       document.body.appendChild(cover);
@@ -148,28 +154,18 @@
       var old = document.getElementById('pkAuthModal');
       if (old) old.remove();
 
-      // 隐藏封面层，只留登录弹窗
-      var cover = document.getElementById('pkCoverOverlay');
-      if (cover) cover.style.display = 'none';
+      // 挂载弹窗激活状态：底层封面视觉整体隐藏 + 锁定滚动
+      document.body.classList.add('pk-auth-active');
 
       var modal = document.createElement('div');
       modal.id = 'pkAuthModal';
       modal.className = 'pk-auth-modal-overlay';
-      modal.onclick = function(e) {
-        if (e.target===modal) { modal.remove(); if (cover) cover.style.display = ''; }
-      };
-
-      // ESC 关闭弹窗
-      var escHandler = function(e) {
-        if (e.key === 'Escape') {
-          var m = document.getElementById('pkAuthModal');
-          if (m) { m.remove(); if (cover) cover.style.display = ''; }
-          document.removeEventListener('keydown', escHandler);
-        }
-      };
-      document.addEventListener('keydown', escHandler);
+      // 屏蔽背景点击 / 选中：点击遮罩不关闭，仅右上角 X 可关闭
+      modal.addEventListener('mousedown', function(e){ if (e.target===modal) e.preventDefault(); });
+      modal.addEventListener('click', function(e){ if (e.target===modal) { e.preventDefault(); e.stopPropagation(); } });
       modal.innerHTML =
         '<div class="pk-auth-modal" onclick="event.stopPropagation()">'+
+          '<button class="pk-auth-close" title="关闭" onclick="PK_AUTH_CLIENT._closeLoginModal()">✕</button>'+
           '<div class="pk-auth-header">'+
             '<span class="pk-auth-brand">🔍 咪卡Mik词库</span>'+
           '</div>'+
@@ -177,11 +173,17 @@
             '<button class="pk-auth-tab active" data-tab="login" onclick="PK_AUTH_CLIENT._switchAuthTab(\'login\')">登录</button>'+
             '<button class="pk-auth-tab" data-tab="register" onclick="PK_AUTH_CLIENT._switchAuthTab(\'register\')">注册</button>'+
           '</div>'+
-          '<div style="text-align:right;margin-bottom:8px;"><span style="font-size:11px;color:var(--text-muted);cursor:pointer;" onclick="var m=document.getElementById(\'pkAuthModal\');var c=document.getElementById(\'pkCoverOverlay\');if(m)m.remove();if(c)c.style.display=\'\';">✕ 关闭</span></div>'+
           '<div id="pkAuthTabContent"></div>'+
+          '<div class="pk-auth-pair-hint">🔗 本地设备配对：同一局域网内，任意设备浏览器访问本机地址即可登录协同</div>'+
         '</div>';
       document.body.appendChild(modal);
       this._renderAuthTab('login');
+    },
+
+    _closeLoginModal: function() {
+      var m = document.getElementById('pkAuthModal');
+      if (m) m.remove();
+      document.body.classList.remove('pk-auth-active');
     },
 
     _switchAuthTab: function(tab) {
