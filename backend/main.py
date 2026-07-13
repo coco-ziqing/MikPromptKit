@@ -27,7 +27,7 @@ from database import safe_fetch_one, safe_count, safe_count_dict
 from logger import api_log, capture_exception
 
 # 启动时读取版本号
-APP_VERSION = 'v5.1.0-phase18-plugin-framework'
+APP_VERSION = 'v5.7.7-phase24'
 from api.prompts import router as prompts_router
 from api.v2 import router as v2_router
 from api.seedance import router as seedance_router

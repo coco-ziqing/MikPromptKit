@@ -203,7 +203,7 @@ def remote_check():
 
     # 检测 Tailscale
     try:
-        ts = subprocess.run(["tailscale", "status"], capture_output=True, text=True, timeout=5, 
+        ts = subprocess.run(["tailscale", "status"], capture_output=True, encoding='utf-8', errors='replace', timeout=5, 
                            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess,'CREATE_NO_WINDOW') else 0)
         if ts.returncode == 0:
             result["tailscale"]["installed"] = True

@@ -186,7 +186,7 @@ async def _autodetect_comfyui(timeout: float = 2.0):
     try:
         result = subprocess.run(
             ['netstat', '-ano', '-p', 'TCP'],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True, encoding='utf-8', errors='replace', timeout=3,
             creationflags=subprocess.CREATE_NO_WINDOW
         )
         for line in result.stdout.split('\n'):
@@ -310,7 +310,7 @@ def _check_ffmpeg() -> dict:
     """检测 ffmpeg"""
     try:
         result = subprocess.run(
-            ["ffmpeg", "-version"], capture_output=True, text=True, timeout=5,
+            ["ffmpeg", "-version"], capture_output=True, encoding='utf-8', errors='replace', timeout=5,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         )
         if result.returncode == 0:
@@ -420,12 +420,12 @@ def _check_self_reachable() -> dict:
     fw_ok = False; fw_rule_name = ""
     try:
         fw = subprocess.run(['netsh','advfirewall','firewall','show','rule','name=PromptKit'],
-            capture_output=True,text=True,timeout=3,creationflags=subprocess.CREATE_NO_WINDOW)
+            capture_output=True,encoding='utf-8',errors='replace',timeout=3,creationflags=subprocess.CREATE_NO_WINDOW)
         fw_ok = f'LocalPort{default_port}' in fw.stdout or f':{default_port}' in fw.stdout
         fw_rule_name = 'PromptKit' if fw_ok else ''
         if not fw_ok:
             fw2 = subprocess.run(['netsh','advfirewall','firewall','show','rule','name=PromptKit 8080'],
-                capture_output=True,text=True,timeout=3,creationflags=subprocess.CREATE_NO_WINDOW)
+                capture_output=True,encoding='utf-8',errors='replace',timeout=3,creationflags=subprocess.CREATE_NO_WINDOW)
             if 'LocalPort' in fw2.stdout: fw_ok = True; fw_rule_name = 'PromptKit 8080'
     except Exception:
         pass
