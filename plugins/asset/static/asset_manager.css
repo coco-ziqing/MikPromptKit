@@ -1,0 +1,94 @@
+/* PromptKit Asset Manager v1.0.0 — Phase25 Track A */
+
+#viewAssetMgmt { flex-direction:column; width:100%; height:100%; overflow:hidden; }
+.pk-asset-wrap { display:flex; flex-direction:column; height:100%; width:100%; }
+#pkAssetHeader { flex-shrink:0; }
+#pkAssetBody { flex:1; overflow-y:auto; padding:0 20px 24px; }
+
+/* ---- Topbar ---- */
+.pk-asset-topbar { display:flex; align-items:center; justify-content:space-between; padding:16px 20px 10px; gap:12px; flex-wrap:wrap; }
+.pk-asset-title h4 { margin:0; font-size:18px; font-weight:800; color:var(--text-primary,#111); }
+.pk-asset-substat { font-size:12px; color:var(--text-muted,#6b7280); }
+.pk-asset-actions-top { display:flex; gap:8px; align-items:center; }
+
+/* ---- Filter bar ---- */
+.pk-asset-filterbar { display:flex; gap:10px; align-items:center; padding:6px 20px 10px; flex-wrap:wrap; }
+.pk-asset-segbtns { display:inline-flex; background:var(--bg-secondary,#f1f5f9); border-radius:8px; padding:3px; }
+.pk-seg { border:none; background:transparent; padding:5px 14px; border-radius:6px; font-size:13px; cursor:pointer; color:var(--text-muted,#6b7280); }
+.pk-seg.active { background:var(--bg-card,#fff); color:var(--text-primary,#111); box-shadow:0 1px 3px rgba(0,0,0,.12); font-weight:600; }
+.pk-asset-search { flex:1; min-width:180px; padding:7px 12px; border:1px solid var(--border-color,#e5e7eb); border-radius:8px; background:var(--bg-card,#fff); color:var(--text-primary,#111); font-size:13px; }
+.pk-asset-sel { padding:7px 10px; border:1px solid var(--border-color,#e5e7eb); border-radius:8px; background:var(--bg-card,#fff); color:var(--text-primary,#111); font-size:13px; }
+
+/* ---- Tag bar ---- */
+.pk-asset-tagbar { display:flex; gap:6px; align-items:center; padding:0 20px 12px; flex-wrap:wrap; }
+.pk-tag-label { font-size:13px; color:var(--text-muted,#6b7280); }
+.pk-tagchip { border:1px solid var(--border-color,#e5e7eb); background:var(--bg-card,#fff); color:var(--text-secondary,#475569); border-radius:20px; padding:3px 12px; font-size:12px; cursor:pointer; }
+.pk-tagchip:hover { border-color:#6366f1; }
+.pk-tagchip.active { background:#6366f1; color:#fff; border-color:#6366f1; }
+.pk-tagchip em { opacity:.7; font-style:normal; font-size:10px; }
+
+/* ---- Gallery grid ---- */
+.pk-asset-gallery { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:14px; padding-top:14px; }
+.pk-asset-tile { background:var(--bg-card,#fff); border:1px solid var(--border-color,#e5e7eb); border-radius:12px; overflow:hidden; cursor:pointer; transition:transform .12s, box-shadow .12s, border-color .12s; display:flex; flex-direction:column; }
+.pk-asset-tile:hover { transform:translateY(-3px); box-shadow:0 8px 24px rgba(0,0,0,.14); border-color:#6366f1; }
+.pk-asset-thumb { position:relative; width:100%; aspect-ratio:1/1; background:#0f172a10; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.pk-asset-thumb img, .pk-asset-thumb video { width:100%; height:100%; object-fit:cover; display:block; }
+.pk-asset-thumb.pk-broken::after { content:'⚠ 文件丢失'; color:var(--text-muted,#6b7280); font-size:12px; }
+.pk-asset-vbadge { position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,.6); color:#fff; border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:10px; }
+.pk-asset-tile-body { padding:8px 10px 10px; display:flex; flex-direction:column; gap:4px; }
+.pk-asset-fname { font-size:12px; font-weight:600; color:var(--text-primary,#111); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pk-asset-tile-meta { display:flex; align-items:center; justify-content:space-between; }
+.pk-asset-rate { color:#f59e0b; font-size:12px; letter-spacing:1px; }
+.pk-asset-dim { font-size:10px; color:var(--text-muted,#9ca3af); }
+.pk-asset-tiletags { display:flex; flex-wrap:wrap; gap:3px; }
+.pk-mini-tag { background:var(--bg-secondary,#f1f5f9); color:var(--text-secondary,#475569); font-size:10px; padding:1px 7px; border-radius:10px; }
+.pk-asset-badges { display:flex; gap:4px; flex-wrap:wrap; margin-top:2px; }
+.pk-asset-badge { font-size:10px; padding:1px 6px; border-radius:6px; background:var(--bg-secondary,#f1f5f9); color:var(--text-muted,#6b7280); }
+.pk-asset-badge.v { background:#ddd6fe; color:#6d28d9; }
+.pk-asset-badge.r { background:#cffafe; color:#0e7490; }
+
+/* ---- Upload dropzone ---- */
+.pk-drop { border:2px dashed var(--border-color,#cbd5e1); border-radius:12px; padding:26px; text-align:center; cursor:pointer; color:var(--text-muted,#6b7280); transition:.15s; }
+.pk-drop:hover, .pk-drop.over { border-color:#6366f1; background:#6366f108; }
+.pk-drop p { margin:4px 0; }
+.pk-filelist { margin-top:10px; max-height:200px; overflow-y:auto; }
+.pk-filerow { display:flex; justify-content:space-between; font-size:12px; padding:5px 8px; border-bottom:1px solid var(--border-color,#eee); color:var(--text-primary,#111); }
+.pk-fsize { color:var(--text-muted,#9ca3af); }
+.pk-uprow { font-size:12px; color:var(--text-secondary,#475569); }
+
+/* ---- Detail ---- */
+.pk-asset-detail { max-width:920px; width:94vw; }
+.pk-gen-box { background:var(--bg-secondary,#f8fafc); border:1px solid var(--border-color,#e5e7eb); border-radius:8px; padding:8px 10px; font-size:12px; color:var(--text-secondary,#475569); word-break:break-word; }
+.pk-gen-box code { font-size:11px; color:var(--text-primary,#111); }
+.pk-rate-input { font-size:24px; color:#d1d5db; cursor:pointer; letter-spacing:3px; }
+.pk-rate-input span:hover, .pk-rate-input span.on { color:#f59e0b; }
+.pk-tag-editrow { display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
+.pk-tag-editrow input { border:1px dashed var(--border-color,#cbd5e1); border-radius:10px; padding:2px 8px; font-size:12px; width:80px; background:transparent; color:var(--text-primary,#111); }
+.pk-tag-del { cursor:pointer; }
+.pk-tag-del:hover { background:#fecaca; color:#b91c1c; }
+.pk-refchip { display:inline-block; background:#e0e7ff; color:#4338ca; border-radius:8px; padding:2px 8px; font-size:11px; margin:2px; }
+.pk-ver-list { max-height:120px; overflow-y:auto; }
+.pk-verrow { font-size:12px; padding:4px 0; border-bottom:1px solid var(--border-color,#eee); color:var(--text-primary,#111); }
+
+/* ---- Self-contained modal/form/btn base (works standalone) ---- */
+.pk-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; z-index:99999; padding:20px; }
+.pk-modal { background:var(--bg-card,#fff); border-radius:14px; padding:22px; max-width:520px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.3); color:var(--text-primary,#111); }
+.pk-modal h4 { margin:0 0 14px; font-size:16px; font-weight:800; }
+.pk-modal-2col { max-width:760px; }
+.pk-edit-2col { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+.pk-modal .form-group { margin-bottom:12px; }
+.pk-modal .form-group label { display:block; font-size:12px; font-weight:600; color:var(--text-secondary,#475569); margin-bottom:4px; }
+.pk-modal .form-group input, .pk-modal .form-group textarea, .pk-modal .form-group select { width:100%; padding:7px 10px; border:1px solid var(--border-color,#e5e7eb); border-radius:8px; background:var(--bg-card,#fff); color:var(--text-primary,#111); font-size:13px; box-sizing:border-box; }
+.pk-modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
+
+@media (max-width:640px){ .pk-edit-2col { grid-template-columns:1fr; } .pk-asset-gallery { grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); } }
+
+/* ---- Dark theme ---- */
+body.dark-theme .pk-asset-thumb { background:#ffffff08; }
+body.dark-theme .pk-seg.active { background:#1e293b; }
+body.dark-theme .pk-gen-box { background:#0f172a; border-color:#334155; }
+body.dark-theme .pk-drop:hover, body.dark-theme .pk-drop.over { background:#6366f118; }
+body.dark-theme .pk-refchip { background:#312e81; color:#c7d2fe; }
+body.dark-theme .pk-mini-tag, body.dark-theme .pk-asset-badge { background:#1e293b; color:#94a3b8; }
+body.dark-theme .pk-asset-badge.v { background:#4c1d95; color:#ddd6fe; }
+body.dark-theme .pk-asset-badge.r { background:#164e63; color:#a5f3fc; }
