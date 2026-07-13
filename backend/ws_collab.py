@@ -22,6 +22,19 @@ router = APIRouter()
 _rooms: dict = {}
 # 用户在线状态: {user_id: {"username": str, "projects": [project_ids]}}
 _online_users: dict = {}
+# 通知连接池: {user_id(int): set(WebSocket)} — 一个用户可多标签/多设备
+from typing import Set
+_notif_conns: dict = {}
+# 主事件循环引用（供同步请求处理器线程安全推送）
+_loop = None
+
+
+def _capture_loop():
+    global _loop
+    try:
+        _loop = asyncio.get_running_loop()
+    except RuntimeError:
+        pass
 
 # ============================================================
 # 项目协作 WebSocket
@@ -44,6 +57,7 @@ async def ws_collab(websocket: WebSocket, master_id: str):
         return
 
     await websocket.accept()
+    _capture_loop()
 
     # 加入房间
     if master_id not in _rooms:
@@ -116,9 +130,7 @@ async def ws_collab(websocket: WebSocket, master_id: str):
 @router.websocket("/ws/notifications/{user_id}")
 async def ws_notifications(websocket: WebSocket, user_id: str):
     token = websocket.query_params.get("token", "")
-    payload = None
-    if token:
-        payload = verify_jwt(token)
+    payload = verify_jwt(token) if token else None
 
     if not payload:
         await websocket.accept()
@@ -126,8 +138,21 @@ async def ws_notifications(websocket: WebSocket, user_id: str):
         await websocket.close(code=4001)
         return
 
+    # 以 token 内的 user_id 为准，防止冒用他人 user_id 订阅
+    try:
+        uid = int(payload.get("user_id", 0))
+    except Exception:
+        uid = 0
+    if not uid:
+        await websocket.accept()
+        await websocket.send_json({"type":"error","message":"无效用户"})
+        await websocket.close(code=4001)
+        return
+
     await websocket.accept()
-    await websocket.send_json({"type":"connected","message":"通知通道已建立"})
+    _capture_loop()
+    _notif_conns.setdefault(uid, set()).add(websocket)
+    await websocket.send_json({"type":"connected","message":"通知通道已建立","user_id":uid})
 
     try:
         while True:
@@ -136,6 +161,14 @@ async def ws_notifications(websocket: WebSocket, user_id: str):
                 await websocket.send_json({"type":"pong"})
     except WebSocketDisconnect:
         pass
+    except Exception:
+        pass
+    finally:
+        conns = _notif_conns.get(uid)
+        if conns:
+            conns.discard(websocket)
+            if not conns:
+                _notif_conns.pop(uid, None)
 
 
 # ============================================================
@@ -158,6 +191,40 @@ async def _broadcast(room_id: str, message: dict, exclude: int = None):
         _rooms[room_id].pop(uid, None)
 
 
+async def _send_to_user(uid: int, message: dict):
+    """推送给某用户的所有在线连接"""
+    conns = _notif_conns.get(uid)
+    if not conns:
+        return
+    dead = []
+    for ws in list(conns):
+        try:
+            await ws.send_json(message)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        conns.discard(ws)
+    if not conns:
+        _notif_conns.pop(uid, None)
+
+
+def push_to_user(user_id, message: dict) -> int:
+    """线程安全：从同步请求处理器把通知实时推送给某用户的所有在线连接。
+    返回该用户当前在线连接数（0 表示离线，调用方无需处理，已落库供下次拉取）。"""
+    try:
+        uid = int(user_id)
+    except Exception:
+        return 0
+    conns = _notif_conns.get(uid)
+    if not conns or _loop is None:
+        return 0
+    try:
+        asyncio.run_coroutine_threadsafe(_send_to_user(uid, message), _loop)
+    except Exception:
+        return 0
+    return len(conns)
+
+
 # ============================================================
 # 状态查询 API
 # ============================================================
@@ -175,6 +242,8 @@ def collab_status():
         "ok": True,
         "rooms": len(_rooms),
         "online_users": len(_online_users),
+        "notif_online_users": len(_notif_conns),
+        "notif_connections": sum(len(v) for v in _notif_conns.values()),
         "details": rooms_info,
     }
 

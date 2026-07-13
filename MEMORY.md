@@ -46,6 +46,28 @@
 
 ---
 
+## Phase29 通知实时推送 — WebSocket 取代 30s 轮询（2026-07-13 傍晚）
+
+### 背景
+`_startNotifPoll` 用 `setInterval(30000)` 轮询 unread-count，铃铛刷新最长 30s 延迟。ws_collab.py 已有 `ws_notifications` 端点骨架(JWT 认证)但只收不推。
+
+### 实现(3 层，零破坏改旧)
+| 层 | 文件 | 改动 |
+|----|------|------|
+| 1 后端 WS | `ws_collab.py` | 新增 `_notif_conns` 连接池(user_id→WebSocket Set，多标签/多设备)；`ws_notifications` 升级:以 token 内 user_id 为准防冒用 + 注册/注销清理；新增 `push_to_user()` 线程安全推送(`asyncio.run_coroutine_threadsafe` 给同步请求处理器用)；`_capture_loop()` 捕获事件循环；`/ws/status` 增 notif 计数 |
+| 2 后端 API | `api_collab.py` | `_notify()` 写 DB 后 `from ws_collab import push_to_user` 实时推送；失败降级(DB 已落库) |
+| 3 前端 | `project_dashboard.js` | `_startNotifPoll` 加 `_connectNotifWS()`:读 `pk_token`+`pk_user` 连 `/ws/notifications/{uid}`，收到 `notification` 即刷铃铛+toast；断线指数退避重连(3s/15s，最多5次)；**保留 30s 轮询降级** |
+
+### 端到端验证
+- Python websockets 客户端连 WS → API `push_notification` 写入 → **~200ms 内 WS 收到 `type:notification`** ✅
+- 生成测试 token: `backend/jwt_auth.generate_test_token(uid,name,role)`
+- 离线用户 DB 已落库，下次轮询可见；多标签每标签独立连接全收到
+
+### 保留的降级
+- WS 断开时 30s 轮询继续；未登录不连 WS 纯轮询；`_notify()` 推送失败只 catch 不报错
+
+---
+
 ## ⚠️ 暂停开发触发器
 - **触发词**: 用户说「暂停开发」「停止开发」「先不做了」「休息一下」或关闭 OpenClaw
 - **必须执行**: ① git status 确认干净 ② git push origin master ③ WAL checkpoint ④ 确认最新 tag 已推送 ⑤ 输出安全关闭清单
@@ -53,12 +75,12 @@
 
 ## 项目标识
 - 项目：提示词检索工具 (PromptKit) / 咪卡Mik词库
-- 版本：v5.10.0-phase28-data-migration (2026-07-13)
+- 版本：v5.11.0-phase29-realtime-notif (2026-07-13)
 - 工作目录：C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
 - 启动方式：`python backend/main.py` 或 `.\QUICK_START.bat`
 - 默认端口：8080（自增 8080→8089）
 - 局域网地址：http://192.168.0.101:8080
-- 当前tag: `v5.10.0-phase28-data-migration` (团队协作4表 project_id/master_project_id 割裂彻底收敛)
+- 当前tag: `v5.11.0-phase29-realtime-notif` (通知 WebSocket 实时推送,取代 30s 轮询)
 
 ## Phase17.1 视频首帧封面修复（2026-07-02 13:10）
 

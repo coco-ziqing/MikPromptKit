@@ -1,9 +1,9 @@
-// PromptKit Project Manager v2.1.0 — Phase23 Team Optimization
-// 7-phase tabs + P3 sub-tabs + Squad groups + Invite dialog
+// PromptKit Project Manager v2.2.0 — Phase29 通知实时推送(WebSocket)
+// 7-phase tabs + P3 sub-tabs + Squad groups + Invite dialog + realtime notifications
 (function(){'use strict';
 
 var PK = {
-VERSION: '2.1.0',
+VERSION: '2.2.0',
 _masterId: null, _masterList: [], _masterCache: {},
 _activePhase: 'P0', _p3ActiveTab: 'segments', _p3TeamSub: 'members', _presence: [], _presenceBound: false,
 
@@ -213,8 +213,9 @@ _renderP4P6: function(phase){var c=document.getElementById('pkPhaseContent'),L=t
 // ============================================================
 // P3-collab: 通知铃铛 / 活动流 / 评论
 // ============================================================
-_bellTimer: null, _openCmtTarget: null,
-_startNotifPoll: function(){ var self=this; this._refreshBell(); if(self._bellTimer) return; self._bellTimer=setInterval(function(){ self._refreshBell(); }, 30000); },
+_bellTimer: null, _openCmtTarget: null, _wsNotif: null, _wsNotifRetry: 0,
+_startNotifPoll: function(){ var self=this; this._refreshBell(); if(self._bellTimer) return; self._bellTimer=setInterval(function(){ self._refreshBell(); }, 30000); this._connectNotifWS(); },
+_connectNotifWS: function(){ try { var tok=localStorage.getItem('pk_token'),user=localStorage.getItem('pk_user'); if(!tok||!user)return; var uid; try{uid=JSON.parse(user).id;}catch(e){return;} var proto=location.protocol==='https:'?'wss':'ws'; var ws=new WebSocket(proto+'://'+location.host+'/ws/notifications/'+uid+'?token='+tok); var self=this; ws.onopen=function(){ self._wsNotif=ws; self._wsNotifRetry=0; }; ws.onmessage=function(e){ try{ var d=JSON.parse(e.data); if(d.type==='notification'){ self._refreshBell(); if(d.title)self._toast(d.title,'info'); } }catch(err){} }; ws.onclose=function(){ self._wsNotif=null; if(self._wsNotifRetry<5){ self._wsNotifRetry++; setTimeout(function(){ self._connectNotifWS(); }, (self._wsNotifRetry<3?3000:15000)); } }; ws.onerror=function(){ ws.close(); }; } catch(e){} },
 _refreshBell: function(){ fetch(this._apiBase+'/notifications/unread-count').then(function(r){return r.json();}).then(function(d){ var b=document.getElementById('pkBellBadge'); if(!b)return; var n=(d&&d.unread)||0; b.textContent=n>99?'99+':n; b.style.display=n>0?'inline-flex':'none'; }).catch(function(){}); },
 _showNotifications: function(){ var self=this,L=this._L.bind(this); this._api('/notifications?limit=50').then(function(r){ var list=(r&&r.notifications)||[]; var items=list.length?list.map(function(n){ var un=n.is_read?'':' pk-noti-unread'; return '<div class="pk-noti-item'+un+'" onclick="PK._readNoti('+n.id+',this)"><div class="pk-noti-title">'+self._esc(n.title||n.type)+'</div>'+(n.body?'<div class="pk-noti-body">'+self._esc(n.body)+'</div>':'')+'<div class="pk-noti-time">'+(n.created_at||'')+'</div></div>'; }).join(''):'<div class="pk-empty-state" style="padding:30px;"><p>'+L('暂无通知','No notifications')+'</p></div>'; var ov=self._overlay(); ov.innerHTML='<div class="pk-modal" onclick="event.stopPropagation()" style="max-width:440px;"><div style="display:flex;justify-content:space-between;align-items:center;"><h4 style="margin:0;">🔔 '+L('通知','Notifications')+'</h4><button class="btn btn-sm btn-outline-secondary" onclick="PK._readAllNoti()">'+L('全部已读','Mark all')+'</button></div><div class="pk-noti-list" style="margin-top:12px;max-height:60vh;overflow-y:auto;">'+items+'</div><div class="pk-modal-actions"><button class="btn btn-secondary" onclick="this.closest(\'.pk-modal-overlay\').remove()">'+L('关闭','Close')+'</button></div></div>'; document.body.appendChild(ov); }); },
 _readNoti: function(id,el){ fetch(this._apiBase+'/notifications/'+id+'/read',{method:'POST'}); if(el)el.classList.remove('pk-noti-unread'); this._refreshBell(); },

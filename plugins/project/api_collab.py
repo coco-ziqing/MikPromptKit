@@ -75,6 +75,19 @@ def _notify(db, user_id, ntype, title, body="", target_url=""):
             [user_id, ntype, title, body, target_url])
     except Exception as e:
         print("[collab] notify err:", e)
+    # Phase29: 实时推送通知到 WebSocket（已在线用户即时收到，离线用户已落库）
+    try:
+        from ws_collab import push_to_user
+        push_to_user(user_id, {
+            "type": "notification",
+            "ntype": ntype,
+            "title": title,
+            "body": body,
+            "target_url": target_url,
+            "timestamp": __import__('time').time(),
+        })
+    except Exception:
+        pass  # 降级：DB 已记录，用户刷新或下次轮询可见
 
 
 # ============================================================
