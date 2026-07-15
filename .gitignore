@@ -96,6 +96,11 @@ data/role_thumbs/
 data/workspaces/
 data/projects/
 
+# Agent 构建产物
+agent/build/
+agent/*.spec
+agent/pk_agent.exe
+
 # ================================================================
 # 构建输出
 # ================================================================
