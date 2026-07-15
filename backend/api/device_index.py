@@ -181,10 +181,14 @@ def agent_index_batch(device_token: str = Header(..., alias="X-Device-Token"),
             old = db.execute("SELECT id, fingerprint, state FROM device_file_index WHERE device_id=? AND rel_path=?",
                              [dev["id"], rp]).fetchone()
             if old:
-                # 已存在：指纹变化 → state=changed，不变 → 维持 indexed
-                if old["fingerprint"] and old["fingerprint"] != fp and old["state"] == "indexed":
+                # 指纹变化 → changed（从任意非missing状态），new二次确认 → indexed
+                if old["fingerprint"] and old["fingerprint"] != fp and old["state"] != "missing":
                     db.execute("UPDATE device_file_index SET fingerprint=?,size=?,mtime=?,state='changed',last_seen_at=datetime('now','localtime') WHERE id=?",
                                [fp, it.get("size",0), it.get("mtime",0), old["id"]])
+                    upd_cnt += 1
+                elif old["state"] == "new":
+                    db.execute("UPDATE device_file_index SET state='indexed',size=?,mtime=?,last_seen_at=datetime('now','localtime') WHERE id=?",
+                               [it.get("size",0), it.get("mtime",0), old["id"]])
                     upd_cnt += 1
                 else:
                     db.execute("UPDATE device_file_index SET size=?,mtime=?,last_seen_at=datetime('now','localtime') WHERE id=?",
