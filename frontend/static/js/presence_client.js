@@ -63,6 +63,16 @@
         try { msg = JSON.parse(e.data); } catch (_) { return; }
         if (msg.type === 'pong') return;
         if (msg.type === 'error') { return; }
+        if (msg.type === 'kick') {
+          // PhaseB: 管理员强制下线
+          clearInterval(self._hb);
+          self._ws = null;
+          self._users = {};
+          self._emit();
+          self._reAttempt = 99; // 阻止重连
+          alert((msg.reason || '已被管理员下线'));
+          return;
+        }
         if (typeof msg.server_time === 'number') {
           self._serverSkew = msg.server_time - Date.now() / 1000;
         }
@@ -125,12 +135,25 @@
       if (this._ws && this._ws.readyState === 1) {
         this._ws.send(JSON.stringify({ type: 'status', status: status }));
       } else {
-        // 降级 REST
         fetch('/api/presence/status', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: status })
         }).catch(function () {});
       }
+    },
+
+    // PhaseB: 上报所在页面/项目
+    reportLocation: function (page, project, projectId) {
+      if (this._ws && this._ws.readyState === 1) {
+        this._ws.send(JSON.stringify({ type: 'location', page: page || '', project: project || '', project_id: projectId || 0 }));
+      }
+    },
+
+    // PhaseB: admin 强制下线
+    kickUser: function (uid) {
+      return fetch('/api/presence/disconnect/' + uid, { method: 'POST' })
+        .then(function (r) { return r.json(); })
+        .catch(function () { return { ok: false }; });
     },
 
     // ---------- 查询 ----------
@@ -260,6 +283,10 @@
           var dev = (u.devices && u.devices[0]) ? u.devices[0].device : '';
           var multi = (u.connection_count > 1) ? (' ·+' + (u.connection_count - 1) + '设备') : '';
           var since = self._sinceText(u.connected_since);
+          var loc = '';
+          if (u.current_page) { loc += '📄 ' + _esc(u.current_page); }
+          if (u.current_project) { loc += (loc ? ' · ' : '') + '🎬 ' + _esc(u.current_project); }
+          var isAdmin = (self._users[self._selfId] || {}).role === 'admin';
           h += '<div style="padding:8px 14px;display:flex;align-items:center;gap:10px;">'
             + '<div style="position:relative;flex-shrink:0;"><div style="width:34px;height:34px;border-radius:10px;background:' + ac + ';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">' + av + '</div>'
             + '<span style="position:absolute;right:-2px;bottom:-2px;width:11px;height:11px;border-radius:50%;background:' + m.color + ';border:2px solid var(--bg-card,#1e293b);"></span></div>'
@@ -268,8 +295,10 @@
             + '<div style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
             + '<span style="color:' + m.color + ';font-weight:600;">' + m.label + '</span>'
             + (roleName ? ' · ' + roleName : '') + (dev ? ' · ' + _esc(dev) + multi : '') + '</div>'
+            + (loc ? '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + loc + '</div>' : '')
             + '</div>'
             + (since ? '<div style="font-size:10px;color:var(--text-muted);flex-shrink:0;">' + since + '</div>' : '')
+            + (isAdmin && !isSelf ? '<button title="强制下线" onclick="event.stopPropagation();var ok=confirm(\'确定强制下线「'+_esc(u.display_name||u.username)+'」？\');if(ok)PK_PRESENCE.kickUser('+u.user_id+').then(function(d){if(d.ok){document.getElementById(\'pkPresencePop\').remove();}else{alert(\'操作失败\')}});" style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:14px;padding:2px;opacity:0.6;" title="强制下线">🔌</button>' : '')
             + '</div>';
         });
         h += '</div>';

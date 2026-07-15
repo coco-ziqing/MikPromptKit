@@ -371,6 +371,11 @@ var App = window.App || {
         this.state.currentView = view;
         // 保存视图状态到 localStorage
         try { localStorage.setItem('promptkit_view', view); } catch(e) {}
+        // PhaseB: 上报所在页面
+        if (window.PK_PRESENCE) {
+            var pageMap = {'home':'词库','collections':'词卡收藏','seedance':'分镜','v4media':'媒体资产','composer':'组装器'};
+            PK_PRESENCE.reportLocation(pageMap[view] || view, '', 0);
+        }
 
         // 隐藏所有视图
         document.querySelectorAll('.view-panel').forEach(function(el) { el.classList.remove('active-view'); });

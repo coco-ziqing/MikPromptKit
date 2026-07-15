@@ -152,6 +152,10 @@ def _user_snapshot(uid: int) -> dict:
         "connection_count": len(conns),
         "connected_since": connected_since,
         "devices": devices,
+        # PhaseB: 所在位置
+        "current_page": meta.get("current_page", ""),
+        "current_project": meta.get("current_project", ""),
+        "current_project_id": meta.get("current_project_id", 0),
     }
 
 
@@ -238,6 +242,9 @@ async def ws_presence(websocket: WebSocket):
         "role": prof.get("role") or payload.get("role", "editor"),
         "avatar_color": prof.get("avatar_color"),
         "manual_status": _user_meta.get(uid, {}).get("manual_status"),
+        "current_page": "",      # PhaseB: 所在页面
+        "current_project": "",   # PhaseB: 所在项目
+        "current_project_id": 0,  # PhaseB: 所在项目ID
     }
 
     was_offline = uid not in _conns or not _conns.get(uid)
@@ -287,6 +294,16 @@ async def ws_presence(websocket: WebSocket):
                     entry["last_active"] = time.time()
                 elif s in ("away", "busy"):
                     _user_meta[uid]["manual_status"] = s
+                await _broadcast_user(uid)
+            elif mtype == "location":
+                # PhaseB: 上报所在页面/项目
+                page = data.get("page", "")
+                proj = data.get("project", "")
+                pid = data.get("project_id", 0)
+                _user_meta.setdefault(uid, {})
+                if page: _user_meta[uid]["current_page"] = page
+                if proj: _user_meta[uid]["current_project"] = proj
+                if pid: _user_meta[uid]["current_project_id"] = pid
                 await _broadcast_user(uid)
             elif mtype == "who":
                 await websocket.send_json({"type": "snapshot", "self_id": uid,
@@ -371,3 +388,40 @@ def set_presence_status(data: dict = Body(...), request: Request = None):
         except Exception:
             pass
     return {"ok": True, "applied": True, "status": _derive_status(uid)}
+
+
+@router.post("/api/presence/disconnect/{uid}")
+def admin_disconnect_user(uid: int, request: Request = None):
+    """PhaseB: admin 强制下线指定用户的所有连接（管理员专权）。"""
+    user = get_current_user(request)
+    if not user or user.get("role") != "admin" or not user.get("authenticated"):
+        raise HTTPException(403, "仅管理员可强制下线")
+    if uid == user.get("id"):
+        raise HTTPException(400, "不能强制下线自己")
+    conns = _conns.get(uid, {})
+    if not conns:
+        return {"ok": True, "message": "该用户无在线连接", "closed": 0}
+    count = 0
+    for cid, c in list(conns.items()):
+        ws = c.get("ws")
+        if ws:
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    ws.send_json({"type": "kick", "reason": "管理员已将您下线"}), _loop)
+                asyncio.run_coroutine_threadsafe(ws.close(), _loop)
+                count += 1
+            except Exception:
+                pass
+    # 广播离线
+    _conns.pop(uid, None)
+    _user_meta.pop(uid, None)
+    asyncio.run_coroutine_threadsafe(
+        _broadcast({"type": "presence_offline", "user_id": uid}), _loop)
+    # 审计
+    try:
+        from audit import record_audit
+        record_audit("user_kick", request, detail=f"管理员强制下线 user#{uid}",
+                     target_type="user", target_id=uid)
+    except Exception:
+        pass
+    return {"ok": True, "closed": count}
