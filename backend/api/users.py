@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-用户管理 API — admin 权限
+用户管理 API - admin 权限
 端点: /api/auth/users (列表+创建) / PUT /:id (编辑+启停+重置密码) / DELETE /:id
 """
 import json, os, sqlite3, time
@@ -9,6 +9,10 @@ from typing import Optional
 
 from password import hash_pw, check_pw
 from jwt_auth import get_current_user, create_jwt
+try:
+    from audit import record_audit
+except Exception:
+    def record_audit(*a, **k): pass
 
 router = APIRouter(tags=["用户管理"], prefix="/api/auth")
 
@@ -87,12 +91,29 @@ def update_user(user_id: int, data: dict = Body(...), request: Request = None):
                 db.execute(f"UPDATE users SET {k}=? WHERE id=?", [val, user_id])
 
         # 重置密码（可选）
+        pw_reset = False
         if data.get("new_password"):
             if len(data["new_password"]) < 4:
-                raise HTTPException(400, "新密码至少4个字符")
+                raise HTTPException(400, "新密码至少４个字符")
             db.execute("UPDATE users SET password_hash=? WHERE id=?", [hash_pw(data["new_password"]), user_id])
+            pw_reset = True
 
         db.commit()
+
+        # 审计：区分启停/改密/一般修改
+        try:
+            tgt = db.execute("SELECT username, display_name FROM users WHERE id=?", [user_id]).fetchone()
+            tname = (tgt["display_name"] or tgt["username"]) if tgt else str(user_id)
+            if "is_active" in data and len(data) == 1:
+                record_audit("user_toggle", request=request, detail=f"{'启用' if data['is_active'] else '停用'}账户「{tname}」", target_type="user", target_id=user_id)
+            elif pw_reset and len([k for k in data if k != 'new_password']) == 0:
+                record_audit("password_reset", request=request, detail=f"重置账户「{tname}」密码", target_type="user", target_id=user_id)
+            else:
+                changed = [k for k in ['display_name','role','avatar_color','is_active','settings_json'] if k in data]
+                if pw_reset: changed.append('password')
+                record_audit("user_update", request=request, detail=f"修改账户「{tname}」: {', '.join(changed)}", target_type="user", target_id=user_id)
+        except Exception:
+            pass
         return {"ok": True, "message": "用户已更新"}
     finally: db.close()
 
@@ -106,9 +127,15 @@ def delete_user(user_id: int, request: Request):
 
     db = _rw()
     try:
+        tgt = db.execute("SELECT username, display_name FROM users WHERE id=?", [user_id]).fetchone()
+        tname = (tgt["display_name"] or tgt["username"]) if tgt else str(user_id)
         db.execute("DELETE FROM users WHERE id=?", [user_id])
         db.execute("DELETE FROM user_sessions WHERE user_id=?", [user_id])
         db.commit()
+        try:
+            record_audit("user_delete", request=request, detail=f"删除账户「{tname}」", target_type="user", target_id=user_id)
+        except Exception:
+            pass
         return {"ok": True, "message": "用户已删除"}
     finally: db.close()
 
@@ -129,5 +156,10 @@ def batch_toggle_users(data: dict = Body(...), request: Request = None):
         for uid in ids:
             db.execute("UPDATE users SET is_active=? WHERE id=?", [active, uid])
         db.commit()
+        try:
+            record_audit("user_toggle", request=request,
+                         detail=f"批量{'启用' if active else '停用'} {len(ids)} 个账户: {ids}", target_type="user")
+        except Exception:
+            pass
         return {"ok": True, "affected": len(ids)}
     finally: db.close()

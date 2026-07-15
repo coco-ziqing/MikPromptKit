@@ -1564,6 +1564,36 @@ Object.assign(App, {
         }
     },
 
+    async batchAddToCollection() {
+        const ids = [...this.state.batchSelected];
+        if (ids.length === 0) { this.showToast(App._t('auto.please_选择提示词', '请先选择提示词'), 'error'); return; }
+        const data = await this.fetchJSON('/api/v2/collections');
+        const list = (data && data.items) || [];
+        if (!list.length) { this.showToast('请先在「词卡收藏」新建一个分组', 'error'); return; }
+        document.getElementById('modalAddToTitle').textContent = '添加到收藏';
+        let html = '<p style="margin-bottom:12px;font-size:13px;color:var(--text-muted);">选择要添加到的收藏分组:</p>';
+        for (const c of list) {
+            html += `<div class="cat-tab" style="display:block;margin-bottom:6px;text-align:left;" onclick="App.doAddToCollection(${c.id}, '${this._escape(c.name)}')">${c.icon || '⭐'} ${this._escape(c.name)} (${c.item_count || 0} 条)</div>`;
+        }
+        document.getElementById('wordpackSelectList').innerHTML = html;
+        document.getElementById('modalAddToWordpack').style.display = 'flex';
+    },
+
+    async doAddToCollection(cid, cname) {
+        const ids = [...this.state.batchSelected];
+        const data = await this.fetchJSON(`/api/v2/collections/${cid}/items/batch-add`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt_ids: ids })
+        });
+        document.getElementById('modalAddToWordpack').style.display = 'none';
+        if (data) {
+            this.showToast(`已添加 ${data.added} 条到「${cname}」`, 'success');
+            this.toggleEditMode();
+            if (this.loadCollections) this.loadCollections();
+        }
+    },
+
     // ============ 标签自动补全 ============
 
     _onTagInput() {

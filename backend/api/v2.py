@@ -297,6 +297,27 @@ def batch_remove_from_collection(cid: int, data: dict):
     return {"ok": True, "removed": removed}
 
 
+@router.post("/collections/{cid}/items/batch-add")
+def batch_add_to_collection(cid: int, data: dict):
+    """批量添加词条到收藏（已存在跳过）"""
+    prompt_ids = data.get("prompt_ids", [])
+    if not prompt_ids:
+        raise HTTPException(400, "请提供 prompt_ids")
+    db = get_db()
+    added = 0
+    import time as _time
+    for pid in prompt_ids:
+        for attempt in range(5):
+            try:
+                cur = db.execute("INSERT OR IGNORE INTO collection_items (collection_id, prompt_id) VALUES (?, ?)", [cid, pid])
+                added += cur.rowcount
+                break
+            except Exception:
+                _time.sleep(0.05)
+    db.commit()
+    return {"ok": True, "added": added}
+
+
 @router.get("/collections/prompt-batch")
 def get_prompt_collections(ids: str = Query("...")):
     """

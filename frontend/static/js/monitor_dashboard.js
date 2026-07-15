@@ -63,6 +63,7 @@ App.monitor._ensureModal = function() {
     '</select>' +
     '<button class="btn btn-sm btn-outline" onclick="App.monitor.refresh()" title="手动刷新" style="font-size:11px;padding:3px 8px;">🔄</button>' +
     '<button class="btn btn-sm btn-outline" onclick="App.monitor.openHealthCheck()" title="完整自检" style="font-size:11px;padding:3px 8px;">🩺 自检</button>' +
+    '<button class="btn btn-sm btn-outline" onclick="App.monitor.close();if(App.showDashboard)App.showDashboard();" title="统计仓表盘" style="font-size:11px;padding:3px 8px;">📊 统计</button>' +
     '<button style="background:none;border:none;font-size:20px;color:var(--text-muted);cursor:pointer;line-height:1;" onclick="App.monitor.close()">&times;</button>' +
     '</div></div>' +
 

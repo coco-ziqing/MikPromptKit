@@ -88,6 +88,13 @@ data/wordcard_videos/
 data/character_images/
 data/temp_ocr/
 data/models/
+# Phase35+ 项目资产库/工作空间/角色档案（用户媒体，不入库）
+data/catalog_thumbs/
+data/project_assets/
+data/role_assets/
+data/role_thumbs/
+data/workspaces/
+data/projects/
 
 # ================================================================
 # 构建输出

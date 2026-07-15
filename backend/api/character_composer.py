@@ -10,44 +10,37 @@ from typing import Optional
 
 router = APIRouter(prefix="/api/character-composer", tags=["character-composer"])
 
-# ==================== 角色维度定义 ====================
+# ==================== 角色维度定义（默认模版：绑定 char_ 角色词卡分组） ====================
 CHARACTER_DIMENSIONS = {
-    "gender":       {"label": "性别", "icon": "♂♀", "group_keys": ["emotion_style", "custom"],
-                     "order": 1, "default": ""},
-    "age":          {"label": "年龄", "icon": "🎂", "group_keys": ["custom"],
-                     "order": 2, "default": ""},
-    "hairstyle":    {"label": "发型", "icon": "💇", "group_keys": ["custom"],
-                     "order": 3, "default": ""},
-    "facial":       {"label": "五官面容", "icon": "👁", "group_keys": ["custom"],
-                     "order": 4, "default": ""},
-    "expression":   {"label": "表情神态", "icon": "😊", "group_keys": ["emotion_style", "custom"],
-                     "order": 5, "default": ""},
-    "clothing":     {"label": "服饰道具", "icon": "👗", "group_keys": ["emotion_style", "custom"],
-                     "order": 6, "default": ""},
-    "pose":         {"label": "姿态动作", "icon": "🧍", "group_keys": ["custom"],
-                     "order": 7, "default": ""},
-    "style":        {"label": "画风风格", "icon": "🎨", "group_keys": ["composition", "custom"],
-                     "order": 8, "default": ""},
-    "background":   {"label": "背景场景", "icon": "🏞", "group_keys": ["composition", "custom"],
-                     "order": 9, "default": ""},
-    "lighting":     {"label": "光影效果", "icon": "💡", "group_keys": ["tone", "custom"],
-                     "order": 10, "default": ""},
-    "color_scheme": {"label": "色彩搭配", "icon": "🎨", "group_keys": ["color", "custom"],
-                     "order": 11, "default": ""},
-    "quality":      {"label": "画质参数", "icon": "📐", "group_keys": ["quality", "custom"],
-                     "order": 12, "default": ""},
-    "negative":     {"label": "负面提示词", "icon": "⚠️", "group_keys": ["negative", "custom"],
-                     "order": 13, "default": ""},
+    "gender":       {"label": "性别", "icon": "♀♂", "group_keys": ["char_gender_age"], "order": 1, "default": ""},
+    "age":          {"label": "年龄", "icon": "🎂", "group_keys": ["char_gender_age"], "order": 2, "default": ""},
+    "hairstyle":    {"label": "发型发色", "icon": "💇", "group_keys": ["char_hair"], "order": 3, "default": ""},
+    "facial":       {"label": "脸型五官", "icon": "👁", "group_keys": ["char_face"], "order": 4, "default": ""},
+    "expression":   {"label": "表情神态", "icon": "😊", "group_keys": ["char_expression"], "order": 5, "default": ""},
+    "body":         {"label": "体型身材", "icon": "🧍", "group_keys": ["char_body"], "order": 6, "default": ""},
+    "clothing":     {"label": "服装服饰", "icon": "👗", "group_keys": ["char_clothing"], "order": 7, "default": ""},
+    "accessory":    {"label": "配饰道具", "icon": "💍", "group_keys": ["char_accessory"], "order": 8, "default": ""},
+    "pose":         {"label": "姿态动作", "icon": "🤸", "group_keys": ["char_pose"], "order": 9, "default": ""},
+    "occupation":   {"label": "职业身份", "icon": "🪪", "group_keys": ["char_occupation"], "order": 10, "default": ""},
+    "temperament":  {"label": "气质性格", "icon": "✨", "group_keys": ["char_temperament"], "order": 11, "default": ""},
+    "style":        {"label": "画风风格", "icon": "🎨", "group_keys": ["char_style"], "order": 12, "default": ""},
+    "background":   {"label": "背景场景", "icon": "🏞", "group_keys": ["char_background"], "order": 13, "default": ""},
+    "lighting":     {"label": "光照氛围", "icon": "💡", "group_keys": ["char_lighting"], "order": 14, "default": ""},
+    "color_scheme": {"label": "色调质感", "icon": "🎞", "group_keys": ["char_color"], "order": 15, "default": ""},
+    "quality":      {"label": "画质参数", "icon": "📐", "group_keys": ["char_color"], "order": 16, "default": ""},
+    "negative":     {"label": "负面提示词", "icon": "⚠️", "group_keys": ["negative"], "order": 17, "default": ""},
 }
 
 # ==================== Pydantic Models ====================
 class CharacterCreate(BaseModel):
     name: str = "新角色"
     settings: dict = {}
+    template_id: Optional[int] = None
 
 class CharacterUpdate(BaseModel):
     name: Optional[str] = None
     settings: Optional[dict] = None
+    template_id: Optional[int] = None
 
 class CharacterComposeReq(BaseModel):
     settings: dict = {}
@@ -164,8 +157,8 @@ def get_character(char_id: int):
 def create_character(data: CharacterCreate):
     db = get_db()
     db.execute(
-        "INSERT INTO character_profiles (name, settings_json) VALUES (?,?)",
-        [data.name, json.dumps(data.settings, ensure_ascii=False)]
+        "INSERT INTO character_profiles (name, settings_json, template_id) VALUES (?,?,?)",
+        [data.name, json.dumps(data.settings, ensure_ascii=False), data.template_id]
     )
     safe_commit()
     cid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -183,6 +176,8 @@ def update_character(char_id: int, data: CharacterUpdate):
     if data.settings is not None:
         db.execute("UPDATE character_profiles SET settings_json=?, updated_at=datetime('now','localtime') WHERE id=?",
                    [json.dumps(data.settings, ensure_ascii=False), char_id])
+    if data.template_id is not None:
+        db.execute("UPDATE character_profiles SET template_id=? WHERE id=?", [data.template_id, char_id])
     safe_commit()
     # 同步派生字段到 character_profiles 富字段（角色库互通）
     if data.settings is not None:
@@ -198,56 +193,73 @@ def delete_character(char_id: int):
     return {"ok": True}
 
 
-# ==================== 维度卡片库 ====================
-@router.get("/dimensions")
-def list_dimensions():
-    """返回角色维度 + 对应词卡分组（供前端渲染选择器）"""
-    db = get_db()
+# ==================== 维度卡片库（模版驱动） ====================
+def _resolve_groups(db, group_keys):
+    groups = []
+    for gkey in group_keys:
+        rows = db.execute(
+            "SELECT id, name, icon FROM word_card_group WHERE group_key LIKE ? AND is_active=1 ORDER BY sort_order LIMIT 5",
+            [f"%{gkey}%"]).fetchall()
+        for r in rows:
+            cnt = db.execute("SELECT COUNT(*) FROM word_card WHERE group_id=? AND is_deleted=0", [r["id"]]).fetchone()[0]
+            if cnt > 0:
+                groups.append({"id": r["id"], "name": r["name"], "icon": r["icon"] or "📄", "card_count": cnt})
+    return groups
 
+
+def _template_slots(db, template_id):
+    """从模版 structure_json 构造类 CHARACTER_DIMENSIONS 结构；无效返回 None"""
+    if not template_id:
+        return None
+    r = db.execute("SELECT structure_json FROM character_template WHERE id=?", [template_id]).fetchone()
+    if not r:
+        return None
+    try:
+        slots = json.loads(r["structure_json"] or "[]")
+    except Exception:
+        return None
+    out = {}
+    for s in slots:
+        if not s.get("key"):
+            continue
+        out[s["key"]] = {"label": s.get("label", s["key"]), "icon": s.get("icon", ""),
+                         "group_keys": s.get("group_keys", []), "order": s.get("order", 100), "default": ""}
+    return out or None
+
+
+@router.get("/dimensions")
+def list_dimensions(template_id: int = None):
+    """返回角色维度 + 对应词卡分组；传 template_id 则按模版槽位返回。"""
+    db = get_db()
+    dims_src = _template_slots(db, template_id) or CHARACTER_DIMENSIONS
     dims = []
-    for key, dim in sorted(CHARACTER_DIMENSIONS.items(), key=lambda x: x[1]["order"]):
-        # 查找对应分组
-        groups = []
-        for gkey in dim["group_keys"]:
-            rows = db.execute(
-                "SELECT id, name, icon FROM word_card_group WHERE group_key LIKE ? AND is_active=1 ORDER BY sort_order LIMIT 5",
-                [f"%{gkey}%"]
-            ).fetchall()
-            for r in rows:
-                cnt = db.execute("SELECT COUNT(*) FROM word_card WHERE group_id=? AND is_deleted=0", [r["id"]]).fetchone()[0]
-                if cnt > 0:
-                    groups.append({"id": r["id"], "name": r["name"], "icon": r["icon"] or "📄", "card_count": cnt})
+    for key, dim in sorted(dims_src.items(), key=lambda x: x[1]["order"]):
         dims.append({
             "key": key, "label": dim["label"], "icon": dim["icon"], "order": dim["order"],
-            "default": dim["default"], "groups": groups
+            "default": dim.get("default", ""), "groups": _resolve_groups(db, dim["group_keys"])
         })
-
-    return {"ok": True, "dimensions": dims}
+    return {"ok": True, "dimensions": dims, "template_id": template_id}
 
 
 @router.get("/dimensions/{dim_key}/cards")
-def list_dimension_cards(dim_key: str, page: int = 1, page_size: int = 200):
-    """列出某个维度的词卡（跨关联分组聚合）"""
-    dim = CHARACTER_DIMENSIONS.get(dim_key)
+def list_dimension_cards(dim_key: str, template_id: int = None, page: int = 1, page_size: int = 200):
+    """列出某个维度的词卡（跨关联分组聚合）；可按模版解析槽位分组。"""
+    db = get_db()
+    dims_src = _template_slots(db, template_id) or CHARACTER_DIMENSIONS
+    dim = dims_src.get(dim_key) or CHARACTER_DIMENSIONS.get(dim_key)
     if not dim:
         raise HTTPException(404, f"未知维度: {dim_key}")
-    db = get_db()
-
     cards = []
     for gkey in dim["group_keys"]:
         rows = db.execute(
-            """SELECT wc.id, wc.content, wc.meaning, wc.thumbnail, wc.usage_count,
-                      wg.name as group_name, wc.module, wc.category
-               FROM word_card wc
-               JOIN word_card_group wg ON wc.group_id=wg.id
+            """SELECT wc.id, wc.name, wc.content, wc.content_zh, wc.meaning, wc.thumbnail, wc.usage_count,
+                      wg.name as group_name, wc.module, wc.category, wc.icon
+               FROM word_card wc JOIN word_card_group wg ON wc.group_id=wg.id
                WHERE wg.group_key LIKE ? AND wc.is_deleted=0
-               ORDER BY wc.usage_count DESC, wc.sort_order
-               LIMIT ? OFFSET ?""",
-            [f"%{gkey}%", page_size, (page-1)*page_size]
-        ).fetchall()
+               ORDER BY wc.usage_count DESC, wc.sort_order LIMIT ? OFFSET ?""",
+            [f"%{gkey}%", page_size, (page - 1) * page_size]).fetchall()
         for r in rows:
             cards.append(dict(r))
-
     return {"ok": True, "dimension": dim_key, "cards": cards, "total": len(cards)}
 
 
@@ -273,9 +285,9 @@ def compose_character(data: CharacterComposeReq):
         parts.append(style_val)
         json_parts["style"] = style_val
 
-    # 2. 主体描述 (gender + age + hairstyle + facial)
+    # 2. 主体描述 (occupation + gender + age + body + hairstyle + facial)
     subject_parts = []
-    for k in ["gender", "age", "hairstyle", "facial"]:
+    for k in ["occupation", "gender", "age", "body", "hairstyle", "facial"]:
         v = settings.get(k, "").strip()
         if v:
             subject_parts.append(v)
@@ -283,18 +295,20 @@ def compose_character(data: CharacterComposeReq):
     if subject_parts:
         parts.append("，".join(subject_parts))
 
-    # 3. 表情神态 — compact+
-    expr = settings.get("expression", "").strip()
-    if expr:
-        parts.append(expr)
-        json_parts["expression"] = expr
+    # 3. 表情神态 + 气质性格
+    for k in ["expression", "temperament"]:
+        v = settings.get(k, "").strip()
+        if v:
+            parts.append(v)
+            json_parts[k] = v
 
-    # 4. 服饰道具 — standard+
+    # 4. 服饰 + 配饰 — standard+
     if density != "compact":
-        clothing = settings.get("clothing", "").strip()
-        if clothing:
-            parts.append(clothing)
-            json_parts["clothing"] = clothing
+        for k in ["clothing", "accessory"]:
+            v = settings.get(k, "").strip()
+            if v:
+                parts.append(v)
+                json_parts[k] = v
 
     # 5. 姿态动作 — standard+
     if density != "compact":
@@ -413,3 +427,81 @@ PRESET_TEMPLATES = {
 @router.get("/presets")
 def get_presets():
     return {"ok": True, "presets": PRESET_TEMPLATES}
+
+
+# ==================== 角色设定模版库 ====================
+class TemplateCreate(BaseModel):
+    name: str = "新模版"
+    description: str = ""
+    structure: list = []
+    default_settings: dict = {}
+
+class TemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    structure: Optional[list] = None
+    default_settings: Optional[dict] = None
+
+
+def _tpl_dict(r):
+    d = dict(r)
+    try: d["structure"] = json.loads(d.get("structure_json") or "[]")
+    except Exception: d["structure"] = []
+    try: d["default_settings"] = json.loads(d.get("default_settings_json") or "{}")
+    except Exception: d["default_settings"] = {}
+    return d
+
+
+@router.get("/templates")
+def list_templates():
+    db = get_db()
+    rows = db.execute("SELECT * FROM character_template ORDER BY is_builtin DESC, sort_order, id").fetchall()
+    return {"ok": True, "items": [_tpl_dict(r) for r in rows], "total": len(rows)}
+
+
+@router.get("/templates/{tid}")
+def get_template(tid: int):
+    db = get_db()
+    r = db.execute("SELECT * FROM character_template WHERE id=?", [tid]).fetchone()
+    if not r:
+        raise HTTPException(404, "模版不存在")
+    return {"ok": True, "template": _tpl_dict(r)}
+
+
+@router.post("/templates")
+def create_template(data: TemplateCreate):
+    db = get_db()
+    db.execute("""INSERT INTO character_template (name,description,structure_json,default_settings_json,is_builtin,sort_order)
+                 VALUES (?,?,?,?,0,100)""",
+               [data.name, data.description, json.dumps(data.structure, ensure_ascii=False),
+                json.dumps(data.default_settings, ensure_ascii=False)])
+    safe_commit()
+    return {"ok": True, "id": db.execute("SELECT last_insert_rowid()").fetchone()[0]}
+
+
+@router.put("/templates/{tid}")
+def update_template(tid: int, data: TemplateUpdate):
+    db = get_db()
+    if not db.execute("SELECT 1 FROM character_template WHERE id=?", [tid]).fetchone():
+        raise HTTPException(404, "模版不存在")
+    sets, vals = [], []
+    if data.name is not None: sets.append("name=?"); vals.append(data.name)
+    if data.description is not None: sets.append("description=?"); vals.append(data.description)
+    if data.structure is not None: sets.append("structure_json=?"); vals.append(json.dumps(data.structure, ensure_ascii=False))
+    if data.default_settings is not None: sets.append("default_settings_json=?"); vals.append(json.dumps(data.default_settings, ensure_ascii=False))
+    if sets:
+        sets.append("updated_at=datetime('now','localtime')"); vals.append(tid)
+        db.execute(f"UPDATE character_template SET {', '.join(sets)} WHERE id=?", vals)
+        safe_commit()
+    return {"ok": True}
+
+
+@router.delete("/templates/{tid}")
+def delete_template(tid: int):
+    db = get_db()
+    r = db.execute("SELECT is_builtin FROM character_template WHERE id=?", [tid]).fetchone()
+    if r and r["is_builtin"]:
+        raise HTTPException(400, "内置模版不可删除")
+    db.execute("DELETE FROM character_template WHERE id=?", [tid])
+    db.commit()
+    return {"ok": True}

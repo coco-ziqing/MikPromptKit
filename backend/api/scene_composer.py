@@ -10,46 +10,34 @@ from typing import Optional
 
 router = APIRouter(prefix="/api/scene-composer", tags=["scene-composer"])
 
-# ==================== 场景维度定义 ====================
+# ==================== 场景维度定义（默认模版：绑定 scene_ 场景词卡分组） ====================
 SCENE_DIMENSIONS = {
-    "location":     {"label": "场景类型", "icon": "📍", "group_keys": ["composition", "custom"],
-                     "order": 1, "default": ""},
-    "architecture": {"label": "建筑风格", "icon": "🏛", "group_keys": ["composition", "custom"],
-                     "order": 2, "default": ""},
-    "time":         {"label": "时间时刻", "icon": "🕐", "group_keys": ["tone", "custom"],
-                     "order": 3, "default": ""},
-    "season":       {"label": "季节气候", "icon": "🌤", "group_keys": ["tone", "custom"],
-                     "order": 4, "default": ""},
-    "weather":      {"label": "天气现象", "icon": "🌧", "group_keys": ["tone", "custom"],
-                     "order": 5, "default": ""},
-    "atmosphere":   {"label": "氛围情绪", "icon": "🌫", "group_keys": ["emotion_style", "tone", "custom"],
-                     "order": 6, "default": ""},
-    "lighting":     {"label": "光影效果", "icon": "💡", "group_keys": ["tone", "custom"],
-                     "order": 7, "default": ""},
-    "color_scheme": {"label": "色彩搭配", "icon": "🎨", "group_keys": ["color", "custom"],
-                     "order": 8, "default": ""},
-    "perspective":  {"label": "视角取景", "icon": "📐", "group_keys": ["composition", "custom"],
-                     "order": 9, "default": ""},
-    "composition":  {"label": "构图布局", "icon": "🖼", "group_keys": ["composition", "custom"],
-                     "order": 10, "default": ""},
-    "details":      {"label": "细节元素", "icon": "🔍", "group_keys": ["custom"],
-                     "order": 11, "default": ""},
-    "style":        {"label": "画风风格", "icon": "🎭", "group_keys": ["composition", "custom"],
-                     "order": 12, "default": ""},
-    "quality":      {"label": "画质参数", "icon": "⚡", "group_keys": ["quality", "custom"],
-                     "order": 13, "default": ""},
-    "negative":     {"label": "负面提示词", "icon": "⚠️", "group_keys": ["negative", "custom"],
-                     "order": 14, "default": ""},
+    "location":     {"label": "场景类型", "icon": "📍", "group_keys": ["scene_location"], "order": 1, "default": ""},
+    "architecture": {"label": "建筑风格", "icon": "🏛", "group_keys": ["scene_architecture"], "order": 2, "default": ""},
+    "time":         {"label": "时间时刻", "icon": "🕐", "group_keys": ["scene_time"], "order": 3, "default": ""},
+    "season":       {"label": "季节气候", "icon": "🌤", "group_keys": ["scene_season"], "order": 4, "default": ""},
+    "weather":      {"label": "天气现象", "icon": "🌧", "group_keys": ["scene_weather"], "order": 5, "default": ""},
+    "atmosphere":   {"label": "氛围情绪", "icon": "🎭", "group_keys": ["scene_atmosphere"], "order": 6, "default": ""},
+    "lighting":     {"label": "光影效果", "icon": "💡", "group_keys": ["scene_lighting"], "order": 7, "default": ""},
+    "color_scheme": {"label": "色彩搭配", "icon": "🎨", "group_keys": ["scene_color"], "order": 8, "default": ""},
+    "perspective":  {"label": "视角取景", "icon": "📐", "group_keys": ["scene_perspective"], "order": 9, "default": ""},
+    "composition":  {"label": "构图布局", "icon": "🖼", "group_keys": ["scene_composition"], "order": 10, "default": ""},
+    "details":      {"label": "细节元素", "icon": "🔍", "group_keys": ["scene_details"], "order": 11, "default": ""},
+    "style":        {"label": "画风风格", "icon": "🎭", "group_keys": ["scene_style"], "order": 12, "default": ""},
+    "quality":      {"label": "画质参数", "icon": "⚡", "group_keys": ["scene_quality"], "order": 13, "default": ""},
+    "negative":     {"label": "负面提示词", "icon": "⚠️", "group_keys": ["negative"], "order": 14, "default": ""},
 }
 
 # ==================== Pydantic Models ====================
 class SceneCreate(BaseModel):
     name: str = "新场景"
     settings: dict = {}
+    template_id: Optional[int] = None
 
 class SceneUpdate(BaseModel):
     name: Optional[str] = None
     settings: Optional[dict] = None
+    template_id: Optional[int] = None
 
 class SceneComposeReq(BaseModel):
     settings: dict = {}
@@ -171,8 +159,8 @@ def create_scene(data: SceneCreate):
     _ensure_scene_table()
     db = get_db()
     db.execute(
-        "INSERT INTO scene_profiles (name, settings_json) VALUES (?,?)",
-        [data.name, json.dumps(data.settings, ensure_ascii=False)]
+        "INSERT INTO scene_profiles (name, settings_json, template_id) VALUES (?,?,?)",
+        [data.name, json.dumps(data.settings, ensure_ascii=False), data.template_id]
     )
     safe_commit()
     sid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -191,6 +179,8 @@ def update_scene(scene_id: int, data: SceneUpdate):
     if data.settings is not None:
         db.execute("UPDATE scene_profiles SET settings_json=?, updated_at=datetime('now','localtime') WHERE id=?",
                    [json.dumps(data.settings, ensure_ascii=False), scene_id])
+    if data.template_id is not None:
+        db.execute("UPDATE scene_profiles SET template_id=? WHERE id=?", [data.template_id, scene_id])
     safe_commit()
     # 同步派生字段
     if data.settings is not None:
@@ -207,29 +197,74 @@ def delete_scene(scene_id: int):
     return {"ok": True}
 
 
-# ==================== 维度卡片库 ====================
+# ==================== 维度卡片库（模版驱动） ====================
+def _resolve_groups(db, group_keys):
+    groups = []
+    for gkey in group_keys:
+        rows = db.execute(
+            "SELECT id, name, icon FROM word_card_group WHERE group_key LIKE ? AND is_active=1 ORDER BY sort_order LIMIT 5",
+            [f"%{gkey}%"]).fetchall()
+        for r in rows:
+            cnt = db.execute("SELECT COUNT(*) FROM word_card WHERE group_id=? AND is_deleted=0", [r["id"]]).fetchone()[0]
+            if cnt > 0:
+                groups.append({"id": r["id"], "name": r["name"], "icon": r["icon"] or "📄", "card_count": cnt})
+    return groups
+
+
+def _template_slots(db, template_id):
+    if not template_id:
+        return None
+    r = db.execute("SELECT structure_json FROM scene_template WHERE id=?", [template_id]).fetchone()
+    if not r:
+        return None
+    try:
+        slots = json.loads(r["structure_json"] or "[]")
+    except Exception:
+        return None
+    out = {}
+    for s in slots:
+        if not s.get("key"):
+            continue
+        out[s["key"]] = {"label": s.get("label", s["key"]), "icon": s.get("icon", ""),
+                         "group_keys": s.get("group_keys", []), "order": s.get("order", 100), "default": ""}
+    return out or None
+
+
 @router.get("/dimensions")
-def list_dimensions():
-    """返回场景维度 + 对应词卡分组"""
+def list_dimensions(template_id: int = None):
+    """返回场景维度 + 对应词卡分组；传 template_id 按模版槽位返回。"""
     _ensure_scene_table()
     db = get_db()
+    dims_src = _template_slots(db, template_id) or SCENE_DIMENSIONS
     dims = []
-    for key, dim in sorted(SCENE_DIMENSIONS.items(), key=lambda x: x[1]["order"]):
-        groups = []
-        for gkey in dim["group_keys"]:
-            rows = db.execute(
-                "SELECT id, name, icon FROM word_card_group WHERE group_key LIKE ? AND is_active=1 ORDER BY sort_order LIMIT 5",
-                [f"%{gkey}%"]
-            ).fetchall()
-            for r in rows:
-                cnt = db.execute("SELECT COUNT(*) FROM word_card WHERE group_id=? AND is_deleted=0", [r["id"]]).fetchone()[0]
-                if cnt > 0:
-                    groups.append({"id": r["id"], "name": r["name"], "icon": r["icon"] or "📄", "card_count": cnt})
+    for key, dim in sorted(dims_src.items(), key=lambda x: x[1]["order"]):
         dims.append({
             "key": key, "label": dim["label"], "icon": dim["icon"], "order": dim["order"],
-            "default": dim["default"], "groups": groups
+            "default": dim.get("default", ""), "groups": _resolve_groups(db, dim["group_keys"])
         })
-    return {"ok": True, "dimensions": dims}
+    return {"ok": True, "dimensions": dims, "template_id": template_id}
+
+
+@router.get("/dimensions/{dim_key}/cards")
+def list_dimension_cards(dim_key: str, template_id: int = None, page: int = 1, page_size: int = 200):
+    """列出某个场景维度的词卡；可按模版解析槽位分组。"""
+    db = get_db()
+    dims_src = _template_slots(db, template_id) or SCENE_DIMENSIONS
+    dim = dims_src.get(dim_key) or SCENE_DIMENSIONS.get(dim_key)
+    if not dim:
+        raise HTTPException(404, f"未知维度: {dim_key}")
+    cards = []
+    for gkey in dim["group_keys"]:
+        rows = db.execute(
+            """SELECT wc.id, wc.name, wc.content, wc.content_zh, wc.meaning, wc.thumbnail, wc.usage_count,
+                      wg.name as group_name, wc.module, wc.category, wc.icon
+               FROM word_card wc JOIN word_card_group wg ON wc.group_id=wg.id
+               WHERE wg.group_key LIKE ? AND wc.is_deleted=0
+               ORDER BY wc.usage_count DESC, wc.sort_order LIMIT ? OFFSET ?""",
+            [f"%{gkey}%", page_size, (page - 1) * page_size]).fetchall()
+        for r in rows:
+            cards.append(dict(r))
+    return {"ok": True, "dimension": dim_key, "cards": cards, "total": len(cards)}
 
 
 # ==================== 组装引擎 ====================
@@ -435,6 +470,84 @@ PRESET_TEMPLATES = {
 @router.get("/presets")
 def get_presets():
     return {"ok": True, "presets": PRESET_TEMPLATES}
+
+
+# ==================== 场景设定模版库 ====================
+class STemplateCreate(BaseModel):
+    name: str = "新模版"
+    description: str = ""
+    structure: list = []
+    default_settings: dict = {}
+
+class STemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    structure: Optional[list] = None
+    default_settings: Optional[dict] = None
+
+
+def _stpl_dict(r):
+    d = dict(r)
+    try: d["structure"] = json.loads(d.get("structure_json") or "[]")
+    except Exception: d["structure"] = []
+    try: d["default_settings"] = json.loads(d.get("default_settings_json") or "{}")
+    except Exception: d["default_settings"] = {}
+    return d
+
+
+@router.get("/templates")
+def list_templates():
+    db = get_db()
+    rows = db.execute("SELECT * FROM scene_template ORDER BY is_builtin DESC, sort_order, id").fetchall()
+    return {"ok": True, "items": [_stpl_dict(r) for r in rows], "total": len(rows)}
+
+
+@router.get("/templates/{tid}")
+def get_template(tid: int):
+    db = get_db()
+    r = db.execute("SELECT * FROM scene_template WHERE id=?", [tid]).fetchone()
+    if not r:
+        raise HTTPException(404, "模版不存在")
+    return {"ok": True, "template": _stpl_dict(r)}
+
+
+@router.post("/templates")
+def create_template(data: STemplateCreate):
+    db = get_db()
+    db.execute("""INSERT INTO scene_template (name,description,structure_json,default_settings_json,is_builtin,sort_order)
+                 VALUES (?,?,?,?,0,100)""",
+               [data.name, data.description, json.dumps(data.structure, ensure_ascii=False),
+                json.dumps(data.default_settings, ensure_ascii=False)])
+    safe_commit()
+    return {"ok": True, "id": db.execute("SELECT last_insert_rowid()").fetchone()[0]}
+
+
+@router.put("/templates/{tid}")
+def update_template(tid: int, data: STemplateUpdate):
+    db = get_db()
+    if not db.execute("SELECT 1 FROM scene_template WHERE id=?", [tid]).fetchone():
+        raise HTTPException(404, "模版不存在")
+    sets, vals = [], []
+    if data.name is not None: sets.append("name=?"); vals.append(data.name)
+    if data.description is not None: sets.append("description=?"); vals.append(data.description)
+    if data.structure is not None: sets.append("structure_json=?"); vals.append(json.dumps(data.structure, ensure_ascii=False))
+    if data.default_settings is not None: sets.append("default_settings_json=?"); vals.append(json.dumps(data.default_settings, ensure_ascii=False))
+    if sets:
+        sets.append("updated_at=datetime('now','localtime')"); vals.append(tid)
+        db.execute(f"UPDATE scene_template SET {', '.join(sets)} WHERE id=?", vals)
+        safe_commit()
+    return {"ok": True}
+
+
+@router.delete("/templates/{tid}")
+def delete_template(tid: int):
+    db = get_db()
+    r = db.execute("SELECT is_builtin FROM scene_template WHERE id=?", [tid]).fetchone()
+    if r and r["is_builtin"]:
+        raise HTTPException(400, "内置模版不可删除")
+    db.execute("DELETE FROM scene_template WHERE id=?", [tid])
+    safe_commit()
+    return {"ok": True}
 
 
 # ============================================================

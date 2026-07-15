@@ -385,6 +385,9 @@
       if (this._token) {
         fetch('/api/auth/logout',{method:'POST',headers:{'Authorization':'***'+this._token}}).catch(function(){});
       }
+      // Phase34: 断开在线状态通道并移除指示器
+      try { if (window.PK_PRESENCE) PK_PRESENCE.disconnect(); } catch(e){}
+      var pw = document.getElementById('pkPresenceWrap'); if (pw) pw.remove();
       localStorage.removeItem('pk_token'); localStorage.removeItem('pk_user');
       this._token = null; this._user = null; this._loggedIn = false;
       var w = document.getElementById('navDropdownUser'); if (w) w.remove();

@@ -232,19 +232,7 @@ class ProjectManagerPlugin(PromptKitPlugin):
     def get_frontend_injections(self) -> dict:
         """注册前端导航按钮和视图路由"""
         return {
-            "nav_buttons": [
-                {
-                    "slot": "right",
-                    "id": "navProjectMgmt",
-                    "icon": "bi-kanban",
-                    "label": "项目管理",
-                    "view": "project_mgmt",
-                    "onClick": "window.PK_ProjectDashboard.open()",
-                    "title": "项目管理 — 看板/甘特图/里程碑",
-                    "order": 35,
-                    "showLabel": True,
-                }
-            ],
+            "nav_buttons": [],  # 已并入顶部「项目」下拉，移除右侧独立按钮
             "panel_slots": [],
             "view_routes": [],
             "context_menus": [],

@@ -9,6 +9,10 @@ from typing import Optional
 
 from password import hash_pw, check_pw
 from jwt_auth import create_jwt, verify_jwt, get_current_user
+try:
+    from audit import record_audit
+except Exception:
+    def record_audit(*a, **k): pass
 
 router = APIRouter(tags=["认证"], prefix="/api/auth")
 
@@ -52,7 +56,7 @@ def _record_attempt(ip: str):
 # ============================================================
 
 @router.post("/register")
-def register(data: dict = Body(...)):
+def register(data: dict = Body(...), request: Request = None):
     username = (data.get("username", "")).strip().lower()
     password = data.get("password", "")
     display_name = data.get("display_name", "").strip() or username
@@ -76,6 +80,11 @@ def register(data: dict = Body(...)):
             [username, password_hash, display_name, role])
         db.commit()
         uid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        try:
+            record_audit("register", request=request, user_id=uid, username=username,
+                         detail=f"注册新账户 {display_name}（角色 {role}）", target_type="user", target_id=uid)
+        except Exception:
+            pass
         return {"ok": True, "id": uid, "username": username, "display_name": display_name, "role": role}
     finally:
         db.close()
@@ -103,11 +112,14 @@ def login(data: dict = Body(...), request: Request = None):
             [username]).fetchone()
         if not user:
             _record_attempt(client_ip)
+            record_audit("login_failed", request=request, username=username, status="fail", detail="用户名不存在")
             raise HTTPException(401, "用户名或密码错误")
         if not user["is_active"]:
+            record_audit("login_failed", request=request, user_id=user["id"], username=user["username"], status="fail", detail="账户已被禁用")
             raise HTTPException(403, "账户已被禁用")
         if not check_pw(password, user["password_hash"]):
             _record_attempt(client_ip)
+            record_audit("login_failed", request=request, user_id=user["id"], username=user["username"], status="fail", detail="密码错误")
             raise HTTPException(401, "用户名或密码错误")
     finally:
         db.close()
@@ -139,6 +151,12 @@ def login(data: dict = Body(...), request: Request = None):
     finally:
         db3.close()
 
+    try:
+        record_audit("login", request=request, user_id=user["id"], username=user["username"],
+                     detail=f"登录成功（{user['role']}）")
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "token": token,
@@ -166,6 +184,12 @@ def logout(request: Request):
             db.commit()
         finally:
             db.close()
+
+    try:
+        if user and user.get("authenticated"):
+            record_audit("logout", request=request, user_id=user.get("id"), username=user.get("username"), detail="主动登出")
+    except Exception:
+        pass
 
     return {"ok": True, "message": "已登出"}
 

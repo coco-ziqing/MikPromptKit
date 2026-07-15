@@ -56,7 +56,8 @@ def record_action(
     url: str = "",
     user_agent: str = "",
     client_ip: str = "",
-    elapsed_ms: float = 0
+    elapsed_ms: float = 0,
+    actor_id: int = None
 ):
     """记录用户操作 — 可从前端 POST /api/logs/action 调用"""
     _ensure_init()
@@ -72,15 +73,16 @@ def record_action(
         "client_ip": client_ip[:50] if client_ip else "",
         "elapsed_ms": round(elapsed_ms, 1),
         "created_at": ts,
+        "actor_id": actor_id,
     }
 
     try:
         from database import get_db, safe_commit
         db = get_db()
         db.execute(
-            "INSERT INTO user_actions (action,category,target,detail,url,user_agent,client_ip,elapsed_ms) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO user_actions (action,category,target,detail,url,user_agent,client_ip,elapsed_ms,actor_id) VALUES (?,?,?,?,?,?,?,?,?)",
             [entry["action"], entry["category"], entry["target"], entry["detail"],
-             entry["url"], entry["user_agent"], entry["client_ip"], entry["elapsed_ms"]]
+             entry["url"], entry["user_agent"], entry["client_ip"], entry["elapsed_ms"], actor_id]
         )
         safe_commit()
     except Exception as e:

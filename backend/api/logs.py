@@ -6,6 +6,21 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from logger import query, stats, clear_before, stream_generator
 from action_logger import record_action, query_actions, action_stream_generator
+try:
+    from jwt_auth import get_current_user
+except Exception:
+    def get_current_user(_req): return {"authenticated": False}
+
+
+def _actor_id(request):
+    """从请求解析已登录用户 id（未登录返回 None）。"""
+    try:
+        u = get_current_user(request)
+        if u and u.get("authenticated"):
+            return u.get("id")
+    except Exception:
+        pass
+    return None
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 
@@ -125,6 +140,7 @@ class BatchActions(BaseModel):
 async def report_batch_actions(batch: BatchActions, request: Request):
     """批量接收前端用户行为"""
     client_ip = request.client.host if request.client else ""
+    aid = _actor_id(request)
     count = 0
     for item in batch.actions:
         if isinstance(item, dict):
@@ -136,6 +152,7 @@ async def report_batch_actions(batch: BatchActions, request: Request):
                 url=item.get("url", ""),
                 user_agent=item.get("user_agent", ""),
                 client_ip=client_ip,
+                actor_id=aid,
             )
             count += 1
     return {"ok": True, "count": count}
@@ -153,6 +170,7 @@ async def report_single_action(data: ActionEntry, request: Request):
         url=data.url,
         user_agent=data.user_agent,
         client_ip=client_ip,
+        actor_id=_actor_id(request),
     )
     return {"ok": True}
 

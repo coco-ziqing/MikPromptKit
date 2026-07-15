@@ -20,12 +20,19 @@
       document.querySelectorAll('#mainContent > .view-panel').forEach(function(p){p.style.display='none';});
       var vp = document.getElementById('viewAdminUsers');
       if (vp) vp.style.display = 'block';
+      try { if (window.App && App._collapseSidebar) App._collapseSidebar(); } catch(e) {}
       this._render();
+      // Phase34: 订阅实时在线状态，无刷新更新状态点
+      var self = this;
+      if (window.PK_PRESENCE && !this._presenceUnsub) {
+        this._presenceUnsub = PK_PRESENCE.on(function(){ self._updateLive(); });
+      }
     },
 
     close: function() {
       var vp = document.getElementById('viewAdminUsers');
       if (vp) vp.style.display = 'none';
+      if (this._presenceUnsub) { try { this._presenceUnsub(); } catch(e){} this._presenceUnsub = null; }
       if (typeof App !== 'undefined' && App.switchView) App.switchView('home');
     },
 
@@ -55,7 +62,9 @@
       var stats = {admin:0, editor:0, viewer:0, active:0};
       this._users.forEach(function(u){stats[u.role]=(stats[u.role]||0)+1;if(u.is_active)stats.active++;});
       var el = document.getElementById('aum_stats');
+      var liveN = (window.PK_PRESENCE ? PK_PRESENCE.onlineCount() : 0);
       if (el) el.innerHTML = '<div class="stat-chip">📊 总计 <span class="num">'+this._users.length+'</span></div>'+
+        '<div class="stat-chip">🌐 在线 <span class="num" id="aum_online_n">'+liveN+'</span></div>'+
         '<div class="stat-chip">✅ 启用 <span class="num">'+stats.active+'</span></div>'+
         '<div class="stat-chip">🔵 管理员 <span class="num">'+stats.admin+'</span></div>'+
         '<div class="stat-chip">🟢 编辑员 <span class="num">'+stats.editor+'</span></div>'+
@@ -71,22 +80,47 @@
         var av = (u.display_name||u.username).charAt(0).toUpperCase();
         var roles = {admin:'管理员',editor:'编辑员',viewer:'观察者'};
         return '<div class="user-card" onclick="AUM.showForm('+u.id+')"><div class="user-card-header">'+
-          '<div class="user-avatar" style="background:'+ac+';">'+av+'</div>'+
+          '<div class="user-avatar" style="background:'+ac+';position:relative;">'+av+
+          '<span class="aum-live-dot" data-uid="'+u.id+'" style="position:absolute;right:-2px;bottom:-2px;width:12px;height:12px;border-radius:50%;background:#64748b;border:2px solid var(--bg-card,#1e293b);"></span></div>'+
           '<div class="user-info"><div class="user-name">'+_e(u.display_name||u.username)+'</div>'+
           '<div class="user-username">@'+u.username+'</div></div></div>'+
           '<div class="user-meta"><span class="badge badge-'+u.role+'">'+(roles[u.role]||u.role)+'</span>'+
+          '<span class="aum-live-badge" data-uid="'+u.id+'" style="font-weight:600;color:#64748b;">⚫ 离线</span>'+
           '<span><span class="status-dot '+(u.is_active?'status-active':'status-inactive')+'"></span>'+(u.is_active?'正常':'已禁用')+'</span></div>'+
           '<div class="user-footer">'+(u.last_login_at?'最后登录: '+u.last_login_at.substring(0,10):'从未登录')+'</div>'+
           '<div class="user-card-actions"><button class="btn-outline" onclick="event.stopPropagation();AUM.showForm('+u.id+')">✏ 编辑</button>'+
+          '<button class="btn-outline" onclick="event.stopPropagation();AUM.openLog('+u.id+',\''+_e(u.display_name||u.username)+'\')">📜 日志</button>'+
           '<button class="btn-outline" onclick="event.stopPropagation();AUM.toggle('+u.id+','+(u.is_active?0:1)+')" style="color:'+(u.is_active?'var(--danger)':'var(--success)')+';">'+(u.is_active?'⏸ 停用':'▶ 启用')+'</button>'+
           '<button class="btn-outline btn-outline-danger" onclick="event.stopPropagation();AUM.deleteUser('+u.id+',\''+_e(u.display_name||u.username)+'\')">🗑</button></div></div>';
       }).join('');
+      this._updateLive();
     },
 
     setFilter: function(f, el) {
       this._filter = f;
       document.querySelectorAll('#viewAdminUsers .filter-btn').forEach(function(b){b.classList.toggle('active', b===el);});
       this.load();
+    },
+
+    // Phase34: 依据 PK_PRESENCE 实时刷新各用户卡片在线状态（无需重拉列表）
+    _updateLive: function() {
+      if (!window.PK_PRESENCE) return;
+      var META = PK_PRESENCE.META || {};
+      document.querySelectorAll('#viewAdminUsers .aum-live-dot').forEach(function(dot){
+        var uid = parseInt(dot.getAttribute('data-uid'), 10);
+        var st = PK_PRESENCE.statusOf(uid);
+        var m = META[st] || META.offline || {color:'#64748b', label:'离线'};
+        dot.style.background = m.color;
+        var badge = document.querySelector('#viewAdminUsers .aum-live-badge[data-uid="'+uid+'"]');
+        if (badge) {
+          badge.style.color = m.color;
+          var snap = PK_PRESENCE.get(uid);
+          var dev = (snap && snap.devices && snap.devices[0]) ? (' · '+snap.devices[0].device) : '';
+          badge.textContent = (m.dot||'⚫') + ' ' + (m.label||'离线') + (st!=='offline' ? dev : '');
+        }
+      });
+      var n = document.getElementById('aum_online_n');
+      if (n) n.textContent = PK_PRESENCE.onlineCount();
     },
 
     showForm: function(uid) {
@@ -130,6 +164,130 @@
     deleteUser: async function(uid, name) {
       if (!confirm('确定永久删除用户「'+name+'」？')) return;
       try { await fetch('/api/auth/users/'+uid,{method:'DELETE'}); this.load(); } catch(e) {}
+    },
+
+    // ============ Phase35: 账户活动日志查看器（管理员） ============
+    _logCats: {
+      audit:   [['','全部'],['auth','登录认证'],['user_admin','用户管理'],['project','项目'],['asset','素材']],
+      actions: [['','全部'],['nav','导航'],['edit','编辑'],['click','点击'],['modal','弹窗'],['delete','删除'],['upload','上传'],['error','错误']],
+      sessions:[]
+    },
+    _logMeta: {
+      auth:'🔑', user_admin:'👤', project:'📁', asset:'🖼', prompt:'📝', system:'⚙️',
+      nav:'🧭', edit:'✏️', click:'👆', modal:'🗔', delete:'🗑', upload:'⬆️', error:'⚠️'
+    },
+
+    openLog: function(uid, name) {
+      this._log = { uid: uid, name: name, tab: 'audit', cat: '', q: '', offset: 0, limit: 50, total: 0 };
+      var ov = document.createElement('div');
+      ov.className = 'pk-auth-modal-overlay'; ov.id = 'aumLogOverlay';
+      ov.onclick = function(e){ if(e.target===ov) ov.remove(); };
+      var tabBtn = function(k,label){ return '<button class="aum-log-tab" data-tab="'+k+'" onclick="AUM._switchLogTab(\''+k+'\')" style="flex:1;padding:8px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-muted);border-bottom:2px solid transparent;">'+label+'</button>'; };
+      ov.innerHTML = '<div class="pk-auth-modal" style="max-width:780px;width:94vw;" onclick="event.stopPropagation()">'+
+        '<h4 style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><span>📜 '+_e(name)+' · 活动日志</span>'+
+        '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'aumLogOverlay\').remove()" style="font-size:12px;">✕ 关闭</button></h4>'+
+        '<div id="aumLogSummary" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>'+
+        '<div class="aum-log-tabs" style="display:flex;border-bottom:1px solid var(--border-color);">'+
+          tabBtn('audit','🛡 审计事件')+tabBtn('actions','🖱 操作行为')+tabBtn('sessions','🔌 登录会话')+'</div>'+
+        '<div style="display:flex;gap:8px;margin:10px 0;">'+
+          '<input id="aumLogSearch" placeholder="搜索关键词..." oninput="AUM._onLogSearch()" style="flex:1;padding:6px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;">'+
+          '<select id="aumLogCat" onchange="AUM._onLogCat()" style="padding:6px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;"></select>'+
+        '</div>'+
+        '<div id="aumLogList" style="max-height:46vh;overflow:auto;font-size:13px;"></div>'+
+        '<div style="text-align:center;margin-top:10px;"><button id="aumLogMore" class="btn btn-sm btn-outline-secondary" onclick="AUM._loadLogList(true)" style="display:none;font-size:12px;">加载更多</button></div>'+
+      '</div>';
+      document.body.appendChild(ov);
+      this._loadLogSummary();
+      this._switchLogTab('audit');
+    },
+
+    _fmtTime: function(t){ return t ? String(t).substring(0,19) : '—'; },
+
+    _loadLogSummary: async function() {
+      var L = this._log; if (!L) return;
+      try {
+        var r = await fetch('/api/audit/user/'+L.uid+'/summary'); var d = await r.json();
+        var s = d.summary || {};
+        var box = document.getElementById('aumLogSummary'); if (!box) return;
+        var chip = function(label,val){ return '<span class="stat-chip" style="font-size:11px;">'+label+' <span class="num">'+val+'</span></span>'; };
+        var pMeta = (window.PK_PRESENCE && PK_PRESENCE.META[s.presence]) || null;
+        var pTxt = pMeta ? ('<span style="color:'+pMeta.color+';font-weight:700;">'+pMeta.label+'</span>') : (s.presence||'—');
+        box.innerHTML = chip('当前', pTxt)+chip('最后登录', this._fmtTime(s.last_login_at))+
+          chip('登录次数', s.login_count||0)+chip('登录失败', s.login_failed_count||0)+
+          chip('最近活动', this._fmtTime(s.last_activity_at))+chip('审计', s.audit_total||0)+chip('行为', s.actions_total||0);
+      } catch(e) {}
+    },
+
+    _switchLogTab: function(tab) {
+      var L = this._log; if (!L) return;
+      L.tab = tab; L.offset = 0; L.q = ''; L.cat = '';
+      document.querySelectorAll('#aumLogOverlay .aum-log-tab').forEach(function(b){
+        var on = b.getAttribute('data-tab')===tab;
+        b.style.color = on ? 'var(--primary,#3b82f6)' : 'var(--text-muted)';
+        b.style.borderBottomColor = on ? 'var(--primary,#3b82f6)' : 'transparent';
+      });
+      var srch = document.getElementById('aumLogSearch'); if (srch) { srch.value=''; srch.style.display = (tab==='sessions')?'none':''; }
+      var sel = document.getElementById('aumLogCat');
+      if (sel) {
+        var cats = this._logCats[tab]||[];
+        sel.style.display = cats.length ? '' : 'none';
+        sel.innerHTML = cats.map(function(c){ return '<option value="'+c[0]+'">'+c[1]+'</option>'; }).join('');
+      }
+      this._loadLogList(false);
+    },
+
+    _onLogSearch: function(){ var L=this._log; if(!L)return; L.q=(document.getElementById('aumLogSearch')||{}).value||''; clearTimeout(this._logT); var self=this; this._logT=setTimeout(function(){L.offset=0;self._loadLogList(false);},350); },
+    _onLogCat: function(){ var L=this._log; if(!L)return; L.cat=(document.getElementById('aumLogCat')||{}).value||''; L.offset=0; this._loadLogList(false); },
+
+    _loadLogList: async function(append) {
+      var L = this._log; if (!L) return;
+      if (!append) L.offset = 0;
+      var base = '/api/audit/user/'+L.uid;
+      var url;
+      if (L.tab==='audit') url = base+'?limit='+L.limit+'&offset='+L.offset+(L.cat?'&category='+L.cat:'')+(L.q?'&search='+encodeURIComponent(L.q):'');
+      else if (L.tab==='actions') url = base+'/actions?limit='+L.limit+'&offset='+L.offset+(L.cat?'&category='+L.cat:'')+(L.q?'&search='+encodeURIComponent(L.q):'');
+      else url = base+'/sessions?limit=100';
+      var listEl = document.getElementById('aumLogList'); if (!listEl) return;
+      if (!append) listEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">加载中...</div>';
+      try {
+        var r = await fetch(url); var d = await r.json();
+        var items = d.items||[]; L.total = d.total||items.length;
+        var self = this;
+        var html = items.map(function(it){ return self._renderLogRow(L.tab, it); }).join('');
+        if (!append) listEl.innerHTML = items.length ? html : '<div style="padding:24px;text-align:center;color:var(--text-muted);">暂无记录</div>';
+        else listEl.insertAdjacentHTML('beforeend', html);
+        L.offset += items.length;
+        var more = document.getElementById('aumLogMore');
+        if (more) more.style.display = (L.tab!=='sessions' && L.offset < L.total) ? 'inline-block' : 'none';
+      } catch(e) {
+        if (!append) listEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--danger);">加载失败</div>';
+      }
+    },
+
+    _renderLogRow: function(tab, it) {
+      var meta = this._logMeta;
+      var row = function(icon, title, sub, right, danger){
+        return '<div style="display:flex;gap:10px;padding:9px 6px;border-bottom:1px solid var(--border-color);align-items:flex-start;">'+
+          '<span style="font-size:16px;flex-shrink:0;">'+icon+'</span>'+
+          '<div style="flex:1;min-width:0;"><div style="font-weight:600;color:'+(danger?'var(--danger,#ef4444)':'var(--text-main)')+';">'+title+'</div>'+
+          (sub?'<div style="font-size:12px;color:var(--text-muted);word-break:break-all;">'+sub+'</div>':'')+'</div>'+
+          '<div style="font-size:11px;color:var(--text-muted);flex-shrink:0;text-align:right;white-space:nowrap;">'+right+'</div></div>';
+      };
+      if (tab==='audit') {
+        var ic = meta[it.category]||'•';
+        var isFail = it.status==='fail';
+        var sub = (it.detail?_e(it.detail):'')+(it.client_ip?'  ·  '+it.client_ip:'')+(it.device?'  ·  '+_e(it.device):'');
+        return row(isFail?'⛔':ic, _e(it.event_name||it.event_type)+(isFail?' <span style="color:var(--danger);font-size:11px;">失败</span>':''), sub, this._fmtTime(it.created_at), isFail);
+      } else if (tab==='actions') {
+        var ic2 = meta[it.category]||'•';
+        var sub2 = (it.target?_e(it.target):'')+(it.detail?'  '+_e(it.detail):'')+(it.client_ip?'  ·  '+it.client_ip:'');
+        return row(ic2, _e(it.action||it.category)+' <span style="font-size:11px;color:var(--text-muted);">['+_e(it.category)+']</span>', sub2, this._fmtTime(it.created_at), it.category==='error');
+      } else {
+        var online = it.is_active==1;
+        var sub3 = (it.device?_e(it.device):'')+(it.client_ip?'  ·  '+it.client_ip:'')+(it.expires_at?'  ·  失效 '+this._fmtTime(it.expires_at):'');
+        var right = '<span style="color:'+(online?'#10b981':'#94a3b8')+';font-weight:700;">'+(online?'● 在线会话':'○ 已失效')+'</span>';
+        return row('🔌', '登录 '+this._fmtTime(it.created_at), sub3, right, false);
+      }
     },
   };
 

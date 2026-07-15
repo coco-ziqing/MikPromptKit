@@ -20,21 +20,15 @@
   "hooks": {
     "on_db_init": "hooks.on_db_init"
   },
-  "nav_buttons": [
-    {
-      "slot": "right",
-      "id": "navProjectMgmt",
-      "icon": "bi-kanban",
-      "label": "项目管理",
-      "view": "project_mgmt",
-      "onClick": "window.__PK_PLUGINS__._views.project_mgmt()",
-      "title": "项目管理 — 看板/甘特图/里程碑",
-      "order": 35
-    }
-  ],
+  "nav_buttons": [],
   "config": {
     "enable_notifications": true,
-    "default_kanban_columns": ["待办", "进行中", "审核中", "已完成"],
+    "default_kanban_columns": [
+      "待办",
+      "进行中",
+      "审核中",
+      "已完成"
+    ],
     "auto_progress_sync": true
   }
 }

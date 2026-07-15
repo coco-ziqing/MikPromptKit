@@ -17,6 +17,7 @@ App.cc = {
     currentId: null,
     currentSettings: {},
     dimensions: [],
+    templates: [],
     _cardCache: {},
     outputText: '',
     activeDim: null,
@@ -39,8 +40,30 @@ App.cc.loadCharacters = async function() {
     try {
         var d = await App.fetchJSON('/api/character-composer/characters');
         if (d) this.characters = d.items || [];
+        if (!this.templates.length) this.loadTemplates();
         this.renderProjectList();
     } catch(e) {}
+};
+
+App.cc.loadTemplates = async function() {
+    try {
+        var d = await App.fetchJSON('/api/character-composer/templates');
+        this.templates = (d && d.items) || [];
+        this.renderProjectList();
+    } catch(e) {}
+};
+
+App.cc.newFromTemplate = async function(tid) {
+    try {
+        var t = await App.fetchJSON('/api/character-composer/templates/' + tid);
+        if (!t || !t.template) return;
+        var tpl = t.template;
+        var r = await App.fetchJSON('/api/character-composer/characters', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name: tpl.name, settings: tpl.default_settings || {}, template_id: tid })
+        });
+        if (r && r.ok) { await this.loadCharacters(); await this.openCharacter(r.id); App.toast('已按模版新建: ' + tpl.name, 'success'); }
+    } catch(e) { App.toast('模版新建失败', 'danger'); }
 };
 
 App.cc.renderProjectList = function() {
@@ -67,11 +90,16 @@ App.cc.renderProjectList = function() {
     }
     
     h += '<div style="padding:8px 12px;border-top:1px solid var(--border-color);margin-top:4px;">';
-    h += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">📋 预设模板</div>';
+    h += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">🎭 角色设定模版</div>';
     h += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
-    h += '<button class="btn btn-xs btn-outline" onclick="App.cc.loadPreset(\'anime_girl\')" style="font-size:10px;">🌸 日系少女</button>';
-    h += '<button class="btn btn-xs btn-outline" onclick="App.cc.loadPreset(\'cyberpunk\')" style="font-size:10px;">🤖 赛博朋克</button>';
-    h += '<button class="btn btn-xs btn-outline" onclick="App.cc.loadPreset(\'fantasy\')" style="font-size:10px;">⚔ 奇幻冒险</button>';
+    if (this.templates && this.templates.length) {
+        for (var ti = 0; ti < this.templates.length; ti++) {
+            var tp = this.templates[ti];
+            h += '<button class="btn btn-xs btn-outline" onclick="App.cc.newFromTemplate(' + tp.id + ')" style="font-size:10px;" title="' + App._escape(tp.description || '') + '">' + App._escape(tp.name) + '</button>';
+        }
+    } else {
+        h += '<span style="font-size:10px;color:var(--text-muted);">加载中...</span>';
+    }
     h += '</div></div>';
     c.innerHTML = h;
 };
@@ -350,19 +378,19 @@ App.cc._loadPickerCards = async function(groupId) {
             var isSelected = currentVal && word && (currentVal.indexOf(word) >= 0 || word.indexOf(currentVal) >= 0);
             h += '<div class="s2-right-card-item' + (isSelected ? ' selected' : '') + '" data-word="'+App._escape(word)+'" data-card-id="'+card.id+'" data-video="'+(vt||'')+'" data-thumb="'+(pt||'')+'" onclick="App.cc._pickCard(\'' + App._escape(word) + '\')" style="display:flex;gap:8px;padding:6px 8px;border:1px solid ' + (isSelected ? '#10b981' : 'var(--border-color)') + ';border-radius:6px;margin-bottom:4px;cursor:pointer;transition:0.12s;' + (isSelected ? 'background:rgba(16,185,129,0.08);' : '') + '" onmouseenter="App.cc._thumbHoverIn(this)" onmouseleave="App.cc._thumbHoverOut(this)">';
             // 缩略图/视频预览区
-            h += '<div class="wc-card-thumb-zone" data-card-id="'+card.id+'" onclick="event.stopPropagation();" style="width:44px;height:30px;min-width:44px;border-radius:3px;overflow:hidden;position:relative;background:var(--hover-bg);" title="右键: 预览选择 | 替换预览 | 移除预览">';
+            h += '<div class="s2-card-thumb-zone" data-card-id="'+card.id+'" onclick="event.stopPropagation();" style="cursor:pointer;" title="右键: 预览选择 | 替换预览 | 移除预览">';
             if (vt) {
-                h += '<video src="'+vt+'" muted loop preload="metadata" style="width:100%;height:100%;object-fit:cover;display:block;"></video>';
-                h += '<span style="position:absolute;top:1px;right:1px;background:rgba(0,0,0,0.7);color:#fff;font-size:7px;padding:0 2px;border-radius:2px;pointer-events:none;">V</span>';
+                h += '<video src="'+vt+'" muted loop preload="metadata" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;"></video>';
+                h += '<span style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:#fff;font-size:8px;padding:1px 4px;border-radius:2px;pointer-events:none;">VID</span>';
             } else if (pt) {
-                h += '<img src="'+pt+'" style="width:100%;height:100%;object-fit:cover;" loading="lazy">';
+                h += '<img src="'+pt+'" style="width:100%;height:100%;object-fit:cover;pointer-events:none;" loading="lazy">';
             } else {
-                h += '<span onclick="event.stopPropagation();App.cc._pickFileForCard('+card.id+')" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:var(--text-muted);" title="点击/拖入/粘贴上传预览">+</span>';
+                h += '<span class="s2-thumb-placeholder" onclick="event.stopPropagation();App.cc._pickFileForCard('+card.id+')" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:var(--text-muted);" title="点击/拖入/粘贴上传预览">+</span>';
             }
             h += '</div>';
             h += '<div style="flex:1;min-width:0;">';
-            h += '<div style="font-size:12px;font-weight:600;">' + App._escape(word) + '</div>';
-            if (def) h += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">' + App._escape(def.substring(0,60)) + '</div>';
+            h += '<div style="font-size:13px;font-weight:600;">' + App._escape(word) + '</div>';
+            if (def) h += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + App._escape(def.substring(0,80)) + '</div>';
             h += '</div>';
             if (isSelected) h += '<span style="color:#10b981;font-weight:700;font-size:12px;">&#10003;</span>';
             h += '</div>';
@@ -438,7 +466,7 @@ App.cc._uploadWCVideo = async function(cardId, file) {
 
 App.cc._setupWCUploadZones = function() {
     var self = this;
-    document.querySelectorAll('#ccPickerCards .wc-card-thumb-zone').forEach(function(z) {
+    document.querySelectorAll('#ccPickerCards .s2-card-thumb-zone').forEach(function(z) {
         if (z.dataset.dropBound) return; z.dataset.dropBound = '1';
         z.addEventListener('dragover', function(e) {
             e.preventDefault(); e.stopPropagation();
@@ -476,7 +504,7 @@ App.cc._setupWCUploadZones = function() {
                     e.preventDefault();
                     var f = items[i].getAsFile();
                     if (!f) continue;
-                    var firstZone = panel.querySelector('.wc-card-thumb-zone');
+                    var firstZone = panel.querySelector('.s2-card-thumb-zone');
                     if (firstZone) {
                         var cid = parseInt(firstZone.dataset.cardId);
                         if (cid) {
@@ -494,22 +522,28 @@ App.cc._setupWCUploadZones = function() {
 App.cc._showThumbContextMenu = function(cardId, x, y) {
     var old = document.getElementById('_ccContextMenu');
     if (old) old.remove();
+    var isDark = document.documentElement.classList.contains('dark') || document.body.classList.contains('dark-theme');
     var menu = document.createElement('div');
     menu.id = '_ccContextMenu';
-    menu.style.cssText = 'position:fixed;z-index:9999;background:var(--bg-card);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);min-width:130px;left:'+x+'px;top:'+y+'px;padding:4px;';
-    menu.innerHTML = '<div style="padding:6px 10px;cursor:pointer;font-size:12px;border-radius:4px;" onmouseover="this.style.background=\'var(--hover-bg)\'" onmouseout="this.style.background=\'\'" onclick="App.cc._openMediaLibrary('+cardId+')">预览选择</div>' +
-        '<div style="padding:6px 10px;cursor:pointer;font-size:12px;border-radius:4px;" onmouseover="this.style.background=\'var(--hover-bg)\'" onmouseout="this.style.background=\'\'" onclick="App.cc._replaceThumb('+cardId+')">替换预览</div>' +
-        '<div style="padding:6px 10px;cursor:pointer;font-size:12px;color:var(--danger);border-radius:4px;" onmouseover="this.style.background=\'var(--hover-bg)\'" onmouseout="this.style.background=\'\'" onclick="App.cc._deleteThumb('+cardId+')">移除预览</div>';
+    menu.style.cssText = 'position:fixed;z-index:9999;left:'+x+'px;top:'+y+'px;'
+        + (isDark?'background:#1e293b;border:1px solid #334155;color:#e2e8f0;':'background:#fff;border:1px solid #e2e8f0;color:#1e293b;')
+        + 'border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.25);padding:4px;min-width:140px;font-size:13px;';
+    menu.innerHTML =
+        '<div style="padding:7px 12px;cursor:pointer;border-radius:5px;font-weight:600;color:'+(isDark?'#38bdf8':'#0ea5e9')+';" onmouseover="this.style.background=\''+(isDark?'#334155':'#f1f5f9')+'\'" onmouseout="this.style.background=\'\'" onclick="App.cc._openMediaLibrary('+cardId+');document.getElementById(\'_ccContextMenu\').remove()">预览选择</div>'
+        + '<div style="padding:7px 12px;cursor:pointer;border-radius:5px;" onmouseover="this.style.background=\''+(isDark?'#334155':'#f1f5f9')+'\'" onmouseout="this.style.background=\'\'" onclick="App.cc._replaceThumb('+cardId+');document.getElementById(\'_ccContextMenu\').remove()">替换预览</div>'
+        + '<div style="padding:7px 12px;cursor:pointer;border-radius:5px;" onmouseover="this.style.background=\''+(isDark?'#334155':'#f1f5f9')+'\'" onmouseout="this.style.background=\'\'" onclick="App.cc._deleteThumb('+cardId+');document.getElementById(\'_ccContextMenu\').remove()">移除预览</div>';
     document.body.appendChild(menu);
     setTimeout(function() {
-        var fn = function(e) { menu.remove(); document.removeEventListener('click', fn); };
+        var fn = function(e) { var m = document.getElementById('_ccContextMenu'); if (m) m.remove(); document.removeEventListener('click', fn); };
         document.addEventListener('click', fn);
     }, 50);
 };
 
 App.cc._replaceThumb = function(cardId) {
-    this._pickFileForCard(cardId);
-    var m = document.getElementById('_ccContextMenu'); if (m) m.remove();
+    var inp = document.createElement('input'); inp.type = 'file';
+    inp.accept = 'image/*,video/mp4,video/webm,video/mov';
+    inp.onchange = function(e) { var f = e.target.files[0]; if (f) App.cc._uploadWCThumb(cardId, f); };
+    inp.click();
 };
 
 App.cc._deleteThumb = async function(cardId) {
@@ -525,10 +559,14 @@ App.cc._deleteThumb = async function(cardId) {
 
 // ==================== 悬停预览 ====================
 App.cc._thumbHoverIn = function(el) {
-    var vt = el.dataset.video;
+    // 与 seedance_v2 一致：悬停原地播放缩略区内视频，无弹窗无延时
+    var v = el.querySelector('.s2-card-thumb-zone video');
+    if (v && v.paused) { v.play().catch(function() {}); return; }
+    // 无视频但有图片：回退为浮层预览（保留原逻辑）
     var pt = el.dataset.thumb;
-    if (!vt && !pt) return;
+    if (!pt) return;
     if (this._hoverTimer) clearTimeout(this._hoverTimer);
+    var self = this;
     this._hoverTimer = setTimeout(function() {
         if (!App.cc._hoverPreview) {
             App.cc._hoverPreview = document.createElement('div');
@@ -537,12 +575,7 @@ App.cc._thumbHoverIn = function(el) {
             document.body.appendChild(App.cc._hoverPreview);
         }
         var rect = el.getBoundingClientRect();
-        var html = '';
-        if (vt) {
-            html += '<video src="'+vt+'" style="width:252px;height:auto;border-radius:6px;" autoplay muted loop></video>';
-        } else if (pt) {
-            html += '<img src="'+pt+'" style="width:252px;height:auto;border-radius:6px;">';
-        }
+        var html = '<img src="'+pt+'" style="width:252px;height:auto;border-radius:6px;">';
         html += '<div style="padding:4px 6px;font-size:11px;font-weight:600;color:var(--text-main);">'+App._escape(el.dataset.word||'')+'</div>';
         App.cc._hoverPreview.innerHTML = html;
         App.cc._hoverPreview.style.left = Math.min(rect.left, window.innerWidth-270)+'px';
@@ -554,6 +587,8 @@ App.cc._thumbHoverIn = function(el) {
 App.cc._thumbHoverOut = function(el) {
     if (this._hoverTimer) clearTimeout(this._hoverTimer);
     if (this._hoverPreview) this._hoverPreview.style.display = 'none';
+    var v = el.querySelector('.s2-card-thumb-zone video');
+    if (v && !v.paused) { v.pause(); }
 };
 
 App.cc._chipHoverIn = function(dimKey, word, el) {
@@ -702,7 +737,7 @@ App.cc._pickFromVideoLib = async function(el, filename) {
     try {
         var cid = targetCardId;
         if (!cid) {
-            var firstZone = document.querySelector('#ccPickerCards .wc-card-thumb-zone');
+            var firstZone = document.querySelector('#ccPickerCards .s2-card-thumb-zone');
             if (firstZone) cid = parseInt(firstZone.dataset.cardId);
         }
         if (!cid) { App.showToast('未找到目标词卡','warning'); return; }
@@ -732,7 +767,7 @@ App.cc._pickFromMediaLib = async function(filename) {
         // 优先使用右键传入的目标词卡ID
         var cid = targetCardId;
         if (!cid) {
-            var firstZone = document.querySelector('#ccPickerCards .wc-card-thumb-zone');
+            var firstZone = document.querySelector('#ccPickerCards .s2-card-thumb-zone');
             if (firstZone) cid = parseInt(firstZone.dataset.cardId);
         }
         if (cid) {

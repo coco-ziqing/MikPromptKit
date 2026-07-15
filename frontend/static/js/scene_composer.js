@@ -16,6 +16,7 @@ App.sc = {
     currentId: null,
     currentSettings: {},
     dimensions: [],
+    templates: [],
     outputText: '',
     activeDim: null,
     activeGroupId: null,
@@ -38,8 +39,30 @@ App.sc.loadScenes = async function() {
     try {
         var d = await App.fetchJSON('/api/scene-composer/scenes');
         if (d) this.scenes = d.items || [];
+        if (!this.templates.length) this.loadTemplates();
         this.renderProjectList();
     } catch(e) {}
+};
+
+App.sc.loadTemplates = async function() {
+    try {
+        var d = await App.fetchJSON('/api/scene-composer/templates');
+        this.templates = (d && d.items) || [];
+        this.renderProjectList();
+    } catch(e) {}
+};
+
+App.sc.newFromTemplate = async function(tid) {
+    try {
+        var t = await App.fetchJSON('/api/scene-composer/templates/' + tid);
+        if (!t || !t.template) return;
+        var tpl = t.template;
+        var r = await App.fetchJSON('/api/scene-composer/scenes', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({name:tpl.name, settings:tpl.default_settings||{}, template_id:tid})
+        });
+        if (r && r.ok) { await this.loadScenes(); await this.openScene(r.id); App.toast('已按模版新建: ' + tpl.name, 'success'); }
+    } catch(e) { App.toast('模版新建失败', 'danger'); }
 };
 
 // ==================== Render: Project List ====================
@@ -67,13 +90,16 @@ App.sc.renderProjectList = function() {
     }
 
     h += '<div style="padding:8px 12px;border-top:1px solid var(--border-color);margin-top:4px;">';
-    h += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">📋 预设模板</div>';
+    h += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">🏞 场景设定模版</div>';
     h += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
-    h += '<button class="btn btn-xs btn-outline" onclick="App.sc.loadPreset(\'cyberpunk_city\')" style="font-size:10px;">🌃 赛博都市</button>';
-    h += '<button class="btn btn-xs btn-outline" onclick="App.sc.loadPreset(\'fantasy_forest\')" style="font-size:10px;">🌲 魔法森林</button>';
-    h += '<button class="btn btn-xs btn-outline" onclick="App.sc.loadPreset(\'ancient_temple\')" style="font-size:10px;">🏛 远古神殿</button>';
-    h += '<button class="btn btn-xs btn-outline" onclick="App.sc.loadPreset(\'coastal_sunset\')" style="font-size:10px;">🌅 海滨日落</button>';
-    h += '<button class="btn btn-xs btn-outline" onclick="App.sc.loadPreset(\'winter_village\')" style="font-size:10px;">❄ 冬日雪村</button>';
+    if (this.templates && this.templates.length) {
+        for (var ti = 0; ti < this.templates.length; ti++) {
+            var tp = this.templates[ti];
+            h += '<button class="btn btn-xs btn-outline" onclick="App.sc.newFromTemplate(' + tp.id + ')" style="font-size:10px;" title="' + App._escape(tp.description || '') + '">' + App._escape(tp.name) + '</button>';
+        }
+    } else {
+        h += '<span style="font-size:10px;color:var(--text-muted);">加载中...</span>';
+    }
     h += '</div></div>';
     c.innerHTML = h;
 };
@@ -357,20 +383,20 @@ App.sc._loadPickerCards = async function(groupId) {
             var pt = card.thumbnail ? '/api/v4/word-cards/thumbnails/' + card.thumbnail : '';
             var vt = card.preview_media ? '/api/v4/word-cards/videos/' + card.preview_media : '';
             var sel = currentVal && word && currentVal.trim() && (currentVal.indexOf(word)>=0||word.indexOf(currentVal)>=0);
-            h += '<div class="s2-right-card-item'+(sel?' selected':'')+'" data-word="'+App._escape(word)+'" data-card-id="'+card.id+'" data-video="'+(vt||'')+'" data-thumb="'+(pt||'')+'" onclick="App.sc._pickCardWord(\''+App._escape(word)+'\')" style="display:flex;gap:6px;padding:5px 7px;border:1px solid '+(sel?'#10b981':'var(--border-color)')+';border-radius:5px;margin-bottom:3px;cursor:pointer;'+(sel?'background:rgba(16,185,129,0.08);':'')+'" onmouseenter="App.sc._thumbHoverIn(this)" onmouseleave="App.sc._thumbHoverOut(this)">';
+            h += '<div class="s2-right-card-item'+(sel?' selected':'')+'" data-word="'+App._escape(word)+'" data-card-id="'+card.id+'" data-video="'+(vt||'')+'" data-thumb="'+(pt||'')+'" onclick="App.sc._pickCardWord(\''+App._escape(word)+'\')" style="display:flex;gap:8px;padding:6px 8px;border:1px solid '+(sel?'#10b981':'var(--border-color)')+';border-radius:6px;margin-bottom:4px;cursor:pointer;transition:0.12s;'+(sel?'background:rgba(16,185,129,0.08);':'')+'" onmouseenter="App.sc._thumbHoverIn(this)" onmouseleave="App.sc._thumbHoverOut(this)">';
             // 缩略图/视频预览区
-            h += '<div class="wc-card-thumb-zone" data-card-id="'+card.id+'" onclick="event.stopPropagation();App.sc._pickFileForCard('+card.id+')" style="width:44px;height:30px;min-width:44px;border-radius:3px;overflow:hidden;position:relative;background:var(--hover-bg);cursor:pointer;" title="右键: 预览选择 | 替换预览 | 移除预览">';
+            h += '<div class="s2-card-thumb-zone" data-card-id="'+card.id+'" onclick="event.stopPropagation();App.sc._pickFileForCard('+card.id+')" style="cursor:pointer;" title="右键: 预览选择 | 替换预览 | 移除预览">';
             if (vt) {
                 h += '<video src="'+vt+'" muted loop preload="metadata" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;"></video>';
-                h += '<span style="position:absolute;top:1px;right:1px;background:rgba(0,0,0,0.7);color:#fff;font-size:7px;padding:0 2px;border-radius:2px;pointer-events:none;">V</span>';
+                h += '<span style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:#fff;font-size:8px;padding:1px 4px;border-radius:2px;pointer-events:none;">VID</span>';
             } else if (pt) {
                 h += '<img src="'+pt+'" style="width:100%;height:100%;object-fit:cover;pointer-events:none;" loading="lazy">';
             } else {
-                h += '<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text-muted);pointer-events:none;" title="点击/拖入/粘贴上传预览">+</span>';
+                h += '<span class="s2-thumb-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text-muted);pointer-events:none;" title="点击/拖入/粘贴上传预览">+</span>';
             }
             h += '</div>';
-            h += '<div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:600;">'+App._escape(word)+'</div>';
-            if (def) h += '<div style="font-size:9px;color:var(--text-muted);margin-top:1px;">'+App._escape(def.substring(0,50))+'</div></div>';
+            h += '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+App._escape(word)+'</div>';
+            if (def) h += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+App._escape(def.substring(0,80))+'</div></div>';
             if (sel) h += '<span style="color:#10b981;font-weight:700;font-size:12px;">&#10003;</span>';
             h += '</div>';
         }
@@ -459,7 +485,7 @@ App.sc._uploadWCVideo = async function(cardId, file) {
 // 拖放上传区域绑定
 App.sc._setupWCUploadZones = function() {
     var self = this;
-    document.querySelectorAll('#scPickerCards .wc-card-thumb-zone').forEach(function(z) {
+    document.querySelectorAll('#scPickerCards .s2-card-thumb-zone').forEach(function(z) {
         if (z.dataset.dropBound) return; z.dataset.dropBound = '1';
         z.addEventListener('dragover', function(e) {
             e.preventDefault(); e.stopPropagation();
@@ -498,7 +524,7 @@ App.sc._setupWCUploadZones = function() {
                     e.preventDefault();
                     var f = items[i].getAsFile();
                     if (!f) continue;
-                    var firstZone = panel.querySelector('.wc-card-thumb-zone');
+                    var firstZone = panel.querySelector('.s2-card-thumb-zone');
                     if (firstZone) {
                         var cid = parseInt(firstZone.dataset.cardId);
                         if (cid) {
@@ -517,22 +543,28 @@ App.sc._setupWCUploadZones = function() {
 App.sc._showThumbContextMenu = function(cardId, x, y) {
     var old = document.getElementById('_scContextMenu');
     if (old) old.remove();
+    var isDark = document.documentElement.classList.contains('dark') || document.body.classList.contains('dark-theme');
     var menu = document.createElement('div');
     menu.id = '_scContextMenu';
-    menu.style.cssText = 'position:fixed;z-index:9999;background:var(--bg-card);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);min-width:130px;left:'+x+'px;top:'+y+'px;padding:4px;';
-    menu.innerHTML = '<div style="padding:6px 10px;cursor:pointer;font-size:12px;border-radius:4px;" onmouseover="this.style.background=\'var(--hover-bg)\'" onmouseout="this.style.background=\'\'" onclick="App.sc._openMediaLibrary('+cardId+')">预览选择</div>' +
-        '<div style="padding:6px 10px;cursor:pointer;font-size:12px;border-radius:4px;" onmouseover="this.style.background=\'var(--hover-bg)\'" onmouseout="this.style.background=\'\'" onclick="App.sc._replaceThumb('+cardId+')">替换预览</div>' +
-        '<div style="padding:6px 10px;cursor:pointer;font-size:12px;color:var(--danger);border-radius:4px;" onmouseover="this.style.background=\'var(--hover-bg)\'" onmouseout="this.style.background=\'\'" onclick="App.sc._deleteThumb('+cardId+')">移除预览</div>';
+    menu.style.cssText = 'position:fixed;z-index:9999;left:'+x+'px;top:'+y+'px;'
+        + (isDark?'background:#1e293b;border:1px solid #334155;color:#e2e8f0;':'background:#fff;border:1px solid #e2e8f0;color:#1e293b;')
+        + 'border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.25);padding:4px;min-width:140px;font-size:13px;';
+    menu.innerHTML =
+        '<div style="padding:7px 12px;cursor:pointer;border-radius:5px;font-weight:600;color:'+(isDark?'#38bdf8':'#0ea5e9')+';" onmouseover="this.style.background=\''+(isDark?'#334155':'#f1f5f9')+'\'" onmouseout="this.style.background=\'\'" onclick="App.sc._openMediaLibrary('+cardId+');document.getElementById(\'_scContextMenu\').remove()">预览选择</div>'
+        + '<div style="padding:7px 12px;cursor:pointer;border-radius:5px;" onmouseover="this.style.background=\''+(isDark?'#334155':'#f1f5f9')+'\'" onmouseout="this.style.background=\'\'" onclick="App.sc._replaceThumb('+cardId+');document.getElementById(\'_scContextMenu\').remove()">替换预览</div>'
+        + '<div style="padding:7px 12px;cursor:pointer;border-radius:5px;" onmouseover="this.style.background=\''+(isDark?'#334155':'#f1f5f9')+'\'" onmouseout="this.style.background=\'\'" onclick="App.sc._deleteThumb('+cardId+');document.getElementById(\'_scContextMenu\').remove()">移除预览</div>';
     document.body.appendChild(menu);
     setTimeout(function() {
-        var fn = function(e) { menu.remove(); document.removeEventListener('click', fn); };
+        var fn = function(e) { var m = document.getElementById('_scContextMenu'); if (m) m.remove(); document.removeEventListener('click', fn); };
         document.addEventListener('click', fn);
     }, 50);
 };
 
 App.sc._replaceThumb = function(cardId) {
-    this._pickFileForCard(cardId);
-    var m = document.getElementById('_scContextMenu'); if (m) m.remove();
+    var inp = document.createElement('input'); inp.type = 'file';
+    inp.accept = 'image/*,video/mp4,video/webm,video/mov';
+    inp.onchange = function(e) { var f = e.target.files[0]; if (f) App.sc._uploadWCThumb(cardId, f); };
+    inp.click();
 };
 
 App.sc._deleteThumb = async function(cardId) {
@@ -548,10 +580,12 @@ App.sc._deleteThumb = async function(cardId) {
 
 // ==================== 悬停预览（芯片/词卡） ====================
 App.sc._thumbHoverIn = function(el) {
-    var vt = el.dataset.video;
+    var v = el.querySelector('.s2-card-thumb-zone video');
+    if (v && v.paused) { v.play().catch(function() {}); return; }
     var pt = el.dataset.thumb;
-    if (!vt && !pt) return;
+    if (!pt) return;
     if (this._hoverTimer) clearTimeout(this._hoverTimer);
+    var self = this;
     this._hoverTimer = setTimeout(function() {
         if (!App.sc._hoverPreview) {
             App.sc._hoverPreview = document.createElement('div');
@@ -560,12 +594,7 @@ App.sc._thumbHoverIn = function(el) {
             document.body.appendChild(App.sc._hoverPreview);
         }
         var rect = el.getBoundingClientRect();
-        var html = '';
-        if (vt) {
-            html += '<video src="'+vt+'" style="width:252px;height:auto;border-radius:6px;" autoplay muted loop></video>';
-        } else if (pt) {
-            html += '<img src="'+pt+'" style="width:252px;height:auto;border-radius:6px;">';
-        }
+        var html = '<img src="'+pt+'" style="width:252px;height:auto;border-radius:6px;">';
         html += '<div style="padding:4px 6px;font-size:11px;font-weight:600;color:var(--text-main);">'+App._escape(el.dataset.word||'')+'</div>';
         App.sc._hoverPreview.innerHTML = html;
         App.sc._hoverPreview.style.left = Math.min(rect.left, window.innerWidth-270)+'px';
@@ -577,9 +606,9 @@ App.sc._thumbHoverIn = function(el) {
 App.sc._thumbHoverOut = function(el) {
     if (this._hoverTimer) clearTimeout(this._hoverTimer);
     if (this._hoverPreview) this._hoverPreview.style.display = 'none';
+    var v = el.querySelector('.s2-card-thumb-zone video');
+    if (v && !v.paused) { v.pause(); }
 };
-
-// 芯片悬停预览（编辑器内）
 App.sc._chipHoverIn = function(dimKey, word, el) {
     if (this._hoverTimer) clearTimeout(this._hoverTimer);
     this._hoverTimer = setTimeout(async function() {
@@ -735,7 +764,7 @@ App.sc._pickFromVideoLib = async function(el, filename) {
     try {
         var cid = targetCardId;
         if (!cid) {
-            var firstZone = document.querySelector('#scPickerCards .wc-card-thumb-zone');
+            var firstZone = document.querySelector('#scPickerCards .s2-card-thumb-zone');
             if (firstZone) cid = parseInt(firstZone.dataset.cardId);
         }
         if (!cid) { App.showToast('未找到目标词卡','warning'); return; }
@@ -766,7 +795,7 @@ App.sc._pickFromMediaLib = async function(filename) {
         // 优先使用右键传入的目标词卡ID，否则找第一个可见词卡
         var cid = targetCardId;
         if (!cid) {
-            var firstZone = document.querySelector('#scPickerCards .wc-card-thumb-zone');
+            var firstZone = document.querySelector('#scPickerCards .s2-card-thumb-zone');
             if (firstZone) cid = parseInt(firstZone.dataset.cardId);
         }
         if (cid) {

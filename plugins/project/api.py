@@ -915,6 +915,26 @@ ASSET_TYPES = ["script", "character", "scene", "prompt_template", "ref_image", "
 @router.get("/master/{master_id}/assets")
 def list_assets(master_id: int, asset_type: Optional[str] = Query(None), sub_project_id: Optional[int] = Query(None)):
     db = _ro()
+    # Phase36: 角色/场景 走 project_role 新体系（旧 master_asset character/scene 已弃用）
+    if asset_type in ("character", "scene"):
+        rows = db.execute(
+            "SELECT id, name, role_type, notes, cover_image, current_version_id, version_count, review_status FROM project_role WHERE master_project_id=? AND role_type=? ORDER BY sort_order, id",
+            [master_id, asset_type]).fetchall()
+        assets = []
+        for r in rows:
+            assets.append({
+                "id": 900000 + r["id"],
+                "asset_type": r["role_type"],
+                "name": r["name"],
+                "description": f"v{r['version_count']} · {r['review_status'] or 'draft'}" + (f" 备注:{r['notes']}" if r["notes"] else ""),
+                "content": "",
+                "image_path": f"/api/roles/{r['id']}/cover" if r["cover_image"] else "",
+                "word_card_id": 0,
+                "tags": "[]",
+                "_source": "project_role",
+                "_real_id": r["id"],
+            })
+        return {"ok": True, "assets": assets}
     sql = "SELECT * FROM master_asset WHERE master_project_id=?"
     params = [master_id]
     if asset_type: sql += " AND asset_type=?"; params.append(asset_type)

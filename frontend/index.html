@@ -18,22 +18,22 @@
 <body>
     <header class="navbar-tool">
         <button class="header-btn" id="btnMenu" onclick="App.toggleMobileMenu()" style="display:none;" title="菜单" data-i18n-title="nav.menu" data-i18n-title-zh="菜单"><i class="bi bi-list"></i></button>
-        <div class="brand" onclick="App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> <span data-i18n="nav.brand" data-i18n-zh="咪卡Mik词库">咪卡Mik词库</span> <small id="brandVersion">5.0.0</small></div>
+        <div class="brand" onclick="App.switchAllGroups?App.switchAllGroups():App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> <span data-i18n="nav.brand" data-i18n-zh="咪卡Mik词库">咪卡Mik词库</span> <small id="brandVersion">5.0.0</small></div>
         <div class="search-box" id="globalSearchBox"><input type="text" id="searchInput" placeholder="搜索提示词，Ctrl+F 快速定位" autocomplete="off" data-i18n-placeholder="search.placeholder" data-i18n-placeholder-zh="搜索提示词，Ctrl+F 快速定位"><i class="bi bi-search search-icon"></i><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()" title="切换搜索模式" data-i18n-title="search.mode.toggle" data-i18n-title-zh="切换搜索模式">🔤</button></div>
         <div class="header-actions">
             <!-- ↓ 下拉: 管理 -->
             <div class="nav-dropdown" id="navDropdownLibrary">
-                <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownLibrary')" title="管理"><i class="bi bi-collection"></i><span class="nav-dd-text">管理</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
+                <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownLibrary')" title="词库"><i class="bi bi-collection"></i><span class="nav-dd-text">词库</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
                 <div class="nav-dropdown-menu">
                     <div class="nav-dropdown-item" onclick="App.toggleEditMode()"><i class="bi bi-pencil"></i> 词卡编辑</div>
-                    <div class="nav-dropdown-item" onclick="App.switchView('collections')"><i class="bi bi-bookmark-star"></i> 收藏夹 <span class="nav-dd-badge" id="collectionBadgeDD" style="display:none;">0</span></div>
-                    <div class="nav-dropdown-item" onclick="App.switchView('wordpacks')"><i class="bi bi-folder"></i> 自定义词包 <span class="nav-dd-badge" id="wordpackBadgeDD" style="display:none;">0</span></div>
+                    <div class="nav-dropdown-item" onclick="App.switchView('collections')"><i class="bi bi-bookmark-star"></i> 词卡收藏 <span class="nav-dd-badge" id="collectionBadgeDD" style="display:none;">0</span></div>
                     <div class="nav-dropdown-item" onclick="App.switchView('history')"><i class="bi bi-clock-history"></i> 最近使用</div>
                     <div class="nav-dd-sep"></div>
                     <div class="nav-dropdown-item" onclick="App.switchView('atom_editor')"><i class="bi bi-puzzle" style="color:#f59e0b;"></i> 原子引擎</div>
                     <div class="nav-dropdown-item" onclick="App.switchView('wcmanager')"><i class="bi bi-grid-3x3-gap-fill"></i> 词卡管理</div>
-                    <div class="nav-dropdown-item" onclick="App.switchView('v4media')"><i class="bi bi-images"></i> 媒体资产</div>
-                    <div class="nav-dropdown-item" onclick="App.switchView('trash')"><i class="bi bi-trash"></i> 回收站</div>
+                    <div class="nav-dropdown-item" onclick="App.openPlayground()"><i class="bi bi-cpu"></i> 词卡优化</div>
+                    <div class="nav-dropdown-item" onclick="App.openScreenshotImport()"><i class="bi bi-camera"></i> 截图导入</div>
+                    <div class="nav-dropdown-item" onclick="App.switchView('trash')"><i class="bi bi-trash"></i> 词卡回收</div>
                     <div class="nav-dd-sep"></div>
                     <span id="pluginNavDropdownItems"></span>
                 </div>
@@ -54,15 +54,22 @@
             <div class="nav-dropdown" id="navDropdownTools">
                 <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownTools')" title="系统工具"><i class="bi bi-gear"></i><span class="nav-dd-text">工具</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
                 <div class="nav-dropdown-menu">
-                    <div class="nav-dropdown-item" onclick="App.openPlayground()"><i class="bi bi-cpu"></i> LLM Playground</div>
-                    <div class="nav-dropdown-item" onclick="App.showBackupInfo()"><i class="bi bi-database"></i> 数据库备份</div>
+                    <div class="nav-dropdown-item" onclick="App.showBackupInfo()"><i class="bi bi-database"></i> 数据备份</div>
                     <div class="nav-dropdown-item" onclick="App.showSyncPanel()"><i class="bi bi-arrow-left-right"></i> 数据同步</div>
                     <div class="nav-dropdown-item" onclick="App.monitor.open()"><i class="bi bi-speedometer2"></i> 服务监测</div>
-                    <div class="nav-dropdown-item" onclick="App.showDashboard()"><i class="bi bi-bar-chart"></i> 统计仪表盘</div>
-                    <div class="nav-dropdown-item" onclick="App.openScreenshotImport()"><i class="bi bi-camera"></i> 截图导入</div>
-                    <div class="nav-dropdown-item" onclick="App.openComfyConfig()"><i class="bi bi-link-45deg"></i> ComfyUI 配置</div>
+                    <div class="nav-dropdown-item" onclick="App.openComfyConfig()"><i class="bi bi-puzzle"></i> 扩展工具</div>
                     <div class="nav-dd-sep"></div>
                     <div class="nav-dropdown-item admin-only" onclick="window.open('/cover_editor.html','_blank')"><i class="bi bi-palette"></i> 封面编辑</div>
+                </div>
+            </div>
+
+            <!-- ↓ 下拉: 项目管理（项目看板 + 项目资产；已合并旧 v4media 入口去冗余） -->
+            <div class="nav-dropdown" id="navDropdownProject">
+                <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownProject')" title="项目管理"><i class="bi bi-kanban"></i><span class="nav-dd-text">项目</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
+                <div class="nav-dropdown-menu">
+                    <div class="nav-dropdown-item" onclick="if(window.PK)PK.open();else if(window.__PK_PLUGINS__&&__PK_PLUGINS__._views&&__PK_PLUGINS__._views.project_mgmt)__PK_PLUGINS__._views.project_mgmt();if(window.App&&App._collapseSidebar)App._collapseSidebar();"><i class="bi bi-kanban" style="color:#3b82f6;"></i> 项目看板</div>
+                    <div class="nav-dropdown-item" onclick="if(window.PK_ASSETLIB)PK_ASSETLIB.open()"><i class="bi bi-box-seam" style="color:#8b5cf6;"></i> 项目资产</div>
+                    <div class="nav-dropdown-item" onclick="if(window.PK_ROLES)PK_ROLES.open()"><i class="bi bi-people" style="color:#ec4899;"></i> 项目角色</div>
                 </div>
             </div>
 
@@ -100,7 +107,7 @@
             <button class="btn-batch" onclick="App.batchExport('md')" id="btnBatchExportMd" style="border-color:#10b981;color:#10b981;"><i class="bi bi-markdown"></i> MD</button>
             <button class="btn-batch" onclick="App.batchExport('json')" id="btnBatchExportJson" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-file-code"></i> JSON</button>
             <button class="btn-batch" onclick="App.batchExport('pt')" id="btnBatchExportPt" style="border-color:#06b6d4;color:#06b6d4;"><i class="bi bi-box"></i> .pt</button>
-            <button class="btn-batch" onclick="App.batchAddToWordpack()" id="btnBatchAddWordpack"><i class="bi bi-folder-plus"></i> 添加到词包</button>
+            <button class="btn-batch" onclick="App.batchAddToCollection()" id="btnBatchAddColl"><i class="bi bi-bookmark-plus"></i> 添加到收藏</button>
             <button class="btn-batch" onclick="App._wcBatchMove()" id="btnBatchWcMove" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-arrow-right-circle"></i> 批量移动</button>
             <button class="btn-batch" onclick="App.batchGenerateThumbnails()" id="btnBatchAiThumb" style="border-color:#8b5cf6;color:#8b5cf6;"><i class="bi bi-magic"></i> AI 批量生成缩略图</button>
             <button class="btn-batch" onclick="App._batchNewWordCard()" id="btnBatchNewCard" style="border-color:#22c55e;color:#22c55e;"><i class="bi bi-plus-lg"></i> 新建词条</button>
@@ -125,6 +132,8 @@
             </div>
         </div>
         <div id="viewAdminUsers" class="view-panel" style="display:none;"></div>
+        <div id="viewProjectAssets" class="view-panel" style="display:none;"></div>
+        <div id="viewProjectRoles" class="view-panel" style="display:none;"></div>
         <div id="viewHome" class="view-panel">
             <div id="viewHomeTop" class="view-home-top">
                 <div id="categoryTabs"></div>
@@ -152,7 +161,7 @@
             </div>
         </div>
         <div id="viewCollections" class="view-panel">
-            <div class="page-header"><h3><i class="bi bi-bookmark-star"></i> 收藏夹</h3><button class="btn btn-primary btn-sm" onclick="App.showCreateCollectionModal()"><i class="bi bi-plus-lg"></i> 新建分组</button></div>
+            <div class="page-header"><h3><i class="bi bi-bookmark-star"></i> 词卡收藏</h3><button class="btn btn-primary btn-sm" onclick="App.showCreateCollectionModal()"><i class="bi bi-plus-lg"></i> 新建分组</button></div>
             <div class="view-scroll">
             <div id="collectionGroups" class="collection-grid"></div>
             <div id="collectionItems" style="display:none;"><button class="btn btn-outline-secondary btn-sm mb-3" onclick="App.backToCollections()"><i class="bi bi-arrow-left"></i> 返回分组列表</button><div id="collectionItemList"></div><div id="collectionPagination" class="pagination-bar"></div></div>
@@ -169,7 +178,7 @@
             <div class="page-header"><h3><i class="bi bi-clock-history"></i> 最近使用</h3><button class="btn btn-outline-danger btn-sm" onclick="App.clearHistory()" title="清空历史"><i class="bi bi-trash"></i> 清空</button></div><div class="view-scroll"><div id="historyList"></div></div>
         </div>
         <div id="viewTrash" class="view-panel">
-            <div class="page-header"><h3><i class="bi bi-trash"></i> 回收站</h3>
+            <div class="page-header"><h3><i class="bi bi-trash"></i> 词卡回收</h3>
                 <div style="display:flex;gap:8px;">
                     <button class="btn btn-sm btn-outline-primary" onclick="App.restoreAllTrash()" id="btnRestoreAllTrash" style="display:none;"><i class="bi bi-arrow-counterclockwise"></i> 全部恢复</button>
                     <button class="btn btn-sm btn-outline-danger" onclick="App.emptyTrash()" id="btnEmptyTrash" style="display:none;"><i class="bi bi-trash3"></i> 清空回收站</button>
@@ -554,7 +563,7 @@
     <div class="modal-overlay" id="modalBackup" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:500px;">
             <div class="modal-header">
-                <h5><i class="bi bi-database"></i> 数据库备份</h5>
+                <h5><i class="bi bi-database"></i> 数据备份</h5>
                 <button class="header-btn-sm" onclick="document.getElementById('modalBackup').style.display='none'">&times;</button>
             </div>
             <div class="modal-body" id="backupInfoBody">
@@ -661,7 +670,7 @@
     <div class="modal-overlay" id="modalComfyUI" style="display:none;z-index:500;" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width:600px;max-height:80vh;display:flex;flex-direction:column;">
             <div class="modal-header">
-                <h5><i class="bi bi-magic"></i> ComfyUI 集成配置</h5>
+                <h5><i class="bi bi-magic"></i> 扩展工具 <span style="font-size:11px;color:var(--text-muted);">ComfyUI 集成</span></h5>
                 <button class="header-btn-sm" onclick="document.getElementById('modalComfyUI').style.display='none'">&times;</button>
             </div>
             <div class="modal-body" style="flex:1;overflow-y:auto;">
@@ -711,7 +720,7 @@
     <div class="modal-overlay" id="modalPlayground" style="display:none;z-index:510;" onclick="if(event.target===this)App._pgClose()">
         <div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:820px;max-height:90vh;display:flex;flex-direction:column;">
             <div class="modal-header">
-                <h5><i class="bi bi-cpu"></i> LLM Playground <span style="font-size:11px;color:var(--text-muted);">— 提示词优化引擎</span></h5>
+                <h5><i class="bi bi-cpu"></i> 词卡优化</h5>
                 <button class="header-btn-sm" onclick="App._pgClose()">&times;</button>
             </div>
             <div class="modal-body" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:16px;">
@@ -966,8 +975,8 @@
         </div>
     </div>
     <!-- #6 预加载大模块，提前发起请求 -->
-    <link rel="preload" href="/static/js/seedance_v2_composer.js?v=90" as="script">
-    <link rel="preload" href="/static/js/app_tools.js?v=9.4" as="script">
+    <link rel="preload" href="/static/js/seedance_v2_composer.js?v=93" as="script">
+    <link rel="preload" href="/static/js/app_tools.js?v=9.5" as="script">
     <link rel="preload" href="/static/js/app_collections.js?v=10.14" as="script">
     <link rel="preload" href="/static/js/app_media.js?v=10.8" as="script">
     <link rel="preload" href="/static/js/word_editor.js?v=12.1" as="script">
@@ -976,17 +985,20 @@
     <script src="/static/js/signal_lights.js?v=5"></script>
     <script src="/static/js/app_core.js?v=13.9"></script>
     <script defer src="/static/js/auth_client.js?v=8"></script>
-    <script defer src="/static/js/admin_users.js?v=1"></script>
+    <script defer src="/static/js/admin_users.js?v=3"></script>
     <script defer src="/static/js/ws_client.js?v=3"></script>
+    <script defer src="/static/js/presence_client.js?v=2"></script>
+    <script defer src="/static/js/asset_library_ui.js?v=8"></script>
+    <script defer src="/static/js/project_roles_ui.js?v=5"></script>
     <script defer src="/static/js/plugin_host.js?v=1"></script>
     <script defer src="/static/js/plugin_license.js?v=1"></script>
     <script defer src="/static/js/app_card_model.js?v=4.1"></script>
-    <script defer src="/static/js/monitor_dashboard.js?v=5"></script>
+    <script defer src="/static/js/monitor_dashboard.js?v=6"></script>
     <script defer src="/static/js/health_check.js?v=5"></script>
     <script defer src="/static/js/app_sync.js?v=9.3"></script>
     <script defer src="/static/js/app_editor.js?v=11.15"></script>
     <script defer src="/static/js/app_collections.js?v=10.14"></script>
-    <script defer src="/static/js/app_tools.js?v=9.4"></script>
+    <script defer src="/static/js/app_tools.js?v=9.5"></script>
     <script defer src="/static/js/app_media.js?v=10.8"></script>
     <script defer src="/static/js/ai_tools.js?v=8"></script>
     <script defer src="/static/js/word_picker.js?v=5"></script>
@@ -996,11 +1008,11 @@
     <script defer src="/static/js/v4_cards.js?v=5"></script>
     <script defer src="/static/js/v3_composer.js?v=9.5"></script>
     <script defer src="/static/js/app_i18n.js?v=10"></script>
-    <script defer src="/static/js/seedance_v2_composer.js?v=90"></script>
+    <script defer src="/static/js/seedance_v2_composer.js?v=93"></script>
     <script defer src="/static/js/composer_wc_bridge.js?v=10"></script>
-    <script defer src="/static/js/character_composer.js?v=4"></script>
+    <script defer src="/static/js/character_composer.js?v=9"></script>
     <script defer src="/static/js/unified_composer.js?v=2"></script>
-    <script defer src="/static/js/scene_composer.js?v=6"></script>
+    <script defer src="/static/js/scene_composer.js?v=11"></script>
     <script defer src="/static/js/scene_bridge.js?v=2"></script>
     <script defer src="/static/js/character_library.js?v=5"></script>
     <script defer src="/static/js/app_search.js?v=5"></script>

@@ -943,11 +943,11 @@
         // 角色 + 场景模板合并为紧凑一行
         h+='<div class="s2-field-group s2-char-scene-row">';
         h+='<span class="s2-field-label" style="color:#8b5cf6;min-width:28px;">角色</span>';
-        h+='<span class="s2-char-selector s2-inline-picker" onclick="App.characterLib.openScenePicker('+s.id+')" onmouseenter="App.seedanceV2._showCharPreview('+(s.character_id||0)+',this)" onmouseleave="App.seedanceV2._hideCharPreview()" title="选择/更换出演角色">';
+        h+='<span class="s2-char-selector s2-inline-picker" onclick="if(window.PK_ROLES)PK_ROLES.shotApply('+s.id+',\'character\');else App.characterLib.openScenePicker('+s.id+')" onmouseenter="App.seedanceV2._showCharPreview('+(s.character_id||0)+',this)" onmouseleave="App.seedanceV2._hideCharPreview()" title="选择角色（本项目实例/公共库）">';
         h+='<span>'+(charName?'🎭 '+App._escape(charName.substring(0,12)):App._t('auto.str_82a32516', '🎭 选择角色'))+'</span>';
         h+='<span style="font-size:9px;">▾</span></span>';
         h+='<span class="s2-field-label" style="color:#10b981;min-width:28px;margin-left:8px;">场景</span>';
-        h+='<span class="s2-char-selector s2-inline-picker" onclick="App.seedanceV2._openSceneProfilePicker('+s.id+')" title="加载场景设定模板">';
+        h+='<span class="s2-char-selector s2-inline-picker" onclick="if(window.PK_ROLES)PK_ROLES.shotApply('+s.id+',\'scene\');else App.seedanceV2._openSceneProfilePicker('+s.id+')" title="选择场景（本项目实例/公共模板）">';
         h+='<span>'+(sceneProfileName?'🏞 '+App._escape(sceneProfileName.substring(0,12)):'🏞 加载场景模板')+'</span>';
         h+='<span style="font-size:9px;">▾</span></span>';
         h+='</div>';

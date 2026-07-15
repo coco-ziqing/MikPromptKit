@@ -63,6 +63,7 @@ from api.atom_filler import router as atom_filler_router
 from api.plugins_api import router as plugins_api_router
 from plugin_manager import get_plugin_manager, init_plugin_system
 from ws_collab import router as ws_collab_router
+from presence import router as presence_router, presence_sweep_loop  # Phase34 实时在线状态
 from sync import (
     export_package, restore_package, import_package,
     list_packages, delete_package, get_package_info,
@@ -254,6 +255,12 @@ async def lifespan(app: FastAPI):
         # 使用当前运行中的 event loop
         loop = _asyncio.get_running_loop()
         loop.create_task(_do_startup_check())
+        # Phase34: 启动在线状态后台巡检（idle/away 推导广播）
+        try:
+            loop.create_task(presence_sweep_loop())
+            print("[在线状态] 巡检任务已启动")
+        except Exception as e:
+            print("[在线状态] 巡检启动失败:", e)
         # v4.0.0-phase11.1: 启动后台持续监听（信号灯）
         try:
             from health import start_watcher
@@ -378,12 +385,21 @@ app.include_router(scene_composer_router)
 app.include_router(atom_filler_router)
 app.include_router(plugins_api_router)
 app.include_router(ws_collab_router)
+app.include_router(presence_router)  # Phase34 实时在线状态
 
 # Phase23: 团队协作 — 用户认证
 from auth import router as auth_router
 app.include_router(auth_router)
 from api.users import router as users_router
 app.include_router(users_router)
+from audit import router as audit_router  # Phase35 用户活动审计日志
+app.include_router(audit_router)
+from api.asset_library import router as asset_library_router  # Phase35.1 项目资产库
+app.include_router(asset_library_router)
+from api.asset_review import router as asset_review_router  # Phase35.2 版本/审核/成员
+app.include_router(asset_review_router)
+from api.project_roles import router as project_roles_router  # Phase36.2 项目角色/场景实例
+app.include_router(project_roles_router)
 from api.cover_api import router as cover_router
 app.include_router(cover_router)
 

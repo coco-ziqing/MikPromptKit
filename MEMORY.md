@@ -1,5 +1,154 @@
 # PromptKit — 提示词检索工具
 
+## 2026-07-14 开发总结（Phase34–36 + 导航/UI统一）
+
+### 开发时间
+10:00–22:56 GMT+8，约 13 小时，一次性完整会话。
+
+### 回归验证
+5 套回归脚本全部通过（presence 11/11, audit 18/18, asset_library 20/20, asset_review 21/21, phase36 18/18），总计 88/88，exit 全 0。
+
+### 新增文件清单
+| 文件 | 用途 |
+|------|------|
+| `backend/presence.py` | 实时在线状态 WS + REST |
+| `frontend/static/js/presence_client.js` | 在线状态客户端 |
+| `backend/audit.py` | 用户活动审计日志 |
+| `backend/api/asset_library.py` | 项目资产库 API（上传/查重/缩略图/备份） |
+| `backend/api/asset_review.py` | 资产版本/审核/成员 |
+| `frontend/static/js/asset_library_ui.js` | 项目资产 UI（模块化网格/版本/审核/溯源/关联） |
+| `backend/api/project_roles.py` | 项目角色/场景实例 API（继承/版本/档案/审核/分镜联动） |
+| `frontend/static/js/project_roles_ui.js` | 项目角色/场景库 UI |
+| `backend/migrate_phase35.py` ~ `phase36_review.py` | 8 个幂等迁移脚本 |
+| `backend/seed_character_groups.py` | 角色词卡分组种子（14 组 110 张） |
+| `backend/seed_scene_groups.py` | 场景词卡分组种子（13 组 102 张） |
+| `backend/gen_wordcard_thumbs.py` | 角色/场景词卡缩略图生成 |
+| `backend/migrate_legacy_media.py` | 旧 v4media 数据在位索引迁移 |
+| `backend/_test_phase36.py` | Phase36 组合回归脚本 |
+
+### 修改文件清单
+- **后端**：`main.py`, `auth.py`, `api/users.py`, `api/logs.py`, `api/v2.py`, `audit.py`, `action_logger.py`, `api/character_composer.py`, `api/scene_composer.py`
+- **前端**：`index.html`, `admin_users.js`, `auth_client.js`, `ws_client.js`, `app_tools.js`, `monitor_dashboard.js`, `character_composer.js`, `scene_composer.js`, `seedance_v2_composer.js`, `project_roles_ui.js`
+- **插件**：`plugins/project/__init__.py`, `plugins/project/api.py`, `plugins/project/plugin.json`
+- **停用**：`plugins/asset/` → `plugins/_disabled/asset/`（资产管理专业版已退役）
+
+---
+
+
+## Phase35.2 资产版本管理 + 验证审核 + 团队协作（2026-07-14 下午）
+
+### 迁移 migrate_phase35_2.py（已跑+快照 phase35_2_pre_*.db，FK=0）
+- 新表：`asset_version`(catalog_id/version_no/fingerprint/filename/size/local_rel_path/thumb_path/author/note/status[draft|in_review|approved|rejected]) / `asset_review`(catalog_id/version_id/reviewer/action[submit|approve|reject|comment]/comment) / `project_space_member`(project_space_id/user_id/role[owner|reviewer|editor|viewer], UNIQUE(proj,user))。
+- asset_catalog +current_version_id/+review_status/+version_count。
+- 回填：每项目 owner→owner成员；每资产→v1 版本 + current_version_id。
+
+### 后端 api/asset_review.py（复用 asset_library 辅助）
+- 角色模型（项目内）owner>reviewer>editor>viewer；`_proj_role()` → admin/owner→owner，成员按其role，共享项目非成员默认editor，私有非成员 None。can_edit=owner|editor；can_review=owner|reviewer；can_manage=owner。
+- 端点：GET /api/assets/{cid}(详情+role) ; 版本 GET/POST /api/assets/{cid}/versions(multipart上传新版→version_no+1,状态回 draft,更新catalog指针/指纹/缩略图) + POST /rollback/{vid} + GET /api/versions/{vid}/thumb ; 审核 POST /submit(draft→in_review) / POST /review{approve|reject,comment}(仅 owner|reviewer;approve且backup_policy!=none→is_critical=1,backup_status=backed_up) / POST /comment / GET /reviews ; 成员 GET/POST /api/projects/{pid}/members + DELETE /members/{uid}(仅owner;不能移除owner)。
+- 审计埋点 asset_version/asset_submit/asset_approve/asset_reject/member_add/member_remove（audit.EVENT_DICT 已加中文名）。
+- **修改 asset_library.py**：_can_access +成员可访问被共享的私有项目；list_projects(all) +“我是成员”的项目；**create_project 补 owner 成员行**；**upload_asset 补建 v1 asset_version**（否则新上传资产无版本行）。
+- main.py 注册 asset_review_router。
+
+### 前端 asset_library_ui.js v2(?v=2)
+- 资产卡：左上**审核状态徒章**(草稿/审核中/已通过/已驳回)、左下v版本数、右上★关键；点击缩略图/文件名→详情弹窗。
+- 资产详情弹窗 openAsset：大预览(图/视频/音频/文件图标) + 版本历史(缩略图/当前标记/回滚) + 审核动作(提交/批准/驳回按role显示) + 评论框 + 审核时间线；上传新版本。
+- 项目头部「👥成员」→成员管理弹窗（列表/按用户名+角色添加/移除，仅owner可管）。
+- 验证：JS node --check 通过 / 服务200 / 含 openAsset+openMembers。需强刷拿 v=2。
+
+### 验证（重启8080后端到端 21/21）
+建私有项目/上传v1/版本1+draft/上传v2/版本2/回滚/提交in_review/非成员404/加reviewer成员/成员可访问/reviewer批准→approved/批准后is_critical=1/审核记录含submit+approve/评论/无关用户404/成员=owner+reviewer/非owner加成员403/移除成员/移除后不可访/不能移除owner/删项目 均PASS。
+
+### 部署/注意
+- reload=False，已重启 8080（日志 backend/_p352_startup.log）。静态资源免重启，强刷拿 asset_library_ui.js?v=2。
+- 回归：python backend\_test_asset_review.py（注意：测试脚本中参数名用 tk 而非 token，否则写入时 token=None 会被密钥掩码成 *** 导致语法错）。
+- 待办：35.3 设备盘索引(M-Agent推荐/M-FSA需HTTPS)+自检+分级备份/恢复；35.4 DCC/AI标签/3D预览/批注审阅。
+
+---
+
+## Phase35.0/35.1 多用户工作空间 + 项目内嵌模块化资产库（2026-07-14 中午）
+
+### 已确认决策
+- Q1 混合存储：服务器主盘=关键信息/索引+共享空间；各自设备盘=实际媒体+工程源文件(C4D/AE/PS)。
+- 分级存储：L0索引层(全部指纹/元数据/缩略图) / L1备份层(关键资产真实副本,内容寻址去重) / L2本地层(制作中文件只索引)。"索引≠备份,防丢必须存真实字节"。
+- 分期 35.1服务器托管资产库 → 35.2版本+审核+团队共享 → 35.3本地优先+自检+自愈备份 → 35.4进阶(DCC/AI标签/3D预览/批注审阅)。
+- 方案文档：PLAN_Phase35_user_workspace.md + PLAN_Phase35_MAM.md(竞品对比 Connecter/Perforce P4 DAM/Kitsu/Frame.io/immich)。
+
+### 35.0 地基（migrate_phase35.py，已跑+快照）
+新表：user_workspace(owner/name/location[server|device]/storage_root/visibility[private|shared]/is_default) / folder_preset(系统内置+自定义) / project_space(workspace内多项目) / asset_catalog(中心轻索引:fingerprint/perceptual_hash/thumb_path/origin_device/local_rel_path/status)。master_project +可空 workspace_id 回填默认公共空间(id=1)。种子：默认公共工作空间(server/shared) + 系统预设「影视/短视频」7段目录。FK=0。
+
+### 35.1 项目内嵌模块化资产库（服务器托管上传）
+- 迁移 migrate_phase35_1.py：asset_module 字典(14模块 image/video/audio/project_ps·ai·ae·c4d·pr·blender·au/model_3d/doc/subtitle/other，含 default_folder/media_kind/accept_ext) + project_space +modules_json/backup_policy + asset_catalog +module_key/is_critical/backup_status/backup_path。
+- API backend/api/asset_library.py（自持sqlite+get_current_user）：GET /api/asset-modules；项目 POST/GET/GET{id}/PUT/DELETE /api/projects(建项选模块→生成隔离目录;私有→自动建个人私有工作空间,共享→默认公共)；资产 POST /api/projects/{id}/assets(multipart→sha256查重+缩略图[PIL图/ffmpeg视频首帧]+入库;工程文件默认 is_critical=1) / GET assets(列表+按模块计数) / PATCH /api/assets/{cid} / DELETE / GET /api/assets/{cid}/thumb|file(路径限 data/ 内防穿越) / GET /api/projects/{id}/dedup。私有隔离 _can_access(owner/共享/admin)；审计埋点 project_create/delete、asset_upload/delete。
+- 存储：私有 data/workspaces/user{uid}/projects/proj{pid}/<模块目录>/；共享 data/projects/proj{pid}/；缩略图 data/catalog_thumbs/{cid}.jpg。
+- 验证（重启8080后 20/20 PASS）：模块≥14/建私有项目/上传图片生缩略图/图片非关键/查重命中/C4D默认关键/错扩展名被拒/列表计数/缩略图服务/原文件服务/查重报告1组/他人看不到私有/他人访问404/他人上传被拒/删资产/删项目。
+
+### 部署/注意
+- reload=False，已重启 8080（当前 PID 44716，日志 backend/_p351_startup.log）。备份快照 data/backups/phase35_pre_*.db、phase35_1_pre_*.db。回归 python backend\_test_asset_library.py。
+- **前端 UI 已完成（Phase35.1-UI）**：新增 `frontend/static/js/asset_library_ui.js?v=1`（自包含 PK_ASSETLIB，不侵入 78KB 项目插件）+ index.html 加 `#viewProjectAssets` 面板。header 导航注入「📦 项目资产」按钮 → 项目列表(全部/我的/共享筛选,卡片显模块图标/资产数) → 新建项目向导(名称/可见性/备份策略/多选模块) → 项目详情(按模块分区网格,缩略图/星标关键/下载/删除,每模块上传多文件,重复告警,⚙编辑模块,🔍查重弹窗)。静态资源免重启,用户强刷即可。验证：JS node --check 通过 / 服务200 / API 形状一致(14模块,module_info 字段齐)。
+- 待办：35.2 asset_version+asset_review+团队共享；35.3 设备盘索引(M-Agent推荐/M-FSA需HTTPS)+自检+分级备份/恢复。
+
+---
+
+## Phase35-audit 用户活动审计日志 — 账户登录态/关键操作服务端可追溯（2026-07-14 上午）
+
+### 背景/痛点
+旧日志无法归属到账户：`action_logger.py` 写 `user_actions`（前端行为 2219 条）但 **从不填 `actor_id`**（该列早被某迁移 ALTER 加上但没用）；登录/登出只在 `user_sessions`；`/api/logs/*` 无鉴权、无按用户过滤。→ 管理员无法追溯“某账户干了什么”。
+
+### 实现
+| 层 | 文件 | 改动 |
+|----|------|------|
+| 后端 | **新增 `backend/audit.py`** | 专用**服务端权威审计表 `user_audit_log`**(user_id/username/event_type/category/status/detail/target_type/target_id/client_ip/device/ua/created_at + 3 索引)；`record_audit()` 短连接写入、异常不影响主流程；`resolve_actor()` 从 JWT 解析登录者；EVENT_DICT/CATEGORY_NAMES 中文字典；`_parse_device` UA→设备。端点（均 **admin-only**）：`/api/audit/user/{uid}`(审计事件，查询“该账户自己做的 OR 针对该账户做的 target_id”) / `/user/{uid}/actions`(前端行为 actor_id 过滤) / `/user/{uid}/sessions`(登录会话+设备) / `/user/{uid}/summary`(首末登录/次数/失败数/最近活动/分类计数/当前在线态) / `/feed`(全局) / `/event-types` |
+| 后端埋点 | `auth.py` | login(成功)/login_failed(三种失败:用户不存在/禁用/密码错)/logout/register 均 `record_audit` |
+| 后端埋点 | `api/users.py` | update(区分 user_toggle/password_reset/user_update+变更字段) / delete(user_delete,删前取名) / batch-toggle |
+| 后端 | `action_logger.py` + `api/logs.py` | `record_action` 新增 `actor_id` 参数并写入；`/api/logs/action(s)` 从 token 解析 `_actor_id(request)` → 给前端行为补齐账户归属 |
+| main.py | 注册 | `include_router(audit_router)` |
+| 前端 | `admin_users.js` **v3(?v=2)** | 用户卡新增「📜 日志」按钮 → `openLog(uid,name)` 弹窗：顶部概览chips(当前在线态接 PK_PRESENCE/最后登录/登录次数/失败/最近活动/审计数/行为数) + 三标签【审计事件/操作行为/登录会话】+ 搜索/分类筛选 + 分页“加载更多”；图标化行渲染，失败/错误红色。走全局 fetch 拦截器自动带 token |
+
+### 验证（重启 8080 后，端到端 18/18）
+注册→错密码登录被拒→正确登录→审计含login/login_failed/register→summary(登录次数/失败数/最后登录)→会话历史含device→改角色(user_update)→停用(user_toggle)→非管理员403→feed→删除(user_delete) 均 PASS。关键修正：`/user/{uid}` 列表按 `(user_id=? OR (target_type='user' AND target_id=?))`，使管理员对该账户的操作也能在该账户日志里看到。
+
+### 部署/注意
+- **reload=False**，已重启 8080（当前 PID 45680，日志 `backend/_audit_startup.log`）。管理员需强刷拿 v=2 的 admin_users.js。
+- 回归测试：`python backend\_test_audit.py`。
+- 历史 `user_actions`(2219条) 的 actor_id 仍为 NULL（只能归属今后新行为）；旧登录事件无审计记录（只有 user_sessions）。
+
+### 遗留/可扩展
+- 项目/素材的 create/update/delete 已定义 event_type 但**尚未在各业务端点埋点**（待 Phase35 工作空间阶段一并接）。
+- 可加：日志导出 CSV、保留期/自动清理、可疑登录告警。
+
+---
+
+## Phase34 实时在线状态（Presence）— 局域网多账户实时在线态（2026-07-14 上午）
+
+### 背景/痛点
+“在线状态”之前全是假的：`auth_client.js` 用户菜单/个人详情里的“🟢 在线”是**写死的静态文本**（只对自己显、永远绿）；`admin_users.js` 只显 `is_active`(账户启停)+`last_login_at`(静态时间戳)；`ws_collab.py` 的 `_online_users` 只跟踪进入某项目协作房间的用户，`_notif_conns` 只做定向推送不向全体广播。→ 局域网多账户登录时，谁真在线/什么状态前端看不出。
+
+### 实现（独立通道，零侵入 Phase29 通知）
+| 层 | 文件 | 改动 |
+|----|------|------|
+| 后端 WS | **新增 `backend/presence.py`** | 独立 `/ws/presence?token=JWT` 通道；JWT 鉴权（以 token 内 user_id 为准）；连接池 `_conns{uid:{cid:{ws,client_ip,device,connected_at,last_active}}}` 支持**一用户多设备/多标签**聚合；`_derive_status` 状态机 online(<90s)/idle(90-300s)/away(>300s 或手动)/busy(手动)/offline(无连接)；`_parse_device` 从 UA 解析设备(iPhone·Safari / Windows·Edge...)；任一变化 `_broadcast` 向全体广播 `presence_update`/`presence_offline`；`presence_sweep_loop()` 每 15s 巡检推导 idle/away 跨阈广播 |
+| 后端 API | presence.py | `GET /api/presence` 快照(首屏/降级轮询/管理页初始化)；`POST /api/presence/status` 手动设自身 online/away/busy |
+| main.py | 注册 | `include_router(presence_router)` + lifespan `loop.create_task(presence_sweep_loop())` |
+| 前端 | **新增 `frontend/static/js/presence_client.js`** | 登录即连、常驻；25s 心跳 ping；监听 mousemove/keydown/scroll/touch/visibility 节流(≤20s)发 `active`；收 snapshot/presence_update/presence_offline 维护 `_users` 并派 `pk:presence` 事件；**header 在线人数指示器**(绿点+计数，点击弹出在线列表：头像/状态色点/角色/设备/在线时长)；指数退避重连 |
+| 前端 | `admin_users.js` | 每张用户卡头像右下实时状态点 + meta 行实时徒章(🟢在线/🟡空闲/⚪离开/🔴忙碌/⚫离线 + 设备)；订阅 `PK_PRESENCE.on()` 无刷新更新；统计栏新增“🌐在线 N” |
+| 前端 | `auth_client.js` | 登出时 `PK_PRESENCE.disconnect()` + 移除指示器 |
+| 前端 | `index.html` | 引入 `presence_client.js?v=1`（在 ws_client.js 后） |
+
+### 验证（重启 8080 后，多账户 WS 端到端 11/11）
+A首屏snapshot(self_id) / A快照含自己online / A实时收B上线 / B手动busy广播到A / B恢复online / A收C(张鹏,admin)上线 / REST快照含1,2,10且total=3 / 含设备信息 / B断开→A收presence_offline / A多标签connection_count=2 / A关一标签仍online(count=1)。状态机单测：now→online/120s→idle/400s→away/manual busy/no conn→offline 均正确。
+
+### 部署/注意
+- **reload=False**，已重启 8080（杀 PID 38028 → `python backend\main.py` 后台，日志 `backend/_presence_startup.log`）。旧前端客户端需**强刷**才会加载 presence_client.js 并连 presence 通道。
+- 本机 IP 192.168.0.101；自检提示防火墙未配置 8080（旧提示，不影响本次）。
+- 回归测试：`python backend\_test_presence.py`（需 websockets 库）。
+
+### 遗留/可扩展
+- idle/away 阈值写死(90s/300s)，可做成配置。
+- 可选：在在线列表里显“当前所在页面/项目”（需客户端上报当前视图）；可接 admin “强制下线/踢出”。
+- 与 Phase29 通知通道完全解耦（每客户端登录后现持有 collab(仅项目页)+notif+presence 最多 3 条 WS）。
+
+---
+
 ## Phase32 P4 后期音频资产接入（2026-07-13 晚）
 
 ### 背景
@@ -921,9 +1070,9 @@ with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as zf:
 | 新增 `body.dark-theme` 选择器 | 28 处 |
 | HTML 内联类覆盖 | 1 处（`#headerStats`） |
 
-## Promoted From Short-Term Memory (2026-07-12)
+## Promoted From Short-Term Memory (2026-07-15)
 
-<!-- openclaw-memory-promotion:memory:memory/2026-05-31.md:67:86 -->
-- 5. **批次模式 PNG 导出命名** — `batchExport('png')` 也走命名弹窗，与 .pt 一致 6. **`_doExportPreview()` 统一命名** — 预览导出也使用 `_makeExportFilename` 7. **`doExport()` PNG 命名修复** — 单条 PNG 导出使用 `_makeExportFilename`，批量引用命名弹窗 ### 取消的方案 - 曾尝试用 `showDirectoryPicker()` 获取 `_exportDirHandle` 并直接写入 → ✅ 已实现 - 旧方案用 `prompt()` 输入文本作为标识 → ❌ 已替换为真实目录选择 ### 当前状态 - 未解决：Firefox/Safari 不支持 `showDirectoryPicker()`，降级为浏览器下载 - 已解决：`_pickExportPath` 函数内重复/多余的大括号（line 1220 `},`）已清理 - 需要后续关注：Chrome 在混用 `showDirectoryPicker` 和 `createObjectURL` 时，大文件可能触发 QuotaExceededError（目前 ZIP 包 < 50MB 无问题） ### 待办 - [ ] v3.0.0.3 release: database auto-backup, console.log cleanup - [ ] 测试 Firefox/Safari 降级下载路径 - [ ] 考虑 `showSaveFilePicker` 替代方案（用户直接选保存位置而非目录） [score=0.869 recalls=3 avg=1.000 source=memory/2026-05-31.md:67-86]
-<!-- openclaw-memory-promotion:memory:memory/2026-07-07.md:4:4 -->
-- 修复新建词卡从创建→保存→删除→回收站→恢复/永久删除的完整生命周期故障，共 **15 项修复**，涉及前端 5 文件、后端 1 文件。 [score=0.851 recalls=0 avg=0.620 source=memory/2026-07-07.md:4-4]
+<!-- openclaw-memory-promotion:memory:memory/2026-07-10.md:1:37 -->
+- # 2026-07-10 — Phase18 完整交付 + 暂停开发 ## 开始时间: 12:05 GMT+8 ## 结束时间: 14:24 GMT+8 ## 总耗时: ~2.5小时 --- ## 一、架构方案确认（用户决策） | # | 决策 | 结论 | |---|------|------| | 1 | 开源协议 | MIT | | 2 | 个人版 | 买断 ¥299（项目管理 + 资产管理） | | 3 | 团队版 | 订阅 ¥99/月 ¥999/年（+团队协作 ≤5席） | | 4 | License | 个人版=离线RSA+机器指纹 / 团队版=在线+14天宽限期 | | 5 | 多用户 | 纯本地局域网 + 预埋远程Tailscale/Relay | | 6 | 旧数据 | user_id=NULL → 全局共享 | | 7 | 试用期 | 14天全功能 | | 8 | 全包价 | ¥399/年 | | 9 | 能力边界 | 仅提示词管理+辅助预览，不生成最终图片/视频 | --- ## 二、Phase18 — 6项任务全部完成 ### #1 插件管理器核心 **文件**: `backend/plugin_manager.py` (720行) - PluginLoader / PluginRegistry / PluginManifest / PromptKitPlugin 基类 - 生命周期: discover → load → enable → disable → unload → reload - Hook 系统 + API Router 挂载 + 静态文件服务 - `plugins/example_plugin/`: plugin.json + __init__.py 完整开发模板 - 测试验证: 发现1个/加载/启用/禁用/重载全部通过 ### #2 数据库迁移系统 **文件**: `backend/db_migrate_phase18.py` (420行) - 幂等迁移: 可安全重复执行 [score=0.913 recalls=4 avg=1.000 source=memory/2026-07-10.md:1-37]
+<!-- openclaw-memory-promotion:memory:memory/2026-06-07.md:53:77 -->
+- | 前端 JS 模块 (新) | 4 个 (v4_library + v4_cards + v4_editor + composer) | | Git tags (今日) | 5 个 (v3.10.30 + v4 phase1-4) | ### 安装的 ClawHub 技能 - `page-builder` (v2.0.2) — WebUI 页面生成 - `api-tester` (v1.0.0) — API 自动化测试 - `log-analyzer` (v1.0.0) — 日志/报错分析 - `bug-fixer` (v1.0.0) — Bug 自动修复 ## 当前项目状态 | 指标 | 数据 | |------|------| | 数据库词条 | 213 条 | | 画风词库 | 8 类 58 种 | | 负面词库 | 10 类 74 条 | | 后端 API 端点 | ~115 个 | | 前端 JS 源码 | ~5,700 行 (app.js) + 354 行 (seedance_v2_composer.js) | | 最新备份 | prompts_20260607_145634.db | ## 下次打开建议 1. 读取 `MEMORY.md` + `HEARTBEAT.md` 恢复上下文 2. 启动服务：`.\QUICK_START.bat` 3. 如需完整 .pkb 备份，运行同步面板导出 4. 关注：组装器 UI 响应式优化、多项目切换流畅度 [score=0.891 recalls=3 avg=1.000 source=memory/2026-06-07.md:53-77]
