@@ -938,7 +938,7 @@ def delete_sub_project(sub_id: int):
 # Phase22 — 资产 (master_asset)
 # ============================================================
 
-ASSET_TYPES = ["script", "character", "scene", "prompt_template", "ref_image", "bgm", "sfx", "other"]
+ASSET_TYPES = ["script", "prompt_template", "ref_image", "bgm", "sfx", "other"]
 
 @router.get("/master/{master_id}/assets")
 def list_assets(master_id: int, asset_type: Optional[str] = Query(None), sub_project_id: Optional[int] = Query(None)):
