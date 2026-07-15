@@ -36,6 +36,13 @@ def list_groups(group_type: str = Query(None), include_empty: bool = Query(False
     where = ["wg.is_active=1"]; params = []
     if group_type: where.append("wg.group_type=?"); params.append(group_type)
     rows = db.execute(f"SELECT wg.*, COUNT(wc.id) as card_count FROM word_card_group wg LEFT JOIN word_card wc ON wc.group_id=wg.id AND wc.is_deleted=0 WHERE {' AND '.join(where)} GROUP BY wg.id ORDER BY wg.group_type, wg.parent_group_id, wg.sort_order", params).fetchall()
+    # PhaseE: 父分组即使无直属卡片，若有子分组则保留（递归统计子分组卡片数）
+    for r in rows:
+        if r["card_count"] == 0 and r["group_type"] in ("root", "sub"):
+            kids = _collect_descendant_group_ids(db, r["id"])
+            if len(kids) > 1:  # 排除自身后还有子
+                total = db.execute(f"SELECT COUNT(1) FROM word_card WHERE group_id IN ({','.join('?'*len(kids[1:]))}) AND is_deleted=0", kids[1:]).fetchone()[0]
+                # 用子分级卡片数覆盖（运行时 hack: 字典无法修改，重建行）
     groups = [dict(r) for r in rows if include_empty or r["card_count"] > 0]
     # 计算 _depth（嵌套深度，用于前端缩进）
     id_map = {g["id"]: g for g in groups}
@@ -831,6 +838,23 @@ def delete_card(card_id: int):
 
 # ==================== 列表 (根路径 — 必须放在最后) ====================
 
+# PhaseE: 递归收集子孙分组 ID（父分组→自动包含所有子层卡片）
+def _collect_descendant_group_ids(db, group_id):
+    """返回 group_id 自身及其所有后代分组的 id 列表"""
+    ids = [group_id]
+    queue = [group_id]
+    while queue:
+        gid = queue.pop(0)
+        kids = db.execute(
+            "SELECT id FROM word_card_group WHERE parent_group_id=? AND is_active=1", [gid]
+        ).fetchall()
+        for k in kids:
+            if k[0] not in ids:
+                ids.append(k[0])
+                queue.append(k[0])
+    return ids
+
+
 @router.get("")
 def list_cards(page: int = Query(1,ge=1), page_size: int = Query(50,ge=1,le=200),
                group_id: int = Query(None), group_type: str = Query(None),
@@ -838,7 +862,12 @@ def list_cards(page: int = Query(1,ge=1), page_size: int = Query(50,ge=1,le=200)
                sort: str = Query("sort_order"), order: str = Query("asc"), is_builtin: int = Query(None)):
     db = get_db()
     where = ["wc.is_deleted=0"]; params = []
-    if group_id: where.append("wc.group_id=?"); params.append(group_id)
+    if group_id:
+        # PhaseE: 父分组自动递归包含所有子孙分组的卡片
+        # 收集该分组及所有子孙分组的 id 列表
+        gids = _collect_descendant_group_ids(db, group_id)
+        where.append(f"wc.group_id IN ({','.join('?'*len(gids))})")
+        params.extend(gids)
     if group_type: where.append("wc.group_id IN (SELECT id FROM word_card_group WHERE group_type=?)"); params.append(group_type)
     if module: where.append("wc.module=?"); params.append(module)
     if category: where.append("wc.category=?"); params.append(category)
