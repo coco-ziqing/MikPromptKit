@@ -252,6 +252,12 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 print(f"  [SKIP] Playground: {e}")
             print("[自检] 完成 — 浏览器访问 /api/health/check 查看详情\n")
+            # 2026-07-15: 审计日志保留期清理（config.audit_retention_days，0=不清理）
+            try:
+                from audit import apply_retention as _ar
+                _ar()
+            except Exception as _e:
+                print(f"  [SKIP] 审计保留期清理: {_e}")
         # 使用当前运行中的 event loop
         loop = _asyncio.get_running_loop()
         loop.create_task(_do_startup_check())

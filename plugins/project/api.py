@@ -6,7 +6,7 @@ com.promptkit.project API路由 v1.1.0
 新增: 任务详情/编辑弹窗支持/任务跨列移动/任务关联镜头/里程碑编辑/列编辑/甘特时间轴/项目CRUD
 """
 import json, os, sqlite3, time
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, Request
 from typing import Optional
 
 router = APIRouter(tags=["项目管理插件"])
@@ -26,6 +26,15 @@ def _rw():
 
 def _rows(rows):
     return [dict(r) for r in rows]
+
+def _audit(event, request, detail="", target_type="", target_id=None, status="ok"):
+    """审计埋点（异常不影响主流程）：复用 backend/audit.py 服务端权威审计表"""
+    try:
+        from audit import record_audit
+        record_audit(event, request=request, detail=detail,
+                     target_type=target_type, target_id=target_id, status=status)
+    except Exception:
+        pass
 
 def _safe_commit(db, max_retries=5):
     """WAL 模式下重试提交"""
@@ -60,7 +69,7 @@ def get_project(project_id: int):
                       "member_count": mems}}
 
 @router.put("/project/{project_id}")
-def update_project(project_id: int, data: dict = Body(...)):
+def update_project(project_id: int, request: Request, data: dict = Body(...)):
     db = _rw()
     try:
         proj = db.execute("SELECT id FROM user_project WHERE id=?", [project_id]).fetchone()
@@ -70,15 +79,17 @@ def update_project(project_id: int, data: dict = Body(...)):
                 db.execute(f"UPDATE user_project SET {k}=?,updated_at=datetime('now','localtime') WHERE id=?",
                            [data[k], project_id])
         db.commit()
+        _audit("project_update", request, detail=f"修改分镜项目字段: {','.join(k for k in data if k)}",
+               target_type="user_project", target_id=project_id)
         return {"ok": True}
     finally: db.close()
 
 @router.delete("/project/{project_id}")
-def delete_project(project_id: int):
+def delete_project(project_id: int, request: Request):
     """删除 seedance 镜头项目（手动级联清理分镜及关联，因运行时 FK 未开启）"""
     db = _rw()
     try:
-        proj = db.execute("SELECT id FROM user_project WHERE id=?", [project_id]).fetchone()
+        proj = db.execute("SELECT id, name FROM user_project WHERE id=?", [project_id]).fetchone()
         if not proj: raise HTTPException(404, "项目不存在")
         def _try(sql, p=()):
             try: db.execute(sql, p)
@@ -91,6 +102,8 @@ def delete_project(project_id: int):
         _try("DELETE FROM user_project_scene WHERE project_id=?", [project_id])
         db.execute("DELETE FROM user_project WHERE id=?", [project_id])
         db.commit()
+        _audit("project_delete", request, detail=f"删除分镜项目「{proj['name']}」",
+               target_type="user_project", target_id=project_id)
         return {"ok": True, "message": "项目已删除"}
     finally: db.close()
 
@@ -583,7 +596,7 @@ def get_member(member_id: int):
     return {"ok": True, "member": m}
 
 @router.post("/members")
-def add_member(data: dict = Body(...)):
+def add_member(request: Request, data: dict = Body(...)):
     mid = data.get("master_project_id")
     uid = data.get("user_id")
     role = data.get("role", "viewer")
@@ -607,11 +620,13 @@ def add_member(data: dict = Body(...)):
             "INSERT INTO project_members (master_project_id,user_id,role,real_name,duty,avatar,avatar_color,phone,email,permissions_json) VALUES (?,?,?,?,?,?,?,?,?,?)",
             [mid, uid, role, real_name, duty, avatar, avatar_color, phone, email, perms_json])
         db.commit()
+        _audit("member_add", request, detail=f"总项目#{mid} 添加成员 user#{uid} 角色={role}",
+               target_type="master_project", target_id=mid)
         return {"ok": True}
     finally: db.close()
 
 @router.put("/members/{member_id}")
-def update_member(member_id: int, data: dict = Body(...)):
+def update_member(member_id: int, request: Request, data: dict = Body(...)):
     db = _rw()
     try:
         for k in ["role", "real_name", "duty", "avatar", "avatar_color", "phone", "email"]:
@@ -621,15 +636,21 @@ def update_member(member_id: int, data: dict = Body(...)):
             db.execute("UPDATE project_members SET permissions_json=? WHERE id=?",
                        [json.dumps(data["permissions"], ensure_ascii=False), member_id])
         db.commit()
+        _audit("member_update", request, detail=f"修改成员#{member_id} 字段: {','.join(k for k in data if k)}",
+               target_type="project_member", target_id=member_id)
         return {"ok": True}
     finally: db.close()
 
 @router.delete("/members/{member_id}")
-def remove_member(member_id: int):
+def remove_member(member_id: int, request: Request):
     db = _rw()
     try:
+        m = db.execute("SELECT master_project_id, user_id FROM project_members WHERE id=?", [member_id]).fetchone()
         db.execute("DELETE FROM project_members WHERE id=?", [member_id])
         db.commit()
+        if m:
+            _audit("member_remove", request, detail=f"总项目#{m['master_project_id']} 移除成员 user#{m['user_id']}",
+                   target_type="master_project", target_id=m["master_project_id"])
         return {"ok": True}
     finally: db.close()
 
@@ -711,7 +732,7 @@ def get_master_project(master_id: int):
     return {"ok": True, "project": dict(mp), "sub_projects": subs, "assets": assets, "phase_stats": phase_stats}
 
 @router.post("/master")
-def create_master_project(data: dict = Body(...)):
+def create_master_project(request: Request, data: dict = Body(...)):
     """创建总项目"""
     name = (data.get("name", "")).strip()
     if not name: raise HTTPException(400, "name 必填")
@@ -723,11 +744,13 @@ def create_master_project(data: dict = Body(...)):
              data.get("aspect_ratio", "16:9"), data.get("resolution", "4K")])
         db.commit()
         mid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        _audit("project_create", request, detail=f"创建总项目「{name}」",
+               target_type="master_project", target_id=mid)
         return {"ok": True, "id": mid}
     finally: db.close()
 
 @router.put("/master/{master_id}")
-def update_master_project(master_id: int, data: dict = Body(...)):
+def update_master_project(master_id: int, request: Request, data: dict = Body(...)):
     """更新总项目"""
     db = _rw()
     try:
@@ -735,6 +758,8 @@ def update_master_project(master_id: int, data: dict = Body(...)):
             if k in data:
                 db.execute(f"UPDATE master_project SET {k}=?,updated_at=datetime('now','localtime') WHERE id=?", [data[k], master_id])
         db.commit()
+        _audit("project_update", request, detail=f"修改总项目字段: {','.join(k for k in data if k)}",
+               target_type="master_project", target_id=master_id)
         return {"ok": True}
     finally: db.close()
 
@@ -768,12 +793,15 @@ def _cascade_delete_master(db, master_id: int):
 
 
 @router.delete("/master/{master_id}")
-def delete_master_project(master_id: int):
+def delete_master_project(master_id: int, request: Request):
     """删除总项目（手动级联清理：子项目/资产/看板/成员/里程碑/邀请/小组/活动）"""
     db = _rw()
     try:
+        mp = db.execute("SELECT name FROM master_project WHERE id=?", [master_id]).fetchone()
         _cascade_delete_master(db, master_id)
         db.commit()
+        _audit("project_delete", request, detail=f"删除总项目「{mp['name'] if mp else master_id}」(级联清理)",
+               target_type="master_project", target_id=master_id)
         return {"ok": True}
     finally: db.close()
 
@@ -950,7 +978,7 @@ def get_asset(asset_id: int):
     return {"ok": True, "asset": dict(a)}
 
 @router.post("/master/{master_id}/assets")
-def create_asset(master_id: int, data: dict = Body(...)):
+def create_asset(master_id: int, request: Request, data: dict = Body(...)):
     a_type = data.get("asset_type", "other")
     name = (data.get("name", "")).strip()
     if not name: raise HTTPException(400, "name 必填")
@@ -968,11 +996,13 @@ def create_asset(master_id: int, data: dict = Body(...)):
              data.get("word_card_id"), max_o])
         db.commit()
         aid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        _audit("asset_upload", request, detail=f"总项目#{master_id} 新建素材「{name}」类型={a_type}",
+               target_type="master_asset", target_id=aid)
         return {"ok": True, "id": aid}
     finally: db.close()
 
 @router.put("/master/assets/{asset_id}")
-def update_asset(asset_id: int, data: dict = Body(...)):
+def update_asset(asset_id: int, request: Request, data: dict = Body(...)):
     db = _rw()
     try:
         for k in ["name", "description", "content", "image_path", "tags", "word_card_id", "sub_project_id", "sort_order"]:
@@ -980,15 +1010,21 @@ def update_asset(asset_id: int, data: dict = Body(...)):
                 val = json.dumps(data[k], ensure_ascii=False) if k == "tags" else data[k]
                 db.execute(f"UPDATE master_asset SET {k}=?,updated_at=datetime('now','localtime') WHERE id=?", [val, asset_id])
         db.commit()
+        _audit("asset_update", request, detail=f"修改素材#{asset_id} 字段: {','.join(k for k in data if k)}",
+               target_type="master_asset", target_id=asset_id)
         return {"ok": True}
     finally: db.close()
 
 @router.delete("/master/assets/{asset_id}")
-def delete_asset(asset_id: int):
+def delete_asset(asset_id: int, request: Request):
     db = _rw()
     try:
+        a = db.execute("SELECT name, master_project_id FROM master_asset WHERE id=?", [asset_id]).fetchone()
         db.execute("DELETE FROM master_asset WHERE id=?", [asset_id])
         db.commit()
+        if a:
+            _audit("asset_delete", request, detail=f"总项目#{a['master_project_id']} 删除素材「{a['name']}」",
+                   target_type="master_asset", target_id=asset_id)
         return {"ok": True}
     finally: db.close()
 

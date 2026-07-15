@@ -14,10 +14,13 @@
   GET /api/audit/user/{uid}/summary    某账户概览（首末登录/次数/最近活动/分类计数）
   GET /api/audit/feed                  全局审计流（管理总览）
   GET /api/audit/event-types           事件类型字典（前端筛选用）
+  GET /api/audit/export                审计日志导出 CSV（支持 uid/分类/事件/天数筛选）
+  GET/POST /api/audit/retention        保留期查看/设置（config: audit_retention_days，0=永久保留）
 """
-import os, sqlite3, time, threading
+import os, sqlite3, time, threading, csv, io
 from datetime import datetime
 from fastapi import APIRouter, Request, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from jwt_auth import get_current_user
 
 router = APIRouter(prefix="/api/audit", tags=["审计日志"])
@@ -41,6 +44,7 @@ EVENT_DICT = {
     "project_update":   ("修改项目", "project"),
     "project_delete":   ("删除项目", "project"),
     "asset_upload":     ("上传素材", "asset"),
+    "asset_update":     ("修改素材", "asset"),
     "asset_delete":     ("删除素材", "asset"),
     "asset_version":    ("新增版本", "asset"),
     "asset_link":       ("关联词卡", "asset"),
@@ -48,6 +52,7 @@ EVENT_DICT = {
     "asset_approve":    ("审核通过", "asset"),
     "asset_reject":     ("审核驳回", "asset"),
     "member_add":       ("添加成员", "project"),
+    "member_update":    ("修改成员", "project"),
     "member_remove":    ("移除成员", "project"),
 }
 CATEGORY_NAMES = {
@@ -324,3 +329,111 @@ def event_types(request: Request):
     return {"ok": True,
             "events": [{"type": k, "name": v[0], "category": v[1]} for k, v in EVENT_DICT.items()],
             "categories": [{"key": k, "name": v} for k, v in CATEGORY_NAMES.items()]}
+
+
+# ============================================================
+# 导出 CSV + 保留期清理（遗留项，2026-07-15）
+# ============================================================
+
+CSV_COLS = ["id", "created_at", "user_id", "username", "event_type", "event_name",
+            "category", "status", "detail", "target_type", "target_id", "client_ip", "device"]
+
+
+@router.get("/export")
+def export_csv(request: Request, uid: int = Query(None), category: str = Query(None),
+               event: str = Query(None), days: int = Query(0, ge=0),
+               search: str = Query(None), limit: int = Query(50000, ge=1, le=200000)):
+    """导出审计日志为 CSV（Excel 可直接打开，utf-8-sig BOM）。筛选同 /feed。"""
+    _require_admin(request)
+    _ensure_init()
+    c = _conn()
+    try:
+        where, params = [], []
+        if uid is not None:
+            where.append("(user_id=? OR (target_type='user' AND target_id=?))"); params += [uid, str(uid)]
+        if category:
+            where.append("category=?"); params.append(category)
+        if event:
+            where.append("event_type=?"); params.append(event)
+        if search:
+            where.append("(detail LIKE ? OR username LIKE ? OR event_type LIKE ?)"); params += [f"%{search}%", f"%{search}%", f"%{search}%"]
+        if days > 0:
+            where.append("created_at >= datetime('now','localtime',?)"); params.append(f"-{days} days")
+        w = ("WHERE " + " AND ".join(where)) if where else ""
+        rows = c.execute(f"SELECT * FROM user_audit_log {w} ORDER BY id DESC LIMIT ?",
+                         params + [limit]).fetchall()
+    finally:
+        c.close()
+
+    buf = io.StringIO()
+    wcsv = csv.writer(buf, lineterminator="\n")
+    wcsv.writerow(CSV_COLS)
+    for r in rows:
+        d = dict(r)
+        d["event_name"] = EVENT_DICT.get(d.get("event_type", ""), (d.get("event_type", ""), ""))[0]
+        wcsv.writerow([d.get(k, "") for k in CSV_COLS])
+    data = "\ufeff" + buf.getvalue()  # BOM 保 Excel 中文不乱码
+    fname = f"audit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(iter([data.encode("utf-8")]), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+def _get_retention_days(c) -> int:
+    try:
+        row = c.execute("SELECT value FROM config WHERE key='audit_retention_days'").fetchone()
+        return int(row["value"]) if row else 0
+    except Exception:
+        return 0
+
+
+def apply_retention() -> dict:
+    """按 config.audit_retention_days 清理过期审计日志（0=不清理）。启动时/设置时调用。"""
+    _ensure_init()
+    try:
+        c = _conn()
+        days = _get_retention_days(c)
+        deleted = 0
+        if days > 0:
+            cur = c.execute("DELETE FROM user_audit_log WHERE created_at < datetime('now','localtime',?)",
+                            [f"-{days} days"])
+            deleted = cur.rowcount
+            c.commit()
+            if deleted:
+                print(f"[Audit] 保留期清理: 删除 {deleted} 条超过 {days} 天的审计记录")
+        c.close()
+        return {"days": days, "deleted": deleted}
+    except Exception as e:
+        print(f"[Audit] retention failed: {e}")
+        return {"days": 0, "deleted": 0, "error": str(e)}
+
+
+@router.get("/retention")
+def get_retention(request: Request):
+    _require_admin(request)
+    _ensure_init()
+    c = _conn()
+    try:
+        days = _get_retention_days(c)
+        row = c.execute("SELECT COUNT(1) n, MIN(created_at) oldest FROM user_audit_log").fetchone()
+        return {"ok": True, "days": days, "total": row["n"], "oldest": row["oldest"]}
+    finally:
+        c.close()
+
+
+@router.post("/retention")
+def set_retention(request: Request, data: dict = None):
+    """设置保留天数并立即执行一次清理。{days: 0=永久保留}"""
+    _require_admin(request)
+    _ensure_init()
+    days = int((data or {}).get("days", 0))
+    if days < 0 or days > 3650:
+        raise HTTPException(400, "days 范围 0-3650")
+    c = _conn()
+    try:
+        c.execute("INSERT INTO config(key,value) VALUES('audit_retention_days',?) "
+                  "ON CONFLICT(key) DO UPDATE SET value=excluded.value", [str(days)])
+        c.commit()
+    finally:
+        c.close()
+    result = apply_retention()
+    return {"ok": True, "days": days, "deleted": result.get("deleted", 0)}

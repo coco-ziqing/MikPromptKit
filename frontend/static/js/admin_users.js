@@ -185,7 +185,9 @@
       var tabBtn = function(k,label){ return '<button class="aum-log-tab" data-tab="'+k+'" onclick="AUM._switchLogTab(\''+k+'\')" style="flex:1;padding:8px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-muted);border-bottom:2px solid transparent;">'+label+'</button>'; };
       ov.innerHTML = '<div class="pk-auth-modal" style="max-width:780px;width:94vw;" onclick="event.stopPropagation()">'+
         '<h4 style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><span>📜 '+_e(name)+' · 活动日志</span>'+
-        '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'aumLogOverlay\').remove()" style="font-size:12px;">✕ 关闭</button></h4>'+
+        '<span style="display:flex;gap:6px;">'+
+        '<button class="btn btn-sm btn-outline-secondary" onclick="AUM.exportLog()" style="font-size:12px;" title="导出该账户审计日志 CSV">⬇ 导出CSV</button>'+
+        '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'aumLogOverlay\').remove()" style="font-size:12px;">✕ 关闭</button></span></h4>'+
         '<div id="aumLogSummary" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>'+
         '<div class="aum-log-tabs" style="display:flex;border-bottom:1px solid var(--border-color);">'+
           tabBtn('audit','🛡 审计事件')+tabBtn('actions','🖱 操作行为')+tabBtn('sessions','🔌 登录会话')+'</div>'+
@@ -202,6 +204,22 @@
     },
 
     _fmtTime: function(t){ return t ? String(t).substring(0,19) : '—'; },
+
+    // 2026-07-15: 导出当前账户审计日志 CSV（经全局 fetch 拦截器自动带 token，blob 下载）
+    exportLog: async function() {
+      var L = this._log; if (!L) return;
+      try {
+        var url = '/api/audit/export?uid='+L.uid+(L.cat?'&category='+L.cat:'')+(L.q?'&search='+encodeURIComponent(L.q):'');
+        var r = await fetch(url);
+        if (!r.ok) { alert('导出失败: HTTP '+r.status); return; }
+        var blob = await r.blob();
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'audit_user'+L.uid+'_'+new Date().toISOString().substring(0,10)+'.csv';
+        document.body.appendChild(a); a.click();
+        setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      } catch(e) { alert('导出失败: '+e.message); }
+    },
 
     _loadLogSummary: async function() {
       var L = this._log; if (!L) return;
