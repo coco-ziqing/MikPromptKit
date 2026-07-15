@@ -54,6 +54,9 @@ EVENT_DICT = {
     "member_add":       ("添加成员", "project"),
     "member_update":    ("修改成员", "project"),
     "member_remove":    ("移除成员", "project"),
+    "device_register":  ("设备注册", "system"),
+    "device_revoke":    ("设备吊销", "system"),
+    "device_backup_done": ("设备备份完成", "system"),
 }
 CATEGORY_NAMES = {
     "auth": "登录认证", "user_admin": "用户管理", "project": "项目",

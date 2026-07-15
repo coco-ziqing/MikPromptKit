@@ -406,6 +406,10 @@ from api.asset_review import router as asset_review_router  # Phase35.2 版本/�
 app.include_router(asset_review_router)
 from api.project_roles import router as project_roles_router  # Phase36.2 项目角色/场景实例
 app.include_router(project_roles_router)
+# Phase35.3 设备盘索引（Agent通道 + 管理通道）
+from api.device_index import agent_router, mgmt_router
+app.include_router(agent_router)
+app.include_router(mgmt_router)
 from api.cover_api import router as cover_router
 app.include_router(cover_router)
 
