@@ -104,6 +104,27 @@ def _cleanup_old_backups():
     return removed
 
 
+def _wal_checkpoint():
+    """WAL 回写合并 — 独立连接，PASSIVE 不阻塞读写，TRUNCATE 清理 WAL 文件"""
+    import sqlite3 as _sqlite3
+    conn = None
+    try:
+        conn = _sqlite3.connect(DB_PATH, timeout=5)
+        conn.execute("PRAGMA busy_timeout=3000")
+        # 先用 PASSIVE 合并已提交页（不阻塞）
+        result = conn.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
+        # 如果 WAL 页≤32，再用 TRUNCATE 彻底清理 WAL 文件，释放磁盘
+        if result and result[2] is not None and result[2] <= 32:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        return True
+    except Exception:
+        return False
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
+
+
 def do_backup() -> dict:
     """执行一次备份，返回结果"""
     global _last_backup_time, _backup_count, _last_error
@@ -117,6 +138,9 @@ def do_backup() -> dict:
     try:
         # 使用文件锁防止并发备份
         lock_path = LOCK_FILE
+
+        # 备份前强制 WAL 回写，确保备份数据完整 + 避免 WAL 膨胀
+        _wal_checkpoint()
 
         # 备份文件名
         backup_name = _make_backup_name()

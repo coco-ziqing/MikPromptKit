@@ -3,7 +3,7 @@
 (function initWCBridge() {
 'use strict';
 // try/catch 兼容 const App（const 不设置 window.App）
-try { if (!App || !App.fetchJSON) { setTimeout(initWCBridge, 200); return; } }
+try { if (!App || (!App.fetchJSON && !window.PK)) { setTimeout(initWCBridge, 200); return; } }
 catch(e) { setTimeout(initWCBridge, 200); return; }
 
 // ============================================================
@@ -361,7 +361,8 @@ App.renderSidebar = function() {
     
     // 确保 _escape 可用（防御 app_editor.js 未加载场景）
     if (!App._escape) {
-        App._escape = function(s) {
+        // T5: 优先用 PK 底座
+        App._escape = (window.PK && PK._esc) ? PK._esc : function(s) {
             if (s === null || s === undefined) return '';
             s = String(s);
             var div = document.createElement('div');
@@ -1142,7 +1143,7 @@ App.gmDelete = function(groupId, groupName, btnEl) {
 
 // 批量移动词卡（将来扩展）
 App.gmBatchMove = function(fromGroupId) {
-    App.showToast('批量迁移功能开发中...', 'info');
+    PK.toast('批量迁移功能开发中...', 'info');
 };
 
 // ============================================================

@@ -13,6 +13,7 @@ from datetime import datetime
 from fastapi import APIRouter, Request, HTTPException, Query, Body, Header
 from fastapi.responses import JSONResponse
 from typing import Optional
+from jwt_auth import require_role
 
 # ── 路径 ──
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +23,8 @@ os.makedirs(BACKUP_ROOT, exist_ok=True)
 
 # ── 双路由 ──
 agent_router = APIRouter(prefix="/api/device", tags=["设备Agent"])
-mgmt_router  = APIRouter(prefix="/api/devices", tags=["设备管理面板"])
+from fastapi import Depends
+mgmt_router  = APIRouter(prefix="/api/devices", tags=["设备管理面板"], dependencies=[Depends(require_role("admin"))])
 
 # ── DB 辅助 ──
 def _rw():

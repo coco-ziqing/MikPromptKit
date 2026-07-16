@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Body, Request, Query
 from typing import Optional
 
 from password import hash_pw, check_pw
-from jwt_auth import get_current_user, create_jwt
+from jwt_auth import get_current_user, create_jwt, require_role
 try:
     from audit import record_audit
 except Exception:
@@ -30,11 +30,7 @@ def _ro():
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
-def _require_admin(request: Request):
-    user = get_current_user(request)
-    if user.get("role") != "admin":
-        raise HTTPException(403, "仅管理员可执行此操作")
-    return user
+_require_admin = require_role("admin")
 
 # ============================================================
 # 用户列表

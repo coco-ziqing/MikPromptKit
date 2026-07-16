@@ -276,6 +276,16 @@ def do_review(cid: int, data: dict = Body(...), request: Request = None):
         record_audit("asset_" + action, request=request, category="asset",
                      detail=f"{'批准' if action=='approve' else '驳回'}「{a['filename']}」" + (f"：{data.get('comment','')}" if data.get("comment") else ""),
                      target_type="asset", target_id=cid)
+        # PhaseE: 通知资产上传者（若不同人）
+        try:
+            from notify import notify_user
+            uploader = c.execute("SELECT ac.created_by FROM asset_catalog ac WHERE ac.id=?", [cid]).fetchone()
+            if uploader and uploader[0] and uploader[0] != u.get("id"):
+                notify_user(uploader[0], event="asset_" + action,
+                           title=f"资产{'已通过审核' if action=='approve' else '被驳回'}",
+                           body=f"「{a['filename']}」{'已被 ' + u.get('username','') + ' 批准' if action=='approve' else '已被 ' + u.get('username','') + ' 驳回：' + (data.get('comment',''))}",
+                           category="asset_" + action)
+        except Exception: pass
         return {"ok": True, "review_status": new_status}
     finally:
         c.close()

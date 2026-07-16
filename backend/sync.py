@@ -318,7 +318,7 @@ def restore_package(pkg_name: str, backup_first: bool = True) -> dict:
                         except Exception:
                             pass
 
-            # 3. 恢复媒体文件
+            # 3. 恢复媒体文件（Zip Slip 防护：校验路径不穿越）
             media_dirs = {
                 "thumbnails": THUMB_DIR,
                 "originals": ORIG_DIR,
@@ -327,7 +327,15 @@ def restore_package(pkg_name: str, backup_first: bool = True) -> dict:
             for arcname in namelist:
                 parts = arcname.split("/")
                 if len(parts) == 2 and parts[0] in media_dirs:
-                    out_path = os.path.join(media_dirs[parts[0]], parts[1])
+                    safe_arc = arcname.replace("\\", "/")
+                    if ".." in safe_arc or safe_arc.startswith("/"):
+                        errors.append(f"Zip Slip 跳过: {arcname}")
+                        continue
+                    out_path = os.path.abspath(os.path.join(media_dirs[parts[0]], parts[1]))
+                    target_dir = os.path.abspath(media_dirs[parts[0]])
+                    if not out_path.startswith(target_dir + os.sep):
+                        errors.append(f"路径穿越跳过: {arcname}")
+                        continue
                     with open(out_path, 'wb') as f:
                         f.write(zf.read(arcname))
                     restored.append(arcname)

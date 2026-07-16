@@ -27,6 +27,9 @@ from typing import Set
 _notif_conns: dict = {}
 # 主事件循环引用（供同步请求处理器线程安全推送）
 _loop = None
+# P0-7 连接数限制：每个用户最多 5 个 WebSocket 连接，全局最多 200
+MAX_USER_WS_CONNS = 5
+MAX_GLOBAL_WS_CONNS = 200
 
 
 def _capture_loop():
@@ -59,13 +62,25 @@ async def ws_collab(websocket: WebSocket, master_id: str):
     await websocket.accept()
     _capture_loop()
 
+    # P0-7 连接数限制：单用户最多5连接，全局最多200
+    uid = user["id"]
+    user_conn_count = sum(1 for r in _rooms.values() for ruid in r if ruid == uid)
+    if user_conn_count >= MAX_USER_WS_CONNS:
+        await websocket.send_json({"type":"error","message":"连接数已达上限（5个），请关闭其他标签页","code":429})
+        await websocket.close(code=4002)
+        return
+    total_conns = sum(len(r) for r in _rooms.values())
+    if total_conns >= MAX_GLOBAL_WS_CONNS:
+        await websocket.send_json({"type":"error","message":"服务器连接池已满，请稍后重试","code":429})
+        await websocket.close(code=4003)
+        return
+
     # 加入房间
     if master_id not in _rooms:
         _rooms[master_id] = {}
     _rooms[master_id][user["id"]] = websocket
 
-    # 更新在线状态
-    uid = user["id"]
+    # 更新在线状态（uid 已在连接限制中解析）
     if uid not in _online_users:
         _online_users[uid] = {"username": user["username"], "projects": [], "last_seen": time.time()}
     if master_id not in _online_users[uid]["projects"]:

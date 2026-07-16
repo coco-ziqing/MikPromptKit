@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PromptKit 开发日报 — 2026年07月15日</title>
+<style>
+  body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; background:#f5f6fa; margin:0; padding:20px; color:#2c3e50; }
+  .container { max-width:720px; margin:0 auto; background:#fff; border-radius:12px; box-shadow:0 2px 16px rgba(0,0,0,0.06); overflow:hidden; }
+  .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:#fff; padding:28px 32px; }
+  .header h1 { margin:0 0 4px 0; font-size:22px; }
+  .header .subtitle { opacity:0.85; font-size:13px; }
+  .header .stats { display:flex; gap:20px; margin-top:16px; }
+  .header .stat { text-align:center; }
+  .header .stat-num { font-size:28px; font-weight:700; }
+  .header .stat-label { font-size:11px; opacity:0.75; }
+  .section { padding:20px 32px; border-bottom:1px solid #eee; }
+  .section:last-child { border-bottom:none; }
+  .section h2 { font-size:16px; margin:0 0 12px 0; padding-bottom:8px; border-bottom:2px solid #667eea; display:inline-block; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td { padding:6px 8px; border-bottom:1px solid #f0f0f0; vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  .commit-fix td:first-child { border-left:3px solid #e74c3c; }
+  .commit-feat td:first-child { border-left:3px solid #27ae60; }
+  .commit-other td:first-child { border-left:3px solid #bdc3c7; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
+  .badge-fix { background:#fde8e8; color:#c0392b; }
+  .badge-feat { background:#e8f8f0; color:#27ae60; }
+  .badge-tag { background:#e8f0fe; color:#2980b9; }
+  .summary-box { background:#f8f9fa; border-radius:8px; padding:16px; font-size:13px; line-height:1.7; white-space:pre-wrap; }
+  .footer { padding:16px 32px; background:#f8f9fa; color:#95a5a6; font-size:11px; text-align:center; }
+  code { background:#f0f0f0; padding:1px 4px; border-radius:3px; font-size:12px; }
+  .divider { border:none; border-top:1px dashed #ddd; margin:16px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <h1>📊 PromptKit 开发日报</h1>
+    <div class="subtitle">2026年07月15日 · 自动生成</div>
+    <div class="stats">
+      <div class="stat"><div class="stat-num">9</div><div class="stat-label">提交 Commits</div></div>
+      <div class="stat"><div class="stat-num">7</div><div class="stat-label">功能 Feature</div></div>
+      <div class="stat"><div class="stat-num">2</div><div class="stat-label">修复 BugFix</div></div>
+      <div class="stat"><div class="stat-num">5</div><div class="stat-label">标签 Tags</div></div>
+    </div>
+  </div>
+
+  <!-- 版本标签 -->
+  <div class="section">
+    <h2>🏷 版本标签</h2>
+    <table>
+            <tr>
+              <td style="font-family:monospace;color:#2980b9;white-space:nowrap;">🏷 v5.17.0-phase36-full-chain</td>
+              <td style="font-size:13px;">Phase34.5-36: Presence在线状态 + 用户审计日志 + 项目资产库(35.0-35.2版本/审核/成员) + 角色/场景模版全链路(36.1-36.3) + 导航重组/历史媒体迁移</td>
+            </tr>
+            <tr>
+              <td style="font-family:monospace;color:#2980b9;white-space:nowrap;">🏷 v5.16.0-phase34-nav-mobile-opt</td>
+              <td style="font-size:13px;">Phase34: 导航栏交互优化 + 移动端横竖屏适配 + 编辑模式工具栏收敛</td>
+            </tr>
+            <tr>
+              <td style="font-family:monospace;color:#2980b9;white-space:nowrap;">🏷 v5.15.0-phase34-view-drift-fix</td>
+              <td style="font-size:13px;">Phase34: database.py prompt_library/prompt_word_card CREATE TABLE -> CREATE VIEW</td>
+            </tr>
+            <tr>
+              <td style="font-family:monospace;color:#2980b9;white-space:nowrap;">🏷 v5.14.0-phase32-p4-audio</td>
+              <td style="font-size:13px;">Phase32: P4 后期音频资产接入 (BGM/SFX)</td>
+            </tr>
+            <tr>
+              <td style="font-family:monospace;color:#2980b9;white-space:nowrap;">🏷 v5.13.0-phase31-p4p6-workspace</td>
+              <td style="font-size:13px;">Phase31: P4-P6 阶段工作台落地，7阶段流程闭环</td>
+            </tr></table>
+  </div>
+
+  <!-- 提交记录 -->
+  <div class="section">
+    <h2>📝 Git 提交记录 (9)</h2>
+    <table>
+      <thead><tr>
+        <th style="width:70px;">时间</th>
+        <th style="width:70px;">Commit</th>
+        <th>描述</th>
+      </tr></thead>
+      <tbody>
+            <tr class="commit-feat">
+              <td style="color:#666;font-size:12px;white-space:nowrap;">11:52:39</td>
+              <td style="font-family:monospace;font-size:12px;color:#c0392b;">738751d</td>
+              <td>✨ Phase34.5-36: Presence在线状态 + 用户审计日志 + 项目资产库(35.0-35.2版本/审核/成员) + 角色/场景模版全链路(36.1-36.3) + 导航重组/历史媒体迁移</td>
+            </tr>
+            <tr class="commit-other">
+              <td style="color:#666;font-size:12px;white-space:nowrap;">12:07:16</td>
+              <td style="font-family:monospace;font-size:12px;color:#c0392b;">3a17b61</td>
+              <td>🔧 遗留清理: master_project业务端点审计埋点(11端点) + 审计日志CSV导出/保留期清理(config驱动+启动自动清理) + admin日志弹窗导出按钮 + 临时脚本清理; 回归29/29+88/88</td>
+            </tr>
+            <tr class="commit-feat">
+              <td style="color:#666;font-size:12px;white-space:nowrap;">12:09:24</td>
+              <td style="font-family:monospace;font-size:12px;color:#c0392b;">66b3f53</td>
+              <td>✨ Phase35.3 方案文档: 设备盘索引+自动内容检测+服务器备份监控 (绿色便携Agent选型)</td>
+            </tr>
+            <tr class="commit-feat">
+              <td style="color:#666;font-size:12px;white-space:nowrap;">12:47:59</td>
+              <td style="font-family:monospace;font-size:12px;color:#c0392b;">1440746</td>
+              <td>✨ Phase35.3a 服务器地基：设备盘索引 4表迁移 + Agent/管理双通道API(配对/心跳/上报/归档/备份/告警) + 回归24/24+全量基线</td>
+            </tr>
+            <tr class="commit-fix">
+              <td style="color:#666;font-size:12px;white-space:nowrap;">12:53:16</td>
+              <td style="font-family:monospace;font-size:12px;color:#c0392b;">c8e463c</td>
+              <td>🐛 Phase35.3b Agent便携端: pk_agent.py 绿色单文件(配对/心跳/size+mtime跳扫/批量上报/分块上传) + 集成测试10/10; 状态迁移修复new→indexed→changed; 全量106/106</td>
+            </tr>
+            <tr class="commit-feat">
+              <td style="color:#666;font-size:12px;white-space:nowrap;">13:00:51</td>
+              <td style="font-family:monospace;font-size:12px;color:#c0392b;">9879ed2</td>
+              <td>✨ Phase35.3c 前端面板+备份E2E+Agent打包: device_manager_ui.js(自包含面板/设备卡/配对弹窗/文件索引/路径管理) + 备份分块上传端到端12/12 + pk_agent.exe 单文件9.6MB + 全量118/118</td>
+            </tr>
+            <tr class="commit-feat">
+              <td style="color:#666;font-size:12px;white-space:nowrap;">13:21:51</td>
+              <td style="font-family:monospace;font-size:12px;color:#c0392b;">459a0f1</td>
+              <td>✨ Phase36-cleanup: master_asset character/scene正式清退(删残留1行+ASSET_TYPES移除+前端看板去角色/场景Tab+project_role兼容桥保留); 回归8/8</td>
+            </tr>
+            <tr class="commit-feat">
+              <td style="color:#666;font-size:12px;white-space:nowrap;">13:28:05</td>
+              <td style="font-family:monospace;font-size:12px;color:#c0392b;">548497e</td>
+              <td>✨ PhaseB Presence增强: 所在页面/项目位置上报(WS location+snapshot字段) + admin在线弹窗强制下线(🔌按钮+REST端点+审计user_kick) + 9/9回归</td>
+            </tr>
+            <tr class="commit-fix">
+              <td style="color:#666;font-size:12px;white-space:nowrap;">14:48:25</td>
+              <td style="font-family:monospace;font-size:12px;color:#c0392b;">bb1f0f8</td>
+              <td>🐛 fix: 词库根分组词卡显示为空 — list_cards group_id递归收集子孙分组卡片(collect_descendant_group_ids); char_root 0→110 scene_root 0→102</td>
+            </tr></tbody>
+    </table>
+  </div>
+
+  <!-- 工作区状态 -->
+  <div class="section">
+    <h2>📁 工作区状态</h2>
+    <p style="font-size:13px;"><strong>未提交/未跟踪文件:</strong></p>
+    <ul style='margin:4px 0;'><li><code>M .gitignore</code></li><li><code>M backend/api/asset_review.py</code></li><li><code>M backend/api/word_cards.py</code></li><li><code>M backend/audit.py</code></li><li><code>M backend/backup.py</code></li><li><code>M backend/db_migrate_phase18.py</code></li><li><code>M backend/health.py</code></li><li><code>M backend/main.py</code></li><li><code>M backend/plugin_manager.py</code></li><li><code>M frontend/index.html</code></li><li><code>M frontend/static/js/app_core.js</code></li><li><code>?? .env.mail</code></li><li><code>?? .env.mail.example</code></li><li><code>?? backend/_chk_picker2.py</code></li><li><code>?? backend/_chk_pickers.py</code></li></ul><p style='color:#999;'>... 还有 8 个文件</p>
+    <hr class="divider">
+    <p style="font-size:13px;"><strong>Diff 统计:</strong></p>
+    <pre style="background:#f8f9fa;padding:12px;border-radius:8px;font-size:12px;overflow-x:auto;">.gitignore                     |  2 ++
+ backend/api/asset_review.py    | 10 ++++++++++
+ backend/api/word_cards.py      | 18 ++++++++++--------
+ backend/audit.py               | 31 ++++++++++++++++++++++++++++++-
+ backend/backup.py              | 24 ++++++++++++++++++++++++
+ backend/db_migrate_phase18.py  | 18 ++++++++++++++++++
+ backend/health.py              | 15 +++++++--------
+ backend/main.py                | 14 ++++++++++++--
+ backend/plugin_manager.py      | 10 ++++++++--
+ frontend/index.html            |  3 ++-
+ frontend/static/js/app_core.js |  2 +-
+ 11 files changed, 124 insertions(+), 23 deletions(-)</pre>
+  </div>
+
+  <!-- 开发摘要 -->
+  <div class="section">
+    <h2>📋 开发摘要</h2>
+    <div class="summary-box"># 2026-07-15 开发总结（Phase35.3 + 遗留清理 + Presence增强 + 通知中心）
+
+## 开始: 14:30 结束: ~18:00 GMT+8
+
+### 交付清单
+
+#### Phase35.3 设备盘索引（全链三合一）
+</div>
+  </div>
+
+  <!-- Bug 修复 -->
+  <div class="section">
+    <h2>🐛 Bug 修复</h2>
+    <div class="summary-box">本日无 Bug 修复记录</div>
+  </div>
+
+  <!-- 回归测试 -->
+  <div class="section">
+    <h2>✅ 回归测试</h2>
+    <div class="summary-box">- 回归：24/24 + 10/10 + 12/12 = 46/46<br>| `backend/_test_agent_int.py` | 35.3b Agent集成 (10项) |<br>- 全量 9 套回归脚本全部 exit=0（presence 11/11, audit 18/18, asset_library 20/20, asset_review 21/21, phase36 18/18, phase35_3 24/24, agent_int 10/10, backup_e2e 12/12, presence_b 9/9, legacy 29/29）<br>- 总计 ~170 项<br>- 192.168.0.101:8080 运行中</div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    PromptKit Dev Bot · 2026年07月15日 · 自动生成于 23:00:23
+  </div>
+</div>
+</body>
+</html>

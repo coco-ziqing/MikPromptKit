@@ -436,6 +436,7 @@ OWNER_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_pm_plugin ON plugin_migrations(plugin_id)",
     "CREATE INDEX IF NOT EXISTS idx_op_log_user ON operation_log(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_op_log_target ON operation_log(target_table, target_id)",
+    # activity_feed 索引（列存才建，兼容旧表缺 project_id 的版本）
     "CREATE INDEX IF NOT EXISTS idx_af_project ON activity_feed(project_id)",
     "CREATE INDEX IF NOT EXISTS idx_af_user ON activity_feed(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_af_created ON activity_feed(created_at)",
@@ -445,6 +446,14 @@ OWNER_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_pt_project ON project_tasks(project_id, column_id)",
     "CREATE INDEX IF NOT EXISTS idx_nq_user ON notification_queue(user_id, is_read)",
 ]
+
+# 需要先检查列存在再建索引的表/列映射
+INDEX_COL_CHECK = {
+    "idx_af_project": ("activity_feed", "project_id"),
+    "idx_pt_project": ("project_tasks", "project_id"),
+    "idx_pa_project": ("project_assets", "project_id"),
+    "idx_nq_user": ("notification_queue", "user_id"),
+}
 
 
 # ================================================================
@@ -527,6 +536,15 @@ def run_migration(db=None):
     # ---- 7. 索引 ----
     print("\n  --- 索引创建 ---")
     for sql in OWNER_INDEXES:
+        # 提取索引名，检查所属表的列是否存在
+        import re as _re
+        match = _re.search(r'idx_\w+', sql)
+        if match and match.group() in INDEX_COL_CHECK:
+            tbl, col = INDEX_COL_CHECK[match.group()]
+            cols = [c[1] for c in db.execute(f"PRAGMA table_info({tbl})").fetchall()]
+            if col not in cols:
+                if desc := INDEX_COL_CHECK.get(match.group()): pass  # noop
+                continue  # 列不存在，跳过此索引
         _execute_safe(db, sql)
         indexes_created += 1
     

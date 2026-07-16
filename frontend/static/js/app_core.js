@@ -4,6 +4,14 @@
  * 自动生成 — 勿手动编辑
  */
 
+// P0-3 XSS 防护：全局 HTML 转义函数（所有 innerHTML 赋值前调用）
+function _escapeHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = String(str);
+    return div.innerHTML;
+}
+
 // var 而非 const — 必须设置 window.App 供其他 script 标签通过 window.App 访问
 var App = window.App || {
 
@@ -727,7 +735,7 @@ var App = window.App || {
         s.totalPages = Math.ceil(data.total / s.pageSize) || 1;
         this.renderPrompts();
         this.renderPagination();
-        document.getElementById('countInfo').textContent = App._t('auto.str_6de9513c', '共 ${data.total} 条提示词');
+        document.getElementById('countInfo').textContent = App._t('auto.str_6de9513c', '共 ' + data.total + ' 条提示词');
         // 同步恢复滚动位置（0 delay 确保布局已更新但同一帧内）
         if (savedScrollY > 0 && this.state.currentView === 'home') {
             var maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);

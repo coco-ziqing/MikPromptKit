@@ -32,9 +32,18 @@ os.makedirs(THUMB_DIR, exist_ok=True)
 
 
 def _db():
-    c = sqlite3.connect(DB, timeout=5); c.row_factory = sqlite3.Row
-    c.execute("PRAGMA journal_mode=WAL"); c.execute("PRAGMA busy_timeout=4000")
-    return c
+    from database import get_db
+    raw = get_db()
+    raw.row_factory = sqlite3.Row
+    # T3: shared conn wrapper — close() becomes no-op (sqlite3 close is C property, can't assign)
+    class _NC:
+        def __init__(self, conn):
+            object.__setattr__(self, '_conn', conn)
+        def __getattribute__(self, name):
+            if name == 'close':
+                return lambda: None
+            return getattr(object.__getattribute__(self, '_conn'), name)
+    return _NC(raw)
 
 
 def _auth(request: Request, require=True):
@@ -341,7 +350,11 @@ async def upload_asset(pid: int, request: Request, file: UploadFile = File(...),
             dest = os.path.join(mdir, nn); i += 1
         fname = os.path.basename(dest)
 
-        # 落盘
+        # 落盘（路径穿越防护：os.path.basename 已在 _safe_name 中，再确保在项目目录内）
+        dest_abs = os.path.abspath(dest)
+        if not dest_abs.startswith(os.path.abspath(pabs) + os.sep):
+            raise HTTPException(400, "非法的文件路径")
+        dest = dest_abs  # 后续统一用安全路径
         size = 0
         with open(dest, "wb") as out:
             while True:

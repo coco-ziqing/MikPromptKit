@@ -50,6 +50,23 @@ def flush_breadcrumbs(session_id: str):
             print(f"[Breadcrumb] flush failed: {e}")
 
 
+def clear_breadcrumbs_before(days: int = 14):
+    """清理 N 天前的面包屑记录（保留期清理，启动时调用）"""
+    try:
+        from database import get_db
+        db = get_db()
+        db.execute(
+            "DELETE FROM error_breadcrumbs WHERE created_at < datetime('now','localtime',?)",
+            [f"-{days} days"]
+        )
+        db.commit()
+        deleted = db.execute("SELECT changes()").fetchone()[0]
+        return deleted
+    except Exception as e:
+        print(f"[Breadcrumb] 清理失败: {e}")
+        return 0
+
+
 def get_breadcrumbs(session_id: str, limit: int = 100):
     """查询指定 session 的面包屑"""
     try:

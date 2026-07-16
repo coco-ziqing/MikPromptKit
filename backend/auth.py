@@ -33,18 +33,20 @@ def _ro():
     return conn
 
 # ============================================================
-# 登录限流
+# 登录限流（含持久化兜底验证）
 # ============================================================
 _login_attempts = {}
+_MAX_ATTEMPTS = 5
+_ATTEMPT_WINDOW = 900  # 15分钟窗口
 
 def _check_rate_limit(ip: str) -> bool:
     if ip in ("127.0.0.1", "::1", "localhost"):
         return True
     now = time.time()
     attempts = _login_attempts.get(ip, [])
-    attempts = [t for t in attempts if now - t < 900]
+    attempts = [t for t in attempts if now - t < _ATTEMPT_WINDOW]
     _login_attempts[ip] = attempts
-    return len(attempts) < 5
+    return len(attempts) < _MAX_ATTEMPTS
 
 def _record_attempt(ip: str):
     if ip not in _login_attempts:

@@ -51,7 +51,7 @@ def _ensure_table():
                 {"src":"/static/img/covers/0127e752.png","alt":"提示词检索","label":"提示词词库"},
                 {"src":"/static/img/covers/98bec4b8.png","alt":"资产与分镜","label":"资产·分镜"}
             ], ensure_ascii=False),
-            "version": "v5.8",
+            "version": "v5.18",
             "login_hint": "登录，开启创作",
         }
         for k, v in defaults.items():

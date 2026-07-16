@@ -21,7 +21,7 @@ import os, sqlite3, time, threading, csv, io
 from datetime import datetime
 from fastapi import APIRouter, Request, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from jwt_auth import get_current_user
+from jwt_auth import get_current_user, require_role
 
 router = APIRouter(prefix="/api/audit", tags=["审计日志"])
 
@@ -66,11 +66,18 @@ CATEGORY_NAMES = {
 
 
 def _conn():
-    c = sqlite3.connect(DB, timeout=3)
-    c.row_factory = sqlite3.Row
-    c.execute("PRAGMA journal_mode=WAL")
-    c.execute("PRAGMA busy_timeout=3000")
-    return c
+    from database import get_db
+    raw = get_db()
+    raw.row_factory = sqlite3.Row
+    # T3: shared conn wrapper — close() becomes no-op
+    class _NC:
+        def __init__(self, conn):
+            object.__setattr__(self, '_conn', conn)
+        def __getattribute__(self, name):
+            if name == 'close':
+                return lambda: None
+            return getattr(object.__getattribute__(self, '_conn'), name)
+    return _NC(raw)
 
 
 def _ensure_init():
@@ -132,9 +139,36 @@ def resolve_actor(request):
     return None, ""
 
 
+# PhaseE: 可推送通知的事件类型集合（target_type='user' 时推送给目标用户）
+NOTIFY_EVENTS = {
+    "asset_approve", "asset_reject", "asset_submit",
+    "member_add", "member_remove",
+    "device_backup_done", "user_kick",
+    "user_toggle", "password_reset", "user_update",
+}
+
+
+def _maybe_notify(event_type, actor_id, actor_name, detail, target_type, target_id):
+    """PhaseE: 审计事件写完后向相关用户推实时通知（异常完全忽略）。"""
+    if event_type not in NOTIFY_EVENTS:
+        return
+    if target_type != "user" or not target_id:
+        return
+    try:
+        tid = int(target_id)
+        if actor_id and tid == int(actor_id):
+            return  # 自己对自己的操作不推
+        from notify import notify_user
+        en = EVENT_DICT.get(event_type, (event_type, ""))[0]
+        notify_user(tid, event=event_type, title=en, body=detail or "", category=event_type)
+    except Exception:
+        pass
+
+
 def record_audit(event_type, request=None, user_id=None, username=None,
                  detail="", target_type="", target_id=None, status="ok", category=None):
-    """记录一条审计事件（安全：任何异常都不影响主流程）。"""
+    """记录一条审计事件（安全：任何异常都不影响主流程）。
+    同时向相关用户推送实时通知（PhaseE）。"""
     _ensure_init()
     try:
         if category is None:
@@ -159,6 +193,8 @@ def record_audit(event_type, request=None, user_id=None, username=None,
         )
         c.commit()
         c.close()
+        # PhaseE: 实时通知推送
+        _maybe_notify(event_type, user_id, username, detail, target_type, target_id)
     except Exception as e:
         print(f"[Audit] record failed ({event_type}): {e}")
 
@@ -166,11 +202,7 @@ def record_audit(event_type, request=None, user_id=None, username=None,
 # ============================================================
 # 管理端查询
 # ============================================================
-def _require_admin(request: Request):
-    user = get_current_user(request)
-    if not user or user.get("role") != "admin" or not user.get("authenticated"):
-        raise HTTPException(403, "仅管理员可查看审计日志")
-    return user
+_require_admin = require_role("admin")
 
 
 def _enrich(rows):

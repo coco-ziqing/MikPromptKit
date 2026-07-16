@@ -153,6 +153,10 @@ logs/
 _test_plugin_mgr.py
 DREAMS.md
 
+# 后端调试散件归档目录（一次性脚本，不入库）
+backend/_scratch/
+backend/logs/
+
 # 内存/梦境文件
 memory/.dreams/
 memory/dreaming/
@@ -165,3 +169,8 @@ memory/dreaming/
 
 # Plugins (disabled/archived)
 plugins/_disabled/
+
+# �ʼ����ã�����Ȩ�룬���ύ��.env.mail
+
+# JWT 持久化密钥（每机唯一，禁止入库）
+data/.jwt_secret

@@ -30,7 +30,7 @@ DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "pro
 # ============================================================
 IDLE_AFTER = 90        # 90s 无活动 → 空闲
 AWAY_AFTER = 300       # 5min 无活动 → 离开
-SWEEP_INTERVAL = 15    # 后台巡检周期
+SWEEP_INTERVAL = 30    # 后台巡检周期（15s→30s减少CPU开销）
 
 # ============================================================
 # 连接池

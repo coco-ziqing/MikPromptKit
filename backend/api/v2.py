@@ -15,6 +15,19 @@ import traceback
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
 
+# P0-2 安全加固：表名白名单（防御深度——原代码中表名源自硬编码列表，但加一道防线）
+_VALID_DELETE_TABLES = frozenset([
+    "collection_items", "wordpack_items", "usage_history",
+    "prompt_thumbnails", "prompt_videos", "atom_word_bridge",
+    "scene_card_ref", "word_card_versions",
+])
+
+def _safe_delete_table(tbl: str) -> str:
+    """白名单校验 DELETE 表名，拒绝非预期输入"""
+    if tbl not in _VALID_DELETE_TABLES:
+        raise HTTPException(400, f"非法的操作表: {tbl}")
+    return tbl
+
 
 # ==================== 1. 收藏夹 ====================
 
@@ -823,7 +836,7 @@ async def import_pt_package(
                         content += " (导入副本 " + uuid.uuid4().hex[:4] + ")"
                     elif conflict == "overwrite":
                         for tbl in ["collection_items", "wordpack_items", "usage_history", "prompt_thumbnails", "prompt_videos"]:
-                            db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [existing["id"]])
+                            db.execute(f"DELETE FROM {_safe_delete_table(tbl)} WHERE prompt_id=?", [existing["id"]])
                         db.execute("DELETE FROM prompts WHERE id=?", [existing["id"]])
                         # 同步清理 prompt_cards
                         db.execute("DELETE FROM prompt_cards WHERE name=? AND content=?", [entry.get("subcategory","") or entry.get("content","")[:30], existing["content"]])
@@ -847,10 +860,13 @@ async def import_pt_package(
                 )
                 db.commit()
 
-                # 还原缩略图
+                # 还原缩略图（路径穿越防护）
                 thumb_arc = entry.get("thumbnail")
                 if thumb_arc and thumb_arc in zf.namelist():
                     try:
+                        # 校验 arcname 不包含 .. 或绝对路径
+                        if ".." in thumb_arc or os.path.isabs(thumb_arc):
+                            continue
                         thumb_data = zf.read(thumb_arc)
                         ext = os.path.splitext(thumb_arc)[1] or ".jpg"
                         thumb_fn = f"{uuid.uuid4().hex}{ext}"
@@ -1223,7 +1239,7 @@ def permanent_delete_prompt(prompt_id: int):
         if row["is_builtin"] == 1:
             raise HTTPException(403, "内置提示词不可永久删除，可恢复")
         for tbl in ["collection_items", "wordpack_items", "usage_history"]:
-            db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [prompt_id])
+            db.execute(f"DELETE FROM {_safe_delete_table(tbl)} WHERE prompt_id=?", [prompt_id])
         db.execute("DELETE FROM atom_word_bridge WHERE word_card_id=?", [prompt_id])
         db.execute("DELETE FROM scene_card_ref WHERE card_id=?", [prompt_id])
         db.execute("DELETE FROM word_card_versions WHERE card_id=?", [prompt_id])
@@ -1236,7 +1252,7 @@ def permanent_delete_prompt(prompt_id: int):
         if row["is_builtin"] == 1:
             raise HTTPException(403, "内置提示词不可永久删除，可恢复")
         for tbl in ["collection_items", "wordpack_items", "usage_history", "prompt_thumbnails", "prompt_videos"]:
-            db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [prompt_id])
+            db.execute(f"DELETE FROM {_safe_delete_table(tbl)} WHERE prompt_id=?", [prompt_id])
         db.execute("DELETE FROM prompts WHERE id=?", [prompt_id])
         db.execute("DELETE FROM prompt_cards WHERE id=?", [prompt_id])
         safe_commit()
@@ -1259,7 +1275,7 @@ def empty_trash():
                 db.execute("UPDATE word_card SET is_deleted=0, deleted_at=NULL WHERE id=?", [pid])
                 continue
             for tbl in ["collection_items", "wordpack_items", "usage_history"]:
-                db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [pid])
+                db.execute(f"DELETE FROM {_safe_delete_table(tbl)} WHERE prompt_id=?", [pid])
             # FK 列名不同的表
             db.execute("DELETE FROM atom_word_bridge WHERE word_card_id=?", [pid])
             db.execute("DELETE FROM scene_card_ref WHERE card_id=?", [pid])
@@ -1278,7 +1294,7 @@ def empty_trash():
                 db.execute("UPDATE prompts SET deleted_at=NULL WHERE id=?", [pid])
                 continue
             for tbl in ["collection_items", "wordpack_items", "usage_history", "prompt_thumbnails", "prompt_videos"]:
-                db.execute(f"DELETE FROM {tbl} WHERE prompt_id=?", [pid])
+                db.execute(f"DELETE FROM {_safe_delete_table(tbl)} WHERE prompt_id=?", [pid])
             db.execute("DELETE FROM prompts WHERE id=?", [pid])
             db.execute("DELETE FROM prompt_cards WHERE id=?", [pid])
             done += 1

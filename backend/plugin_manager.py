@@ -211,10 +211,16 @@ class PluginManager:
         if self._initialized:
             return
         
+        # 插件目录基于工作区根目录（而非 backend/ 子目录），兼容从 backend/ 启动
+        try:
+            from paths import get_base_dir
+            _workspace_root = Path(get_base_dir())
+        except Exception:
+            _workspace_root = Path(__file__).resolve().parent.parent
         self.plugins: Dict[str, PluginInstance] = {}   # plugin_id → PluginInstance
         self.hook_registry: Dict[str, List[Callable]] = {}  # hook_name → [callback, ...]
-        self.plugins_dir: Path = Path("plugins")
-        self.disabled_dir: Path = Path("plugins/_disabled")
+        self.plugins_dir: Path = _workspace_root / "plugins"
+        self.disabled_dir: Path = _workspace_root / "plugins" / "_disabled"
         self._initialized = True
         
         # 确保目录存在

@@ -26,8 +26,19 @@ from logger import info as log_info, warn as log_warn, error as log_error, debug
 from database import safe_fetch_one, safe_count, safe_count_dict
 from logger import api_log, capture_exception
 
-# 启动时读取版本号
-APP_VERSION = 'v5.7.7-phase24'
+# 启动时读取版本号（单一来源：根目录 VERSION 文件）
+def _read_app_version() -> str:
+    """从根目录 VERSION 文件读取版本号，读取失败时回退默认值"""
+    try:
+        with open(os.path.join(BASE_DIR, 'VERSION'), 'r', encoding='utf-8') as f:
+            v = f.read().strip()
+            if v:
+                return v
+    except Exception:
+        pass
+    return 'v5.18.0-phase36'
+
+APP_VERSION = _read_app_version()
 from api.prompts import router as prompts_router
 from api.v2 import router as v2_router
 from api.seedance import router as seedance_router
@@ -94,37 +105,8 @@ def _migrate_v4(db):
         if name not in scols:
             db.execute(f"ALTER TABLE user_project_scene ADD COLUMN {name} {typ}")
             print("[迁移] user_project_scene 补列: %s" % name)
-    # === 第一步: prompts → prompt_cards ===
-    count = safe_count("SELECT COUNT(*) FROM prompt_cards")
-    if count == 0:
-        rows = db.execute("SELECT * FROM prompts ORDER BY id").fetchall()
-        if rows:
-            for r in rows:
-                r = dict(r)
-                db.execute(
-                    "INSERT INTO prompt_cards (card_type,name,content,meaning,scene,module,category,tags,structured_fields,usage_count,is_builtin,is_deleted) VALUES (?,?,?,?,?,?,?,?,?,?,1,0)",
-                    ('image',(r.get('subcategory','') or '')[:60],r.get('content',''),r.get('meaning',''),r.get('scene',''),r.get('module',''),r.get('category',''),r.get('tags','[]'),'{}',r.get('usage_count',0))
-                )
-            db.commit()
-            print("[迁移] prompts -> prompt_cards: %d 条" % len(rows))
-    # === 第二步: prompt_library + prompt_word_card → library_assets ===
-    count2 = safe_count("SELECT COUNT(*) FROM library_assets")
-    if count2 == 0:
-        libs = db.execute("SELECT * FROM prompt_library ORDER BY sort_order").fetchall()
-        for lib in libs:
-            lib = dict(lib)
-            db.execute("INSERT INTO library_assets (name,lib_type,category,prompt,icon,is_builtin,sort_order) VALUES (?,?,?,?,?,1,?)",(
-                lib.get('dimension_name',''),'style',lib.get('category',''),lib.get('description',''),'📚',lib.get('sort_order',0)
-            ))
-            cards = db.execute("SELECT * FROM prompt_word_card WHERE library_id=? ORDER BY id",[lib['id']]).fetchall()
-            for card in cards:
-                card = dict(card)
-                db.execute("INSERT INTO library_assets (name,lib_type,category,prompt,icon,is_builtin,sort_order) VALUES (?,?,?,?,?,1,999)",(
-                    card.get('word_text','')[:60],'style',lib.get('category',''),card.get('definition','') or card.get('word_text',''),'📄'
-                ))
-        db.commit()
-        total = safe_count("SELECT COUNT(*) FROM library_assets")
-        print("[迁移] prompt_library -> library_assets: %d 条" % total)
+    # === [T2] 数据拷贝块已冻结 — prompts->word_card / prompt_library->library_assets 均已收敛 ===
+    # 如需重新迁移执行 backend/migrate_unify_cards.py (2026-07-16)
 
 
 @asynccontextmanager
@@ -258,6 +240,25 @@ async def lifespan(app: FastAPI):
                 _ar()
             except Exception as _e:
                 print(f"  [SKIP] 审计保留期清理: {_e}")
+            # 2026-07-16 T6: 运行日志+面包屑保留期清理（config: log_retention_days 默认30 / breadcrumb_retention_days 默认14，0=不清理）
+            try:
+                from database import get_db as _gdb
+                _cx = _gdb()
+                def _cfg_int(k, dv):
+                    try:
+                        r = _cx.execute("SELECT value FROM config WHERE key=?", [k]).fetchone()
+                        return int(str(r[0]).strip()) if r and str(r[0]).strip() else dv
+                    except Exception:
+                        return dv
+                import logger as _lg
+                import breadcrumb_logger as _bc
+                _ld = _cfg_int('log_retention_days', 30)
+                _bd = _cfg_int('breadcrumb_retention_days', 14)
+                _n1 = _lg.clear_before(_ld) if _ld > 0 else 0
+                _n2 = _bc.clear_breadcrumbs_before(_bd) if _bd > 0 else 0
+                print(f"  [OK] 日志保留期清理: runtime_log 清{_n1}条(>{_ld}d), breadcrumb 清{_n2}条(>{_bd}d)")
+            except Exception as _e:
+                print(f"  [SKIP] 日志保留期清理: {_e}")
         # 使用当前运行中的 event loop
         loop = _asyncio.get_running_loop()
         loop.create_task(_do_startup_check())
@@ -289,13 +290,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="咪卡MiK提示词助手",
     description="AI创作提示词管理与组装 WebUI",
-    version="4.0.0",
+    version=APP_VERSION,
     lifespan=lifespan
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=".*",   # T9: 反射请求 Origin（等效放行任意来源，但与 allow_credentials 合法共存，修正 *+credentials 非法组合）
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -412,6 +413,15 @@ app.include_router(agent_router)
 app.include_router(mgmt_router)
 from api.cover_api import router as cover_router
 app.include_router(cover_router)
+# Phase35.3-DAM 归档管理
+from api.dam_archive import router as dam_router
+app.include_router(dam_router)
+# Phase35.3-DAM 检索增强
+from api.dam_search import router as dam_search_router
+app.include_router(dam_search_router)
+# Phase35.3c 版本/分层/自检/备份
+from api.dam_vault import router as dam_vault_router
+app.include_router(dam_vault_router)
 
 # Phase18: 插件系统由 lifespan 初始化（db/app 就绪后）
 
@@ -700,7 +710,9 @@ def pick_folder():
 
 @app.post("/api/utils/save-blob")
 def save_blob(data: dict = None):
-    """将 base64 数据写入指定路径，文件已存在时自动新建副本不覆盖"""
+    """将 base64 数据写入指定路径，文件已存在时自动新建副本不覆盖
+    沙箱: 禁止写入 data/ 等受保护目录内的文件（防覆盖 DB/密钥/源码）
+    """
     import base64
     if not data:
         return {"ok": False, "error": "缺少数据"}
@@ -710,6 +722,21 @@ def save_blob(data: dict = None):
         return {"ok": False, "error": "缺少路径或内容"}
     try:
         path = os.path.abspath(path)
+        # ---- 沙箱守卫：禁止覆写受保护目录（data/, backend/, agent/, plugins/, .git/） ----
+        _protect_prefixes = [
+            os.path.abspath(os.path.join(BASE_DIR, "data")),
+            os.path.abspath(os.path.join(BASE_DIR, "backend")),
+            os.path.abspath(os.path.join(BASE_DIR, "agent")),
+            os.path.abspath(os.path.join(BASE_DIR, "plugins")),
+            os.path.abspath(os.path.join(BASE_DIR, ".git")),
+        ]
+        _real = os.path.realpath(path)
+        for prefix in _protect_prefixes:
+            if _real.startswith(prefix + os.sep) or _real == prefix:
+                return {"ok": False, "error": f"禁止写入受保护目录: {os.path.basename(prefix)}"}
+        # ---- 大小限制：max 50MB base64（约 37MB 实际数据） ----
+        if len(content_b64) > 50 * 1024 * 1024:
+            return {"ok": False, "error": "数据过大，最大支持 50MB"}
         os.makedirs(os.path.dirname(path), exist_ok=True)
         # 如果文件已存在，自动新建副本（不覆盖）
         if os.path.exists(path):

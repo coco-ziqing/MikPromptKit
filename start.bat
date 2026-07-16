@@ -1,15 +1,18 @@
 @echo off
 chcp 65001 >nul
-title 咪卡MiK提示词助手 v3.0
+
+:: 从 VERSION 文件动态读取版本号（单一来源，避免版本号固化漂移）
+cd /d "%~dp0"
+set "APPVER="
+if exist "VERSION" for /f "usebackq delims=" %%v in ("VERSION") do set "APPVER=%%v"
+if not defined APPVER set "APPVER=v5"
+title 咪卡MiK提示词助手 %APPVER%
 
 echo ============================================
-echo     [启动] 咪卡MiK提示词助手 v3.0
+echo     [启动] 咪卡MiK提示词助手 %APPVER%
 echo     含四大模块 + 收藏夹 + 词包 + Seedance
 echo ============================================
 echo.
-
-:: 切换到项目根目录
-cd /d "%~dp0"
 
 :: 检查 Python
 python --version >nul 2>&1
@@ -86,6 +89,7 @@ echo.
 
 :: 启动
 set PORT=%PORT%
+set PK_ENFORCE_AUTH=1
 python backend\main.py
 
 echo.

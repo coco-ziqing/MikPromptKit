@@ -36,14 +36,16 @@ def list_groups(group_type: str = Query(None), include_empty: bool = Query(False
     where = ["wg.is_active=1"]; params = []
     if group_type: where.append("wg.group_type=?"); params.append(group_type)
     rows = db.execute(f"SELECT wg.*, COUNT(wc.id) as card_count FROM word_card_group wg LEFT JOIN word_card wc ON wc.group_id=wg.id AND wc.is_deleted=0 WHERE {' AND '.join(where)} GROUP BY wg.id ORDER BY wg.group_type, wg.parent_group_id, wg.sort_order", params).fetchall()
-    # PhaseE: 父分组即使无直属卡片，若有子分组则保留（递归统计子分组卡片数）
-    for r in rows:
-        if r["card_count"] == 0 and r["group_type"] in ("root", "sub"):
-            kids = _collect_descendant_group_ids(db, r["id"])
-            if len(kids) > 1:  # 排除自身后还有子
-                total = db.execute(f"SELECT COUNT(1) FROM word_card WHERE group_id IN ({','.join('?'*len(kids[1:]))}) AND is_deleted=0", kids[1:]).fetchone()[0]
-                # 用子分级卡片数覆盖（运行时 hack: 字典无法修改，重建行）
-    groups = [dict(r) for r in rows if include_empty or r["card_count"] > 0]
+    # PhaseE-fix: 任意无直属卡片但有子分组的父分组，用子孙分组卡片总数作为 card_count，避免被误过滤（char_root/scene_root 等 group_type=custom 的根组也适用）
+    rows_d = [dict(r) for r in rows]
+    for g in rows_d:
+        if g["card_count"] == 0:
+            kids = _collect_descendant_group_ids(db, g["id"])
+            if len(kids) > 1:
+                g["card_count"] = db.execute(
+                    f"SELECT COUNT(1) FROM word_card WHERE group_id IN ({','.join('?'*len(kids[1:]))}) AND is_deleted=0",
+                    kids[1:]).fetchone()[0]
+    groups = [g for g in rows_d if include_empty or g["card_count"] > 0]
     # 计算 _depth（嵌套深度，用于前端缩进）
     id_map = {g["id"]: g for g in groups}
     def calc_depth(g):

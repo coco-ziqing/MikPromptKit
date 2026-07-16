@@ -582,6 +582,8 @@
     _esc: function (s) { if (s == null) return ''; var d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; },
     _fmtSize: function (n) { n = n || 0; if (n < 1024) return n + 'B'; if (n < 1048576) return (n / 1024).toFixed(1) + 'KB'; if (n < 1073741824) return (n / 1048576).toFixed(1) + 'MB'; return (n / 1073741824).toFixed(2) + 'GB'; },
     _toast: function (msg, type, ms) {
+      // T5: 统一走 PK.toast（底层底座，无依赖）
+      if (window.PK && PK.toast) { PK.toast(msg, type, ms); return; }
       if (typeof App !== 'undefined' && App.showToast) { App.showToast(msg, type || 'info'); return; }
       var t = document.getElementById('al_toast');
       if (!t) { t = document.createElement('div'); t.id = 'al_toast'; t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999;padding:10px 18px;border-radius:10px;font-size:13px;color:#fff;box-shadow:0 6px 24px rgba(0,0,0,.3);'; document.body.appendChild(t); }

@@ -416,17 +416,16 @@ def _check_self_reachable() -> dict:
         s.close()
     except Exception:
         pass
-    # 防火墙规则检查
+    # 防火墙规则检查（依次匹配 PromptKit / PromptKit-8080 / PromptKit 8080）
     fw_ok = False; fw_rule_name = ""
     try:
-        fw = subprocess.run(['netsh','advfirewall','firewall','show','rule','name=PromptKit'],
-            capture_output=True,encoding='utf-8',errors='replace',timeout=3,creationflags=subprocess.CREATE_NO_WINDOW)
-        fw_ok = f'LocalPort{default_port}' in fw.stdout or f':{default_port}' in fw.stdout
-        fw_rule_name = 'PromptKit' if fw_ok else ''
-        if not fw_ok:
-            fw2 = subprocess.run(['netsh','advfirewall','firewall','show','rule','name=PromptKit 8080'],
+        for rule_name in ["PromptKit", "PromptKit-8080", "PromptKit 8080"]:
+            fw = subprocess.run(['netsh','advfirewall','firewall','show','rule',f'name={rule_name}'],
                 capture_output=True,encoding='utf-8',errors='replace',timeout=3,creationflags=subprocess.CREATE_NO_WINDOW)
-            if 'LocalPort' in fw2.stdout: fw_ok = True; fw_rule_name = 'PromptKit 8080'
+            if 'LocalPort' in fw.stdout:
+                fw_ok = True
+                fw_rule_name = rule_name
+                break
     except Exception:
         pass
     # IP变更检测

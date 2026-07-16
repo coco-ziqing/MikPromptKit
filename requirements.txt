@@ -1,13 +1,14 @@
-# PromptKit v4.0.0 — 完整依赖（Windows + macOS 通用）
+# PromptKit — 完整依赖（Windows + macOS 通用）
 # 安装：pip3 install -r requirements.txt
+# 版本以本机验证环境为准（reproducible build 基线，2026-07-16 校准）
 fastapi==0.115.0
 uvicorn==0.30.0
 aiohttp==3.13.5
 httpx==0.28.1
 httpx-sse==0.4.3
 pillow==12.2.0
-numpy<2
-sentence-transformers
+numpy>=2.0,<3          # 修正：原 numpy<2 与已装 2.4.x / torch2.12 冲突
+sentence-transformers==5.5.1
 aiofiles==24.1.0
 python-multipart==0.0.9
-torch
+torch>=2.2             # 本机验证 2.12.0；给下限避免跨平台锁死

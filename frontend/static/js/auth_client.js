@@ -12,6 +12,10 @@
     _loggedIn: false,
     _checkDone: false,
 
+    // P0-5: Token XOR 混淆存储（局域网防窥探，非加密仅混淆）
+    _setToken: function(t) { try { var obf = ''; for (var i=0; i<t.length; i++) obf += String.fromCharCode(t.charCodeAt(i) ^ 0x5A); localStorage.setItem('pk_token_v1', btoa(obf)); } catch(e) {} },
+    _getToken: function() { try { var d = localStorage.getItem('pk_token_v1'); if (!d) return null; var obf = atob(d); var t = ''; for (var i=0; i<obf.length; i++) t += String.fromCharCode(obf.charCodeAt(i) ^ 0x5A); return t; } catch(e) { return null; } },
+
     _applyThemeEarly: function() {
       try {
         var t = localStorage.getItem('promptkit_theme');
@@ -22,7 +26,8 @@
 
     init: async function() {
       this._applyThemeEarly();
-      this._token = localStorage.getItem('pk_token');
+      // P0-5: 从混淆存储中恢复 token
+      this._token = this._getToken();
       try { this._user = JSON.parse(localStorage.getItem('pk_user')); } catch(e) { this._user = null; }
 
       // 加载封面数据
@@ -61,7 +66,7 @@
         }
       } catch(e) {}
       // 未验证通过
-      localStorage.removeItem('pk_token');
+      localStorage.removeItem('pk_token_v1');
       localStorage.removeItem('pk_user');
       this._token = null; this._user = null;
       this._showCover();
@@ -226,7 +231,8 @@
         var r = await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
         var d = await r.json();
         if (d.ok) {
-          localStorage.setItem('pk_token', d.token);
+          // P0-5: Token 不再明文存储，改用 XOR 混淆（局域网工具防窥探）
+          this._setToken(d.token);
           localStorage.setItem('pk_user', JSON.stringify(d.user));
           this._token = d.token; this._user = d.user; this._loggedIn = true;
           if (d.user.role === 'admin') {
@@ -388,7 +394,7 @@
       // Phase34: 断开在线状态通道并移除指示器
       try { if (window.PK_PRESENCE) PK_PRESENCE.disconnect(); } catch(e){}
       var pw = document.getElementById('pkPresenceWrap'); if (pw) pw.remove();
-      localStorage.removeItem('pk_token'); localStorage.removeItem('pk_user');
+      localStorage.removeItem('pk_token_v1'); localStorage.removeItem('pk_user');
       this._token = null; this._user = null; this._loggedIn = false;
       var w = document.getElementById('navDropdownUser'); if (w) w.remove();
       // 隐藏管理员专属入口（退出登录后）

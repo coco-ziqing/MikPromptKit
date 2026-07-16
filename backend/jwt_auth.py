@@ -30,8 +30,44 @@ except ImportError:
 # 简易 JWT 实现（无外部依赖）
 # ============================================================
 
-# 服务端密钥（生产环境应从配置文件读取）
-_JWT_SECRET = "promptkit-jwt-secret-change-in-production"
+# 服务端密钥 — 优先级: 环境变量 > 持久化文件(data/.jwt_secret) > 首次生成并落盘
+# (零配置体验不变, 且重启不会使已签发 token 失效)
+import secrets as _secrets
+
+def _load_or_create_secret() -> str:
+    """环境变量优先; 其次 data/.jwt_secret; 都没有则生成并持久化"""
+    env = os.environ.get("PK_JWT_SECRET", "").strip()
+    if env:
+        return env
+    try:
+        from paths import get_data_dir
+        data_dir = get_data_dir()
+    except Exception:
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+    secret_path = os.path.join(data_dir, ".jwt_secret")
+    try:
+        if os.path.exists(secret_path):
+            with open(secret_path, "r", encoding="utf-8") as f:
+                v = f.read().strip()
+            if v:
+                return v
+    except Exception:
+        pass
+    new_secret = _secrets.token_hex(32)
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+        with open(secret_path, "w", encoding="utf-8") as f:
+            f.write(new_secret)
+        try:
+            os.chmod(secret_path, 0o600)
+        except Exception:
+            pass
+        print("[SECURITY] 已生成并持久化 JWT 密钥 -> data/.jwt_secret（重启不失效）")
+    except Exception as _e:
+        print(f"[SECURITY] 密钥持久化失败，本次使用临时密钥（重启失效）: {_e}")
+    return new_secret
+
+_JWT_SECRET = _load_or_create_secret()
 _JWT_ALGORITHM = "HS256"
 # Team 模式是否强制验证（Phase21 启用）
 _ENFORCE_AUTH = os.environ.get("PK_ENFORCE_AUTH", "0") == "1"
@@ -42,6 +78,7 @@ _PUBLIC_PATHS = {
     "/static", "/api/health", "/api/plugin-system/manifest",
     "/api/auth/login", "/api/auth/register",
     "/api/plugins",  # License 激活不需要登录
+    "/api/status",   # 公开状态端点
 }
 
 
@@ -173,6 +210,41 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         
         response = await call_next(request)
         return response
+
+
+# ============================================================
+# FastAPI 依赖注入
+# ============================================================
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+def require_role(*roles: str):
+    """
+    FastAPI 依赖注入 — 要求当前用户拥有指定角色之一。
+    用法：
+        @router.get("/api/admin/secret")
+        def secret(user: dict = Depends(require_role("admin"))): ...
+    
+    与 JWTAuthMiddleware 配合：中间件将解析后的用户注入 request.state.user，
+    此依赖从中读取并检查角色。
+    """
+    def _check(request: Request):
+        u = get_current_user(request)
+        if not u.get("authenticated"):
+            raise HTTPException(status_code=401, detail="请先登录")
+        if roles and u.get("role") not in roles:
+            raise HTTPException(status_code=403, detail="权限不足")
+        return u
+    return _check
+
+
+def require_auth(request: Request):
+    """轻量守卫：只要求已登录，不限制角色"""
+    u = get_current_user(request)
+    if not u.get("authenticated"):
+        raise HTTPException(status_code=401, detail="请先登录")
+    return u
 
 
 # ============================================================

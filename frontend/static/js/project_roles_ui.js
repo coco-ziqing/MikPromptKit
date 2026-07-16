@@ -302,6 +302,8 @@
 
     _esc: function (s) { if (s == null) return ''; var d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; },
     _toast: function (m, t, ms) {
+      // T5: 统一走 PK.toast
+      if (window.PK && PK.toast) { PK.toast(m, t, ms); return; }
       if (typeof App !== 'undefined' && App.showToast) { App.showToast(m, t || 'info'); return; }
       var e = document.getElementById('rl_toast');
       if (!e) { e = document.createElement('div'); e.id = 'rl_toast'; e.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999;padding:10px 18px;border-radius:10px;color:#fff;font-size:13px;'; document.body.appendChild(e); }

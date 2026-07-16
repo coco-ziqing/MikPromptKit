@@ -334,7 +334,7 @@ def copy_word_card_video_from_library(card_id: int, data: dict = Body(...)):
         old_v = os.path.join(WC_VIDEO_DIR, card["preview_media"])
         if os.path.exists(old_v):
             os.remove(old_v)
-    # 提取首帧封面
+    # 提取首帧封面（异步不阻塞主线程）
     poster_name = ""
     try:
         import subprocess
@@ -342,7 +342,8 @@ def copy_word_card_video_from_library(card_id: int, data: dict = Body(...)):
         poster_path = os.path.join(WC_THUMB_DIR, poster_name)
         subprocess.run(
             ['ffmpeg', '-ss', '0.1', '-i', dest_path, '-vframes', '1', '-q:v', '2', poster_path, '-y'],
-            capture_output=True, timeout=30
+            capture_output=True, timeout=60,
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
         )
         if not os.path.exists(poster_path):
             poster_name = ""
@@ -534,23 +535,78 @@ def delete_custom_word(word_id: int):
     return {"ok": True}
 
 
+# ==================== 总项目（父级） ====================
+
+@router.get("/master-projects")
+def list_master_projects():
+    """获取所有总项目及其子分镜组 — 两级树状导航"""
+    db = get_db()
+    masters = db.execute("""
+        SELECT mp.*,
+               (SELECT COUNT(*) FROM master_sub_project WHERE master_project_id=mp.id) as sub_count
+        FROM master_project mp ORDER BY mp.updated_at DESC
+    """).fetchall()
+
+    result = []
+    for m in masters:
+        md = dict(m)
+        # 加载该总项目下的所有分镜组
+        subs = db.execute("""
+            SELECT up.*,
+                   (SELECT COUNT(*) FROM user_project_scene WHERE project_id=up.id) as scene_count
+            FROM user_project up
+            JOIN master_sub_project msp ON msp.seedance_project_id = up.id
+            WHERE msp.master_project_id = ?
+            ORDER BY msp.sort_order, up.updated_at DESC
+        """, [m["id"]]).fetchall()
+        md["sub_projects"] = [dict(s) for s in subs]
+        md["total_sub_count"] = len(subs)
+        md["total_scene_count"] = sum(s["scene_count"] for s in subs)
+        result.append(md)
+
+    # 未归类的分镜组（不属于任何总项目）
+    orphans = db.execute("""
+        SELECT up.*,
+               (SELECT COUNT(*) FROM user_project_scene WHERE project_id=up.id) as scene_count
+        FROM user_project up
+        WHERE up.id NOT IN (SELECT seedance_project_id FROM master_sub_project WHERE seedance_project_id IS NOT NULL)
+        ORDER BY up.updated_at DESC
+    """).fetchall()
+    orphan_list = [dict(o) for o in orphans]
+
+    return {
+        "masters": result,
+        "orphans": orphan_list,
+        "orphan_count": len(orphan_list),
+        "total_masters": len(result)
+    }
+
+
 # ==================== 项目 CRUD ====================
 
 @router.get("/projects")
-def list_projects(search: str = Query(None), page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)):
-    """获取所有分镜项目"""
+def list_projects(search: str = Query(None), master_project_id: int = Query(None), orphaned: bool = Query(False), page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)):
+    """获取分镜项目（支持按总项目过滤 or 获取未归类）"""
     db = get_db()
     params = []
     sql_where = ""
+    if master_project_id is not None:
+        sql_where = " WHERE up.id IN (SELECT seedance_project_id FROM master_sub_project WHERE master_project_id=?)"
+        params.append(master_project_id)
+    elif orphaned:
+        sql_where = " WHERE up.id NOT IN (SELECT seedance_project_id FROM master_sub_project WHERE seedance_project_id IS NOT NULL)"
     if search:
-        sql_where = " WHERE p.name LIKE ?"
+        if sql_where: sql_where += " AND up.name LIKE ?"
+        else: sql_where = " WHERE up.name LIKE ?"
         params.append(f"%{search}%")
 
-    total = db.execute(f"SELECT COUNT(*) as cnt FROM user_project p{sql_where}", params).fetchone()["cnt"]
+    total = db.execute(f"SELECT COUNT(*) as cnt FROM user_project up{sql_where}", params).fetchone()["cnt"]
     offset = (page - 1) * page_size
     rows = db.execute(
-        f"SELECT p.*, (SELECT COUNT(*) FROM user_project_scene WHERE project_id=p.id) as scene_count "
-        f"FROM user_project p{sql_where} ORDER BY p.updated_at DESC LIMIT ? OFFSET ?",
+        f"""SELECT up.*,
+        (SELECT COUNT(*) FROM user_project_scene WHERE project_id=up.id) as scene_count,
+        (SELECT mp.name FROM master_sub_project msp JOIN master_project mp ON mp.id=msp.master_project_id WHERE msp.seedance_project_id=up.id) as master_project_name
+        FROM user_project up{sql_where} ORDER BY up.updated_at DESC LIMIT ? OFFSET ?""",
         params + [page_size, offset]
     ).fetchall()
     return {
@@ -666,7 +722,7 @@ def _recalculate_scene_times(project_id: int, commit: bool = False):
 
 @router.post("/projects")
 def create_project(data: dict = Body(...)):
-    """新建分镜项目（支持全局风格/转场/负词/音频字段）"""
+    """新建分镜项目（支持全局风格/转场/负词/音频字段 + 可选关联总项目）"""
     name = (data.get("name") or "").strip() or "未命名项目"
     total_duration = data.get("total_duration", 15)
     aspect_ratio = data.get("aspect_ratio", "16:9")
@@ -699,6 +755,29 @@ def create_project(data: dict = Body(...)):
     )
     _recalculate_scene_times(cur.lastrowid)
     safe_commit()
+
+    # 关联总项目
+    master_pid = data.get("master_project_id")
+    if master_pid:
+        existing = db.execute(
+            "SELECT id FROM master_sub_project WHERE seedance_project_id=?",
+            [cur.lastrowid]
+        ).fetchone()
+        if not existing:
+            max_sort = db.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) as mx FROM master_sub_project WHERE master_project_id=?",
+                [master_pid]
+            ).fetchone()["mx"]
+            mp = db.execute("SELECT name FROM master_project WHERE id=?", [master_pid]).fetchone()
+            sub_name = (mp["name"] + " · " + name) if mp else name
+            db.execute(
+                "INSERT INTO master_sub_project"
+                "(master_project_id, seedance_project_id, name, sub_type, phase, sort_order)"
+                "VALUES (?, ?, ?, 'storyboard', 'P3', ?)",
+                [master_pid, cur.lastrowid, sub_name, max_sort + 1]
+            )
+            safe_commit()
+
     return {"ok": True, "id": cur.lastrowid}
 
 
@@ -828,7 +907,8 @@ def delete_project(project_id: int):
     # 关闭外键检查（user_scene_prompt 有残留FK引用已删除的表）
     db.execute("PRAGMA foreign_keys = OFF")
     try:
-        # 级联删除镜头和关联
+        # 级联删除镜头和关联 + 清理总项目关联
+        db.execute("DELETE FROM master_sub_project WHERE seedance_project_id=?", [project_id])
         db.execute("DELETE FROM user_scene_prompt WHERE scene_id IN (SELECT id FROM user_project_scene WHERE project_id=?)", [project_id])
         db.execute("DELETE FROM user_project_scene WHERE project_id=?", [project_id])
         db.execute("DELETE FROM user_project WHERE id=?", [project_id])

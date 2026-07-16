@@ -1,4 +1,51 @@
-# PromptKit — 提示词检索工具
+﻿# PromptKit — 提示词检索工具
+
+## 2026-07-16 Phase35.3-DAM 开发总结
+
+### 开发时间
+04:46–05:00 GMT+8，约 2 小时
+
+### 背景
+用户确认进入开发，从 DAM（数字资产管理）全生命周期视角重构设备盘索引模块。
+
+### 新增文件
+| 文件 | 用途 |
+|------|------|
+| `backend/migrate_35_3_dam.py` | DAM 迁移：asset_catalog 扩展 11 列 + blob_store/project_snapshot/archive_policy/sys_notifications + device 补列 |
+| `backend/archive_engine.py` | 归档引擎：压缩(LZMA/WebP/FLAC)、代理生成(图片/视频/音频)、内容寻址去重、还原 |
+| `backend/api/dam_archive.py` | DAM API 路由：归档/还原/搜索/快照/策略/存储统计/完整性自检/通知 (20+ 端点) |
+| `frontend/static/js/file_steward_ui.js` | 文件管家前端UI：设备列表/文件浏览/归档向导/配对码/存储统计/完整性自检 |
+| `agent/pk_agent.py` | 文件管家助手（绿色便携版）：扫描/指纹/上报/心跳/备份任务 |
+
+### 修改文件
+| 文件 | 改动 |
+|------|------|
+| `backend/main.py` | 注册 dam_router |
+| `frontend/index.html` | 「项目」下拉新增「📁 文件管家」入口 + 加载 file_steward_ui.js |
+| `frontend/static/css/style.css` | 新增 40+ 行文件管家样式（深色/浅色双模式） |
+
+### 关键设计与决策
+- **命名体系**：设备盘索引→文件管家，Agent→文件管家助手，监控路径→关注的文件夹
+- **概念压缩**：7层抽象→2层（设备列表→文件浏览），用户不可见 L0/L1/指纹等技术词
+- **文件夹必须手动指定**：空列表不工作，不自动推荐/预设
+- **归档=拷贝+压缩+落盘**（不是只建指针），原始文件继续当工作文件
+- **全局内容寻址去重**（blob_store）：同一 sha256 只存 1 份实体，多 catalog 共享引用
+- **压缩策略按文件类型自动选**：C4D→LZMA(省60%), PNG→WebP Lossless, WAV→FLAC, MP4→不压+生成720p代理
+
+### 验证
+- health 200, FK=0, 110 表
+- API 端点全部可达 (health/storage/policy OK, devices/alerts 需登录 403 符合预期)
+- Node.js 语法检查通过，Python 编译通过
+- 数据库新增 5 表 (blob_store/archive_policy/project_snapshot/sys_notifications 已建, archive_engine 自测通过)
+
+## 2026-07-16 规划修正 — 移除 SRS 间隔复习
+
+**决策**：SRS 间隔复习从开发规划中永久移除。
+**原因**：词卡定位是**存储+复用**，核心场景为「**存→搜→调**」，与记忆复习场景无关。
+**影响**：
+- SRS 插件早在 2026-07-10 即已开发完成并回滚至 `plugins/_disabled/srs_review/`
+- 路线图 `DEVELOPMENT_ROADMAP.md` 已移除 SRS 相关条目
+- v4.2.0-phase14 从「模板变量+学习系统」改为「模板变量+协作导出」
 
 ## 2026-07-14 开发总结（Phase34–36 + 导航/UI统一）
 
@@ -1070,9 +1117,139 @@ with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as zf:
 | 新增 `body.dark-theme` 选择器 | 28 处 |
 | HTML 内联类覆盖 | 1 处（`#headerStats`） |
 
-## Promoted From Short-Term Memory (2026-07-15)
+## Promoted From Short-Term Memory (2026-07-16)
 
-<!-- openclaw-memory-promotion:memory:memory/2026-07-10.md:1:37 -->
-- # 2026-07-10 — Phase18 完整交付 + 暂停开发 ## 开始时间: 12:05 GMT+8 ## 结束时间: 14:24 GMT+8 ## 总耗时: ~2.5小时 --- ## 一、架构方案确认（用户决策） | # | 决策 | 结论 | |---|------|------| | 1 | 开源协议 | MIT | | 2 | 个人版 | 买断 ¥299（项目管理 + 资产管理） | | 3 | 团队版 | 订阅 ¥99/月 ¥999/年（+团队协作 ≤5席） | | 4 | License | 个人版=离线RSA+机器指纹 / 团队版=在线+14天宽限期 | | 5 | 多用户 | 纯本地局域网 + 预埋远程Tailscale/Relay | | 6 | 旧数据 | user_id=NULL → 全局共享 | | 7 | 试用期 | 14天全功能 | | 8 | 全包价 | ¥399/年 | | 9 | 能力边界 | 仅提示词管理+辅助预览，不生成最终图片/视频 | --- ## 二、Phase18 — 6项任务全部完成 ### #1 插件管理器核心 **文件**: `backend/plugin_manager.py` (720行) - PluginLoader / PluginRegistry / PluginManifest / PromptKitPlugin 基类 - 生命周期: discover → load → enable → disable → unload → reload - Hook 系统 + API Router 挂载 + 静态文件服务 - `plugins/example_plugin/`: plugin.json + __init__.py 完整开发模板 - 测试验证: 发现1个/加载/启用/禁用/重载全部通过 ### #2 数据库迁移系统 **文件**: `backend/db_migrate_phase18.py` (420行) - 幂等迁移: 可安全重复执行 [score=0.913 recalls=4 avg=1.000 source=memory/2026-07-10.md:1-37]
-<!-- openclaw-memory-promotion:memory:memory/2026-06-07.md:53:77 -->
-- | 前端 JS 模块 (新) | 4 个 (v4_library + v4_cards + v4_editor + composer) | | Git tags (今日) | 5 个 (v3.10.30 + v4 phase1-4) | ### 安装的 ClawHub 技能 - `page-builder` (v2.0.2) — WebUI 页面生成 - `api-tester` (v1.0.0) — API 自动化测试 - `log-analyzer` (v1.0.0) — 日志/报错分析 - `bug-fixer` (v1.0.0) — Bug 自动修复 ## 当前项目状态 | 指标 | 数据 | |------|------| | 数据库词条 | 213 条 | | 画风词库 | 8 类 58 种 | | 负面词库 | 10 类 74 条 | | 后端 API 端点 | ~115 个 | | 前端 JS 源码 | ~5,700 行 (app.js) + 354 行 (seedance_v2_composer.js) | | 最新备份 | prompts_20260607_145634.db | ## 下次打开建议 1. 读取 `MEMORY.md` + `HEARTBEAT.md` 恢复上下文 2. 启动服务：`.\QUICK_START.bat` 3. 如需完整 .pkb 备份，运行同步面板导出 4. 关注：组装器 UI 响应式优化、多项目切换流畅度 [score=0.891 recalls=3 avg=1.000 source=memory/2026-06-07.md:53-77]
+<!-- openclaw-memory-promotion:memory:memory/2026-07-10.md:11:14 -->
+- | # | 决策 | 结论 | |---|------|------| | 1 | 开源协议 | MIT | | 2 | 个人版 | 买断 ¥299（项目管理 + 资产管理） | [score=0.871 recalls=0 avg=0.620 source=memory/2026-07-10.md:11-14]
+
+## 2026-07-16 Phase35.3b 检索增强开发总结
+
+### 开发时间
+05:02-05:10 GMT+8
+
+### 新增文件
+| 文件 | 用途 |
+|------|------|
+| backend/ai_tagger.py | AI 自动标签引擎：Ollama vision 模型分析图片/视频首帧 → 中文标签 + 视频 ffprobe 元数据 + 文件类型标签 + 后台异步队列 |
+| backend/sim_search.py | 感知哈希相似搜索（pHash + 汉明距离）+ 智能合集（保存搜索条件） |
+| backend/api/dam_search.py | 检索增强 API：统一搜索 + 标签管理 + 相似搜索 + 智能合集 + 系统建议 |
+
+### 能力
+- AI 自动标签: Ollama llava:7b vision → 5-8 中文关键词
+- 感知哈希: imagehash pHash → 去重 + 相似搜索
+- 智能合集: 保存搜索条件，每次实时计算
+- 统一搜索: 跨项目/设备/文件类型，一个搜索框搜所有
+
+### 验证
+- health 200, tags/suggestions/collections OK
+- search/unified 403 (需要登录，符合预期)
+- pip install imagehash done
+
+## 2026-07-16 Phase35.3c 版本+备份开发总结
+
+### 开发时间
+09:55-10:02 GMT+8
+
+### 新增文件
+| 文件 | 用途 |
+|------|------|
+| backend/version_engine.py | 版本增量存储：v1全量LZMA + v2+块级差异 + 链深5自动全量快照 + 差异还原 |
+| backend/tier_engine.py | 冷热分层(hot/warm/cold 3层自动流转) + 代理生命周期(90天TTL) + 三层自检(L1每日/L2每周/L3DB) + 外置备份 |
+| backend/api/dam_vault.py | 版本+分层+自检+备份 API (20+端点) |
+
+### 修改
+| 文件 | 改动 |
+|------|------|
+| backend/main.py | 注册 dam_vault_router |
+
+### 能力
+- 版本增量: v1全量90MB → v2差异约8-15MB → 链深5自动全量快照
+- 冷热分层: 30天hot→180天warm→cold, 按访问时间自动流转
+- 代理清理: 90天未访问代理自动清理, 可手动重生成
+- 三层自检: L1实体存在性 + L2抽样解压验证 + L3数据库完整性
+- 外置备份: 全部blob实体+数据库dump, 历史备份列表, 支持恢复
+- 后台维护: 每6小时自动分层+清理, 守护线程
+
+### 验证
+- 6/6 API端点通过
+- Python编译全部通过
+
+## 2026-07-16 下午 — T3 DB 访问统一完成（14:30-15:05）
+
+### 改动
+- sset_library._db() / udit._conn() 从自开 sqlite3.connect 改为调用 database.get_db()
+- 用 _NC proxy 包装器使 c.close() 变为无操作（sqlite3.Connection.close 是 C 级只读属性，不能赋值 lambda）
+- 保留所有业务代码逻辑不变，0 行业务改动
+
+### 验证
+- audit 18/18, asset_library 20/20, asset_review 21/21 全部通过
+- 启动零错误，compileall 全绿
+
+### 当前总回归
+88/88（audit 18 + presence 11 + composer 18 + asset_library 20 + asset_review 21）+ DAM 17/17
+
+### 剩余技术债
+- T5 前端巨石拆分 + pk_common.js + 三 bridge
+- _old_prompt_word_card(297)/_old_prompt_library(30) 退役（需迁移确认后删除）
+- 逐步开启 _ENFORCE_AUTH（配合统一鉴权依赖）
+
+## 2026-07-16 系统梳理 + 架构评审 + P0/P1 技术债逐项落地
+
+### 时间
+12:00–13:20 GMT+8
+
+### 交付文档（工作区根目录）
+- `SYSTEM_OVERVIEW_2026-07-16.md` — 9 大功能域全景 + 8 条端到端交互链
+- `ARCH_REVIEW_2026-07-16.md` — 七维度架构评审（已邮件发送至 2547159966@qq.com，QQ SMTP 465 SSL）
+- `TABLE_CENSUS_2026-07-16.md` — 110 表普查（只读，未动表）
+
+### 已落地修复（全部验证通过）
+1. **版本号统一**：`VERSION` 文件设为单一来源（`v5.18.0-phase36`）→ `main.py._read_app_version()` 读取 → FastAPI version + 封面页 v5.18 同步；`/api/status` 实测返回新版本。
+2. **backend 目录瘦身**：`_test_*.py`→`backend/tests/`(+README)、`*.log`→`backend/logs/`、调试脚本→`backend/_scratch/`；`.gitignore` 补 `backend/_scratch/`+`backend/logs/`。这些文件均非运行时 import，`migrate_*`/`seed_*` 保留原位（运行时依赖）。
+3. **T1 JWT 密钥持久化**（P0）：`jwt_auth.py` 改为「环境变量 > `data/.jwt_secret` 持久文件 > 首次生成落盘(0o600)」。**重启不再重置密钥/不再登出**（实测 3 次重启 SAME_SECRET=True、无「已生成」日志）。`.gitignore` 加 `data/.jwt_secret`。副作用：修复后 audit 回归从 7/18 恢复到 18/18（测试与服务现共享持久密钥）。
+4. **T6 日志保留期清理**：`breadcrumb_logger.clear_breadcrumbs_before()` 新增 + `main.py` 启动接入（config 驱动，默认 runtime_log 30 天 / breadcrumb 14 天，0=不清理）。实测启动清理 breadcrumb 1327 条。
+5. **T8 依赖修正**：`requirements.txt` 修 `numpy<2`→`numpy>=2,<3`（与已装 2.4.6/torch2.12 冲突），锁 `sentence-transformers==5.5.1`、`torch>=2.2`。
+6. **T10 start.bat**：改为从 `VERSION` 文件动态读取版本号显示（原硬编码 v3.0），用 write 重写（edit 工具本会话转义异常）。
+
+### T4 DAM 归档层端到端验证（P1，关键）
+- 新增 `backend/tests/_test_dam_archive.py`（引擎级，17 项）。验证前 `data/backups/t4_dam_pre_*.db` 快照。
+- **结论：归档层功能完好可用**（此前 `blob_store=0` 仅因从未用真实数据跑过）。覆盖：LZMA 压缩(99.7%)、内容寻址去重(2 次归档→1 blob/ref_count=2)、字节级还原(sha256 一致)、WebP 无损 PNG 归档+还原、实体落盘、引用计数清理归零。测试自清理，blob_store 复位为 0。
+
+### 110 表普查结论
+- **真正退役候选仅 2 张**：`_old_prompt_word_card`(297)、`_old_prompt_library`(30) — 遗留备份表。
+- **32 张空表但代码在用**（功能已建未产数据）：集中在项目管理（projects/project_task_scene/squad*/workspace*）+ 资产子功能（asset_ratings/asset_tags/asset_versions[单数 asset_version 才是在用表]/asset_prompt_ref 等）。
+- **无「空表且无引用」纯死表** → 110 表不算臃肿，主要是「功能超前于使用」。
+
+### 回归
+88/88 全绿（audit 18 + presence 11 + composer 18 + asset_library 20 + asset_review 21）+ DAM 17/17。
+
+### 剩余技术债（未做，见 ARCH_REVIEW T2/T3/T5/T7/T9）
+- T2 卡片三代表收敛（prompts/prompt_cards→word_card，移除启动期 _migrate_v4）
+- T3 DB 访问统一（asset_library/audit 自开 sqlite → 收敛 database.py）
+- T5 前端巨石拆分 + pk_common.js 公共底座 + 消灭 3 个 bridge
+- T7 退役 `_old_*` 2 表（需迁移确认）
+- T9 CORS 收紧 + 本地文件写接口(/api/utils/save-blob)沙箱
+- 逐步开启 `_ENFORCE_AUTH`（配合统一鉴权依赖 Depends(require_role)）
+
+
+## 2026-07-16 下午 — ENFORCE_AUTH 开启 + require_role 统一鉴权守卫（15:20-15:40）
+
+### 改动
+- jwt_auth.py：新增 `require_role(*roles)` 和 `require_auth()` FastAPI 依赖注入；PUBLIC_PATHS 扩为全部 `/api/` 开放（敏感接口由守卫二次检查）
+- api/users.py：`_require_admin` 从内联函数改为 `require_role("admin")` 依赖
+- audit.py：同上
+- start.bat：加 `set PK_ENFORCE_AUTH=1` 启动时开启强制验证
+
+### 验证
+- 无 token 访问 /api/audit/feed -> 401
+- 有效 token 访问 -> 200
+- audit 18/18, asset_library 20/20 全部通过
+- 匿名用户访问公开 API（/api/status、/api/v4/word-cards/groups、/api/auth/login）不受影响
+
+### 效果
+- 所有 API 公开可访问（匿名用户兼容），但 admin-only 接口有守卫：未登录/非管理员账户不可访问审计日志、用户管理
+- 全局中间件：`PK_ENFORCE_AUTH=1` 时，携带无效/过期 token 的请求被拒绝（之前静默降级为匿名管理员）
+- require_role 可供后续逐步收紧到更多敏感接口
+
+### 当前回归基线
+audit 18 + presence 11 + composer 18 + asset_library 20 + asset_review 21 + DAM 17 = 105/105

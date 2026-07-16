@@ -263,24 +263,5 @@ PK_DEVICES._e = function(s) {
   var d = document.createElement('div'); d.textContent = (s||''); return d.innerHTML;
 };
 
-/* 挂载到项目下拉导航 */
-PK_DEVICES._navInit = function() {
-  var dd = document.querySelector('#navDropdownProject .nav-dropdown-menu');
-  if (!dd) return;
-  if (dd.querySelector('[data-action="pk_devices"]')) return; // already added
-  var item = document.createElement('div');
-  item.className = 'nav-dropdown-item';
-  item.setAttribute('data-action', 'pk_devices');
-  item.onclick = function(){ PK_DEVICES.open(); };
-  item.innerHTML = '<i class="bi bi-hdd-stack" style="color:#06b6d4;"></i> 设备盘索引';
-  dd.appendChild(item);
-};
+/* 挂载到项目下拉导航 — 已被资产管家取代，停用 */
 
-// 重试注入（DOM 可能还未就绪 / 其他模块也往这里插元素）
-(function _tryInject() {
-  var el = document.querySelector('#navDropdownProject .nav-dropdown-menu');
-  if (el && !el.querySelector('[data-action="pk_devices"]')) {
-    PK_DEVICES._navInit(); return;
-  }
-  setTimeout(_tryInject, 300);
-})();
