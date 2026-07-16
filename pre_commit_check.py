@@ -53,6 +53,7 @@ FORBIDDEN_CONTENT_PATTERNS = [
 
 # 路径模式（不允许暂存）
 FORBIDDEN_PATHS = [
+    "plugins/project/",
     "plugins/project_mgmt/",
     "plugins/asset_mgmt/",
     "plugins/team_collab/",

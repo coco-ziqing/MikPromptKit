@@ -29,7 +29,11 @@ scripts/generate_license_key*
 tools/license_server.py
 tools/license_*
 
-# 商业插件包（付费分发）
+# 商业插件包（付费分发）— 源码禁入，plugin.json 元数据例外
+plugins/project/*.py
+plugins/project/migrations/
+plugins/project/static/
+plugins/project/__pycache__/
 plugins/project_mgmt/
 plugins/asset_mgmt/
 plugins/team_collab/
