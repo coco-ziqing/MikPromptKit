@@ -349,7 +349,7 @@ Object.assign(App, {
             this.showToast(App._t('common.export', '导出成功 (') + ids.length + ' 条)', 'success');
             document.getElementById('modalExportPreview').style.display = 'none';
         } catch (e) {
-            this.showToast(App._t('common.export', '导出失败: ') + e.message, 'error');
+            this.showToast(App._t('common.export', '导出未完成: ') + e.message, 'error');
         }
     },
 
@@ -403,7 +403,7 @@ Object.assign(App, {
             document.getElementById('btnDiImport').onclick = function() { App._confirmDropImport(); };
             document.getElementById('modalDropImport').style.display = 'flex';
         } catch (e) {
-            this.showToast('PNG 解析失败: ' + e.message, 'error');
+            this.showToast('PNG 未能解析: ' + e.message, 'error');
         }
     },
 
@@ -414,7 +414,7 @@ Object.assign(App, {
         try {
             data = JSON.parse(text);
         } catch(e) {
-            this.showToast('JSON 解析失败：' + e.message, 'error');
+            this.showToast('JSON 未能解析：' + e.message, 'error');
             return;
         }
         // 兼容两种格式：{prompts: [...]} 或直接数组
@@ -622,7 +622,7 @@ Object.assign(App, {
                 var resp = await fetch('/api/export/import-png', { method: 'POST', body: formData });
                 data = await resp.json();
             } catch (e) {
-                this.showToast(App._t('auto.str_faed53ba', 'PNG 导入失败'), 'error');
+                this.showToast(App._t('auto.str_faed53ba', 'PNG 导入未完成'), 'error');
                 btn.disabled = false; btn.innerHTML = App._t('auto.str_fc69a499', '<i class="bi bi-check-lg"></i> 确认导入');
                 return;
             }
@@ -668,7 +668,7 @@ Object.assign(App, {
                 var resp = await fetch('/api/v2/pt/import', { method: 'POST', body: formData });
                 data = await resp.json();
             } catch (e) {
-                this.showToast(App._t('common.import', '导入失败'), 'error');
+                this.showToast(App._t('common.import', '导入未完成'), 'error');
                 btn.disabled = false; btn.innerHTML = App._t('auto.str_fc69a499', '<i class="bi bi-check-lg"></i> 确认导入');
                 return;
             }
@@ -699,7 +699,7 @@ Object.assign(App, {
 
         if (!data) {
             btn.disabled = false; btn.innerHTML = App._t('auto.str_fc69a499', '<i class="bi bi-check-lg"></i> 确认导入');
-            this.showToast(App._t('common.import', '导入失败，请重试'), 'error');
+            this.showToast(App._t('common.import', '导入未完成，请重试'), 'error');
             return;
         }
 
@@ -707,7 +707,7 @@ Object.assign(App, {
         resultEl.style.display = 'block';
         if (data.failed > 0) {
             resultEl.style.color = '#ef4444';
-            resultEl.innerHTML = App._t('common.import', '导入完成：') + data.created + ' 成功, ' + data.skipped + ' 跳过, ' + data.failed + App._t('auto.str_f73d0c19', ' 失败');
+            resultEl.innerHTML = App._t('common.import', '导入完成：') + data.created + ' 成功, ' + data.skipped + ' 跳过, ' + data.failed + App._t('auto.str_f73d0c19', ' 未完成');
         } else {
             resultEl.style.color = '#059669';
             resultEl.innerHTML = '✅ 导入成功！' + data.created + ' 条提示词已添加';
@@ -744,7 +744,7 @@ Object.assign(App, {
         var resp = await fetch('/api/v2/pt/preview', { method: 'POST', body: formData });
         if (!resp.ok) {
             var errText = await resp.text();
-            this.showToast(App._t('auto.preview_失败__', '预览失败: ') + errText, 'error');
+            this.showToast(App._t('auto.preview_失败__', '预览未完成: ') + errText, 'error');
             return;
         }
         var data = await resp.json();
@@ -821,7 +821,7 @@ Object.assign(App, {
             URL.revokeObjectURL(url);
             this.showToast(App._t('common.export', '导出成功 (') + ids.length + ' 条)', 'success');
         } catch (e) {
-            this.showToast(App._t('common.export', '导出失败'), 'error');
+            this.showToast(App._t('common.export', '导出未完成'), 'error');
         }
     },
 
@@ -919,7 +919,7 @@ Object.assign(App, {
                 if (saveDir) {
                     var ok = await App._saveBlobToPath(b, saveDir + '\\' + dn);
                     if (ok) { App.showToast(App._t('common.export', '导出成功 (') + ids.length + ' 条)', 'success'); }
-                    else { App._fallbackDownload(b, dn); App.showToast(App._t('auto.str_1680e142', '写入失败，已改为下载'), 'warning'); }
+                    else { App._fallbackDownload(b, dn); App.showToast(App._t('auto.str_1680e142', '写入未完成，已改为下载'), 'warning'); }
                 } else {
                     App._fallbackDownload(b, dn);
                     App.showToast(App._t('common.export', '导出成功 (') + ids.length + ' 条)', 'success');
@@ -950,7 +950,7 @@ Object.assign(App, {
                 App.showToast(App._t('common.export', '导出成功 (') + saved + '/' + ids.length + ' 张 PNG)', 'success');
             }
         } catch (e) {
-            App.showToast(App._t('common.export', '导出失败: ') + e.message, 'error');
+            App.showToast(App._t('common.export', '导出未完成: ') + e.message, 'error');
         }
         this._exportQueue = null;
     },
@@ -966,10 +966,10 @@ Object.assign(App, {
                 var s = document.getElementById('exportPathStatus');
                 if (s) { s.innerHTML = '\u2705 目录: <strong>' + d.path + '</strong>'; s.style.color = '#059669'; }
             } else if (d.error && d.error !== '未选择目录') {
-                this.showToast('选择目录失败: ' + d.error, 'error');
+                this.showToast('选择目录未完成: ' + d.error, 'error');
             }
         } catch (e) {
-            this.showToast(App._t('auto.str_71fa02a5', '目录选择器调用失败'), 'error');
+            this.showToast(App._t('auto.str_71fa02a5', '目录选择器调用未完成'), 'error');
         }
     },
 
@@ -1002,7 +1002,7 @@ Object.assign(App, {
             var d = await r.json();
             return d.ok;
         } catch (e) {
-            console.warn(App._t('common.save', '保存文件失败:'), e.message);
+            console.warn(App._t('common.save', '保存文件未完成:'), e.message);
             return false;
         }
     },
@@ -1136,7 +1136,7 @@ Object.assign(App, {
 
             if (!data.ok) {
                 var errEl = document.getElementById('ssError');
-                errEl.innerHTML = '<strong>\u274c ' + (data.error || App._t('auto.str_80ce4593', '识别失败')) + '</strong><br><span style="font-size:12px;margin-top:8px;display:block;">\u8bf7\u786e\u8ba4 Ollama \u6b63\u5728\u8fd0\u884c\u4e14\u6709\u89c6\u89c9\u6a21\u578b\u53ef\u7528\u3002</span>';
+                errEl.innerHTML = '<strong>\u274c ' + (data.error || App._t('auto.str_80ce4593', '识别未完成')) + '</strong><br><span style="font-size:12px;margin-top:8px;display:block;">\u8bf7\u786e\u8ba4 Ollama \u6b63\u5728\u8fd0\u884c\u4e14\u6709\u89c6\u89c9\u6a21\u578b\u53ef\u7528\u3002</span>';
                 errEl.style.display = 'block';
                 document.getElementById('ssBtnRetry').style.display = 'inline-block';
                 return;
@@ -1205,7 +1205,7 @@ Object.assign(App, {
         } catch(e) {
             document.getElementById('ssLoading').style.display = 'none';
             var errEl = document.getElementById('ssError');
-            errEl.innerHTML = '<strong>\u274c 请求失败: ' + this._escape(e.message) + '</strong><br><span style="font-size:12px;margin-top:8px;display:block;">\u8bf7\u68c0\u67e5\u540e\u7aef\u670d\u52a1\u548c Ollama \u662f\u5426\u8fd0\u884c</span>';
+            errEl.innerHTML = '<strong>\u274c 请求未响应: ' + this._escape(e.message) + '</strong><br><span style="font-size:12px;margin-top:8px;display:block;">\u8bf7\u68c0\u67e5\u540e\u7aef\u670d\u52a1\u548c Ollama \u662f\u5426\u8fd0\u884c</span>';
             errEl.style.display = 'block';
             document.getElementById('ssBtnRetry').style.display = 'inline-block';
         }
@@ -1255,7 +1255,7 @@ Object.assign(App, {
             await this.loadPrompts();
             this.loadStats();
         } else {
-            this.showToast(App._t('common.import', '导入失败: ') + (result ? result.error : App._t('common.unknown_error', '未知错误')), 'error');
+            this.showToast(App._t('common.import', '导入未完成: ') + (result ? result.error : App._t('common.unknown_error', '遇到意外情况，请稍后再试')), 'error');
         }
     },
 
@@ -1365,7 +1365,7 @@ Object.assign(App, {
                         fetch(m[1]).then(function(r) { return r.blob(); }).then(function(blob) {
                             showPastePreview(blob);
                         }).catch(function() {
-                            self.showToast(App._t('auto.str_7bd0314c', '解析剪贴板图片失败'), 'error');
+                            self.showToast(App._t('auto.str_7bd0314c', '解析剪贴板图片未完成'), 'error');
                         });
                     } else {
                         self.showToast('剪贴板中未找到图片，请先截图再按 Ctrl+V', 'warning', 3000);
@@ -1474,7 +1474,7 @@ Object.assign(App, {
         var el = document.getElementById('ieImportResult');
         el.style.display = 'block';
         el.style.color = failed > 0 ? '#ef4444' : '#059669';
-        el.innerHTML = App._t('common.import', '导入完成: ') + created + ' 成功, ' + skipped + ' 跳过, ' + failed + App._t('auto.str_f73d0c19', ' 失败');
+        el.innerHTML = App._t('common.import', '导入完成: ') + created + ' 成功, ' + skipped + ' 跳过, ' + failed + App._t('auto.str_f73d0c19', ' 未完成');
         if (created > 0) await this.loadPrompts();
     },
 
@@ -1544,7 +1544,7 @@ Object.assign(App, {
         } catch(e) {
             document.getElementById('ieExportResult').style.display = 'block';
             document.getElementById('ieExportResult').style.color = '#ef4444';
-            document.getElementById('ieExportResult').innerHTML = App._t('common.export', '导出失败: ') + e.message;
+            document.getElementById('ieExportResult').innerHTML = App._t('common.export', '导出未完成: ') + e.message;
         }
         btn.disabled = false; btn.textContent = App._t('common.export', '导出');
     },
@@ -1654,7 +1654,7 @@ Object.assign(App, {
             this.showToast('已' + (mode === 'add' ? '添加' : '移除') + ' ' + data.updated + App._t('auto.str_2892f5d4', ' 条词条的标签'), 'success');
             this.loadPrompts();
         } else {
-            this.showToast(App._t('common.op_failed', '操作失败'), 'error');
+            this.showToast(App._t('common.op_failed', '操作未完成，稍后再试'), 'error');
         }
     },
 

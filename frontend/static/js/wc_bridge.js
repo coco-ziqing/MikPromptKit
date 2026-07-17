@@ -406,7 +406,7 @@ App.renderSidebar = function() {
     } catch(e) {
         console.error('[wc-bridge] renderSidebar 崩溃:', e.message, e.stack);
         var sidebar = document.getElementById('sidebar');
-        if (sidebar) sidebar.innerHTML = '<div style="padding:20px;color:#ef4444;font-size:13px;">侧边栏渲染失败: ' + e.message + '</div>';
+        if (sidebar) sidebar.innerHTML = '<div style="padding:20px;color:#ef4444;font-size:13px;">侧边栏渲染未完成: ' + e.message + '</div>';
     }
 };
 
@@ -559,10 +559,10 @@ App._treeQuickAdd = function(parentId) {
                 });
             });
         } else {
-            r.json().then(function(e) { self.showToast('添加失败: ' + (e.detail || 'HTTP ' + r.status), 'error'); })
-                .catch(function() { self.showToast('添加失败', 'error'); });
+            r.json().then(function(e) { self.showToast('添加未完成: ' + (e.detail || 'HTTP ' + r.status), 'error'); })
+                .catch(function() { self.showToast('添加未完成', 'error'); });
         }
-    }).catch(function(e) { self.showToast('出错: ' + e.message, 'error'); });
+    }).catch(function(e) { self.showToast('遇到问题：' + e.message, 'error'); });
 };
 
 // 叶子节点点击代理（data属性避免引号注入）
@@ -657,7 +657,7 @@ App._wcMoveCard = function(cardId, targetGroupId, groupName) {
             // 刷新分组树统计（侧边栏 + 陈列架计数同步）
             self.loadGroupTree();
         } else {
-            self.showToast('移动失败', 'error');
+            self.showToast('移动未完成', 'error');
         }
     }).catch(function() { self.showToast('出错', 'error'); });
 };
@@ -760,7 +760,7 @@ App._wcDoBatchMove = function(ids, targetGroupId, groupName) {
             self._wcLoadPrompts();
             self.loadGroupTree();
         } else {
-            self.showToast('移动失败', 'error');
+            self.showToast('移动未完成', 'error');
         }
     }).catch(function() { self.showToast('出错', 'error'); });
 };
@@ -886,7 +886,7 @@ App._wcLoadPrompts = async function() {
                     }
                 }
             } catch(e) {
-                console.warn('[wc-bridge] 收藏归属查询失败:', e.message);
+                console.warn('[wc-bridge] 收藏归属查询未完成:', e.message);
             }
         }
 
@@ -974,7 +974,7 @@ App.gmRefresh = function() {
     var self = this;
     // 加载完整分组列表（含空分组）
     this.fetchJSON('/api/v4/word-cards/groups?include_empty=true').then(function(d) {
-        if (!d || !d.groups) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">加载失败</div>'; return; }
+        if (!d || !d.groups) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">加载未完成</div>'; return; }
         var groups = d.groups;
         // 更新父级下拉
         var parentSel = document.getElementById('gmNewParent');
@@ -1021,7 +1021,7 @@ App.gmRefresh = function() {
         }
         list.innerHTML = html || '<div style="padding:20px;text-align:center;color:var(--text-muted);">暂无分组</div>';
     }).catch(function(e) {
-        list.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">加载出错: ' + e.message + '</div>';
+        list.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">加载遇到问题: ' + e.message + '</div>';
     });
 };
 
@@ -1053,15 +1053,15 @@ App.gmCreate = function() {
                 });
             });
         } else {
-            r.json().then(function(e) { self.showToast('创建失败: ' + (e.detail || 'HTTP ' + r.status), 'error'); })
-                .catch(function() { self.showToast('创建失败: HTTP ' + r.status, 'error'); });
+            r.json().then(function(e) { self.showToast('创建未完成: ' + (e.detail || 'HTTP ' + r.status), 'error'); })
+                .catch(function() { self.showToast('创建未完成: HTTP ' + r.status, 'error'); });
         }
-    }).catch(function(e) { self.showToast('创建出错: ' + e.message, 'error'); });
+    }).catch(function(e) { self.showToast('创建遇到问题: ' + e.message, 'error'); });
 };
 
 // Phase15: 行内重命名（有 btnEl 时变输入框，否则回退 prompt）
 App.gmEdit = function(groupId, oldName, btnEl) {
-    if (!btnEl) { var n=prompt('修改名称：',oldName||''); if(!n||!n.trim())return; var s=this; fetch('/api/v4/word-cards/groups/'+groupId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.trim()})}).then(function(r){if(r.ok){s.showToast('已更新','success');s.loadGroupTree().then(function(){s.gmRefresh();if(s.state.currentGroupId===null)s._showShowcase()})}else{s.showToast('更新失败','error')}}); return; }
+    if (!btnEl) { var n=prompt('修改名称：',oldName||''); if(!n||!n.trim())return; var s=this; fetch('/api/v4/word-cards/groups/'+groupId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.trim()})}).then(function(r){if(r.ok){s.showToast('已更新','success');s.loadGroupTree().then(function(){s.gmRefresh();if(s.state.currentGroupId===null)s._showShowcase()})}else{s.showToast('更新未完成','error')}}); return; }
     var el = btnEl.closest('.module-item');
     var spans = el.querySelectorAll('span');
     var nameSpan = null;
@@ -1090,7 +1090,7 @@ App.gmEdit = function(groupId, oldName, btnEl) {
             body: JSON.stringify({ name: v })
         }).then(function(r) {
             if (r.ok) { self.showToast('已更新', 'success'); self.loadGroupTree().then(function() { if (self.state.currentGroupId === null) self._showShowcase(); }); }
-            else { self.showToast('更新失败', 'error'); }
+            else { self.showToast('更新未完成', 'error'); }
         }).catch(function() { self.showToast('出错', 'error'); });
     };
     input.onblur = done;
@@ -1130,7 +1130,7 @@ App.gmDelete = function(groupId, groupName, btnEl) {
                     else if (self.state.currentGroupId === null) self._showShowcase();
                 });
             } else {
-                r.json().then(function(e) { self.showToast('移除失败: '+(e.detail||''), 'error'); });
+                r.json().then(function(e) { self.showToast('暂未移除: '+(e.detail||''), 'error'); });
             }
         });
     };
@@ -1238,7 +1238,7 @@ App._wcSetupCardDrag = function() {
                 await self._wcLoadPrompts();
                 await self.loadGroupTree();
             } catch(e) {
-                self.showToast('移动失败: ' + e.message, 'danger');
+                self.showToast('移动未完成: ' + e.message, 'danger');
             }
         });
     });

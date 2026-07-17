@@ -44,7 +44,7 @@
             var url = '/api/v4/composer/cards-available?page_size=100';
             if (search) url += '&search=' + encodeURIComponent(search);
             var resp = await App.fetchJSON(url);
-            if (!resp || !resp.items) { grid.innerHTML = '<div class="empty-state"><p>加载失败</p></div>'; return; }
+            if (!resp || !resp.items) { grid.innerHTML = '<div class="empty-state"><p>加载未完成</p></div>'; return; }
 
             if (!resp.items.length) {
                 grid.innerHTML = '<div class="empty-state"><p>暂无可用提示词卡</p></div>';
@@ -76,7 +76,7 @@
             }
             grid.innerHTML = h;
         } catch (e) {
-            grid.innerHTML = '<div class="empty-state"><p>加载失败: ' + App._escape(e.message) + '</p></div>';
+            grid.innerHTML = '<div class="empty-state"><p>加载未完成: ' + App._escape(e.message) + '</p></div>';
         }
     };
 
@@ -130,10 +130,10 @@
                     App.seedanceV2.openProject(resp.project_id);
                 }, 300);
             } else {
-                App.showToast('创建失败: ' + (resp?.error || App._t('common.unknown_error', '未知错误')), 'error');
+                App.showToast('创建未完成: ' + (resp?.error || App._t('common.unknown_error', '遇到意外情况，请稍后再试')), 'error');
             }
         } catch (e) {
-            App.showToast('创建失败: ' + e.message, 'error');
+            App.showToast('创建未完成: ' + e.message, 'error');
         }
     };
 

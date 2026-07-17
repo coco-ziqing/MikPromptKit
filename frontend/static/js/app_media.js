@@ -172,7 +172,7 @@ Object.assign(App, {
             this.showToast(App._t('auto.str_00cadfcb', '媒体已清除'), 'info');
             await this.loadPrompts();
         } else {
-            this.showToast(App._t('auto.str_cd6849ea', '清除失败'), 'error');
+            this.showToast(App._t('auto.str_cd6849ea', '清除未完成'), 'error');
         }
     },
 
@@ -560,7 +560,7 @@ Object.assign(App, {
                     }
                 }
             } catch(e) {
-                this.showToast(App._t('auto.upload_失败__', '上传失败: ') + file.name, 'error');
+                this.showToast(App._t('auto.upload_失败__', '上传未完成: ') + file.name, 'error');
             }
         }
         if (files.length > 0) {
@@ -631,7 +631,7 @@ Object.assign(App, {
                     }
                 }
             } catch(e) {
-                this.showToast(file.name + App._t('auto.str_0619e1fc', ' 上传失败'), 'error');
+                this.showToast(file.name + App._t('auto.str_0619e1fc', ' 上传未完成'), 'error');
             }
         }
         if (files.length > 0) {
@@ -881,7 +881,7 @@ Object.assign(App, {
             await this.loadPrompts();
             this.showToast(App._t('auto.str_e23ed266', '视频处理完成,已关联到提示词'), 'success');
         } else {
-            this.showToast(App._t('auto.str_1012e098', '处理失败'), 'error');
+            this.showToast(App._t('auto.str_1012e098', '处理未完成'), 'error');
         }
     },
 
@@ -1330,12 +1330,12 @@ Object.assign(App, {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ prompt_id: pid })
             });
-            if (!r) { checkbox.checked = false; this.showToast('添加收藏失败', 'error'); return; }
+            if (!r) { checkbox.checked = false; this.showToast('添加收藏未完成', 'error'); return; }
             this.showToast('已添加到收藏', 'success');
         } else {
             // 从收藏移除
             var r2 = await this.fetchJSON('/api/v2/collections/' + cid + '/items/' + pid, { method: 'DELETE' });
-            if (!r2) { checkbox.checked = true; this.showToast('移除收藏失败', 'error'); return; }
+            if (!r2) { checkbox.checked = true; this.showToast('移除收藏未完成', 'error'); return; }
             this.showToast('已从收藏移除', 'info');
         }
         // 刷新查看器右侧面板 + 首页卡片收藏徽标
@@ -1460,7 +1460,7 @@ Object.assign(App, {
                 }
             }
         } catch(e) {
-            console.warn('[viewer] 收藏查询失败:', e.message);
+            console.warn('[viewer] 收藏查询未完成:', e.message);
         }
         var ch = '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">收藏分组:</div>';
         if (allC && allC.length > 0) {

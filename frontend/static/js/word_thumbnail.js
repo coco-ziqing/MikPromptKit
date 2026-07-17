@@ -36,9 +36,9 @@ App.wordEditor._uploadThumb = async function(event) {
             await this._loadCard();
             try { await App.loadPrompts(); } catch(e) {}
         } else {
-            PK.toast('上传失败: ' + (d.detail || d.error || 'unknown'), 'error');
+            PK.toast('上传未完成: ' + (d.detail || d.error || 'unknown'), 'error');
         }
-    } catch(e) { PK.toast('上传出错: ' + e.message, 'error'); }
+    } catch(e) { PK.toast('上传遇到问题: ' + e.message, 'error'); }
     event.target.value = '';
 };
 
@@ -58,9 +58,9 @@ App.wordEditor._uploadVideo = async function(event) {
                 await this._loadCard();
                 try { await App.loadPrompts(); } catch(e) {}
             } else {
-                PK.toast('上传失败: ' + ((d && (d.detail || d.error)) || '服务器错误'), 'error');
+                PK.toast('上传未完成: ' + ((d && (d.detail || d.error)) || '服务器错误'), 'error');
             }
-        } catch(e) { PK.toast('上传出错: ' + e.message, 'error'); }
+        } catch(e) { PK.toast('上传遇到问题: ' + e.message, 'error'); }
         event.target.value = '';
         return;
     }

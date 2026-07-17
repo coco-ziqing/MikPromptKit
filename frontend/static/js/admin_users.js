@@ -12,7 +12,7 @@
     open: function() {
       var user = window.PK_AUTH_CLIENT && PK_AUTH_CLIENT._user;
       if (!user || user.role !== 'admin') {
-        if (typeof App !== 'undefined' && App.showToast) App.showToast('仅管理员可访问', 'error');
+        if (typeof App !== 'undefined' && App.showToast) App.showToast('这一区由主理人打理，如需访问可请主理人开通', 'error');
         return;
       }
 
@@ -41,15 +41,15 @@
       if (!vp) return;
       vp.innerHTML = '<div class="aum-container" style="height:100%;overflow-y:auto;padding:20px;">'+
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">'+
-        '<h4 style="margin:0;font-size:15px;font-weight:700;color:var(--text-main);">👥 用户管理</h4>'+
+        '<h4 style="margin:0;font-size:15px;font-weight:700;color:var(--text-main);">👥 团队空间</h4>'+
         '<button class="btn btn-sm btn-outline-secondary" onclick="AUM.close()" style="font-size:12px;">← 返回</button></div>'+
         '<div class="toolbar"><div style="display:flex;gap:8px;flex:1;align-items:center;flex-wrap:wrap;">'+
-        '<input type="text" class="search-box" id="aum_search" placeholder="搜索用户..." oninput="AUM.load()">'+
+        '<input type="text" class="search-box" id="aum_search" placeholder="搜索伙伴..." oninput="AUM.load()">'+
         '<button class="filter-btn active" id="aum_f_all" onclick="AUM.setFilter(\'\',this)">全部</button>'+
-        '<button class="filter-btn" id="aum_f_admin" onclick="AUM.setFilter(\'admin\',this)">管理员</button>'+
-        '<button class="filter-btn" id="aum_f_editor" onclick="AUM.setFilter(\'editor\',this)">编辑员</button>'+
-        '<button class="filter-btn" id="aum_f_viewer" onclick="AUM.setFilter(\'viewer\',this)">观察者</button>'+
-        '</div><button class="btn btn-sm btn-primary" onclick="AUM.showForm()">+ 添加用户</button></div>'+
+        '<button class="filter-btn" id="aum_f_admin" onclick="AUM.setFilter(\'admin\',this)">主理人</button>'+
+        '<button class="filter-btn" id="aum_f_editor" onclick="AUM.setFilter(\'editor\',this)">共创者</button>'+
+        '<button class="filter-btn" id="aum_f_viewer" onclick="AUM.setFilter(\'viewer\',this)">鉴赏者</button>'+
+        '</div><button class="btn btn-sm btn-primary" onclick="AUM.showForm()">+ 邀请伙伴</button></div>'+
         '<div id="aum_stats" class="stat-bar"></div><div id="aum_grid" class="user-grid"></div></div>';
       this.load();
     },
@@ -67,30 +67,34 @@
         '<div class="stat-chip">🌐 在线 <span class="num" id="aum_online_n">'+liveN+'</span></div>'+
         '<div class="stat-chip">✅ 启用 <span class="num">'+stats.active+'</span></div>'+
         '<div class="stat-chip">🔵 管理员 <span class="num">'+stats.admin+'</span></div>'+
-        '<div class="stat-chip">🟢 编辑员 <span class="num">'+stats.editor+'</span></div>'+
-        '<div class="stat-chip">⚪ 观察者 <span class="num">'+stats.viewer+'</span></div>';
+        '<div class="stat-chip">🟢 共创者 <span class="num">'+stats.editor+'</span></div>'+
+        '<div class="stat-chip">⚪ 鉴赏者 <span class="num">'+stats.viewer+'</span></div>';
 
       var grid = document.getElementById('aum_grid');
       if (!grid) return;
-      if (!this._users.length) { grid.innerHTML = '<div class="empty"><div class="icon">👤</div><h4>暂无用户</h4></div>'; return; }
+      if (!this._users.length) { grid.innerHTML = '<div class="empty"><div class="icon">👤</div><h4>暂无伙伴</h4><p style="color:var(--text-muted);font-size:12px;">点击邀请伙伴开始共创</p></div>'; return; }
 
       var self = this;
       grid.innerHTML = this._users.map(function(u){
         var ac = u.avatar_color || self._colors[Math.abs(_h(u.username))%self._colors.length];
-        var av = (u.display_name||u.username).charAt(0).toUpperCase();
-        var roles = {admin:'管理员',editor:'编辑员',viewer:'观察者'};
+        var init = (u.display_name||u.username).charAt(0).toUpperCase();
+        var avUrl = u.avatar_url || '';
+        var roles = {admin:'主理人',editor:'共创者',viewer:'鉴赏者'};
+        var avatarHTML = avUrl
+          ? '<img src="'+avUrl+'" style="position:absolute;top:0;left:0;width:44px;height:44px;border-radius:12px;object-fit:cover;" onerror="this.style.display=\'none\'"><span style="color:#fff;font-weight:700;font-size:17px;">'+init+'</span>'
+          : '<span style="color:#fff;font-weight:700;font-size:17px;">'+init+'</span>';
         return '<div class="user-card" onclick="AUM.showForm('+u.id+')"><div class="user-card-header">'+
-          '<div class="user-avatar" style="background:'+ac+';position:relative;">'+av+
+          '<div class="user-avatar" style="background:'+ac+';position:relative;overflow:hidden;">'+avatarHTML+
           '<span class="aum-live-dot" data-uid="'+u.id+'" style="position:absolute;right:-2px;bottom:-2px;width:12px;height:12px;border-radius:50%;background:#64748b;border:2px solid var(--bg-card,#1e293b);"></span></div>'+
           '<div class="user-info"><div class="user-name">'+_e(u.display_name||u.username)+'</div>'+
           '<div class="user-username">@'+u.username+'</div></div></div>'+
           '<div class="user-meta"><span class="badge badge-'+u.role+'">'+(roles[u.role]||u.role)+'</span>'+
           '<span class="aum-live-badge" data-uid="'+u.id+'" style="font-weight:600;color:#64748b;">⚫ 离线</span>'+
-          '<span><span class="status-dot '+(u.is_active?'status-active':'status-inactive')+'"></span>'+(u.is_active?'正常':'已禁用')+'</span></div>'+
-          '<div class="user-footer">'+(u.last_login_at?'最后登录: '+u.last_login_at.substring(0,10):'从未登录')+'</div>'+
+          '<span><span class="status-dot '+(u.is_active?'status-active':'status-inactive')+'"></span>'+(u.is_active?'可协作':'已暂停')+'</span></div>'+
+          '<div class="user-footer">'+(u.last_login_at?'最后活跃: '+u.last_login_at.substring(0,10):'从未登录')+'</div>'+
           '<div class="user-card-actions"><button class="btn-outline" onclick="event.stopPropagation();AUM.showForm('+u.id+')">✏ 编辑</button>'+
-          '<button class="btn-outline" onclick="event.stopPropagation();AUM.openLog('+u.id+',\''+_e(u.display_name||u.username)+'\')">📜 日志</button>'+
-          '<button class="btn-outline" onclick="event.stopPropagation();AUM.toggle('+u.id+','+(u.is_active?0:1)+')" style="color:'+(u.is_active?'var(--danger)':'var(--success)')+';">'+(u.is_active?'⏸ 停用':'▶ 启用')+'</button>'+
+          '<button class="btn-outline" onclick="event.stopPropagation();AUM.openLog('+u.id+',\''+_e(u.display_name||u.username)+'\')">📜 足迹回放</button>'+
+          '<button class="btn-outline" onclick="event.stopPropagation();AUM.toggle('+u.id+','+(u.is_active?0:1)+')" style="color:'+(u.is_active?'var(--danger)':'var(--success)')+';">'+(u.is_active?'⏸ 暂停协作':'▶ 恢复协作')+'</button>'+
           '<button class="btn-outline btn-outline-danger" onclick="event.stopPropagation();AUM.deleteUser('+u.id+',\''+_e(u.display_name||u.username)+'\')">🗑</button></div></div>';
       }).join('');
       this._updateLive();
@@ -128,11 +132,11 @@
       var ov = document.createElement('div'); ov.className = 'pk-auth-modal-overlay';
       ov.onclick = function(e) { if (e.target===ov) ov.remove(); };
       ov.innerHTML = '<div class="pk-auth-modal" style="max-width:480px;" onclick="event.stopPropagation()"><h4>'+
-        (isNew?'➕ 添加用户':'✏ 编辑 '+_e(u.display_name||u.username))+'</h4>'+
+        (isNew?'➕ 邀请伙伴':'✏ 编辑信息 · '+_e(u.display_name||u.username))+'</h4>'+
         (isNew?'<div class="form-group"><label>用户名</label><input type="text" id="uf_username" placeholder="字母/数字/下划线" autofocus></div>'+
         '<div class="form-group"><label>密码</label><input type="password" id="uf_password" placeholder="至少4个字符"></div>':'')+
         '<div class="form-group"><label>显示名称</label><input type="text" id="uf_display" value="'+_e(u.display_name||'')+'"></div>'+
-        '<div class="form-group"><label>角色</label><select id="uf_role"><option value="admin"'+(u.role==='admin'?' selected':'')+'>管理员</option><option value="editor"'+(u.role==='editor'?' selected':'')+'>编辑员</option><option value="viewer"'+(u.role==='viewer'?' selected':'')+'>观察者</option></select></div>'+
+        '<div class="form-group"><label>角色</label><select id="uf_role"><option value="admin"'+(u.role==='admin'?' selected':'')+'>主理人</option><option value="editor"'+(u.role==='editor'?' selected':'')+'>共创者</option><option value="viewer"'+(u.role==='viewer'?' selected':'')+'>鉴赏者</option></select></div>'+
         (!isNew?'<div class="form-group"><label>密码重置（留空不修改）</label><input type="password" id="uf_pw_reset" placeholder="至少4个字符"></div>':'')+
         '<div class="pk-modal-actions"><button class="btn btn-secondary" onclick="this.closest(\'.pk-auth-modal-overlay\').remove()">取消</button>'+
         '<button class="btn btn-primary" id="uf_save">保存</button></div></div>';
@@ -144,31 +148,31 @@
           if (isNew) {
             data.username = document.getElementById('uf_username').value.trim().toLowerCase();
             data.password = document.getElementById('uf_password').value;
-            if (!data.username||data.username.length<2){alert('用户名至少2个字符');return;}
-            if (!data.password||data.password.length<4){alert('密码至少4个字符');return;}
+            if (!data.username||data.username.length<2){App.showToast('用户名至少2个字符','error');return;}
+            if (!data.password||data.password.length<4){App.showToast('密码至少4个字符','error');return;}
             await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
           } else {
             var pw = document.getElementById('uf_pw_reset').value; if (pw) data.new_password = pw;
             await fetch('/api/auth/users/'+uid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
           }
           ov.remove(); self.load();
-        } catch(e) { alert('操作失败'); }
+        } catch(e) { this._toast?this._toast('操作未完成，稍后再试','error'):(typeof PK!=='undefined'&&PK.toast?PK.toast('操作未完成，稍后再试','error'):alert('操作未完成，稍后再试')); }
       };
     },
 
     toggle: async function(uid, active) {
-      if (!confirm(active?'确定启用此用户？':'确定停用此用户？')) return;
+      if (!confirm(active?'确定恢复与这位伙伴的协作？':'确定暂停与这位伙伴的协作？')) return;
       try { await fetch('/api/auth/users/'+uid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({is_active:active})}); this.load(); } catch(e) {}
     },
 
     deleteUser: async function(uid, name) {
-      if (!confirm('确定永久删除用户「'+name+'」？')) return;
+      if (!confirm('将注销「'+name+'」？')) return;
       try { await fetch('/api/auth/users/'+uid,{method:'DELETE'}); this.load(); } catch(e) {}
     },
 
     // ============ Phase35: 账户活动日志查看器（管理员） ============
     _logCats: {
-      audit:   [['','全部'],['auth','登录认证'],['user_admin','用户管理'],['project','项目'],['asset','素材']],
+      audit:   [['','全部'],['auth','登录认证'],['user_admin','团队空间'],['project','项目'],['asset','素材']],
       actions: [['','全部'],['nav','导航'],['edit','编辑'],['click','点击'],['modal','弹窗'],['delete','删除'],['upload','上传'],['error','错误']],
       sessions:[]
     },
@@ -211,14 +215,14 @@
       try {
         var url = '/api/audit/export?uid='+L.uid+(L.cat?'&category='+L.cat:'')+(L.q?'&search='+encodeURIComponent(L.q):'');
         var r = await fetch(url);
-        if (!r.ok) { alert('导出失败: HTTP '+r.status); return; }
+        if (!r.ok) { App.showToast('导出未完成，请稍后重试','error'); return; }
         var blob = await r.blob();
         var a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = 'audit_user'+L.uid+'_'+new Date().toISOString().substring(0,10)+'.csv';
         document.body.appendChild(a); a.click();
         setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-      } catch(e) { alert('导出失败: '+e.message); }
+            } catch(e) { App.showToast('导出未完成，请稍后重试','error'); }
     },
 
     _loadLogSummary: async function() {
@@ -231,7 +235,7 @@
         var pMeta = (window.PK_PRESENCE && PK_PRESENCE.META[s.presence]) || null;
         var pTxt = pMeta ? ('<span style="color:'+pMeta.color+';font-weight:700;">'+pMeta.label+'</span>') : (s.presence||'—');
         box.innerHTML = chip('当前', pTxt)+chip('最后登录', this._fmtTime(s.last_login_at))+
-          chip('登录次数', s.login_count||0)+chip('登录失败', s.login_failed_count||0)+
+          chip('登录次数', s.login_count||0)+chip('登录未完成', s.login_failed_count||0)+
           chip('最近活动', this._fmtTime(s.last_activity_at))+chip('审计', s.audit_total||0)+chip('行为', s.actions_total||0);
       } catch(e) {}
     },
@@ -278,7 +282,7 @@
         var more = document.getElementById('aumLogMore');
         if (more) more.style.display = (L.tab!=='sessions' && L.offset < L.total) ? 'inline-block' : 'none';
       } catch(e) {
-        if (!append) listEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--danger);">加载失败</div>';
+        if (!append) listEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--danger);">加载未完成</div>';
       }
     },
 
@@ -295,7 +299,7 @@
         var ic = meta[it.category]||'•';
         var isFail = it.status==='fail';
         var sub = (it.detail?_e(it.detail):'')+(it.client_ip?'  ·  '+it.client_ip:'')+(it.device?'  ·  '+_e(it.device):'');
-        return row(isFail?'⛔':ic, _e(it.event_name||it.event_type)+(isFail?' <span style="color:var(--danger);font-size:11px;">失败</span>':''), sub, this._fmtTime(it.created_at), isFail);
+        return row(isFail?'⛔':ic, _e(it.event_name||it.event_type)+(isFail?' <span style="color:var(--danger);font-size:11px;">未完成</span>':''), sub, this._fmtTime(it.created_at), isFail);
       } else if (tab==='actions') {
         var ic2 = meta[it.category]||'•';
         var sub2 = (it.target?_e(it.target):'')+(it.detail?'  '+_e(it.detail):'')+(it.client_ip?'  ·  '+it.client_ip:'');
@@ -303,7 +307,7 @@
       } else {
         var online = it.is_active==1;
         var sub3 = (it.device?_e(it.device):'')+(it.client_ip?'  ·  '+it.client_ip:'')+(it.expires_at?'  ·  失效 '+this._fmtTime(it.expires_at):'');
-        var right = '<span style="color:'+(online?'#10b981':'#94a3b8')+';font-weight:700;">'+(online?'● 在线会话':'○ 已失效')+'</span>';
+        var right = '<span style="color:'+(online?'#10b981':'#94a3b8')+';font-weight:700;">'+(online?'● 活跃连接':'○ 已断开')+'</span>';
         return row('🔌', '登录 '+this._fmtTime(it.created_at), sub3, right, false);
       }
     },

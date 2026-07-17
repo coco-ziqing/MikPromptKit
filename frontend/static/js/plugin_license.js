@@ -130,10 +130,10 @@
         if (data.success) {
           this._renderStatus(data.data);
         } else {
-          this._renderStatus({status: 'error', message: '查询失败'});
+          this._renderStatus({status: 'error', message: '查询未完成'});
         }
       } catch (e) {
-        this._renderStatus({status: 'error', message: '网络错误'});
+        this._renderStatus({status: 'error', message: '网络不太稳定，请稍后重试'});
       }
     },
 
@@ -193,7 +193,7 @@
       } catch (e) {
         if (statusEl) {
           statusEl.className = 'license-status error';
-          statusEl.innerHTML = '<i class="bi bi-exclamation-triangle"></i> 网络错误，激活失败';
+          statusEl.innerHTML = '<i class="bi bi-exclamation-triangle"></i> 网络不太稳定，激活未完成';
         }
       }
     },
@@ -217,7 +217,7 @@
           this._showToast(data.message, 'warning');
         }
       } catch (e) {
-        this._showToast('解除激活失败', 'error');
+        this._showToast('解除激活未完成', 'error');
       }
     },
 

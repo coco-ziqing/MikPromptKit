@@ -27,7 +27,7 @@ App.healthCheck.run = async function(options) {
         this._results = await App.fetchJSON(url);
         this._renderResults();
     } catch (e) {
-        this._setStatus('error', '连接失败: ' + e.message);
+        this._setStatus('error', '连接未完成: ' + e.message);
     }
 };
 
@@ -78,7 +78,7 @@ App.healthCheck._setStatus = function(state, msg) {
     m.style.display = 'flex';
     if (state === 'error') {
         var body = document.getElementById('hcBody');
-        if (body) body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--danger,#ef4444);">❌ ' + (msg||App._t('auto.str_0745fc09', '连接失败')) + '</div>';
+        if (body) body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--danger,#ef4444);">❌ ' + (msg||App._t('auto.str_0745fc09', '连接未完成')) + '</div>';
     }
 };
 

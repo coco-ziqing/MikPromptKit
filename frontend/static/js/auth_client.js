@@ -5,6 +5,23 @@
 (function() {
   'use strict';
 
+
+  // 密码眼睛开关（全局工具，所有密码框复用）
+  window._togglePw = function(inputId, btn) {
+    var inp = document.getElementById(inputId);
+    if (!inp) return;
+    if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈'; /* 🙈 */ }
+    else { inp.type = 'password'; btn.textContent = '👁'; /* 👁 */ }
+  };
+
+
+  // 密码眼睛开关（全局工具）
+  window._togglePw = function(inputId, btn) {
+    var inp = document.getElementById(inputId);
+    if (!inp) return;
+    if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈'; }
+    else { inp.type = 'password'; btn.textContent = '👁'; }
+  };
   var PK_AC = {
     _token: null,
     _user: null,
@@ -201,7 +218,7 @@
       if (tab === 'login') {
         c.innerHTML =
           '<div class="pk-auth-form"><div class="form-group"><label>用户名</label><input type="text" id="al_username" placeholder="输入用户名" autofocus></div>'+
-          '<div class="form-group"><label>密码</label><input type="password" id="al_password" placeholder="输入密码"></div>'+
+          '<div class="form-group"><label>密码</label><div style="position:relative;"><input type="password" id="al_password" placeholder="输入密码" style="width:100%;padding-right:36px;"><button type="button" onclick="window._togglePw(\'al_password\',this)" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:4px 6px;line-height:1;" tabindex="-1" title="显示/隐藏密码">👁</button></div></div>'+
           '<div class="remember-row"><input type="checkbox" id="al_remember"><label>记住用户名</label></div>'+
           '<button class="pk-auth-submit" id="btnLogin" onclick="PK_AUTH_CLIENT._doLogin()">登 录</button>'+
           '<div class="pk-auth-error" id="al_error"></div></div>';
@@ -211,7 +228,7 @@
           '<div class="pk-auth-form"><div class="pk-auth-hint">💡 注册默认为「编辑员」角色</div>'+
           '<div class="form-group"><label>用户名</label><input type="text" id="ar_username" placeholder="字母/数字/下划线"></div>'+
           '<div class="form-group"><label>显示名称</label><input type="text" id="ar_display" placeholder="你的昵称"></div>'+
-          '<div class="form-group"><label>密码</label><input type="password" id="ar_password" placeholder="至少4个字符"></div>'+
+          '<div class="form-group"><label>密码</label><div style="position:relative;"><input type="password" id="ar_password" placeholder="至少4个字符" style="width:100%;padding-right:36px;"><button type="button" onclick="window._togglePw(\'ar_password\',this)" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:4px 6px;line-height:1;" tabindex="-1" title="显示/隐藏密码">👁</button></div></div>'+
           '<button class="pk-auth-submit" id="btnRegister" onclick="PK_AUTH_CLIENT._doRegister()">注 册</button>'+
           '<div class="pk-auth-error" id="ar_error"></div></div>';
         document.getElementById('ar_password').addEventListener('keydown', function(e){if(e.key==='Enter')self._doRegister();});
@@ -303,17 +320,24 @@
       var btn = document.createElement('button');
       btn.id = 'btnAuthUser';
       btn.className = 'header-btn nav-dropdown-btn nav-dd-label';
-      btn.title = '用户选项';
-      btn.innerHTML = '<i class="bi bi-person-circle"></i><span class="nav-dd-text">用户</span><i class="bi bi-chevron-down nav-dd-arrow"></i>';
+      btn.title = '账户';
+      var dn = (user.display_name||user.username||'?');
+      var short = dn.substring(0,4);
+      var av = user.avatar_url || '';
+      var btnIcon = av
+        ? '<img src="'+av+'" crossorigin="anonymous" class="pk-nav-avatar" style="width:18px;height:18px;border-radius:6px;object-fit:cover;vertical-align:middle;" onerror="this.style.display=\'none\'">'
+        : '';
+      btn.innerHTML = btnIcon + '<span class="nav-dd-text pk-no-i18n">' + self._esc(short) + '</span><i class="bi bi-chevron-down nav-dd-arrow"></i>';
       btn.onclick = function(e) { e.stopPropagation(); self._showUserMenu(e); };
       wrap.appendChild(btn);
 
       // 下拉菜单（按需创建，点击时生成到 body）
       wrap._userMenuHandler = function(e) { self._showUserMenu(e); };
 
-      // 插入 pluginNavRight 前面
-      var ref = document.getElementById('pluginNavRight');
-      if (ref) ref.parentNode.insertBefore(wrap, ref);
+      // 插入到「项目」下拉后面
+      var ref = document.getElementById('navDropdownProject');
+      if (ref && ref.nextSibling) ref.parentNode.insertBefore(wrap, ref.nextSibling);
+      else if (ref) ref.parentNode.appendChild(wrap);
       else actions.appendChild(wrap);
     },
 
@@ -322,7 +346,7 @@
       if (menu) { menu.remove(); return; }
       var user = this._user || {};
       var isAdmin = user.role === 'admin';
-      var roleName = {admin:'管理员',editor:'编辑员',viewer:'观察者'}[user.role]||user.role;
+      var roleName = {admin:'主理人',editor:'共创者',viewer:'鉴赏者'}[user.role]||user.role;
 
       menu = document.createElement('div');
       menu.id = 'pkUserMenu';
@@ -338,7 +362,7 @@
 
       // 菜单项
       var items = [
-        {icon:'🔑', label:'用户管理', action:"if(window.AUM)AUM.open()", show:isAdmin},
+        {icon:'👥', label:'团队空间', action:"if(window.AUM)AUM.open()", show:isAdmin},
         {divider:true, show:isAdmin},
         {icon:'👤', label:'个人详情', action:'PK_AUTH_CLIENT._showProfile()', show:true},
         {icon:'🔄', label:'切换账户', action:'PK_AUTH_CLIENT._switchAccount()', show:true},
@@ -357,26 +381,206 @@
       setTimeout(function(){document.addEventListener('click',cls);},10);
     },
 
-    // 个人详情弹窗
+    // 个人详情弹窗（可编辑版）
     _showProfile: function() {
       var user = this._user || {};
-      var roleName = {admin:'管理员',editor:'编辑员',viewer:'观察者'}[user.role]||user.role;
-      var init = (user.display_name||user.username||'?').charAt(0).toUpperCase();
-
-      // Fetch full user info
       var self = this;
-      fetch('/api/auth/me',{headers:{'Authorization':'***'+this._token}}).then(function(r){return r.json();}).then(function(d){
-        var u = (d.user||user);
+      Promise.all([
+        fetch('/api/auth/me',{headers:{'Authorization':'***'+this._token}}).then(function(r){return r.json();}),
+        fetch('/api/auth/me/stats',{headers:{'Authorization':'***'+this._token}}).then(function(r){return r.json();}).catch(function(){return {stats:{}};})
+      ]).then(function(results){
+        var u = (results[0].user||user);
+        var stats = (results[1].stats||{});
+        var roleName = {admin:'主理人',editor:'共创者',viewer:'鉴赏者'}[u.role]||u.role;
+        var av = u.avatar_url || '';
         var ov = document.createElement('div');
         ov.className = 'pk-auth-modal-overlay';
+        ov.id = 'pkProfileOverlay';
         ov.onclick = function(e){if(e.target===ov)ov.remove();};
-        ov.innerHTML = '<div class="pk-auth-modal" style="max-width:420px;" onclick="event.stopPropagation()"><div style="text-align:center;margin-bottom:16px;"><div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:16px;background:var(--primary-light,#1e3a5f);color:var(--primary,#3b82f6);font-size:28px;font-weight:700;margin-bottom:8px;">'+init+'</div><h4 style="margin:0 0 2px;font-size:16px;">'+self._esc(u.display_name||u.username||'')+'</h4><div style="font-size:12px;color:var(--text-muted);">@'+self._esc(u.username||'')+' · '+roleName+'</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;"><div style="padding:10px;background:var(--bg-main,#0f172a);border-radius:8px;"><div style="color:var(--text-muted);">账户ID</div><div style="font-weight:600;color:var(--text-main);">'+u.id+'</div></div><div style="padding:10px;background:var(--bg-main,#0f172a);border-radius:8px;"><div style="color:var(--text-muted);">状态</div><div style="font-weight:600;color:#10b981;">🟢 在线</div></div><div style="padding:10px;background:var(--bg-main,#0f172a);border-radius:8px;"><div style="color:var(--text-muted);">注册时间</div><div style="font-weight:600;">'+(u.created_at||'—').substring(0,10)+'</div></div><div style="padding:10px;background:var(--bg-main,#0f172a);border-radius:8px;"><div style="color:var(--text-muted);">最后登录</div><div style="font-weight:600;">'+(u.last_login_at||'—').substring(0,10)+'</div></div></div><div style="margin-top:12px;text-align:right;"><button class="pk-auth-submit" style="width:auto;padding:8px 24px;" onclick="this.closest(\'.pk-auth-modal-overlay\').remove()">关闭</button></div></div>';
+        var avH = av
+          ? '<img src="'+av+'" crossorigin="anonymous" style="width:80px;height:80px;border-radius:12px;object-fit:cover;" onerror="var f=this.nextElementSibling;this.style.display=\'none\';if(f)f.style.display=\'flex\';">'
+            +'<div style="display:none;align-items:center;justify-content:center;width:80px;height:80px;border-radius:12px;background:linear-gradient(135deg,'+(u.avatar_color||'#6366f1')+',var(--primary,#3b82f6));color:#fff;font-size:32px;font-weight:700;">'+(u.display_name||u.username||'?').charAt(0).toUpperCase()+'</div>'
+          : '<div style="display:flex;align-items:center;justify-content:center;width:80px;height:80px;border-radius:12px;background:linear-gradient(135deg,'+(u.avatar_color||'#6366f1')+',var(--primary,#3b82f6));color:#fff;font-size:32px;font-weight:700;">'+(u.display_name||u.username||'?').charAt(0).toUpperCase()+'</div>';
+        var statCards = [
+          {icon:'📝',label:'我的词卡',v:stats.word_cards||0},
+          {icon:'🖼',label:'作品',v:stats.assets||0},
+          {icon:'📁',label:'项目',v:stats.projects||0},
+          {icon:'✔',label:'已定稿',v:stats.approved_works||0},
+          {icon:'🎭',label:'角色',v:stats.characters||0},
+          {icon:'🏞',label:'场景',v:stats.scenes||0}
+        ].map(function(s){return '<div style="flex:1;min-width:70px;padding:8px 4px;background:var(--bg-main,#0f172a);border-radius:8px;text-align:center;"><div style="font-size:16px;">'+s.icon+'</div><div style="font-size:16px;font-weight:700;color:var(--text-main);">'+s.v+'</div><div style="font-size:10px;color:var(--text-muted);">'+s.label+'</div></div>';}).join('');
+        ov.innerHTML = '<div class="pk-auth-modal" style="max-width:540px;width:94vw;max-height:92vh;overflow-y:auto;" onclick="event.stopPropagation()">'
+          +'<div style="display:flex;justify-content:flex-end;margin-bottom:6px;"><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'pkProfileOverlay\').remove()" style="font-size:18px;line-height:1;padding:2px 8px;">✕</button></div>'
+          +'<div style="text-align:center;margin-bottom:12px;">'
+            +'<div id="pkProfAvatarWrap" style="position:relative;display:inline-block;cursor:pointer;" onclick="PK_AUTH_CLIENT._pickAvatar()">'
+              +'<div id="pkProfAvatarImg">'+avH+'</div>'
+              +'<div style="position:absolute;bottom:-2px;right:-2px;width:28px;height:28px;border-radius:12px;background:var(--primary,#3b82f6);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid var(--bg-card,#1e293b);box-shadow:0 2px 8px rgba(0,0,0,.3);" title="更换头像">📷</div>'
+            +'</div>'
+            +'<input type="file" id="pkAvatarInput" accept="image/*" style="display:none;" onchange="PK_AUTH_CLIENT._doUploadAvatar()">'
+            +'<h4 style="margin:8px 0 2px;font-size:17px;color:var(--text-main);">'+self._esc(u.display_name||u.username||'')+'</h4>'
+            +'<div style="font-size:12px;color:var(--text-muted);">@'+self._esc(u.username||'')+' · '+roleName+'</div>'
+          +'</div>'
+          +'<div style="margin-bottom:12px;padding:12px;background:var(--bg-main,#0f172a);border-radius:10px;display:flex;flex-wrap:wrap;gap:4px;">'+statCards+'</div>'
+          +'<div style="margin-bottom:14px;padding:12px;background:var(--bg-main,#0f172a);border-radius:10px;">'
+            +'<div class="form-group" style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">显示名称</label><input type="text" id="pf_name" value="'+self._esc(u.display_name||'')+'" placeholder="给伙伴们看的名字" style="width:100%;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;"></div>'
+            +'<div class="form-group" style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">一句话简介</label><textarea id="pf_bio" placeholder="介绍一下你自己..." style="width:100%;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;resize:vertical;min-height:56px;">'+self._esc(u.bio||'')+'</textarea></div>'
+            +'<div class="form-group" style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">个人站点 / 社交媒体</label><input type="text" id="pf_website" value="'+self._esc(u.website||'')+'" placeholder="如 https://your.portfolio" style="width:100%;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;"></div>'
+            +'<details style="margin-bottom:10px;"><summary style="font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer;padding:4px 0;">🔒 修改密码（选填）</summary>'
+              +'<div class="form-group" style="margin-top:6px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">当前密码</label><div style="position:relative;"><input type="password" id="pf_oldpw" placeholder="确认当前密码" style="width:100%;padding:8px 36px 8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;"><button type="button" onclick="window._togglePw(\'pf_oldpw\',this)" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:4px 6px;line-height:1;" tabindex="-1" title="显示/隐藏密码">👁</button></div></div>'
+              +'<div class="form-group" style="margin-top:6px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">新密码</label><div style="position:relative;"><input type="password" id="pf_newpw" placeholder="至少4个字符" style="width:100%;padding:8px 36px 8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;"><button type="button" onclick="window._togglePw(\'pf_newpw\',this)" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:4px 6px;line-height:1;" tabindex="-1" title="显示/隐藏密码">👁</button></div></div>'
+            +'</details>'
+            +'<div class="form-group" style="margin-bottom:4px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">头像主色调</label><div style="display:flex;gap:6px;flex-wrap:wrap;">'
+              +['#6366f1','#7c3aed','#ec4899','#ef4444','#f59e0b','#10b981','#0891b2','#2563eb','#d97706','#db2777'].map(function(c){return '<span onclick="PK_AUTH_CLIENT._setAvatarColor(\''+c+'\')" style="width:24px;height:24px;border-radius:12px;background:'+c+';cursor:pointer;display:inline-block;border:2px solid '+(u.avatar_color===c?'var(--text-main,#fff)':'transparent')+';transition:all .15s;" title="'+c+'"></span>';}).join('')
+            +'</div></div>'
+            +'<button class="btn btn-primary" onclick="PK_AUTH_CLIENT._saveProfile()" style="width:100%;padding:10px;font-size:14px;font-weight:600;">💾 保存资料</button>'
+          +'</div>'
+        +'</div>';
         document.body.appendChild(ov);
-
-        // ESC close
         var escH = function(ev){if(ev.key==='Escape'){ov.remove();document.removeEventListener('keydown',escH);}};
         document.addEventListener('keydown',escH);
       }).catch(function(){});
+    },
+
+    _pickAvatar: function() {
+      var inp = document.getElementById('pkAvatarInput'); if (inp) inp.click();
+    },
+
+    _doUploadAvatar: function() {
+      var inp = document.getElementById('pkAvatarInput'); if (!inp||!inp.files.length) return;
+      var file = inp.files[0];
+      if (file.size > 5*1024*1024) { if (typeof PK!=='undefined'&&PK.toast) PK.toast('图片不能超过 5MB', 'error'); return; }
+      inp.value = '';
+      this._openCropModal(file);
+    },
+
+    _cropData: null,
+
+    _openCropModal: function(file) {
+      var self = this;
+      this._cropData = { file: file, scale: 1, offsetX: 0, offsetY: 0, img: null, dragging: false };
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        var img = new Image();
+        img.onload = function() { self._cropData.img = img; self._initCropUI(); };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    },
+
+    _initCropUI: function() {
+      var self = this, SIZE = 280;
+      var ov = document.createElement('div');
+      ov.className = 'pk-auth-modal-overlay'; ov.id = 'pkCropOverlay';
+      ov.innerHTML = '<div class="pk-auth-modal" style="max-width:440px;width:96vw;" onclick="event.stopPropagation()"><h4 style="margin:0 0 4px;font-size:15px;">✂ 调整头像</h4><div style="color:var(--text-muted);font-size:11px;margin-bottom:10px;">拖拽移动 · 滚轮缩放</div><div style="position:relative;width:'+SIZE+'px;height:'+SIZE+'px;margin:0 auto;overflow:hidden;border-radius:50%;cursor:grab;" id="pkCropStage"><img id="pkCropImg" style="position:absolute;transform-origin:0 0;" draggable="false"></div><div style="display:flex;gap:10px;margin-top:14px;justify-content:center;"><button class="btn btn-outline-secondary" onclick="PK_AUTH_CLIENT._cancelCrop()" style="flex:1;padding:10px;">取消</button><button class="btn btn-primary" onclick="PK_AUTH_CLIENT._confirmCrop()" style="flex:1;padding:10px;">✓ 确认</button></div></div>';
+      document.body.appendChild(ov);
+      var d = this._cropData;
+      var imgEl = document.getElementById('pkCropImg');
+      imgEl.src = d.img.src;
+      var initScale = Math.max(SIZE / d.img.width, SIZE / d.img.height, 1);
+      d.scale = initScale;
+      d.offsetX = (SIZE - d.img.width * initScale) / 2;
+      d.offsetY = (SIZE - d.img.height * initScale) / 2;
+      this._renderCropImg(SIZE);
+      var stage = document.getElementById('pkCropStage');
+      stage.addEventListener('wheel', function(e) { e.preventDefault(); d.scale = Math.max(0.1, Math.min(5, d.scale + (e.deltaY < 0 ? 0.1 : -0.1))); self._renderCropImg(SIZE); });
+      stage.addEventListener('mousedown', function(e) { d.dragging = true; d.lastX = e.clientX; d.lastY = e.clientY; });
+      document.addEventListener('mousemove', function(e) { if (!d.dragging) return; d.offsetX += e.clientX - d.lastX; d.offsetY += e.clientY - d.lastY; d.lastX = e.clientX; d.lastY = e.clientY; self._renderCropImg(SIZE); });
+      document.addEventListener('mouseup', function() { d.dragging = false; });
+      var escH = function(ev){ if(ev.key==='Escape'){ self._cancelCrop(); document.removeEventListener('keydown',escH); } };
+      document.addEventListener('keydown', escH);
+    },
+
+    _renderCropImg: function(SIZE) {
+      var d = this._cropData; if (!d) return;
+      var el = document.getElementById('pkCropImg'); if (!el) return;
+      el.style.width = (d.img.width * d.scale) + 'px';
+      el.style.height = (d.img.height * d.scale) + 'px';
+      el.style.left = d.offsetX + 'px';
+      el.style.top = d.offsetY + 'px';
+    },
+
+    _cancelCrop: function() {
+      var ov = document.getElementById('pkCropOverlay'); if (ov) ov.remove();
+      this._cropData = null;
+    },
+
+    _confirmCrop: function() {
+      var self = this, d = this._cropData; if (!d) return;
+      var SIZE = 200, canvas = document.createElement('canvas');
+      canvas.width = SIZE; canvas.height = SIZE;
+      var ctx = canvas.getContext('2d');
+      ctx.beginPath(); ctx.arc(SIZE/2, SIZE/2, SIZE/2, 0, Math.PI*2); ctx.clip();
+      ctx.drawImage(d.img, d.offsetX * (SIZE/280), d.offsetY * (SIZE/280), d.img.width * d.scale * (SIZE/280), d.img.height * d.scale * (SIZE/280));
+      canvas.toBlob(function(blob) {
+        var fd = new FormData(); fd.append('file', blob, 'avatar_square.png');
+        var wrap = document.getElementById('pkProfAvatarImg');
+        if (wrap) wrap.innerHTML = '<div style="width:80px;height:80px;border-radius:12px;background:var(--bg-input);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-muted);">⏳</div>';
+        fetch('/api/auth/me/avatar', {method:'POST', body:fd}).then(function(r){return r.json();}).then(function(resp){
+          if (resp.ok) { self._onAvatarUpdated(resp.avatar_url); }
+        }).catch(function(){});
+      }, 'image/png');
+      this._cancelCrop();
+    },
+
+    _onAvatarUpdated: function(url) {
+      var u = this._user; if (!u) return;
+      u.avatar_url = url;
+      var btn = document.getElementById('btnAuthUser');
+      if (btn) {
+        var existingImg = btn.querySelector('img'); if (existingImg) existingImg.remove();
+        var icon = btn.querySelector('.bi-person-circle');
+        var img = document.createElement('img');
+        img.src = url + '?t=' + Date.now();
+        img.style.cssText = 'width:20px;height:20px;border-radius:6px;object-fit:cover;vertical-align:middle;';
+        img.onerror = function(){ this.remove(); if (icon) icon.style.display = ''; };
+        if (icon) icon.style.display = 'none';
+        btn.insertBefore(img, btn.firstChild);
+      }
+      localStorage.setItem('pk_user', JSON.stringify(u));
+    },
+
+    _setAvatarColor: function(color) {
+      this._user.avatar_color = color;
+      document.querySelectorAll('#pkProfileOverlay span[onclick^="PK_AUTH_CLIENT._setAvatarColor"]').forEach(function(s){s.style.borderColor='transparent';});
+      var target = document.querySelector('#pkProfileOverlay span[onclick="PK_AUTH_CLIENT._setAvatarColor(\''+color+'\')"]');
+      if (target) target.style.borderColor = 'var(--text-main,#fff)';
+    },
+
+    _saveProfile: function() {
+      var name = (document.getElementById('pf_name')||{}).value||'';
+      var bio = (document.getElementById('pf_bio')||{}).value||'';
+      var website = (document.getElementById('pf_website')||{}).value||'';
+      var oldpw = (document.getElementById('pf_oldpw')||{}).value||'';
+      var newpw = (document.getElementById('pf_newpw')||{}).value||'';
+      var avatar_color = this._user.avatar_color || '#6366f1';
+      var body = {display_name:name, bio:bio, website:website, avatar_color:avatar_color};
+      if (oldpw && newpw) { body.old_password = oldpw; body.new_password = newpw; }
+      else if (oldpw && !newpw) { if (typeof PK!=='undefined'&&PK.toast) PK.toast('新密码不能为空', 'error'); return; }
+      var self = this;
+      fetch('/api/auth/me', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if (d.ok) {
+          self._user = d.user;
+          localStorage.setItem('pk_user', JSON.stringify(d.user));
+          var btn = document.getElementById('btnAuthUser');
+          if (btn) {
+            // 更新显示名
+            var t = btn.querySelector('.nav-dd-text'); if (t) t.textContent = (d.user.display_name || d.user.username || '?').substring(0, 4);
+            // 更新头像
+            var av = d.user.avatar_url || '';
+            var oldImg = btn.querySelector('.pk-nav-avatar');
+            if (av) {
+              if (oldImg) oldImg.src = av + '?t=' + Date.now();
+              else { var img = document.createElement('img'); img.className = 'pk-nav-avatar'; img.src = av + '?t=' + Date.now(); img.style.cssText = 'width:18px;height:18px;border-radius:6px;object-fit:cover;vertical-align:middle;'; img.onerror = function(){ this.remove(); }; btn.insertBefore(img, btn.firstChild); }
+            }
+          }
+          if (typeof PK!=='undefined'&&PK.toast) PK.toast('资料已保存 ✨', 'success');
+          document.getElementById('pkProfileOverlay').remove();
+        } else {
+          if (typeof PK!=='undefined'&&PK.toast) PK.toast('保存未完成，稍后再试', 'error');
+        }
+      }).catch(function(){ if (typeof PK!=='undefined'&&PK.toast) PK.toast('网络不太稳定，请稍后重试', 'error'); });
     },
 
     // 切换账户

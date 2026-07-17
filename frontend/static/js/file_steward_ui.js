@@ -46,7 +46,7 @@ PK_FILESTEWARD._loadDevices = async function() {
   var el = document.getElementById('fsDeviceList'); if (!el) return;
   try {
     var r = await fetch('/api/devices'); var d = await r.json();
-    if (!d.ok) { el.innerHTML = '<p style="color:var(--text-muted);">加载失败，请登录后重试</p>'; return; }
+    if (!d.ok) { el.innerHTML = '<p style="color:var(--text-muted);">加载未完成，请登录后重试</p>'; return; }
 
     // 同时加载告警
     var alerts = {};
@@ -97,7 +97,7 @@ PK_FILESTEWARD._loadDevices = async function() {
         '</div>';
     }
     el.innerHTML = alertHtml + cards;
-  } catch(e) { el.innerHTML = '<p style="color:var(--text-muted);">加载失败: ' + e.message + '</p>'; }
+  } catch(e) { el.innerHTML = '<p style="color:var(--text-muted);">加载未完成: ' + e.message + '</p>'; }
 };
 
 // ─── 打开设备 → 浏览文件 ───
@@ -132,7 +132,7 @@ PK_FILESTEWARD._loadFiles = async function(deviceId) {
     if (state) url += '&state=' + state;
     if (search) url += '&search=' + encodeURIComponent(search);
     var r = await fetch(url); var d = await r.json();
-    if (!d.ok) { el.innerHTML = '<p style="color:var(--text-muted);">加载失败</p>'; return; }
+    if (!d.ok) { el.innerHTML = '<p style="color:var(--text-muted);">加载未完成</p>'; return; }
     if (!d.items.length) { el.innerHTML = '<div class="fs-empty"><p>没有找到文件</p></div>'; return; }
 
     var rows = '';
@@ -167,7 +167,7 @@ PK_FILESTEWARD._loadFiles = async function(deviceId) {
       batchEl.style.display = 'block';
       batchEl.innerHTML = '<span style="font-size:12px;color:var(--text-muted);">共 ' + d.total + ' 个文件</span>';
     }
-  } catch(e) { el.innerHTML = '<p style="color:var(--text-muted);">加载失败: ' + e.message + '</p>'; }
+  } catch(e) { el.innerHTML = '<p style="color:var(--text-muted);">加载未完成: ' + e.message + '</p>'; }
 };
 
 // ─── 归档向导 ───
@@ -208,7 +208,7 @@ PK_FILESTEWARD._doArchive = async function(fileIndexId, btnEl) {
   var psid = document.getElementById('fsArchProject')?.value;
   var mod = document.getElementById('fsArchModule')?.value || 'other';
   var crit = document.getElementById('fsArchCritical')?.checked ? 1 : 0;
-  if (!psid) { alert('请选择目标项目'); return; }
+  if (!psid) { if(window.App&&App.showToast)App.showToast('请选择目标项目','error'); else alert('请选择目标项目'); return; }
 
   btnEl.disabled = true; btnEl.textContent = '处理中...';
   try {
@@ -225,9 +225,9 @@ PK_FILESTEWARD._doArchive = async function(fileIndexId, btnEl) {
         '<p style="font-size:12px;color:var(--text-muted);">' + (d.message||'') + '</p>' +
         '<button class="btn btn-sm btn-secondary" onclick="this.parentElement.remove()">关闭</button>';
     } else {
-      alert('归档失败: ' + (d.detail || d.error || ''));
+      alert('归档未完成: ' + (d.detail || d.error || ''));
     }
-  } catch(e) { alert('请求失败: ' + e.message); }
+  } catch(e) { alert('请求未响应: ' + e.message); }
 };
 
 // ─── 移除文件索引 ───
@@ -247,7 +247,7 @@ PK_FILESTEWARD.openPairCode = async function() {
   try {
     var r = await fetch('/api/devices/pair-code', {method:'POST'});
     var d = await r.json();
-    if (!d.ok) { panel.innerHTML = '<p style="color:red;">生成失败</p>'; return; }
+    if (!d.ok) { panel.innerHTML = '<p style="color:red;">生成未完成</p>'; return; }
     panel.innerHTML =
       '<div style="border:1px solid var(--border-color);border-radius:8px;padding:16px;text-align:center;">' +
         '<h5>🔗 连接新电脑</h5>' +
@@ -264,7 +264,7 @@ PK_FILESTEWARD.openPairCode = async function() {
       remain--; if (remain <= 0 || !cdEl) { clearInterval(timer); return; }
       cdEl.textContent = '有效期 ' + Math.floor(remain/60) + ':' + ('0'+(remain%60)).slice(-2);
     }, 1000);
-  } catch(e) { panel.innerHTML = '<p style="color:red;">请求失败: ' + e.message + '</p>'; }
+  } catch(e) { panel.innerHTML = '<p style="color:red;">请求未响应: ' + e.message + '</p>'; }
 };
 
 PK_FILESTEWARD._copyCode = function(code) {
@@ -280,7 +280,7 @@ PK_FILESTEWARD._showStorage = async function() {
   panel.innerHTML = '<div class="fs-spinner"></div>';
   try {
     var r = await fetch('/api/dam/storage'); var d = await r.json();
-    if (!d.ok) { panel.innerHTML = '<p style="color:red;">加载失败</p>'; return; }
+    if (!d.ok) { panel.innerHTML = '<p style="color:red;">加载未完成</p>'; return; }
     var s = d.stats;
     panel.innerHTML =
       '<div style="border:1px solid var(--border-color);border-radius:8px;padding:16px;">' +
@@ -297,7 +297,7 @@ PK_FILESTEWARD._showStorage = async function() {
         '</div>' +
         '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'fsStoragePanel\').style.display=\'none\'" style="margin-top:8px;">关闭</button>' +
       '</div>';
-  } catch(e) { panel.innerHTML = '<p style="color:red;">加载失败: ' + e.message + '</p>'; }
+  } catch(e) { panel.innerHTML = '<p style="color:red;">加载未完成: ' + e.message + '</p>'; }
 };
 
 // ─── 完整性自检 ───
@@ -327,7 +327,7 @@ PK_FILESTEWARD._showIntegrity = async function() {
         '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'fsStoragePanel\').style.display=\'none\'" style="margin-top:8px;">关闭</button>' +
       '</div>';
   } catch(e) {
-    panel.innerHTML = '<p style="color:red;">' + (e.status === 403 ? '需要管理员权限查看' : '请求失败: ' + e.message) + '</p>';
+    panel.innerHTML = '<p style="color:red;">' + (e.status === 403 ? '需要管理员权限查看' : '请求未响应: ' + e.message) + '</p>';
   }
 };
 

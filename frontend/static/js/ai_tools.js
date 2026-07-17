@@ -267,8 +267,8 @@ App.aiTools._runOptimize = async function() {
             if (outputEl) outputEl.scrollTop = outputEl.scrollHeight;
         }
     } catch(e) {
-        if (statusEl) statusEl.textContent = '❌ 请求失败: ' + e.message;
-        if (outputEl && !this._streamContent) outputEl.textContent = App._t('auto.str_67411e24', '请求失败: ') + e.message;
+        if (statusEl) statusEl.textContent = '❌ 请求未响应: ' + e.message;
+        if (outputEl && !this._streamContent) outputEl.textContent = App._t('auto.str_67411e24', '请求未响应: ') + e.message;
     }
 
     // 完成
@@ -408,8 +408,8 @@ App.aiTools._runTranslate = async function() {
         });
 
         if (!data) {
-            resultEl.innerHTML = '<span style="color:#ef4444;">翻译失败: 请求超时或 Ollama 未响应<br><small>提示: 检查 Ollama 是否运行 → 终端输入 ollama serve<br>如已运行，刷新页面重试</small></span>';
-            App.showToast('翻译超时，请检查 Ollama', 'error');
+            resultEl.innerHTML = '<span style="color:#ef4444;">翻译未完成: 请求超时或 Ollama 未响应<br><small>提示: 检查 Ollama 是否运行 → 终端输入 ollama serve<br>如已运行，刷新页面重试</small></span>';
+            App.showToast('翻译响应超时，Ollama 可能正忙', 'error');
             return;
         }
 
@@ -418,7 +418,7 @@ App.aiTools._runTranslate = async function() {
         var c = data.cached || 0;
         var html = '<div style="margin-bottom:8px;font-weight:600;">' +
             '<span style="color:#10b981;">OK ' + s + '</span> / ' +
-            '<span style="color:#ef4444;">失败 ' + f + '</span> / ' +
+            '<span style="color:#ef4444;">未完成 ' + f + '</span> / ' +
             '<span style="color:#6366f1;">缓存 ' + c + '</span>' +
             (data.auto_detect ? ' <span style="font-size:10px;color:var(--text-muted);">(自动检测)</span>' : '') +
             '</div>';
@@ -435,8 +435,8 @@ App.aiTools._runTranslate = async function() {
         resultEl.innerHTML = html;
         App.showToast('翻译完成: ' + s + '/' + ids.length, 'success');
     } catch(e) {
-        resultEl.innerHTML = '<span style="color:#ef4444;">翻译失败: ' + App._escape(e.message) + '</span>';
-        App.showToast('翻译失败: ' + (e.message || '网络错误'), 'error');
+        resultEl.innerHTML = '<span style="color:#ef4444;">翻译未完成: ' + App._escape(e.message) + '</span>';
+        App.showToast('翻译未完成: ' + (e.message || '网络不太稳定，请稍后重试'), 'error');
     }
 
     document.getElementById('aiTransStartBtn').disabled = false;
@@ -474,7 +474,7 @@ App.aiTools.autoTagCurrent = async function() {
         // 刷新列表
         App.loadPrompts();
     } catch(e) {
-        App.showToast(App._t('auto.str_7ace8112', '标签分析失败: ') + e.message, 'error');
+        App.showToast(App._t('auto.str_7ace8112', '标签分析未完成: ') + e.message, 'error');
     }
 };
 
@@ -521,10 +521,10 @@ App.aiTools.injectEditAiButton = function() {
                 if (data.scene) document.getElementById('editScene').value = data.scene;
                 App.showToast(App._t('auto.str_844c894c', 'AI 分析完成 (置信度: ') + Math.round((data.confidence || 0.5) * 100) + '%)', 'success');
             } else {
-                App.showToast(App._t('auto.str_7b9d7831', 'AI 分析失败: ') + (data ? data.error : App._t('auto.str_1622dc9b', '未知')), 'warning');
+                App.showToast(App._t('auto.str_7b9d7831', 'AI 分析未完成: ') + (data ? data.error : App._t('auto.str_1622dc9b', '未知')), 'warning');
             }
         } catch(e) {
-            App.showToast(App._t('auto.str_e82a1516', 'AI 分析出错: ') + e.message, 'error');
+            App.showToast(App._t('auto.str_e82a1516', 'AI 分析遇到问题: ') + e.message, 'error');
         }
         btn.disabled = false;
         btn.textContent = App._t('auto.str_bef794c6', '🤖 AI 分析标签');
@@ -559,7 +559,7 @@ App.aiTools.aiThumbCurrent = async function() {
         App.showToast(App._t('auto.str_d7f024cd', 'AI缩略图生成: ') + data.success + '/' + data.total + App._t('auto.str_f28e75cf', ' 成功'), 'success');
         App.loadPrompts();
     } catch(e) {
-        App.showToast(App._t('auto.str_6464e87f', 'AI缩略图生成失败: ') + e.message, 'error');
+        App.showToast(App._t('auto.str_6464e87f', 'AI缩略图生成未完成: ') + e.message, 'error');
     }
 };
 
@@ -642,10 +642,10 @@ App.aiTools._ctxTranslate = async function() {
         if (d && d.ok && d.translated) {
             App.copyText(d.translated, App._t('common.copied', '已复制中文翻译'));
         } else {
-            App.showToast(App._t('auto.str_31ff785e', '翻译失败: ') + (d ? d.error : App._t('auto.str_1622dc9b', '未知')), 'error');
+            App.showToast(App._t('auto.str_31ff785e', '翻译未完成: ') + (d ? d.error : App._t('auto.str_1622dc9b', '未知')), 'error');
         }
     } catch(e) {
-        App.showToast('翻译出错: ' + e.message, 'error');
+        App.showToast('翻译遇到问题: ' + e.message, 'error');
     }
 };
 
@@ -675,10 +675,10 @@ App.aiTools._ctxAutoTag = async function() {
             App.showToast(App._t('auto.str_8526cf2c', '标签已更新: ') + (d.module || '') + ' / ' + (d.tags || []).join(', '), 'success');
             App.loadPrompts();
         } else {
-            App.showToast(App._t('auto.str_6aee2d39', '分析失败'), 'error');
+            App.showToast(App._t('auto.str_6aee2d39', '分析未完成'), 'error');
         }
     } catch(e) {
-        App.showToast('分析出错: ' + e.message, 'error');
+        App.showToast('分析遇到问题: ' + e.message, 'error');
     }
 };
 
@@ -693,10 +693,10 @@ App.aiTools._ctxAiThumb = async function() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt_id: pid })
         });
-        App.showToast(d.ok ? App._t('auto.str_90ef7b61', 'AI缩略图已生成') : App._t('auto.str_7f7de8a2', '生成失败'), d.ok ? 'success' : 'error');
+        App.showToast(d.ok ? App._t('auto.str_90ef7b61', 'AI缩略图已生成') : App._t('auto.str_7f7de8a2', '生成未完成'), d.ok ? 'success' : 'error');
         App.loadPrompts();
     } catch(e) {
-        App.showToast('生成出错: ' + e.message, 'error');
+        App.showToast('生成遇到问题: ' + e.message, 'error');
     }
 };
 

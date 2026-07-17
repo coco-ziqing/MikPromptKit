@@ -15,9 +15,9 @@
 
   var META = {
     online: { label: '在线', color: '#10b981', dot: '🟢' },
-    idle:   { label: '空闲', color: '#f59e0b', dot: '🟡' },
-    away:   { label: '离开', color: '#94a3b8', dot: '⚪' },
-    busy:   { label: '忙碌', color: '#ef4444', dot: '🔴' },
+    idle:   { label: '小憩', color: '#f59e0b', dot: '🟡' },
+    away:   { label: '暂离', color: '#94a3b8', dot: '⚪' },
+    busy:   { label: '专注中', color: '#6366f1', dot: '🔵' },
     offline:{ label: '离线', color: '#64748b', dot: '⚫' }
   };
 
@@ -64,13 +64,13 @@
         if (msg.type === 'pong') return;
         if (msg.type === 'error') { return; }
         if (msg.type === 'kick') {
-          // PhaseB: 管理员强制下线
+          // PhaseB: 管理员结束会话
           clearInterval(self._hb);
           self._ws = null;
           self._users = {};
           self._emit();
           self._reAttempt = 99; // 阻止重连
-          alert((msg.reason || '已被管理员下线'));
+          alert((msg.reason || '已被主理人结束会话'));
           return;
         }
         if (typeof msg.server_time === 'number') {
@@ -149,7 +149,7 @@
       }
     },
 
-    // PhaseB: admin 强制下线
+    // PhaseB: 主理人 结束会话
     kickUser: function (uid) {
       return fetch('/api/presence/disconnect/' + uid, { method: 'POST' })
         .then(function (r) { return r.json(); })
@@ -205,7 +205,7 @@
       var btn = document.createElement('button');
       btn.id = 'pkPresenceBtn';
       btn.className = 'header-btn';
-      btn.title = '局域网在线用户';
+      btn.title = '创作现场';
       btn.style.cssText = 'position:relative;';
       // 统一图标指示：图标颜色=聚合在线态，右上角人数徽标（无文字）
       btn.innerHTML = '<i class="bi bi-people-fill pkp-icon" style="font-size:16px;color:#64748b;"></i>'
@@ -271,7 +271,7 @@
         + '<span style="font-size:13px;font-weight:700;color:var(--text-main,#f1f5f9);">🌐 局域网在线</span>'
         + '<span style="font-size:12px;color:var(--text-muted);">' + users.length + ' 人</span></div>';
       if (!users.length) {
-        h += '<div style="padding:22px 14px;text-align:center;color:var(--text-muted);font-size:12px;">暂无其他在线用户</div>';
+        h += '<div style="padding:22px 14px;text-align:center;color:var(--text-muted);font-size:12px;">暂无其他创作者在线</div>';
       } else {
         h += '<div style="padding:6px 0;">';
         users.forEach(function (u) {
@@ -279,7 +279,7 @@
           var ac = u.avatar_color || '#7c3aed';
           var av = (u.display_name || u.username || '?').charAt(0).toUpperCase();
           var isSelf = u.user_id === self._selfId;
-          var roleName = { admin: '管理员', editor: '编辑员', viewer: '观察者' }[u.role] || u.role || '';
+          var roleName = { admin: '主理人', editor: '共创者', viewer: '鉴赏者' }[u.role] || u.role || '';
           var dev = (u.devices && u.devices[0]) ? u.devices[0].device : '';
           var multi = (u.connection_count > 1) ? (' ·+' + (u.connection_count - 1) + '设备') : '';
           var since = self._sinceText(u.connected_since);
@@ -298,7 +298,7 @@
             + (loc ? '<div style="font-size:10px;color:var(--text-muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + loc + '</div>' : '')
             + '</div>'
             + (since ? '<div style="font-size:10px;color:var(--text-muted);flex-shrink:0;">' + since + '</div>' : '')
-            + (isAdmin && !isSelf ? '<button title="强制下线" onclick="event.stopPropagation();var ok=confirm(\'确定强制下线「'+_esc(u.display_name||u.username)+'」？\');if(ok)PK_PRESENCE.kickUser('+u.user_id+').then(function(d){if(d.ok){document.getElementById(\'pkPresencePop\').remove();}else{alert(\'操作失败\')}});" style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:14px;padding:2px;opacity:0.6;" title="强制下线">🔌</button>' : '')
+            + (isAdmin && !isSelf ? '<button title="结束会话" onclick="event.stopPropagation();var ok=confirm(\'确定结束会话「'+_esc(u.display_name||u.username)+'」？\');if(ok)PK_PRESENCE.kickUser('+u.user_id+').then(function(d){if(d.ok){document.getElementById(\'pkPresencePop\').remove();}else{alert(\'操作未完成，稍后再试\')}});" style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:14px;padding:2px;opacity:0.6;" title="结束会话">🔌</button>' : '')
             + '</div>';
         });
         h += '</div>';

@@ -21,7 +21,7 @@ function _go(){var S=App.seedanceV2;
                 S.libraries = L;
                 console.log('[WC Bridge] 已从 PK.api 刷新 ' + L.length + ' 个分组');
             }
-        } catch(e) { console.warn('[WC Bridge] 刷新失败', e); }
+        } catch(e) { console.warn('[WC Bridge] 刷新未完成', e); }
     })();
 
 // 0. 原子类型 -> seedance 字段映射
@@ -100,7 +100,7 @@ S._pickRightWord=function(el){
 
 // 4. 添加词条 — T5: PK.api + PK.toast
 S.__origAP=S._addPanelWord;
-S._addPanelWord=async function(libId){var wi=document.getElementById('s2PanelWordInput'),di=document.getElementById('s2PanelWordDef'),w=(wi?wi.value:'').trim();if(!w){PK.toast('请输入词条','warning');return;}var def=di?(di.value||'').trim():'';try{var d=await PK.json('/api/v4/word-cards',{content:w,meaning:def,name:w.substring(0,60),group_id:libId,module:'custom',source:'composer_add'});if(d&&d.ok){if(wi)wi.value='';if(di)di.value='';delete S.cardCache[libId];await S.loadCards(libId);var l=S.getLibraryById(libId);if(l)S._renderRightPickerContent(l);PK.toast('已添加','success');}}catch(e){PK.toast('添加失败','error');}};
+S._addPanelWord=async function(libId){var wi=document.getElementById('s2PanelWordInput'),di=document.getElementById('s2PanelWordDef'),w=(wi?wi.value:'').trim();if(!w){PK.toast('请输入词条','warning');return;}var def=di?(di.value||'').trim():'';try{var d=await PK.json('/api/v4/word-cards',{content:w,meaning:def,name:w.substring(0,60),group_id:libId,module:'custom',source:'composer_add'});if(d&&d.ok){if(wi)wi.value='';if(di)di.value='';delete S.cardCache[libId];await S.loadCards(libId);var l=S.getLibraryById(libId);if(l)S._renderRightPickerContent(l);PK.toast('已添加','success');}}catch(e){PK.toast('添加未完成','error');}};
 
 // 5. 高亮刷新
 S._refreshRightSelection=function(){var sc=S._getCurrentScene(),fv=sc?(sc[S.activeField]||''):'';document.querySelectorAll('.s2-right-card-item').forEach(function(el){var w=el.dataset.word||'',s=fv&&w&&fv.indexOf(w)>=0;el.classList.toggle('selected',s);el.style.background=s?'rgba(16,185,129,0.08)':'';el.style.borderColor=s?'#10b981':'var(--border-color)';});S.renderScenes();};
@@ -207,6 +207,6 @@ try{var d=await PK.api('/api/v4/word-cards/search?q='+encodeURIComponent(q)+'&gr
 // 10. 删除词条 — T5: PK.api + PK.toast + PK.confirm
 S.__origDR=S._deleteWord;
 S._deleteWord=async function(wordId, el, e){if(e){e.stopPropagation();}var ok=await PK.confirm('确定删除该词条？');if(!ok)return;
-try{var d=await PK.api('/api/v4/word-cards/'+wordId,{method:'DELETE'});if(d&&d.ok){PK.toast('已删除','success');if(el){el.remove();}if(S.activePickerLibId){delete S.cardCache[S.activePickerLibId];await S.loadCards(S.activePickerLibId);var lib=S.getLibraryById(S.activePickerLibId);if(lib)S._renderRightPickerContent(lib);}}}catch(e){PK.toast('删除失败','error');}};
+try{var d=await PK.api('/api/v4/word-cards/'+wordId,{method:'DELETE'});if(d&&d.ok){PK.toast('已删除','success');if(el){el.remove();}if(S.activePickerLibId){delete S.cardCache[S.activePickerLibId];await S.loadCards(S.activePickerLibId);var lib=S.getLibraryById(S.activePickerLibId);if(lib)S._renderRightPickerContent(lib);}}}catch(e){PK.toast('未能删除','error');}};
 
 }});

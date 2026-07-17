@@ -15,7 +15,7 @@ if (!App.seedanceV2 || App.seedanceV2._uploadWordCardThumb) return;
                 if(lib){delete App.seedanceV2.cardCache[lib.id];await App.seedanceV2.loadCards(lib.id);
                 App.seedanceV2._renderRightPickerContent(lib);}
                 App.showToast(App._t('auto.str_1c0c1c36', '缩略图已保存'),'success');
-            }else{App.showToast(App._t('auto.upload_失败', '上传失败'),'error');}
+            }else{App.showToast(App._t('auto.upload_失败', '上传未完成'),'error');}
         }catch(e){App.showToast(App._t('auto.upload_异常__', '上传异常: ')+e.message,'error');}
     };
     App.seedanceV2._setupWordCardDropZones=function(){
@@ -143,7 +143,7 @@ if (!App.seedanceV2 || App.seedanceV2._uploadWordCardThumb) return;
         try{
             await fetch('/api/seedance/v2/cards/'+cardId+'/thumbnail',{method:'DELETE'});
             await fetch('/api/seedance/v2/cards/'+cardId+'/video',{method:'DELETE'});
-        }catch(e){ App.showToast('移除请求失败: '+e.message,'error'); return; }
+        }catch(e){ App.showToast('移除请求未响应: '+e.message,'error'); return; }
         if(lib){delete App.seedanceV2.cardCache[lib.id];await App.seedanceV2.loadCards(lib.id);
         App.seedanceV2._renderRightPickerContent(lib);}
         App.showToast('预览已移除','info');
@@ -204,7 +204,7 @@ if (!App.seedanceV2 || App.seedanceV2._uploadWordCardThumb) return;
                 h+='</div>';
             }
             grid.innerHTML=h||'<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-muted);">暂无图片资产</div>';
-        }catch(e){grid.innerHTML='<div style="text-align:center;padding:20px;color:var(--danger);">加载失败</div>';}
+        }catch(e){grid.innerHTML='<div style="text-align:center;padding:20px;color:var(--danger);">加载未完成</div>';}
     };
     // 视频库
     App.seedanceV2._loadVideoLib=async function(){
@@ -226,7 +226,7 @@ if (!App.seedanceV2 || App.seedanceV2._uploadWordCardThumb) return;
                 h+='</div></div>';
             }
             grid.innerHTML=h||'<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-muted);">暂无视频资产</div>';
-        }catch(e){grid.innerHTML='<div style="text-align:center;padding:20px;color:var(--danger);">加载失败</div>';}
+        }catch(e){grid.innerHTML='<div style="text-align:center;padding:20px;color:var(--danger);">加载未完成</div>';}
     };
     // 从视频库选取
     App.seedanceV2._pickFromVideoLib=async function(el,filename){
@@ -242,8 +242,8 @@ if (!App.seedanceV2 || App.seedanceV2._uploadWordCardThumb) return;
                 var lib=App.seedanceV2.getLibraryById(App.seedanceV2.activePickerLibId);
                 if(lib){delete App.seedanceV2.cardCache[lib.id];await App.seedanceV2.loadCards(lib.id);App.seedanceV2._renderRightPickerContent(lib);}
                 App.showToast('视频已关联到词卡预览','success');
-            }else{App.showToast('关联失败: '+(d&&d.error?d.error:'未知'),'error');}
-        }catch(e){App.showToast('视频选取失败: '+e.message,'error');}
+            }else{App.showToast('暂未关联成功: '+(d&&d.error?d.error:'未知'),'error');}
+        }catch(e){App.showToast('视频选取未完成: '+e.message,'error');}
         el._picking=false;
     };
     // 从媒体库选取后：下载缩略图→上传到指定词卡（从overlay.dataset获取targetCardId）
@@ -253,7 +253,7 @@ if (!App.seedanceV2 || App.seedanceV2._uploadWordCardThumb) return;
         if(!filename)return;
         try{
             var resp=await fetch('/api/thumbnails/file/'+filename);
-            if(!resp.ok){App.showToast(App._t('auto.str_5d4350ae', '获取文件失败'),'error');return;}
+            if(!resp.ok){App.showToast(App._t('auto.str_5d4350ae', '获取文件未完成'),'error');return;}
             var blob=await resp.blob();
             var file=new File([blob],filename,{type:blob.type||'image/jpeg'});
             // 优先使用弹窗指定的目标词卡ID，fallback 到第一个可见词卡
@@ -274,7 +274,7 @@ if (!App.seedanceV2 || App.seedanceV2._uploadWordCardThumb) return;
             }
             App.seedanceV2._dispatchUpload(targetId,file);
             App.showToast('已添加预览到: '+(targetWord||App._t('auto.str_5ac02b19', '词卡#')+targetId),'success');
-        }catch(e){App.showToast('选取失败: '+e.message,'error');}
+        }catch(e){App.showToast('选取未完成: '+e.message,'error');}
     };
 console.log('[PK] seedance_media_cards loaded');
 })();

@@ -14,7 +14,7 @@
 
         try {
             var resp = await App.fetchJSON('/api/v4/cards/' + cardId + '/full');
-            if (!resp || !resp.card) { App.showToast(App._t('common.load_failed', '加载失败'), 'error'); return; }
+            if (!resp || !resp.card) { App.showToast(App._t('common.load_failed', '加载未完成'), 'error'); return; }
             var card = resp.card;
 
             var overlay = document.createElement('div');
@@ -138,7 +138,7 @@
             document.body.appendChild(overlay);
 
         } catch (e) {
-            App.showToast('加载详情失败: ' + e.message, 'error');
+            App.showToast('加载详情未完成: ' + e.message, 'error');
         }
     };
 

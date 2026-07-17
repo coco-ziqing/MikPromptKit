@@ -45,9 +45,8 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 existing = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()
 if not existing:
     pw_hash = hash_pw("admin")
-    conn.execute(
-        "INSERT INTO users (username, password_hash, display_name, role, is_active, settings_json, created_at) VALUES (?,?,?,?,1,'{}',datetime('now','localtime'))",
-        ["admin", pw_hash, "管理员", "admin"])
+    conn.execute("INSERT INTO users (username, password_hash, display_name, role, avatar_color, is_active, settings_json, bio, website, created_at) VALUES (?,?,?,?,?,'1','{}','','',datetime('now','localtime'))",
+    ["admin", pw_hash, "管理员", "admin", "#6366f1"])
     conn.commit()
     print("✅ 默认管理员创建: admin / admin")
 else:

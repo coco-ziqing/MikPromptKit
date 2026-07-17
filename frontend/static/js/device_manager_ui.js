@@ -29,7 +29,7 @@ PK_DEVICES.open = function() {
 PK_DEVICES.load = async function() {
   try {
     var r = await fetch('/api/devices'); var d = await r.json();
-    if (!d.ok) { alert('加载失败'); return; }
+    if (!d.ok) { if(window.App&&App.showToast)App.showToast('加载未完成','error'); else alert('加载未完成'); return; }
     PK_DEVICES._renderAlerts();
     PK_DEVICES._renderList(d.devices);
   } catch(e) { console.error(e); }
@@ -46,8 +46,8 @@ PK_DEVICES._renderAlerts = async function() {
     if (s.missing>0) chips.push('<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;font-size:12px;">⚠ 缺失 '+s.missing+'</span>');
     if (s.changed>0) chips.push('<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:12px;font-size:12px;">🔄 变更 '+s.changed+'</span>');
     if (s.high_risk>0) chips.push('<span style="background:#fecaca;color:#7f1d1d;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;">🔥 高危 '+s.high_risk+'</span>');
-    if (s.failed_backups>0) chips.push('<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;font-size:12px;">❌ 备份失败 '+s.failed_backups+'</span>');
-    if (!chips.length) chips.push('<span style="color:var(--text-muted);font-size:12px;">✅ 无告警</span>');
+    if (s.failed_backups>0) chips.push('<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;font-size:12px;">❌ 备份未完成 '+s.failed_backups+'</span>');
+    if (!chips.length) chips.push('<span style="color:var(--text-muted);font-size:12px;">✅ 一切正常</span>');
     el.innerHTML = chips.join('');
   } catch(e){}
 };
@@ -172,7 +172,7 @@ PK_DEVICES.addPath = function(did) {
   var path = prompt('输入监控目录绝对路径（如 D:\\ProjectA）：');
   if (!path) return;
   fetch('/api/devices/'+did+'/paths', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({abs_path:path})})
-  .then(function(r){ if(r.ok){ PK_DEVICES._loadPaths(did); } else alert('添加失败'); });
+  .then(function(r){ if(r.ok){ PK_DEVICES._loadPaths(did); } else { if(window.App&&App.showToast)App.showToast('添加未完成','error'); else alert('添加未完成'); } });
 };
 
 PK_DEVICES.delPath = function(did, pid) {
@@ -196,8 +196,8 @@ PK_DEVICES.archiveFile = function(fid) {
       body:JSON.stringify({project_space_id:psid, module_key:mod})})
     .then(function(r){ return r.json(); })
     .then(function(d){
-      if (d.ok) { alert('归档成功'); PK_DEVICES.load(); }
-      else alert('归档失败');
+      if (d.ok) { if(window.App&&App.showToast)App.showToast('归档成功','success'); else alert('归档成功'); PK_DEVICES.load(); }
+      else { if(window.App&&App.showToast)App.showToast('归档未完成','error'); else alert('归档未完成'); }
     });
   });
 };
@@ -234,7 +234,7 @@ PK_DEVICES.openPairCode = function() {
   fetch('/api/devices/pair-code', {method:'POST'})
   .then(function(r){ return r.json(); })
   .then(function(d){
-    if (!d.ok) { document.getElementById('pkPairBody').innerHTML = '生成失败'; return; }
+    if (!d.ok) { document.getElementById('pkPairBody').innerHTML = '生成未完成'; return; }
     document.getElementById('pkPairBody').innerHTML =
       '<div style="font-size:48px;font-weight:900;letter-spacing:12px;font-family:monospace;margin:16px 0;">'+d.code+'</div>'+
       '<div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">有效期 5 分钟</div>'+

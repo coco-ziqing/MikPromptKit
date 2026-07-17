@@ -39,7 +39,7 @@ App._pgLoadPresets = async function() {
         if (d && d.models) this._pgState.presets = d.models;
         if (d && d.directions) this._pgState.directions = d.directions;
     } catch(e) {
-        console.warn('[PG] 预设加载失败:', e.message);
+        console.warn('[PG] 预设加载未完成:', e.message);
         this._pgState.presets = []; this._pgState.directions = [];
     }
     this._pgRenderPresets();
@@ -164,12 +164,12 @@ App._pgOptimize = async function() {
                 if (statusEl) statusEl.innerHTML += ' | <span style="color:#8b5cf6;">📦 #' + d.saved_card.id + ' 已保存</span>';
             }
         } else {
-            if (resultEl) resultEl.textContent = '❌ 优化失败: ' + (d ? d.error : App._t('common.unknown_error', '未知错误'));
+            if (resultEl) resultEl.textContent = '❌ 优化未完成: ' + (d ? d.error : App._t('common.unknown_error', '遇到意外情况，请稍后再试'));
             if (statusEl) statusEl.textContent = '请检查 LLM 模型是否可用';
         }
     } catch(e) {
         if (resultEl) resultEl.textContent = '❌ 请求异常: ' + e.message;
-        if (statusEl) statusEl.textContent = App._t('common.net_error', '网络错误或服务未启动');
+        if (statusEl) statusEl.textContent = App._t('common.net_error', '网络不太稳定或服务未启动');
     }
     if (btn) { btn.disabled = false; btn.innerHTML = App._t('auto.str_05caa270', '<i class="bi bi-magic"></i> 优化提示词'); }
 };
@@ -222,7 +222,7 @@ App._pgSave = async function() {
                 this.loadGroupTree().catch(function(){});
             }
         } else {
-            if (statusEl) statusEl.textContent = '❌ ' + (d && d.error ? d.error : App._t('common.save', '保存失败'));
+            if (statusEl) statusEl.textContent = '❌ ' + (d && d.error ? d.error : App._t('common.save', '保存未完成，稍后再试'));
         }
     } catch(e) {
         if (statusEl) statusEl.textContent = '❌ ' + e.message;

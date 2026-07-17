@@ -28,11 +28,11 @@ App.switchView = function(view, ...args) {
         try {
             this._showAtomEditor().catch(function(e) {
                 console.error('[atom_editor] _showAtomEditor failed:', e);
-                App.showToast('原子引擎加载失败: ' + (e.message || '未知错误'), 'danger');
+                App.showToast('原子引擎加载未完成: ' + (e.message || '遇到意外情况，请稍后再试'), 'danger');
             });
         } catch(e) {
             console.error('[atom_editor] sync error:', e);
-            App.showToast('原子引擎渲染失败', 'danger');
+            App.showToast('原子引擎渲染未完成', 'danger');
         }
         return;
     }
@@ -198,7 +198,7 @@ App._atomLoadList = async function() {
     } catch(e) {
         console.warn('atom list error:', e);
         var list = document.getElementById('atomList');
-        if (list) list.innerHTML = '<div class="atom-empty">加载失败: ' + e.message + '</div>';
+        if (list) list.innerHTML = '<div class="atom-empty">加载未完成: ' + e.message + '</div>';
     }
 };
 
@@ -264,7 +264,7 @@ App._atomDeleteRecord = async function(id) {
         await this._atomLoadList();
         await this._atomLoadStats();
     } catch(e) {
-        App.toast('删除失败: ' + e.message, 'danger');
+        App.toast('未能删除: ' + e.message, 'danger');
     }
 };
 
@@ -314,7 +314,7 @@ App._atomBatchArchive = async function() {
             fail++;
         }
     }
-    App.toast('归档完成: ' + success + ' 卡片 / ' + skip + ' 跳过 / ' + fail + ' 失败', fail > 0 ? 'warning' : 'success');
+    App.toast('归档完成: ' + success + ' 卡片 / ' + skip + ' 跳过 / ' + fail + ' 未完成', fail > 0 ? 'warning' : 'success');
     this._atomSelectedRecords.clear();
     await this._atomLoadList();
     await this._atomLoadStats();
@@ -354,7 +354,7 @@ App._atomDoDecompose = async function() {
             : { text: text, source_type: 'manual', media_type: (mediaType ? mediaType.value : 'image') };
 
         var d = await this.fetchJSON(endpoint, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), _timeoutMs: 180000 });
-        if (!d || !d.ok) { App._atomSetProgress(0, '请求失败'); App.toast('AI拆解请求失败，请刷新重试', 'danger'); return; }
+        if (!d || !d.ok) { App._atomSetProgress(0, '请求未响应'); App.toast('AI拆解请求未响应，请刷新重试', 'danger'); return; }
         App._atomSetProgress(100, '完成！');
 
         // 渲染结果
@@ -395,8 +395,8 @@ App._atomDoDecompose = async function() {
         }, 2000);
 
     } catch(e) {
-        App.toast('拆解失败: ' + e.message, 'danger');
-        App._atomSetProgress(0, '失败');
+        App.toast('拆解未完成: ' + e.message, 'danger');
+        App._atomSetProgress(0, '未完成');
     } finally {
         this.state.atomIsDecomposing = false;
         btn.disabled = false;
@@ -441,7 +441,7 @@ App._atomArchive = async function(decomposeId, atomsJsonEncoded) {
     try {
         var atoms = JSON.parse(decodeURIComponent(atomsJsonEncoded));
         if (!atoms || atoms.length === 0) return;
-    } catch(e) { return App.toast('原子数据解析失败', 'danger'); }
+    } catch(e) { return App.toast('原子数据未能解析', 'danger'); }
 
     // 确认弹窗
     var ok = confirm('将 ' + atoms.length + ' 个原子归档到词卡分组？\n会自动创建 [原子] 类型分组并按语义分类。');
@@ -454,7 +454,7 @@ App._atomArchive = async function(decomposeId, atomsJsonEncoded) {
             body: JSON.stringify({ decompose_id: decomposeId || 0, atom_ids: [], create_groups: true }),
             _timeoutMs: 60000
         });
-        if (!d || !d.ok) { App.toast('归档失败，请检查网络后重试', 'danger'); return; }
+        if (!d || !d.ok) { App.toast('归档未完成，请检查网络后重试', 'danger'); return; }
         App.toast('已归档 ' + (d.card_count || 0) + ' 个词卡到分组', 'success');
         await App._atomLoadStats();
         await App._atomLoadList();
@@ -465,7 +465,7 @@ App._atomArchive = async function(decomposeId, atomsJsonEncoded) {
             try { await App.loadPrompts(App.state.currentGroupId); } catch(e) {}
         }
     } catch(e) {
-        App.toast('归档失败: ' + e.message, 'danger');
+        App.toast('归档未完成: ' + e.message, 'danger');
     }
 };
 
@@ -490,10 +490,10 @@ App._atomSendToComposer = async function(decomposeId) {
                 App.toast('已归档并打开组装器 — 点击右侧底部「⚛ 原子引擎」调用词卡', 'success');
             }, 300);
         } else {
-            App.toast('归档失败，请检查网络后重试', 'danger');
+            App.toast('归档未完成，请检查网络后重试', 'danger');
         }
     } catch(e) {
-        App.toast('跳转失败: ' + e.message, 'danger');
+        App.toast('跳转未完成: ' + e.message, 'danger');
     }
 };
 
@@ -516,7 +516,7 @@ App._atomImportCSV = function() {
             });
             App.toast('导入完成: ' + (d.success||0) + '/' + (d.total||0) + ' 条', 'success');
             await App._atomLoadStats();
-        } catch(e) { App.toast('导入失败: ' + e.message, 'danger'); }
+        } catch(e) { App.toast('导入未完成: ' + e.message, 'danger'); }
     };
     inp.click();
 };
@@ -537,7 +537,7 @@ App._atomImportJSON = function() {
             });
             App.toast('导入完成: ' + (d.success||0) + '/' + (d.total||0) + ' 条', 'success');
             await App._atomLoadStats();
-        } catch(e) { App.toast('导入失败: ' + e.message, 'danger'); }
+        } catch(e) { App.toast('导入未完成: ' + e.message, 'danger'); }
     };
     inp.click();
 };
@@ -558,7 +558,7 @@ App._atomImportTXT = function() {
             });
             App.toast('导入完成: ' + (d.success||0) + '/' + (d.total||0) + ' 条', 'success');
             await App._atomLoadStats();
-        } catch(e) { App.toast('导入失败: ' + e.message, 'danger'); }
+        } catch(e) { App.toast('导入未完成: ' + e.message, 'danger'); }
     };
     inp.click();
 };
@@ -653,7 +653,7 @@ App._atomDoCreateTpl = async function() {
             document.querySelectorAll('.modal-overlay').forEach(function(o) { o.remove(); });
             await App._atomLoadTemplates();
         }
-    } catch(e) { App.toast('创建失败: ' + e.message, 'danger'); }
+    } catch(e) { App.toast('创建未完成: ' + e.message, 'danger'); }
 };
 
 // 模板详情弹窗
@@ -689,7 +689,7 @@ App._atomShowTplDetail = async function(tid) {
             '</div></div>';
         overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
         document.body.appendChild(overlay);
-    } catch(e) { App.toast('加载模板失败: ' + e.message, 'danger'); }
+    } catch(e) { App.toast('加载模板未完成: ' + e.message, 'danger'); }
 };
 
 App._atomTplPublish = async function(tid) {
@@ -698,7 +698,7 @@ App._atomTplPublish = async function(tid) {
         App.toast('模板已发布', 'success');
         document.querySelectorAll('.modal-overlay').forEach(function(o) { o.remove(); });
         await App._atomLoadTemplates();
-    } catch(e) { App.toast('操作失败: ' + e.message, 'danger'); }
+    } catch(e) { App.toast('操作未完成，稍后再试: ' + e.message, 'danger'); }
 };
 
 App._atomTplUnpublish = async function(tid) {
@@ -707,7 +707,7 @@ App._atomTplUnpublish = async function(tid) {
         App.toast('模板已下架', 'info');
         document.querySelectorAll('.modal-overlay').forEach(function(o) { o.remove(); });
         await App._atomLoadTemplates();
-    } catch(e) { App.toast('操作失败: ' + e.message, 'danger'); }
+    } catch(e) { App.toast('操作未完成，稍后再试: ' + e.message, 'danger'); }
 };
 
 App._atomTplDownload = async function(tid) {
@@ -726,7 +726,7 @@ App._atomTplDownload = async function(tid) {
         App.toast('模板已下载', 'success');
         document.querySelectorAll('.modal-overlay').forEach(function(o) { o.remove(); });
         await App._atomLoadTemplates();
-    } catch(e) { App.toast('下载失败: ' + e.message, 'danger'); }
+    } catch(e) { App.toast('下载未完成: ' + e.message, 'danger'); }
 };
 
 App._atomTplRate = async function(tid) {
@@ -737,7 +737,7 @@ App._atomTplRate = async function(tid) {
         App.toast('已评分 ' + '★'.repeat(score), 'success');
         document.querySelectorAll('.modal-overlay').forEach(function(o) { o.remove(); });
         await App._atomLoadTemplates();
-    } catch(e) { App.toast('评分失败: ' + e.message, 'danger'); }
+    } catch(e) { App.toast('评分未完成: ' + e.message, 'danger'); }
 };
 
 App._atomTplDelete = async function(tid) {
@@ -747,7 +747,7 @@ App._atomTplDelete = async function(tid) {
         App.toast('模板已删除', 'info');
         document.querySelectorAll('.modal-overlay').forEach(function(o) { o.remove(); });
         await App._atomLoadTemplates();
-    } catch(e) { App.toast('删除失败: ' + e.message, 'danger'); }
+    } catch(e) { App.toast('未能删除: ' + e.message, 'danger'); }
 };
 
 // 使用统计上报（在关键词复制/调用时触发）
@@ -757,7 +757,7 @@ App._atomTrackUsage = async function(atomText, atomType, action) {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ atom_text: atomText, atom_type: atomType || 'unknown', action: action || 'copy' })
         });
-    } catch(e) {} // 静默失败，不阻塞主流程
+    } catch(e) {} // 静默未完成，不阻塞主流程
 };
 
 // 使用统计面板（资产溯源增强版）

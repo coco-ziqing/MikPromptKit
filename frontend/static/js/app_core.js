@@ -131,7 +131,7 @@ var App = window.App || {
             if (!resp.ok) {
                 var text = '';
                 try { text = await resp.text(); } catch(e) {}
-                var errMsg = App._t('auto.str_67411e24', '请求失败: ') + resp.status;
+                var errMsg = App._t('auto.str_67411e24', '请求未响应: ') + resp.status;
                 try { var j = JSON.parse(text); if (j.detail) errMsg = j.detail; } catch(e) {}
                 this.showToast(errMsg, 'error');
                 return null;
@@ -139,7 +139,7 @@ var App = window.App || {
             if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
       if (!resp.ok) throw new Error('HTTP '+resp.status); return await resp.json();
         } catch (e) {
-            this.showToast(App._t('auto.str_57c2b634', '网络连接失败: ') + e.message, 'error');
+            this.showToast(App._t('auto.str_57c2b634', '网络不太稳定，请稍后重试: ') + e.message, 'error');
             return null;
         }
     },
@@ -303,7 +303,7 @@ var App = window.App || {
                     }
                 }
             }).catch(function(e) {
-                // 静默失败，不影响正常使用
+                // 静默未完成，不影响正常使用
             });
         } catch(e) {}
     },
@@ -582,7 +582,7 @@ var App = window.App || {
                 body: JSON.stringify({ query: query, top_k: 50 })
             });
             if (!data || !data.items) {
-                container.innerHTML = '<div class="empty-state"><p>搜索失败</p></div>';
+                container.innerHTML = '<div class="empty-state"><p>搜索未完成</p></div>';
                 return;
             }
             this.state.prompts = data.items.map(function(item) {
@@ -604,7 +604,7 @@ var App = window.App || {
             this._renderSemanticResults();
             document.getElementById('countInfo').textContent = '🧠 语义搜索: ' + data.total + ' 条结果';
         } catch (e) {
-            container.innerHTML = '<div class="empty-state" style="color:#ef4444;">语义搜索失败: ' + e.message + '</div>';
+            container.innerHTML = '<div class="empty-state" style="color:#ef4444;">语义搜索未完成: ' + e.message + '</div>';
         }
     },
 
@@ -694,7 +694,7 @@ var App = window.App || {
             if (err.name === 'AbortError') {
                 console.warn('请求超时:', url);
             } else {
-                console.error('请求失败:', url, err.message);
+                console.error('请求未响应:', url, err.message);
             }
             return null;
         }
@@ -953,7 +953,7 @@ var App = window.App || {
                 }
             }
         } catch (e) {
-            this.showToast(App._t('auto.str_dfcf8c14', '模板渲染失败'), 'error');
+            this.showToast(App._t('auto.str_dfcf8c14', '模板渲染未完成'), 'error');
         }
     },
 

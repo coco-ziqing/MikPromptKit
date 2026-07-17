@@ -56,9 +56,17 @@
     // ============ 应用国际化到 DOM（核心函数）============
     App._applyI18n = function() {
         var lang = App._i18nCurrent;
+        // 排除函数：用户自设内容（账户名/头像名等）不受 i18n 影响
+        function _isProtected(el) {
+            while (el) {
+                if (el.classList && el.classList.contains('pk-no-i18n')) return true;
+                el = el.parentElement;
+            }
+            return false;
+        }
         if (lang === 'zh-CN') {
-            // 中文模式：恢复 data-i18n-zh 原始文本
             document.querySelectorAll('[data-i18n]').forEach(function(el) {
+                if (_isProtected(el)) return;
                 var zh = el.getAttribute('data-i18n-zh');
                 if (zh) el.textContent = zh;
             });
@@ -71,8 +79,8 @@
                 if (zh) el.title = zh;
             });
         } else {
-            // 英文模式：从字典查找翻译
             document.querySelectorAll('[data-i18n]').forEach(function(el) {
+                if (_isProtected(el)) return;
                 var key = el.getAttribute('data-i18n');
                 var translated = App._t(key, '');
                 if (translated) el.textContent = translated;

@@ -17,7 +17,7 @@ if (!App.seedanceV2 || App.seedanceV2._openGroupCreator) return;
                     App.seedanceV2._renderRightPickerContent(App.seedanceV2.getLibraryById(d.id));
                 });
                 App.showToast(App._t('auto.str_87c99bd8', '分组已创建: ')+name,'success');
-            }else{App.showToast('创建失败, 名称可能重复','error');}
+            }else{App.showToast('创建未完成, 名称可能重复','error');}
         });
     };
     // 从面板输入框添加词条到自定义分组
@@ -33,7 +33,7 @@ if (!App.seedanceV2 || App.seedanceV2._openGroupCreator) return;
         var lib=App.seedanceV2.getLibraryById(libId);
         if(lib)App.seedanceV2._renderRightPickerContent(lib);
         App.showToast('已添加词条','success');}
-        else{App.showToast(App._t('auto.add_失败', '添加失败'),'error');}};
+        else{App.showToast(App._t('auto.add_失败', '添加未完成'),'error');}};
     // 编辑自定义词条（弹窗）
     App.seedanceV2._editCustomCard=function(cardId,oldText,oldDef){
         var w=prompt(App._t('common.edit', '编辑词条:'),oldText);
@@ -48,7 +48,7 @@ if (!App.seedanceV2 || App.seedanceV2._openGroupCreator) return;
                 if(lib){delete App.seedanceV2.cardCache[lib.id];App.seedanceV2.loadCards(lib.id).then(function(){
                     App.seedanceV2._renderRightPickerContent(lib);});}
                 App.showToast('词条已更新','success');
-            }else{App.showToast(App._t('auto.str_930442e2', '更新失败'),'error');}
+            }else{App.showToast(App._t('auto.str_930442e2', '更新未完成'),'error');}
         });
     };
     // 删除自定义词条
@@ -60,7 +60,7 @@ if (!App.seedanceV2 || App.seedanceV2._openGroupCreator) return;
             if(lib){delete App.seedanceV2.cardCache[lib.id];await App.seedanceV2.loadCards(lib.id);
             App.seedanceV2._renderRightPickerContent(lib);}
             App.showToast(App._t('auto.str_ecb51c53', '词条已删除'),'info');
-        }else{App.showToast(App._t('common.delete', '删除失败'),'error');}
+        }else{App.showToast(App._t('common.delete', '未能删除'),'error');}
     };
     // 重命名自定义分组
     App.seedanceV2._renameGroup=function(libId){
@@ -77,7 +77,7 @@ if (!App.seedanceV2 || App.seedanceV2._openGroupCreator) return;
                     if(nl)App.seedanceV2._renderRightPickerContent(nl);
                 });
                 App.showToast(App._t('auto.str_b4aa4e29', '分组已重命名'),'success');
-            }else{App.showToast(App._t('auto.str_37ba51a4', '重命名失败'),'error');}
+            }else{App.showToast(App._t('auto.str_37ba51a4', '重命名未完成'),'error');}
         });
     };
     // 词卡视频上传
@@ -91,7 +91,7 @@ if (!App.seedanceV2 || App.seedanceV2._openGroupCreator) return;
                 if(lib){delete App.seedanceV2.cardCache[lib.id];await App.seedanceV2.loadCards(lib.id);
                 App.seedanceV2._renderRightPickerContent(lib);}
                 App.showToast(App._t('auto.str_8cdbb58b', '视频预览已保存'),'success');
-            }else{App.showToast(App._t('auto.upload_失败', '上传失败'),'error');}
+            }else{App.showToast(App._t('auto.upload_失败', '上传未完成'),'error');}
         }catch(e){App.showToast(App._t('auto.upload_异常__', '上传异常: ')+e.message,'error');}
     };
     // 悬停视频预览
@@ -329,7 +329,7 @@ if (!App.seedanceV2 || App.seedanceV2._openGroupCreator) return;
         App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/compose',{
             method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)
         }).then(function(r){
-            if(!r||!r.text){if(o)o.value=App._t('auto.str_b34d99a9', '合成失败');return;}
+            if(!r||!r.text){if(o)o.value=App._t('auto.str_b34d99a9', '合成未完成');return;}
             self.outputText=r.text;
             self.outputJson=r.json||{};
             if(o)o.value=r.text;
@@ -337,7 +337,7 @@ if (!App.seedanceV2 || App.seedanceV2._openGroupCreator) return;
             var meta=document.getElementById('s2OutputMeta');
             if(meta)meta.textContent=(r.shot_count||0)+App._t('auto.str_5a8391a9', '镜头 · ')+(r.pixel_res||'')+' · '+(r.density||'standard');
         }).catch(function(e){
-            if(o)o.value='合成失败: '+e.message;
+            if(o)o.value='合成未完成: '+e.message;
         });
     };
     App.seedanceV2.copyText=function(){var el=document.getElementById('s2Output');if(!el||!el.value){App.showToast(App._t('auto.str_6e1aa7df', '无输出可复制'),'warning');return;}navigator.clipboard.writeText(el.value).then(function(){App.showToast(App._t('common.notice', '提示词已复制'),'success');});};

@@ -126,7 +126,7 @@
       if (r.status === 204) return {};
       return r.json().then(function(d) {
         if (!r.ok) {
-          var detail = d.detail || d.error || '请求失败 (' + r.status + ')';
+          var detail = d.detail || d.error || '请求未响应 (' + r.status + ')';
           if (!opts.silent) PK.toast(detail, 'error');
           return Promise.reject({ status: r.status, detail: detail, data: d });
         }

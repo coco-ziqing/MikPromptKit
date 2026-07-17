@@ -137,7 +137,7 @@ Object.assign(App, {
             URL.revokeObjectURL(url);
             this.showToast(App._t('common.export', '导出成功'), 'success');
         } catch (e) {
-            this.showToast(App._t('common.export', '导出失败'), 'error');
+            this.showToast(App._t('common.export', '导出未完成'), 'error');
         }
     },
 

@@ -247,7 +247,7 @@ App.logs = {
             }
             App.copyText(lines.join('\n'), '已复制 ' + d.items.length + ' 条错误');
         } catch(e) {
-            App.showToast('复制失败: ' + e.message, 'error');
+            App.showToast('复制未完成: ' + e.message, 'error');
         }
     },
 

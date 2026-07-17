@@ -33,8 +33,8 @@
                     }
                 })
                 .catch(function(e) {
-                    console.error('[Search] 搜索失败:', e);
-                    App.showToast(App._t('common.search', '搜索请求失败'), 'error');
+                    console.error('[Search] 搜索未完成:', e);
+                    App.showToast(App._t('common.search', '搜索请求未响应'), 'error');
                 });
         };
 
@@ -59,8 +59,8 @@
                     }
                 })
                 .catch(function(e) {
-                    console.error('[Semantic Search] 搜索失败:', e);
-                    App.showToast(App._t('auto.str_a4b0155e', '语义搜索请求失败'), 'error');
+                    console.error('[Semantic Search] 搜索未完成:', e);
+                    App.showToast(App._t('auto.str_a4b0155e', '语义搜索请求未响应'), 'error');
                 });
         };
 
@@ -229,7 +229,7 @@
                     }
                 })
                 .catch(function(e) {
-                    App.showToast('高级搜索失败: ' + e.message, 'error');
+                    App.showToast('高级搜索未完成: ' + e.message, 'error');
                 });
         };
 

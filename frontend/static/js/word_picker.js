@@ -163,7 +163,7 @@ App.wordPicker._load = async function() {
         if (this._searchQuery) url += '&search=' + encodeURIComponent(this._searchQuery);
 
         var data = await App.fetchJSON(url);
-        if (!data || !data.groups) throw new Error(App._t('common.load_failed', '加载失败'));
+        if (!data || !data.groups) throw new Error(App._t('common.load_failed', '加载未完成'));
 
         this._groups = data.groups;
 
@@ -184,7 +184,7 @@ App.wordPicker._load = async function() {
         }
 
     } catch(e) {
-        groupEl.innerHTML = '<span style="color:#ef4444;font-size:11px;">❌ 加载失败: ' + App._escape(e.message) + '</span>';
+        groupEl.innerHTML = '<span style="color:#ef4444;font-size:11px;">❌ 加载未完成: ' + App._escape(e.message) + '</span>';
     }
 };
 

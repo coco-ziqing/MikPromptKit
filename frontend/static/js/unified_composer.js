@@ -197,7 +197,7 @@ App.uc._createScene = async function() {
             await this._loadSceneProfiles();
             await this._openScene(d.id);
         }
-    } catch(e) { App.showToast('创建失败: ' + e.message, 'danger'); }
+    } catch(e) { App.showToast('创建未完成: ' + e.message, 'danger'); }
 };
 
 // ==================== 角色维度 ====================
@@ -258,7 +258,7 @@ App.uc._createCharacter = async function() {
             await this._loadCharacterProfiles();
             await this._openCharacter(d.id);
         }
-    } catch(e) { App.showToast('创建失败: ' + e.message, 'danger'); }
+    } catch(e) { App.showToast('创建未完成: ' + e.message, 'danger'); }
 };
 
 // ==================== 字段变更 ====================
@@ -413,7 +413,7 @@ App.uc._saveProfile = async function() {
     try {
         await Promise.all(promises);
         App.showToast('已保存', 'success');
-    } catch(e) { App.showToast('保存失败', 'danger'); }
+    } catch(e) { App.showToast('保存未完成，稍后再试', 'danger'); }
 };
 
 console.log('[unified_composer] v5.3.0 ready');

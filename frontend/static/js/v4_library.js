@@ -21,7 +21,7 @@
         listEl.innerHTML = '<div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div></div>';
         try {
             var resp = await App.fetchJSON(url);
-            if (!resp || !resp.items) { listEl.innerHTML = '<div class="empty-state"><p>加载失败</p></div>'; return; }
+            if (!resp || !resp.items) { listEl.innerHTML = '<div class="empty-state"><p>加载未完成</p></div>'; return; }
             App._populateV4LibTypes();
             App._updateV4LibStats();
             if (!resp.items.length) {
@@ -48,7 +48,7 @@
             }
             listEl.innerHTML = h;
         } catch (e) {
-            listEl.innerHTML = '<div class="empty-state"><p>加载失败: ' + App._escape(e.message) + '</p></div>';
+            listEl.innerHTML = '<div class="empty-state"><p>加载未完成: ' + App._escape(e.message) + '</p></div>';
         }
     };
 
@@ -110,7 +110,7 @@
             document.getElementById('v4libFormIcon').value = item.icon || '';
             document.getElementById('modalV4Lib').style.display = 'flex';
         } catch (e) {
-            App.showToast(App._t('common.load_failed', '加载失败: ') + e.message, 'error');
+            App.showToast(App._t('common.load_failed', '加载未完成: ') + e.message, 'error');
         }
     };
 
@@ -135,10 +135,10 @@
                 document.getElementById('modalV4Lib').style.display = 'none';
                 App.loadV4Library();
             } else {
-                App.showToast(App._t('common.save', '保存失败'), 'error');
+                App.showToast(App._t('common.save', '保存未完成，稍后再试'), 'error');
             }
         } catch (e) {
-            App.showToast(App._t('common.save', '保存失败: ') + e.message, 'error');
+            App.showToast(App._t('common.save', '保存未完成，稍后再试: ') + e.message, 'error');
         }
     };
 
@@ -151,7 +151,7 @@
                 App.loadV4Library();
             }
         } catch (e) {
-            App.showToast(App._t('common.delete', '删除失败'), 'error');
+            App.showToast(App._t('common.delete', '未能删除'), 'error');
         }
     };
 
@@ -191,7 +191,7 @@
         listEl.innerHTML = '<div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div></div>';
         try {
             var resp = await App.fetchJSON(url);
-            if (!resp || !resp.items) { listEl.innerHTML = '<div class="empty-state"><p>加载失败</p></div>'; return; }
+            if (!resp || !resp.items) { listEl.innerHTML = '<div class="empty-state"><p>加载未完成</p></div>'; return; }
             var countEl = document.getElementById('v4mediaCount');
             if (countEl) countEl.textContent = '共 ' + resp.total + App._t('auto.str_7c645c81', ' 个文件');
 
@@ -242,7 +242,7 @@
                 v.addEventListener('mouseleave', function() { this.pause(); this.currentTime = 0; });
             });
         } catch (e) {
-            listEl.innerHTML = '<div class="empty-state"><p>加载失败: ' + App._escape(e.message) + '</p></div>';
+            listEl.innerHTML = '<div class="empty-state"><p>加载未完成: ' + App._escape(e.message) + '</p></div>';
         }
     };
 
@@ -262,11 +262,11 @@
                     App.showToast(App._t('common.success', '成功导入 ') + resp.imported + ' 条', 'success');
                     App.loadV4Library();
                 } else {
-                    App.showToast(App._t('common.import', '导入失败'), 'error');
+                    App.showToast(App._t('common.import', '导入未完成'), 'error');
                 }
             });
         } catch (e) {
-            App.showToast('JSON 解析失败: ' + e.message, 'error');
+            App.showToast('JSON 未能解析: ' + e.message, 'error');
         }
     };
 
@@ -287,7 +287,7 @@
                 App.showToast(App._t('common.export', '导出 ') + resp.total + ' 条', 'success');
             }
         } catch (e) {
-            App.showToast(App._t('common.export', '导出失败'), 'error');
+            App.showToast(App._t('common.export', '导出未完成'), 'error');
         }
     };
 

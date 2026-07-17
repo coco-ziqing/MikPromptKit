@@ -54,7 +54,7 @@ App.wordEditor._showVersions = async function() {
         if (p) p.textContent = '词卡 #' + cid + ' | ' + d.versions.length + ' 个版本';
     } catch (e) {
         var list = document.getElementById('wcVersionList');
-        if (list) list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px;">\u26a0\ufe0f ' + PK._esc(e.message || '加载失败') + '</div>';
+        if (list) list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px;">\u26a0\ufe0f ' + PK._esc(e.message || '加载未完成') + '</div>';
     }
 };
 
@@ -72,7 +72,7 @@ App.wordEditor._rollbackTo = async function(cid, version) {
             if (App.wordCards && App.wordCards.load) App.wordCards.load();
         }
     } catch(e) {
-        PK.toast('回滚失败: ' + (e.detail || e.message), 'error');
+        PK.toast('回滚未完成: ' + (e.detail || e.message), 'error');
     }
 };
 

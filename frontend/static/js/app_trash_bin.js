@@ -16,7 +16,7 @@ async batchDeleteAll() {
     try {
         var d = await PK.api('/api/v2/batch/delete/permanent', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ids: ids }) });
         if (d && d.ok) { PK.toast('已永久删除 ' + d.deleted + ' 条', 'success'); this.state.batchSelected.clear(); this.loadPrompts(); }
-    } catch(e) { PK.toast('删除失败: ' + (e.detail || e.message), 'error'); }
+    } catch(e) { PK.toast('未能删除: ' + (e.detail || e.message), 'error'); }
 },
 
 async batchRestore() {
@@ -25,7 +25,7 @@ async batchRestore() {
     try {
         var d = await PK.api('/api/v2/batch/restore', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ids: ids }) });
         if (d && d.ok) { PK.toast('已恢复 ' + d.restored + ' 条', 'success'); this.state.batchSelected.clear(); this.loadPrompts(); }
-    } catch(e) { PK.toast('恢复失败: ' + (e.detail || e.message), 'error'); }
+    } catch(e) { PK.toast('恢复未完成: ' + (e.detail || e.message), 'error'); }
 },
 
 async batchGenIds() {
@@ -38,7 +38,7 @@ async batchGenIds() {
             this.state.batchSelected.clear();
             this.loadPrompts();
         }
-    } catch(e) { PK.toast('生成失败: ' + (e.detail || e.message), 'error'); }
+    } catch(e) { PK.toast('生成未完成: ' + (e.detail || e.message), 'error'); }
 },
 
 });

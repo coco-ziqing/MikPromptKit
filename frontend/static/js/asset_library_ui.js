@@ -42,15 +42,15 @@
       vp.innerHTML =
         '<div style="height:100%;overflow-y:auto;padding:20px;">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">' +
-        '<h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text-main);">📦 项目资产</h4>' +
+        '<h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text-main);">📦 作品资产</h4>' +
         '<div style="display:flex;gap:8px;align-items:center;">' +
         '<button class="btn btn-sm btn-primary" onclick="PK_ASSETLIB.newProject()">＋ 新建项目</button>' +
         '<button class="btn btn-sm btn-outline-secondary" onclick="PK_ASSETLIB.close()">← 返回</button>' +
         '</div></div>' +
-        '<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;"><span style="font-size:14px;font-weight:700;color:var(--text-main);">🌐 共享公资产库</span><span id="al_cnt_shared" style="font-size:12px;color:var(--text-muted);"></span></div>' +
+        '<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;"><span style="font-size:14px;font-weight:700;color:var(--text-main);">🌐 共享作品库</span><span id="al_cnt_shared" style="font-size:12px;color:var(--text-muted);"></span></div>' +
         '<div id="al_grid_shared" class="user-grid"></div>' +
         '<div style="height:18px;"></div>' +
-        '<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;"><span style="font-size:14px;font-weight:700;color:var(--text-main);">🔒 用户私人资产库</span><span id="al_cnt_private" style="font-size:12px;color:var(--text-muted);"></span></div>' +
+        '<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;"><span style="font-size:14px;font-weight:700;color:var(--text-main);">🔒 个人创作库</span><span id="al_cnt_private" style="font-size:12px;color:var(--text-muted);"></span></div>' +
         '<div id="al_grid_private" class="user-grid"></div>' +
         '</div>';
       this.loadProjects();
@@ -64,7 +64,7 @@
       return '<div class="user-card" style="cursor:pointer;" onclick="PK_ASSETLIB.openProject(' + p.id + ')">' +
         '<div class="user-card-header"><div class="user-avatar" style="background:#334155;">' + self._esc((p.name || '?').charAt(0).toUpperCase()) + '</div>' +
         '<div class="user-info"><div class="user-name">' + self._esc(p.name) + '</div>' +
-        '<div class="user-username">' + (p.asset_count || 0) + ' 个资产</div></div></div>' +
+        '<div class="user-username">' + (p.asset_count || 0) + ' 个作品</div></div></div>' +
         '<div class="user-meta" style="gap:6px;flex-wrap:wrap;">' + vis + '<span style="font-size:16px;">' + icons + '</span></div>' +
         '<div class="user-card-actions"><button class="btn-outline" onclick="event.stopPropagation();PK_ASSETLIB.openProject(' + p.id + ')">📂 打开</button>' +
         (mine || me.role === 'admin' ? '<button class="btn-outline btn-outline-danger" onclick="event.stopPropagation();PK_ASSETLIB.deleteProject(' + p.id + ',\'' + self._esc(p.name) + '\')">🗑</button>' : '') +
@@ -92,7 +92,7 @@
         var cs = document.getElementById('al_cnt_shared'); if (cs) cs.textContent = shared.length + ' 个';
         var cp = document.getElementById('al_cnt_private'); if (cp) cp.textContent = priv.length + ' 个';
       } catch (e) {
-        if (gs) gs.innerHTML = '<div style="padding:16px;color:var(--danger);">加载失败</div>';
+        if (gs) gs.innerHTML = '<div style="padding:16px;color:var(--danger);">加载未完成</div>';
       }
     },
 
@@ -111,16 +111,16 @@
         '<div class="form-group"><label>项目名称</label><input type="text" id="al_name" placeholder="如：夏日短片 / 品牌广告" autofocus></div>' +
         '<div class="form-group"><label>描述（可选）</label><input type="text" id="al_desc" placeholder="项目简介"></div>' +
         '<div class="form-group"><label>可见性</label><select id="al_vis"><option value="private">私有（仅自己）</option><option value="shared">共享（团队可见）</option></select></div>' +
-        '<div class="form-group"><label>备份策略</label><select id="al_backup"><option value="critical">关键资产备份（工程文件默认，推荐）</option><option value="all">全部备份</option><option value="none">不备份</option></select></div>' +
-        '<div class="form-group"><label>包含资产模块（可随时增减）</label><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">' + modChecks + '</div></div>' +
+        '<div class="form-group"><label>备份策略</label><select id="al_backup"><option value="critical">关键作品备份（工程文件默认，推荐）</option><option value="all">全部备份</option><option value="none">不备份</option></select></div>' +
+        '<div class="form-group"><label>包含作品模块（可随时增减）</label><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">' + modChecks + '</div></div>' +
         '<div class="pk-modal-actions"><button class="btn btn-secondary" onclick="this.closest(\'.pk-auth-modal-overlay\').remove()">取消</button>' +
         '<button class="btn btn-primary" id="al_create">创建</button></div></div>';
       document.body.appendChild(ov);
       document.getElementById('al_create').onclick = async function () {
         var name = document.getElementById('al_name').value.trim();
-        if (!name) { alert('请输入项目名称'); return; }
+        if (!name) { self._toast('请输入项目名称', 'error'); return; }
         var mods = Array.prototype.map.call(document.querySelectorAll('.al_mod:checked'), function (c) { return c.value; });
-        if (!mods.length) { alert('至少选择一个资产模块'); return; }
+        if (!mods.length) { self._toast('至少选择一个作品模块', 'error'); return; }
         this.disabled = true; this.textContent = '创建中...';
         try {
           var r = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -128,8 +128,8 @@
               visibility: document.getElementById('al_vis').value, backup_policy: document.getElementById('al_backup').value, modules: mods }) });
           var d = await r.json();
           if (d.ok) { ov.remove(); self._toast('项目已创建', 'success'); self.openProject(d.project.id); }
-          else { alert(d.detail || '创建失败'); this.disabled = false; this.textContent = '创建'; }
-        } catch (e) { alert('网络错误'); this.disabled = false; this.textContent = '创建'; }
+          else { self._toast(d.detail || '创建未完成', 'error'); this.disabled = false; this.textContent = '创建'; }
+        } catch (e) { self._toast('网络不太稳定，请稍后重试', 'error'); this.disabled = false; this.textContent = '创建'; }
       };
     },
 
@@ -144,7 +144,7 @@
         if (!d.ok) { this._toast('无法打开项目', 'error'); return; }
         this._cur = d.project;
         this.renderProject();
-      } catch (e) { this._toast('加载失败', 'error'); }
+      } catch (e) { this._toast('加载未完成', 'error'); }
     },
 
     renderProject: async function () {
@@ -187,7 +187,7 @@
       }).join('');
     },
 
-    _st: { draft: { t: '草稿', c: '#94a3b8' }, in_review: { t: '审核中', c: '#f59e0b' }, approved: { t: '已通过', c: '#10b981' }, rejected: { t: '已驳回', c: '#ef4444' } },
+    _st: { draft: { t: '创作中', c: '#94a3b8' }, in_review: { t: '共审中', c: '#f59e0b' }, approved: { t: '已定稿', c: '#10b981' }, rejected: { t: '待打磨', c: '#ef4444' } },
 
     _assetCard: function (a, m, canEdit) {
       var self = this;
@@ -235,7 +235,7 @@
         } catch (e) { failN++; }
         this._toast('上传中 (' + (i + 1) + '/' + files.length + ')...', 'info', 60000);
       }
-      var msg = '完成：成功 ' + okN + (dupN ? '（含 ' + dupN + ' 个重复）' : '') + (failN ? '，失败 ' + failN : '');
+      var msg = '完成：成功 ' + okN + (dupN ? '（含 ' + dupN + ' 个重复）' : '') + (failN ? '，未完成 ' + failN : '');
       this._toast(msg, failN ? 'error' : 'success');
       // 刷新当前项目
       if (this._cur && this._cur.id === pid) this.openProject(pid);
@@ -247,21 +247,21 @@
       var cur = el && el.textContent === '★';
       try { await fetch('/api/assets/' + cid, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_critical: cur ? 0 : 1 }) });
         if (el) { el.textContent = cur ? '☆' : '★'; el.style.color = cur ? '#e5e7eb' : '#f59e0b'; }
-      } catch (e) { this._toast('操作失败', 'error'); }
+      } catch (e) { this._toast('操作未完成，稍后再试', 'error'); }
     },
 
     deleteAsset: async function (cid) {
       if (!confirm('确定删除此资产？（同时删除服务器上的文件）')) return;
       try { var r = await fetch('/api/assets/' + cid, { method: 'DELETE' }); var d = await r.json();
-        if (d.ok) { this._toast('已删除', 'success'); if (this._cur) this.openProject(this._cur.id); } else this._toast(d.detail || '删除失败', 'error');
-      } catch (e) { this._toast('网络错误', 'error'); }
+        if (d.ok) { this._toast('已删除', 'success'); if (this._cur) this.openProject(this._cur.id); } else this._toast(d.detail || '未能删除', 'error');
+      } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
 
     deleteProject: async function (pid, name) {
       if (!confirm('确定删除项目「' + name + '」？将删除其全部资产与目录，不可恢复！')) return;
       try { var r = await fetch('/api/projects/' + pid, { method: 'DELETE' }); var d = await r.json();
-        if (d.ok) { this._toast('项目已删除', 'success'); this.renderList(); } else this._toast(d.detail || '删除失败', 'error');
-      } catch (e) { this._toast('网络错误', 'error'); }
+        if (d.ok) { this._toast('项目已删除', 'success'); this.renderList(); } else this._toast(d.detail || '未能删除', 'error');
+      } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
 
     editModules: function () {
@@ -282,10 +282,10 @@
       document.body.appendChild(ov);
       document.getElementById('al_savemod').onclick = async function () {
         var mods = Array.prototype.map.call(document.querySelectorAll('.al_em:checked'), function (c) { return c.value; });
-        if (!mods.length) { alert('至少保留一个模块'); return; }
+        if (!mods.length) { self._toast('至少保留一个模块', 'error'); return; }
         try { var r = await fetch('/api/projects/' + p.id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modules: mods }) });
-          var d = await r.json(); if (d.ok) { ov.remove(); self._cur = d.project; self.renderProject(); } else alert(d.detail || '保存失败');
-        } catch (e) { alert('网络错误'); }
+          var d = await r.json(); if (d.ok) { ov.remove(); self._cur = d.project; self.renderProject(); } else self._toast(d.detail || '保存未完成，稍后再试', 'error');
+        } catch (e) { self._toast('网络不太稳定，请稍后重试', 'error'); }
       };
     },
 
@@ -307,7 +307,7 @@
           '<div style="max-height:50vh;overflow:auto;">' + body + '</div>' +
           '<div class="pk-modal-actions"><button class="btn btn-primary" onclick="this.closest(\'.pk-auth-modal-overlay\').remove()">关闭</button></div></div>';
         document.body.appendChild(ov);
-      } catch (e) { this._toast('查重失败', 'error'); }
+      } catch (e) { this._toast('查重未完成', 'error'); }
     },
 
     // ---------- 资产详情 / 版本 / 审核 ----------
@@ -319,7 +319,7 @@
         var dv = await (await fetch('/api/assets/' + cid + '/versions')).json();
         var dr = await (await fetch('/api/assets/' + cid + '/reviews')).json();
         this._renderAssetModal(da.asset, dv.versions || [], dr.reviews || []);
-      } catch (e) { this._toast('加载失败', 'error'); }
+      } catch (e) { this._toast('加载未完成', 'error'); }
     },
 
     _renderAssetModal: function (a, versions, reviews) {
@@ -337,10 +337,10 @@
 
       var acts = '';
       if ((a.review_status === 'draft' || a.review_status === 'rejected') && canEdit)
-        acts += '<button class="btn btn-sm btn-primary" onclick="PK_ASSETLIB.submitReview(' + a.id + ')">📤 提交审核</button> ';
+        acts += '<button class="btn btn-sm btn-primary" onclick="PK_ASSETLIB.submitReview(' + a.id + ')">📤 邀请反馈</button> ';
       if (a.review_status === 'in_review' && canReview)
-        acts += '<button class="btn btn-sm" style="background:#10b981;color:#fff;" onclick="PK_ASSETLIB.doReview(' + a.id + ',\'approve\')">✔ 批准</button> ' +
-                '<button class="btn btn-sm" style="background:#ef4444;color:#fff;" onclick="PK_ASSETLIB.doReview(' + a.id + ',\'reject\')">✖ 驳回</button> ';
+        acts += '<button class="btn btn-sm" style="background:#10b981;color:#fff;" onclick="PK_ASSETLIB.doReview(' + a.id + ',\'approve\')">✔ 采纳</button> ' +
+                '<button class="btn btn-sm" style="background:#ef4444;color:#fff;" onclick="PK_ASSETLIB.doReview(' + a.id + ',\'reject\')">✖ 建议打磨</button> ';
       if (canEdit) acts += '<button class="btn btn-sm btn-outline-secondary" onclick="PK_ASSETLIB.uploadVersion(' + a.id + ')">⬆ 上传新版本</button>';
 
       var vlist = versions.map(function (v) {
@@ -353,14 +353,14 @@
           '</div>';
       }).join('');
 
-      var actionName = { submit: '📤 提交审核', approve: '✔ 批准', reject: '✖ 驳回', comment: '💬 评论' };
+      var actionName = { submit: '📤 邀请反馈', approve: '✔ 采纳', reject: '✖ 建议打磨', comment: '💬 留言' };
       var rlist = reviews.length ? reviews.map(function (r) {
         return '<div style="padding:6px 0;border-bottom:1px solid var(--border-color);font-size:12px;">' +
           '<span style="font-weight:600;color:var(--text-main);">' + self._esc(r.reviewer_name || '?') + '</span> ' +
           '<span style="color:var(--text-muted);">' + (actionName[r.action] || r.action) + '</span>' +
           (r.comment ? '<div style="color:var(--text-main);margin-top:2px;">' + self._esc(r.comment) + '</div>' : '') +
           '<div style="color:var(--text-muted);font-size:10px;">' + (r.created_at || '').substring(0, 19) + '</div></div>';
-      }).join('') : '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">暂无审核记录</div>';
+      }).join('') : '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">暂暂无共创记录</div>';
 
       var gpObj = a.gen_params || {};
       var gpStr = '';
@@ -418,37 +418,37 @@
         try {
           var d = await (await fetch('/api/assets/' + cid + '/versions', { method: 'POST', body: fd })).json();
           if (d.ok) { self._toast('新版本 v' + d.version_no + ' 已上传', 'success'); self.openAsset(cid); if (self._cur) self.openProject(self._cur.id); }
-          else self._toast(d.detail || '上传失败', 'error');
-        } catch (e) { self._toast('网络错误', 'error'); }
+          else self._toast(d.detail || '上传未完成', 'error');
+        } catch (e) { self._toast('网络不太稳定，请稍后重试', 'error'); }
       };
       inp.click();
     },
 
     rollbackVersion: async function (cid, vid) {
       try { var d = await (await fetch('/api/assets/' + cid + '/rollback/' + vid, { method: 'POST' })).json();
-        if (d.ok) { this._toast('已回滚', 'success'); this.openAsset(cid); if (this._cur) this.openProject(this._cur.id); } else this._toast(d.detail || '失败', 'error');
-      } catch (e) { this._toast('网络错误', 'error'); }
+        if (d.ok) { this._toast('已回滚', 'success'); this.openAsset(cid); if (this._cur) this.openProject(this._cur.id); } else this._toast(d.detail || '未完成', 'error');
+      } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
 
     submitReview: async function (cid) {
       try { var d = await (await fetch('/api/assets/' + cid + '/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
-        if (d.ok) { this._toast('已提交审核', 'success'); this.openAsset(cid); if (this._cur) this.openProject(this._cur.id); } else this._toast(d.detail || '失败', 'error');
-      } catch (e) { this._toast('网络错误', 'error'); }
+        if (d.ok) { this._toast('已邀请反馈', 'success'); this.openAsset(cid); if (this._cur) this.openProject(this._cur.id); } else this._toast(d.detail || '未完成', 'error');
+      } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
 
     doReview: async function (cid, action) {
-      var comment = prompt(action === 'approve' ? '批准意见（可选）:' : '驳回原因（可选）:', '') || '';
+      var comment = prompt(action === 'approve' ? '采纳寄语（可选）:' : '打磨建议（可选）:', '') || '';
       try { var d = await (await fetch('/api/assets/' + cid + '/review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: action, comment: comment }) })).json();
-        if (d.ok) { this._toast(action === 'approve' ? '已批准' : '已驳回', 'success'); this.openAsset(cid); if (this._cur) this.openProject(this._cur.id); } else this._toast(d.detail || '失败', 'error');
-      } catch (e) { this._toast('网络错误', 'error'); }
+        if (d.ok) { this._toast(action === 'approve' ? '已采纳' : '已发送打磨建议', 'success'); this.openAsset(cid); if (this._cur) this.openProject(this._cur.id); } else this._toast(d.detail || '未完成', 'error');
+      } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
 
     addComment: async function (cid) {
       var el = document.getElementById('al_cmt'); var text = el ? el.value.trim() : '';
       if (!text) return;
       try { var d = await (await fetch('/api/assets/' + cid + '/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comment: text }) })).json();
-        if (d.ok) this.openAsset(cid); else this._toast(d.detail || '失败', 'error');
-      } catch (e) { this._toast('网络错误', 'error'); }
+        if (d.ok) this.openAsset(cid); else this._toast(d.detail || '未完成', 'error');
+      } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
 
     // ---------- 生成溯源 + 关联词卡 ----------
@@ -458,7 +458,7 @@
         var box = document.getElementById('al_rate_' + cid);
         if (box) { var sp = box.querySelectorAll('span'); for (var i = 0; i < sp.length; i++) sp[i].style.color = (i < n) ? '#f59e0b' : '#cbd5e1'; }
         this._toast('评分已保存', 'success');
-      } catch (e) { this._toast('保存失败', 'error'); }
+      } catch (e) { this._toast('保存未完成，稍后再试', 'error'); }
     },
 
     saveProvenance: async function (cid) {
@@ -470,7 +470,7 @@
       try {
         await fetch('/api/assets/' + cid, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gen_model: gm, gen_prompt: gpv, gen_params: pars }) });
         this._toast('溯源信息已保存', 'success');
-      } catch (e) { this._toast('保存失败', 'error'); }
+      } catch (e) { this._toast('保存未完成，稍后再试', 'error'); }
     },
 
     searchCards: function (cid) {
@@ -493,8 +493,8 @@
       try {
         var d = await (await fetch('/api/assets/' + cid + '/link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref_type: 'word_card', ref_id: refId }) })).json();
         if (d.ok) { this._renderRefChips(cid, d.refs); var q = document.getElementById('al_refq'); if (q) q.value = ''; var rr = document.getElementById('al_refresults'); if (rr) rr.innerHTML = ''; this._toast('已关联', 'success'); }
-        else this._toast(d.detail || '关联失败', 'error');
-      } catch (e) { this._toast('网络错误', 'error'); }
+        else this._toast(d.detail || '暂未关联成功', 'error');
+      } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
 
     unlinkRef: async function (cid, refType, refId) {
@@ -520,7 +520,7 @@
         var d = await (await fetch('/api/projects/' + p.id + '/members')).json();
         var myRole = d.my_role;
         var canManage = myRole === 'owner';
-        var roleName = { owner: '所有者', reviewer: '审核员', editor: '编辑', viewer: '查看' };
+        var roleName = { owner: '发起人', reviewer: '把关人', editor: '共创者', viewer: '鉴赏者' };
         var rows = (d.members || []).map(function (m) {
           return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-color);">' +
             '<div style="width:32px;height:32px;border-radius:8px;background:' + (m.avatar_color || '#334155') + ';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;">' + ((m.display_name || m.username || '?').charAt(0).toUpperCase()) + '</div>' +
@@ -541,7 +541,7 @@
           (canManage ? '' : '<div style="color:var(--text-muted);font-size:11px;margin-top:8px;">仅项目所有者可管理成员</div>') +
           '<div class="pk-modal-actions"><button class="btn btn-primary" onclick="document.getElementById(\'alMemOverlay\').remove()">关闭</button></div></div>';
         document.body.appendChild(ov);
-      } catch (e) { this._toast('加载成员失败', 'error'); }
+      } catch (e) { this._toast('加载成员未完成', 'error'); }
     },
 
     addMember: async function () {
@@ -550,16 +550,16 @@
       var role = (document.getElementById('al_mrole') || {}).value || 'viewer';
       if (!uname || !uname.trim()) { this._toast('请输入用户名', 'error'); return; }
       try { var d = await (await fetch('/api/projects/' + p.id + '/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: uname.trim(), role: role }) })).json();
-        if (d.ok) { this._toast('已添加', 'success'); this.openMembers(); } else this._toast(d.detail || '添加失败', 'error');
-      } catch (e) { this._toast('网络错误', 'error'); }
+        if (d.ok) { this._toast('已添加', 'success'); this.openMembers(); } else this._toast(d.detail || '添加未完成', 'error');
+      } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
 
     removeMember: async function (uid) {
       var p = this._cur; if (!p) return;
-      if (!confirm('确定移除该成员？')) return;
+      if (!confirm('确定将这位伙伴移出共创团队？')) return;
       try { var d = await (await fetch('/api/projects/' + p.id + '/members/' + uid, { method: 'DELETE' })).json();
-        if (d.ok) { this._toast('已移除', 'success'); this.openMembers(); } else this._toast(d.detail || '失败', 'error');
-      } catch (e) { this._toast('网络错误', 'error'); }
+        if (d.ok) { this._toast('已移除', 'success'); this.openMembers(); } else this._toast(d.detail || '未完成', 'error');
+      } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
 
     // ---------- 导航按钮 ----------
@@ -570,7 +570,7 @@
       if (!actions) { if (attempt < 30) setTimeout(this._injectNav.bind(this, attempt + 1), 200); return; }
       if (document.getElementById('alNavBtn')) return;
       var btn = document.createElement('button');
-      btn.id = 'alNavBtn'; btn.className = 'header-btn'; btn.title = '项目资产库';
+      btn.id = 'alNavBtn'; btn.className = 'header-btn'; btn.title = '作品资产';
       btn.innerHTML = '<span style="font-size:14px;">📦</span><span style="margin-left:4px;font-size:12px;">项目资产</span>';
       btn.onclick = function () { PK_ASSETLIB.open(); };
       var ref = document.getElementById('pkPresenceWrap') || document.getElementById('navDropdownUser') || document.getElementById('pluginNavRight');

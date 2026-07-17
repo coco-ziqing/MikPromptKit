@@ -63,7 +63,7 @@ App.cc.newFromTemplate = async function(tid) {
             body: JSON.stringify({ name: tpl.name, settings: tpl.default_settings || {}, template_id: tid })
         });
         if (r && r.ok) { await this.loadCharacters(); await this.openCharacter(r.id); App.toast('已按模版新建: ' + tpl.name, 'success'); }
-    } catch(e) { App.toast('模版新建失败', 'danger'); }
+    } catch(e) { App.toast('模版新建未完成', 'danger'); }
 };
 
 App.cc.renderProjectList = function() {
@@ -118,7 +118,7 @@ App.cc.loadPreset = async function(key) {
             await this.openCharacter(r.id);
             App.toast('已加载预设: ' + p.name, 'success');
         }
-    } catch(e) { App.toast('加载预设失败: ' + e.message, 'danger'); }
+    } catch(e) { App.toast('加载预设未完成: ' + e.message, 'danger'); }
 };
 
 App.cc.createCharacter = async function() {
@@ -130,7 +130,7 @@ App.cc.createCharacter = async function() {
             body: JSON.stringify({ name: name, settings: {} })
         });
         if (d && d.ok) { await this.loadCharacters(); await this.openCharacter(d.id); }
-    } catch(e) { App.toast('创建失败: ' + e.message, 'danger'); }
+    } catch(e) { App.toast('创建未完成: ' + e.message, 'danger'); }
 };
 
 App.cc.openCharacter = async function(id) {
@@ -161,7 +161,7 @@ App.cc.saveCharacter = async function() {
             body: JSON.stringify({ settings: settings })
         });
         if (d && d.ok) { App.toast('已保存', 'success'); this.compose(); }
-    } catch(e) { App.toast('保存失败: ' + e.message, 'danger'); }
+    } catch(e) { App.toast('保存未完成，稍后再试: ' + e.message, 'danger'); }
 };
 
 App.cc.deleteCharacter = async function(id) {
@@ -171,7 +171,7 @@ App.cc.deleteCharacter = async function(id) {
         if (this.currentId === id) { this.currentId = null; this.currentSettings = {}; this.renderEditor(); }
         await this.loadCharacters();
         App.toast('已删除', 'info');
-    } catch(e) { App.toast('删除失败: ' + e.message, 'danger'); }
+    } catch(e) { App.toast('未能删除: ' + e.message, 'danger'); }
 };
 
 // ==================== Render: Editor ====================
@@ -398,7 +398,7 @@ App.cc._loadPickerCards = async function(groupId) {
         container.innerHTML = h || '<div style="text-align:center;padding:20px;color:var(--text-muted);">无匹配词条</div>';
         setTimeout(function(){ App.cc._setupWCUploadZones(); }, 100);
     } catch(e) {
-        container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--danger);">加载失败</div>';
+        container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--danger);">加载未完成</div>';
     }
 };
 
@@ -448,7 +448,7 @@ App.cc._uploadWCThumb = async function(cardId, file) {
         if (d && d.ok) {
             this._loadPickerCards(this.activeGroupId);
             App.toast('预览图已上传', 'success');
-        } else { App.toast('上传失败', 'error'); }
+        } else { App.toast('上传未完成', 'error'); }
     } catch(e) { App.toast('上传异常: ' + e.message, 'error'); }
 };
 
@@ -460,7 +460,7 @@ App.cc._uploadWCVideo = async function(cardId, file) {
         if (d && d.ok) {
             this._loadPickerCards(this.activeGroupId);
             App.toast('视频预览已上传', 'success');
-        } else { App.toast('上传失败', 'error'); }
+        } else { App.toast('上传未完成', 'error'); }
     } catch(e) { App.toast('上传异常: ' + e.message, 'error'); }
 };
 
@@ -554,7 +554,7 @@ App.cc._deleteThumb = async function(cardId) {
         await App.fetchJSON('/api/v4/word-cards/' + cardId + '/video', {method:'DELETE'});
         this._loadPickerCards(this.activeGroupId);
         App.showToast('预览已移除', 'info');
-    } catch(e) { App.showToast('移除失败: ' + e.message, 'error'); }
+    } catch(e) { App.showToast('暂未移除: ' + e.message, 'error'); }
 };
 
 // ==================== 悬停预览 ====================
@@ -697,7 +697,7 @@ App.cc._loadMediaLib = async function() {
         }
         h += '</div>';
         grid.innerHTML = h;
-    } catch(e) { grid.innerHTML = '<div style="text-align:center;padding:30px;color:var(--danger);">加载失败</div>'; }
+    } catch(e) { grid.innerHTML = '<div style="text-align:center;padding:30px;color:var(--danger);">加载未完成</div>'; }
 };
 
 App.cc._loadVideoLib = async function() {
@@ -725,7 +725,7 @@ App.cc._loadVideoLib = async function() {
         }
         h += '</div>';
         grid.innerHTML = h;
-    } catch(e) { grid.innerHTML = '<div style="text-align:center;padding:30px;color:var(--danger);">加载失败: '+e.message+'</div>'; }
+    } catch(e) { grid.innerHTML = '<div style="text-align:center;padding:30px;color:var(--danger);">加载未完成: '+e.message+'</div>'; }
 };
 
 App.cc._pickFromVideoLib = async function(el, filename) {
@@ -750,9 +750,9 @@ App.cc._pickFromVideoLib = async function(el, filename) {
             this._loadPickerCards(this.activeGroupId);
             App.showToast('视频已关联到词卡预览', 'success');
         } else {
-            App.showToast('关联失败: ' + (d && d.error ? d.error : '未知'), 'error');
+            App.showToast('暂未关联成功: ' + (d && d.error ? d.error : '未知'), 'error');
         }
-    } catch(e) { App.showToast('视频选取失败: ' + e.message, 'error'); }
+    } catch(e) { App.showToast('视频选取未完成: ' + e.message, 'error'); }
     el._picking = false;
 };
 
@@ -774,7 +774,7 @@ App.cc._pickFromMediaLib = async function(filename) {
             this._dispatchUpload(cid, file);
             App.toast('媒体已关联到词卡预览', 'success');
         }
-    } catch(e) { App.toast('选取失败: ' + e.message, 'error'); }
+    } catch(e) { App.toast('选取未完成: ' + e.message, 'error'); }
 };
 
 // ==================== Field Changes ====================

@@ -99,7 +99,7 @@ App.wordCards.load = async function() {
             pel.innerHTML = ph;
         }
     } catch(e) {
-        grid.innerHTML = '<div style="text-align:center;padding:40px;color:#ef4444;grid-column:1/-1;">❌ 加载失败: '+App._escape(e.message||'')+'</div>';
+        grid.innerHTML = '<div style="text-align:center;padding:40px;color:#ef4444;grid-column:1/-1;">❌ 加载未完成: '+App._escape(e.message||'')+'</div>';
     }
 };
 
@@ -200,7 +200,7 @@ App.wordCards._doBatchCreate = async function() {
         var resultEl = document.getElementById('wcBatchResult');
         resultEl.style.display = 'block';
         resultEl.innerHTML = '<div style="color:#ef4444;">❌ ' + App._escape(e.message) + '</div>';
-        App.showToast('AI 解析失败: ' + e.message, 'danger');
+        App.showToast('AI 未能解析: ' + e.message, 'danger');
     }
     btn.disabled = false;
     btn.textContent = '🤖 AI 拆解';
@@ -230,7 +230,7 @@ App.wordCards._confirmBatchCreate = async function() {
             if (m) m.remove();
         }
     } catch(e) {
-        App.showToast('入库失败: ' + e.message, 'danger');
+        App.showToast('入库未完成: ' + e.message, 'danger');
     }
     btn.disabled = false;
     btn.textContent = '🤖 AI 拆解';

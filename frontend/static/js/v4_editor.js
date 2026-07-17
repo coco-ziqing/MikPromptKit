@@ -97,7 +97,7 @@
             }
 
         } catch (e) {
-            console.warn('[v4] 结构化字段编辑加载失败:', e.message);
+            console.warn('[v4] 结构化字段编辑加载未完成:', e.message);
         }
     };
 
@@ -105,7 +105,7 @@
     App.showVersionHistory = async function(cardId) {
         try {
             var resp = await App.fetchJSON('/api/v4/cards/' + cardId + '/full');
-            if (!resp || !resp.card) { App.showToast(App._t('common.load_failed', '加载失败'), 'error'); return; }
+            if (!resp || !resp.card) { App.showToast(App._t('common.load_failed', '加载未完成'), 'error'); return; }
             var card = resp.card;
 
             var overlay = document.createElement('div');
@@ -148,7 +148,7 @@
             overlay.innerHTML = h;
             document.body.appendChild(overlay);
         } catch (e) {
-            App.showToast(App._t('common.load_failed', '加载失败: ') + e.message, 'error');
+            App.showToast(App._t('common.load_failed', '加载未完成: ') + e.message, 'error');
         }
     };
 
@@ -165,10 +165,10 @@
                 document.getElementById('modalVersionHistory')?.remove();
                 App.loadPrompts();
             } else {
-                App.showToast(App._t('auto.str_22d7b738', '回滚失败'), 'error');
+                App.showToast(App._t('auto.str_22d7b738', '回滚未完成'), 'error');
             }
         } catch (e) {
-            App.showToast('回滚失败: ' + e.message, 'error');
+            App.showToast('回滚未完成: ' + e.message, 'error');
         }
     };
 

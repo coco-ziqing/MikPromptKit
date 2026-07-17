@@ -41,7 +41,7 @@ def list_users(request: Request, q: Optional[str] = Query(None), role: Optional[
     _require_admin(request)
     db = _ro()
     try:
-        sql = "SELECT id, username, display_name, role, avatar_color, is_active, created_at, last_login_at FROM users WHERE 1=1"
+        sql = "SELECT id, username, display_name, role, avatar_color, avatar_url, bio, website, is_active, created_at, last_login_at FROM users WHERE 1=1"
         params = []
         if q:
             sql += " AND (username LIKE ? OR display_name LIKE ?)"
@@ -79,7 +79,7 @@ def update_user(user_id: int, data: dict = Body(...), request: Request = None):
         user = db.execute("SELECT id FROM users WHERE id=?", [user_id]).fetchone()
         if not user: raise HTTPException(404, "用户不存在")
 
-        for k in ["display_name", "role", "avatar_color", "is_active", "settings_json"]:
+        for k in ["display_name", "role", "avatar_color", "avatar_url", "bio", "website", "cover_url", "is_active", "settings_json"]:
             if k in data:
                 val = data[k]
                 if k == "settings_json":

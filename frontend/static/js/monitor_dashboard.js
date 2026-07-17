@@ -106,11 +106,11 @@ App.monitor.refresh = async function() {
         }
     } catch (e) {
         if (badge) {
-            badge.textContent = App._t('auto.str_0745fc09', '连接失败');
+            badge.textContent = App._t('auto.str_0745fc09', '连接未完成');
             badge.style.color = '#ef4444';
         }
         if (body && !this._data) {
-            body.innerHTML = '<div style="text-align:center;padding:40px;color:#ef4444;">❌ 获取监测数据失败: ' + App._escape(e.message) + '</div>';
+            body.innerHTML = '<div style="text-align:center;padding:40px;color:#ef4444;">❌ 获取监测数据未完成: ' + App._escape(e.message) + '</div>';
         }
     }
 };

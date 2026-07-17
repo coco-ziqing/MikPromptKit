@@ -208,12 +208,12 @@ Object.assign(App, {
                 if (resp.status === 409) {
                     App.showToast(App._t('group.name', '分组名称已存在，请换一个'), 'warning');
                 } else {
-                    App.showToast('创建失败: ' + (detail || 'HTTP ' + resp.status), 'error');
+                    App.showToast('创建未完成: ' + (detail || 'HTTP ' + resp.status), 'error');
                 }
             }
         } catch(e) {
             console.error('[createCustomModule]', e);
-            App.showToast('创建出错: ' + e.message, 'error');
+            App.showToast('创建遇到问题: ' + e.message, 'error');
         }
     },
 
@@ -478,7 +478,7 @@ Object.assign(App, {
 
     async openInComposer(tplId) {
         var d = await this.fetchJSON('/api/seedance/templates/' + tplId);
-        if (!d || !d.template) { this.showToast(App._t('auto.str_99c719dc', '模板数据加载失败'), 'error'); return; }
+        if (!d || !d.template) { this.showToast(App._t('auto.str_99c719dc', '模板数据加载未完成'), 'error'); return; }
         var tpl = d.template;
         var tplCategory = tpl.category || 'Seedance';
         var tplMeaning = tpl.meaning || '';
@@ -500,7 +500,7 @@ Object.assign(App, {
         });
 
         if (!importResp || !importResp.ok) {
-            this.showToast('智能导入失败: ' + (importResp ? importResp.detail : '无响应'), 'error');
+            this.showToast('智能导入未完成: ' + (importResp ? importResp.detail : '无响应'), 'error');
             return;
         }
 
@@ -674,7 +674,7 @@ Object.assign(App, {
             var res = await fetch('/api/thumbnails/upload', { method: 'POST', body: formData });
             var data = await res.json();
             if (!data || !data.ok) {
-                this.showToast(App._t('auto.upload_失败__', '上传失败: ') + (data ? data.error : App._t('common.unknown_error', '未知错误')), 'error');
+                this.showToast(App._t('auto.upload_失败__', '上传未完成: ') + (data ? data.error : App._t('common.unknown_error', '遇到意外情况，请稍后再试')), 'error');
                 return;
             }
             var assignRes = await this.fetchJSON('/api/thumbnails/assign', {
@@ -687,10 +687,10 @@ Object.assign(App, {
                 await this.loadPrompts();
                 await this.loadThumbLibrary();
             } else {
-                this.showToast(App._t('auto.str_6d973dbe', '关联失败'), 'error');
+                this.showToast(App._t('auto.str_6d973dbe', '暂未关联成功'), 'error');
             }
         } catch(e) {
-            this.showToast(App._t('auto.upload_失败__', '上传失败: ') + e.message, 'error');
+            this.showToast(App._t('auto.upload_失败__', '上传未完成: ') + e.message, 'error');
         }
     },
 
@@ -709,7 +709,7 @@ Object.assign(App, {
                 body: JSON.stringify({ prompt_id: promptId, filename: oldFilename })
             });
             if (!assignRes || !assignRes.ok) {
-                this.showToast(App._t('auto.str_a8301ae8', '撤销失败'), 'error');
+                this.showToast(App._t('auto.str_a8301ae8', '撤销未完成'), 'error');
                 return;
             }
         }

@@ -93,7 +93,7 @@ S._applySceneToShot = async function(shotId, sceneId) {
                 PK.toast('已取消场景模板绑定，字段已清空', 'info');
             }
         } catch(e) {
-            PK.toast('取消失败: ' + (e.detail || e.message), 'error');
+            PK.toast('暂未取消: ' + (e.detail || e.message), 'error');
         }
     }
 
@@ -106,7 +106,7 @@ S._applySceneToShot = async function(shotId, sceneId) {
             if (d && d.ok) {
                 PK.toast('已加载场景模板: ' + (d.scene_name||'') + ' (' + (d.field_count||0) + ' 字段)', 'success');
             } else {
-                PK.toast('加载模板失败', 'error');
+                PK.toast('加载模板未完成', 'error');
             }
         } catch(e) {
             PK.toast('加载模板异常: ' + (e.detail || e.message), 'error');

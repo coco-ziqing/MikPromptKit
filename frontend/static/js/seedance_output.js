@@ -110,7 +110,7 @@ S.copySceneReview = function() {
     navigator.clipboard.writeText(text).then(function() {
         App.showToast('已复制当前镜头文本', 'success');
     }).catch(function() {
-        App.showToast('复制失败', 'error');
+        App.showToast('复制未完成', 'error');
     });
 };
 
@@ -188,7 +188,7 @@ S.matchModel = async function() {
             if (me) { me.innerHTML = html; me.style.display = 'block'; }
             App.showToast('匹配完成', 'success');
         } else {
-            App.showToast('匹配失败: ' + (d.error || '解析失败'), 'error');
+            App.showToast('匹配未完成: ' + (d.error || '未能解析'), 'error');
         }
     } catch (e) {
         App.showToast('匹配异常: ' + (e.detail || e.message), 'error');

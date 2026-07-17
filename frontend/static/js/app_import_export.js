@@ -24,7 +24,7 @@ async handleDropPngFile(file) {
         this._showImportPreview(data.items);
         this.showImportModal();
     } catch (e) {
-        PK.toast('PNG 解析失败: ' + e.message, 'error');
+        PK.toast('PNG 未能解析: ' + e.message, 'error');
     }
 },
 
@@ -38,7 +38,7 @@ async _handleDropFile(file) {
         this._showImportPreview(items);
         this.showImportModal();
     } catch (e) {
-        PK.toast('JSON 解析失败: ' + e.message, 'error');
+        PK.toast('JSON 未能解析: ' + e.message, 'error');
     }
 },
 
@@ -92,12 +92,12 @@ async _confirmDropImport() {
     var data = JSON.stringify({ items: items, module: (document.getElementById('editModule') ? document.getElementById('editModule').value : '') });
     try {
         var d = await PK.api('/api/v2/import/from-json-data', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: data });
-        PK.toast('导入完成: ' + d.created + ' 成功' + (d.skipped ? ', ' + d.skipped + ' 跳过' : '') + (d.failed ? ', ' + d.failed + ' 失败' : ''), d.created > 0 ? 'success' : 'warning');
+        PK.toast('导入完成: ' + d.created + ' 成功' + (d.skipped ? ', ' + d.skipped + ' 跳过' : '') + (d.failed ? ', ' + d.failed + ' 未完成' : ''), d.created > 0 ? 'success' : 'warning');
         document.getElementById('modalImportExport').style.display = 'none';
         if (App.loadGroupTree) App.loadGroupTree();
         if (this.state.currentView === 'home') this.renderPrompts();
     } catch (e) {
-        PK.toast('导入失败: ' + (e.detail || e.message), 'error');
+        PK.toast('导入未完成: ' + (e.detail || e.message), 'error');
     }
 },
 
@@ -115,7 +115,7 @@ async _handleDropPtFile(file) {
             PK.toast('未找到有效的提示词数据', 'error');
         }
     } catch (e) {
-        PK.toast('预览失败: ' + e.message, 'error');
+        PK.toast('预览未完成: ' + e.message, 'error');
     }
 },
 
@@ -196,7 +196,7 @@ async _confirmBatchExport() {
             var r = await PK.api('/api/v2/pt/export', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ids: ids, name: 'export' }) });
             PK.toast('导出成功 (' + ids.length + ' 条)', 'success');
         } catch (e) {
-            PK.toast('导出失败: ' + (e.detail || e.message), 'error');
+            PK.toast('导出未完成: ' + (e.detail || e.message), 'error');
         }
     } else {
         // PNG single export
@@ -234,7 +234,7 @@ async batchCopy() {
         await navigator.clipboard.writeText(text);
         PK.toast('已复制 ' + ids.length + ' 条', 'success');
     } catch (e) {
-        PK.toast('复制失败: ' + e.message, 'error');
+        PK.toast('复制未完成: ' + e.message, 'error');
     }
 },
 

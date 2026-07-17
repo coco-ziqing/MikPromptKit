@@ -21,7 +21,7 @@
         <div class="brand" onclick="App.switchAllGroups?App.switchAllGroups():App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> <span data-i18n="nav.brand" data-i18n-zh="咪卡Mik词库">咪卡Mik词库</span> <small id="brandVersion">5.0.0</small></div>
         <div class="search-box" id="globalSearchBox"><input type="text" id="searchInput" placeholder="搜索提示词，Ctrl+F 快速定位" autocomplete="off" data-i18n-placeholder="search.placeholder" data-i18n-placeholder-zh="搜索提示词，Ctrl+F 快速定位"><i class="bi bi-search search-icon"></i><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()" title="切换搜索模式" data-i18n-title="search.mode.toggle" data-i18n-title-zh="切换搜索模式">🔤</button></div>
         <div class="header-actions">
-            <!-- ↓ 下拉: 管理 -->
+            <!-- ↓ 下拉: 词库 -->
             <div class="nav-dropdown" id="navDropdownLibrary">
                 <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownLibrary')" title="词库"><i class="bi bi-collection"></i><span class="nav-dd-text">词库</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
                 <div class="nav-dropdown-menu">
@@ -30,7 +30,7 @@
                     <div class="nav-dropdown-item" onclick="App.switchView('history')"><i class="bi bi-clock-history"></i> 最近使用</div>
                     <div class="nav-dd-sep"></div>
                     <div class="nav-dropdown-item" onclick="App.switchView('atom_editor')"><i class="bi bi-puzzle" style="color:#f59e0b;"></i> 原子引擎</div>
-                    <div class="nav-dropdown-item" onclick="App.switchView('wcmanager')"><i class="bi bi-grid-3x3-gap-fill"></i> 词卡管理</div>
+                    <div class="nav-dropdown-item" onclick="App.switchView('wcmanager')"><i class="bi bi-grid-3x3-gap-fill"></i> 我的词库</div>
                     <div class="nav-dropdown-item" onclick="App.openPlayground()"><i class="bi bi-cpu"></i> 词卡优化</div>
                     <div class="nav-dropdown-item" onclick="App.openScreenshotImport()"><i class="bi bi-camera"></i> 截图导入</div>
                     <div class="nav-dropdown-item" onclick="App.switchView('trash')"><i class="bi bi-trash"></i> 词卡回收</div>
@@ -65,11 +65,11 @@
 
             <!-- ↓ 下拉: 项目管理（项目看板 + 项目资产；已合并旧 v4media 入口去冗余） -->
             <div class="nav-dropdown" id="navDropdownProject">
-                <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownProject')" title="项目管理"><i class="bi bi-kanban"></i><span class="nav-dd-text">项目</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
+                <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownProject')" title="项目工坊"><i class="bi bi-kanban"></i><span class="nav-dd-text">项目</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
                 <div class="nav-dropdown-menu">
                     <div class="nav-dropdown-item" onclick="if(window.PK)PK.open();else if(window.__PK_PLUGINS__&&__PK_PLUGINS__._views&&__PK_PLUGINS__._views.project_mgmt)__PK_PLUGINS__._views.project_mgmt();if(window.App&&App._collapseSidebar)App._collapseSidebar();"><i class="bi bi-kanban" style="color:#3b82f6;"></i> 项目看板</div>
-                    <div class="nav-dropdown-item" onclick="if(window.PK_ASSETLIB)PK_ASSETLIB.open()"><i class="bi bi-box-seam" style="color:#8b5cf6;"></i> 项目资产</div>
-                    <div class="nav-dropdown-item" onclick="if(window.PK_ROLES)PK_ROLES.open()"><i class="bi bi-people" style="color:#ec4899;"></i> 项目角色</div>
+                    <div class="nav-dropdown-item" onclick="if(window.PK_ASSETLIB)PK_ASSETLIB.open()"><i class="bi bi-box-seam" style="color:#8b5cf6;"></i> 作品资产</div>
+                    <div class="nav-dropdown-item" onclick="if(window.PK_ROLES)PK_ROLES.open()"><i class="bi bi-people" style="color:#ec4899;"></i> 项目设定</div>
                     <div class="nav-dd-sep"></div>
                     <div class="nav-dropdown-item" onclick="if(window.PK_FILESTEWARD)PK_FILESTEWARD.open()"><i class="bi bi-folder-symlink" style="color:#059669;"></i> 资产管家</div>
                 </div>
@@ -210,7 +210,7 @@
         </div>
         <div id="viewWCManager" class="view-panel">
             <div class="page-header" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-                <h3 style="margin:0;"><i class="bi bi-grid-3x3-gap-fill"></i> 词卡管理</h3>
+                <h3 style="margin:0;"><i class="bi bi-grid-3x3-gap-fill"></i> 我的词库</h3>
                 <span id="wcStats" style="font-size:11px;color:var(--text-muted);">加载中...</span>
                 <div style="flex:1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                     <input id="wcSearch" class="modal-input" placeholder="🔍 搜索..." style="width:160px;font-size:12px;padding:5px 8px;" onkeydown="if(event.key==='Enter')App.wordCards.search()">
@@ -937,7 +937,7 @@
     <div class="modal-overlay" id="modalGroupManager" style="display:none;z-index:650;" onclick="if(event.target===this)App.closeGroupManager()">
         <div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:720px;">
             <div class="modal-header">
-                <h5><i class="bi bi-diagram-3"></i> 管理分组</h5>
+                <h5><i class="bi bi-diagram-3"></i> 整理分组</h5>
                 <button class="header-btn-sm" onclick="App.closeGroupManager()">&times;</button>
             </div>
             <div class="modal-body" style="max-height:60vh;overflow-y:auto;">
@@ -986,7 +986,8 @@
                             <script src="/static/js/wc_bridge.js?v=14.16"></script>
     <script src="/static/js/signal_lights.js?v=5"></script>
     <script src="/static/js/app_core.js?v=13.92"></script>
-    <script defer src="/static/js/auth_client.js?v=8"></script>
+    <script defer src="/static/js/auth_client.js?v=12"></script>
+<script defer src="/static/js/pk_terms.js?v=2"></script>
 <script defer src="/static/js/pk_common.js?v=1"></script>
 <script defer src="/static/js/pk_card_bridge.js?v=1"></script>
     <script defer src="/static/js/admin_users.js?v=4"></script>

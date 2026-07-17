@@ -293,7 +293,7 @@ App.characterLib._saveChar = async function(charId) {
         await App.characterLib.loadList();
         App.characterLib._showModal();
     } else {
-        App.showToast(App._t('common.save', '保存失败: ') + (d?.detail||App._t('common.unknown_error', '未知错误')), 'error');
+        App.showToast(App._t('common.save', '保存未完成，稍后再试: ') + (d?.detail||App._t('common.unknown_error', '遇到意外情况，请稍后再试')), 'error');
     }
 };
 
@@ -305,7 +305,7 @@ App.characterLib._deleteChar = async function(charId) {
         await App.characterLib.loadList();
         App.characterLib._showModal();
     } else {
-        App.showToast(App._t('common.delete', '删除失败'),'error');
+        App.showToast(App._t('common.delete', '未能删除'),'error');
     }
 };
 
@@ -567,7 +567,7 @@ App.characterLib._doCropAndUpload = async function() {
             document.getElementById('charEditorModal')?.remove();
             App.showToast(App._t('auto.str_2b4668e2', '角色已创建，正在上传图片...'),'info');
         } else {
-            App.showToast(App._t('auto.create_角色失败', '创建角色失败'),'error'); return;
+            App.showToast(App._t('auto.create_角色失败', '创建角色未完成'),'error'); return;
         }
     }
 
@@ -582,7 +582,7 @@ App.characterLib._doCropAndUpload = async function() {
             App.showToast(st.imageType==='avatar'?App._t('auto.str_0d40c987', '头像已裁剪上传'):App._t('auto.preview_图已裁剪上传', '预览图已裁剪上传'), 'success');
             App.characterLib._openEditor(charId);
         } else {
-            App.showToast(App._t('auto.upload_失败', '上传失败'),'error');
+            App.showToast(App._t('auto.upload_失败', '上传未完成'),'error');
         }
     } catch(e) {
         App.showToast(App._t('auto.upload_异常__', '上传异常: ')+e.message,'error');

@@ -1,5 +1,5 @@
 /**
- * PromptKit 项目角色/场景库 UI — Phase36.2-d（自包含面板）
+ * PromptKit 项目设定/场景库 UI — Phase36.2-d（自包含面板）
  * 流程：选总项目 → 角色库/场景库 → 从公共库继承/新建 → 实例详情(设定编辑+自动版本+回滚+档案三视图)
  */
 (function () {
@@ -13,7 +13,7 @@
     location: '场景类型', architecture: '建筑风格', time: '时间时刻', season: '季节气候',
     weather: '天气现象', atmosphere: '氛围情绪', perspective: '视角取景', composition: '构图布局', details: '细节元素'
   };
-  var ST = { draft: { t: '草稿', c: '#94a3b8' }, in_review: { t: '审核中', c: '#f59e0b' }, approved: { t: '已通过', c: '#10b981' } };
+  var ST = { draft: { t: '创作中', c: '#94a3b8' }, in_review: { t: '共审中', c: '#f59e0b' }, approved: { t: '已定稿', c: '#10b981' } };
   var KIND = { ref_image: '参考图', three_view: '三视图', turnaround: '转身多角度', material: '资料', other: '其他' };
 
   var RL = {
@@ -40,7 +40,7 @@
       var vp = document.getElementById('viewProjectRoles');
       vp.innerHTML = '<div style="height:100%;overflow-y:auto;padding:20px;">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
-        '<h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text-main);">🎭 项目角色/场景库</h4>' +
+        '<h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text-main);">🎭 项目设定/场景库</h4>' +
         '<button class="btn btn-sm btn-outline-secondary" onclick="PK_ROLES.close()">← 返回</button></div>' +
         '<div style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">选择一个总项目，管理其角色库与场景库（可从公共库继承复用、独立版本管理、上传三视图档案）</div>' +
         '<div id="rl_projgrid" class="user-grid"></div></div>';
@@ -57,10 +57,10 @@
             '<div class="user-username">🎭 ' + (p.char_count || 0) + ' 角色 · 🏞 ' + (p.scene_count || 0) + ' 场景</div></div></div>' +
             '<div class="user-card-actions"><button class="btn-outline" onclick="event.stopPropagation();PK_ROLES.openProject(' + p.id + ',\'' + self._esc(p.name) + '\')">📂 进入</button></div></div>';
         }).join('');
-      } catch (e) { g.innerHTML = '<div style="padding:20px;color:var(--danger);">加载失败</div>'; }
+      } catch (e) { g.innerHTML = '<div style="padding:20px;color:var(--danger);">加载未完成</div>'; }
     },
 
-    // ---------- 项目角色/场景库 ----------
+    // ---------- 项目设定/场景库 ----------
     openProject: function (mid, name) {
       this._mid = mid; this._mname = name || ''; this._rt = 'character';
       this.renderLib();
@@ -105,7 +105,7 @@
             '<div style="padding:6px 8px;"><div style="font-size:13px;font-weight:600;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + self._esc(r.name) + '</div>' +
             (r.source_profile_id ? '<div style="font-size:10px;color:var(--text-muted);">继承自公共库</div>' : '<div style="font-size:10px;color:var(--text-muted);">项目自建</div>') + '</div></div>';
         }).join('');
-      } catch (e) { g.innerHTML = '<div style="padding:20px;color:var(--danger);">加载失败</div>'; }
+      } catch (e) { g.innerHTML = '<div style="padding:20px;color:var(--danger);">加载未完成</div>'; }
     },
 
     // ---------- 继承 / 新建 ----------
@@ -130,15 +130,15 @@
       try {
         var d = await (await fetch('/api/master/' + this._mid + '/roles/adopt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role_type: this._rt, source_profile_id: srcId }) })).json();
         var ov = document.getElementById('rlAdopt'); if (ov) ov.remove();
-        if (d.ok) { this._toast('已继承', 'success'); this.loadRoles(); this.openInstance(d.id); } else this._toast(d.detail || '继承失败', 'error');
-      } catch (e) { this._toast('网络错误', 'error'); }
+        if (d.ok) { this._toast('已继承', 'success'); this.loadRoles(); this.openInstance(d.id); } else this._toast(d.detail || '继承未完成', 'error');
+      } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
     newInstance: async function () {
       var name = prompt('名称:', this._rt === 'character' ? '新角色' : '新场景'); if (!name) return;
       try {
         var d = await (await fetch('/api/master/' + this._mid + '/roles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role_type: this._rt, name: name, settings: {} }) })).json();
         if (d.ok) { this.loadRoles(); this.openInstance(d.id); }
-      } catch (e) { this._toast('创建失败', 'error'); }
+      } catch (e) { this._toast('创建未完成', 'error'); }
     },
 
     // ---------- 实例详情 ----------
@@ -148,7 +148,7 @@
         var d = await (await fetch('/api/roles/' + rid)).json();
         if (!d.ok) { this._toast('无法打开', 'error'); return; }
         this._renderInstance(d.role);
-      } catch (e) { this._toast('加载失败', 'error'); }
+      } catch (e) { this._toast('加载未完成', 'error'); }
     },
     _renderInstance: function (r) {
       var self = this;
@@ -183,8 +183,8 @@
       var rbtns = '';
       if (rs === 'draft' || rs === 'rejected') rbtns += '<button class="btn btn-sm btn-primary" onclick="PK_ROLES.roleReview(' + r.id + ',\'submit\')">📤 提交审核</button> ';
       if (rs === 'in_review') rbtns += '<button class="btn btn-sm" style="background:#10b981;color:#fff;" onclick="PK_ROLES.roleReview(' + r.id + ',\'approve\')">✔ 批准</button> <button class="btn btn-sm" style="background:#ef4444;color:#fff;" onclick="PK_ROLES.roleReview(' + r.id + ',\'reject\')">✖ 驳回</button>';
-      var actName = { submit: '📤提交', approve: '✔批准', reject: '✖驳回', comment: '💬评论' };
-      var rlist = (r.reviews || []).map(function (rv) { return '<div style="font-size:11px;padding:3px 0;border-bottom:1px solid var(--border-color);"><b>' + self._esc(rv.reviewer_name || '?') + '</b> ' + (actName[rv.action] || rv.action) + (rv.comment ? ' · ' + self._esc(rv.comment) : '') + ' <span style="color:var(--text-muted);">' + (rv.created_at || '').substring(5, 16) + '</span></div>'; }).join('') || '<span style="font-size:11px;color:var(--text-muted);">暂无审核记录</span>';
+      var actName = { submit: '📤邀请反馈', approve: '✔采纳', reject: '✖建议打磨', comment: '💬留言' };
+      var rlist = (r.reviews || []).map(function (rv) { return '<div style="font-size:11px;padding:3px 0;border-bottom:1px solid var(--border-color);"><b>' + self._esc(rv.reviewer_name || '?') + '</b> ' + (actName[rv.action] || rv.action) + (rv.comment ? ' · ' + self._esc(rv.comment) : '') + ' <span style="color:var(--text-muted);">' + (rv.created_at || '').substring(5, 16) + '</span></div>'; }).join('') || '<span style="font-size:11px;color:var(--text-muted);">暂无共创记录</span>';
       var reviewHtml = '<div style="font-size:13px;font-weight:700;color:var(--text-main);margin:10px 0 4px;">🛡 审核</div><div style="margin-bottom:6px;">' + (rbtns || '<span style="font-size:11px;color:' + (ST[rs] || ST.draft).c + ';">当前：' + (ST[rs] || ST.draft).t + '</span>') + '</div><div style="max-height:100px;overflow:auto;">' + rlist + '</div>';
 
       var ov = document.createElement('div'); ov.className = 'pk-auth-modal-overlay'; ov.id = 'rlInst';
@@ -222,12 +222,12 @@
       var name = (document.getElementById('rl_name') || {}).value || undefined;
       try {
         var d = await (await fetch('/api/roles/' + rid, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name, settings: settings }) })).json();
-        if (d.ok) { this._toast(d.changed ? '已保存(新版本)' : '已保存', 'success'); this.openInstance(rid); this.loadRoles(); } else this._toast('保存失败', 'error');
-      } catch (e) { this._toast('网络错误', 'error'); }
+        if (d.ok) { this._toast(d.changed ? '已保存(新版本)' : '已保存', 'success'); this.openInstance(rid); this.loadRoles(); } else this._toast('保存未完成，稍后再试', 'error');
+      } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
     rollback: async function (rid, vid) {
       try { var d = await (await fetch('/api/roles/' + rid + '/rollback/' + vid, { method: 'POST' })).json();
-        if (d.ok) { this._toast('已回滚', 'success'); this.openInstance(rid); } } catch (e) { this._toast('失败', 'error'); }
+        if (d.ok) { this._toast('已回滚', 'success'); this.openInstance(rid); } } catch (e) { this._toast('未完成，稍后再试', 'error'); }
     },
     uploadDossier: function (rid, kind) {
       var self = this; var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
@@ -236,8 +236,8 @@
         var fd = new FormData(); fd.append('file', inp.files[0]); fd.append('asset_kind', kind); fd.append('caption', '');
         self._toast('上传中...', 'info', 20000);
         try { var d = await (await fetch('/api/roles/' + rid + '/assets', { method: 'POST', body: fd })).json();
-          if (d.ok) { self._toast('已上传', 'success'); self.openInstance(rid); self.loadRoles(); } else self._toast('上传失败', 'error');
-        } catch (e) { self._toast('网络错误', 'error'); }
+          if (d.ok) { self._toast('已上传', 'success'); self.openInstance(rid); self.loadRoles(); } else self._toast('上传未完成', 'error');
+        } catch (e) { self._toast('网络不太稳定，请稍后重试', 'error'); }
       };
       inp.click();
     },
@@ -264,30 +264,30 @@
         ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
         var list = roles.length ? roles.map(function (r) {
           return '<div style="padding:8px 10px;border-bottom:1px solid var(--border-color);cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="PK_ROLES.doShotApply(' + r.id + ',' + shotId + ')"><span style="font-size:13px;color:var(--text-main);">' + (roleType === 'character' ? '🎭' : '🏞') + ' ' + self._esc(r.name) + ' <span style="font-size:10px;color:var(--text-muted);">v' + (r.version_count || 1) + '</span></span><span style="font-size:11px;color:var(--primary);">应用→</span></div>';
-        }).join('') : '<div style="padding:18px;text-align:center;color:var(--text-muted);">本总项目暂无' + (roleType === 'character' ? '角色' : '场景') + '实例，请先在「项目角色」创建</div>';
+        }).join('') : '<div style="padding:18px;text-align:center;color:var(--text-muted);">本总项目暂无' + (roleType === 'character' ? '角色' : '场景') + '实例，请先在「项目设定」创建</div>';
         ov.innerHTML = '<div class="pk-auth-modal" style="max-width:420px;width:92vw;" onclick="event.stopPropagation()"><h4>🎬 为镜头选' + (roleType === 'character' ? '角色' : '场景') + '</h4>' +
           '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">本总项目实例（点击应用到镜头）：</div>' +
           '<div style="max-height:46vh;overflow:auto;">' + list + '</div>' +
           '<div class="pk-modal-actions"><button class="btn btn-outline-secondary" style="margin-right:auto;" onclick="PK_ROLES._browsePublic(' + shotId + ',\'' + roleType + '\')">📚 浏览公共库</button>' +
           '<button class="btn btn-secondary" onclick="this.closest(\'.pk-auth-modal-overlay\').remove()">关闭</button></div></div>';
         document.body.appendChild(ov);
-      } catch (e) { this._toast('加载失败', 'error'); }
+      } catch (e) { this._toast('加载未完成', 'error'); }
     },
     _browsePublic: function (shotId, roleType) {
       var ov = document.getElementById('rlShot'); if (ov) ov.remove();
       try {
         if (roleType === 'character') { if (window.App && App.characterLib && App.characterLib.openScenePicker) App.characterLib.openScenePicker(shotId); }
         else { if (window.App && App.seedanceV2 && App.seedanceV2._openSceneProfilePicker) App.seedanceV2._openSceneProfilePicker(shotId); }
-      } catch (e) { this._toast('打开公共库失败', 'error'); }
+      } catch (e) { this._toast('打开公共库未完成', 'error'); }
     },
     roleReview: async function (rid, action) {
       var comment = '';
-      if (action === 'reject') { comment = prompt('驳回原因（可选）:', '') || ''; }
+      if (action === 'reject') { comment = prompt('打磨建议（可选）:', '') || ''; }
       try {
         var d = await (await fetch('/api/roles/' + rid + '/review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: action, comment: comment }) })).json();
-        if (d.ok) { this._toast({ submit: '已提交审核', approve: '已批准', reject: '已驳回' }[action] || '完成', 'success'); this.openInstance(rid); this.loadRoles(); }
-        else this._toast(d.detail || '失败', 'error');
-      } catch (e) { this._toast('网络错误', 'error'); }
+        if (d.ok) { this._toast({ submit: '已邀请反馈', approve: '已采纳', reject: '已发送打磨建议' }[action] || '完成', 'success'); this.openInstance(rid); this.loadRoles(); }
+        else this._toast(d.detail || '未完成', 'error');
+      } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
     doShotApply: async function (rid, shotId) {
       try {
@@ -296,8 +296,8 @@
         if (d.ok) {
           this._toast('已应用到镜头', 'success');
           try { if (window.App && App.seedanceV2) { App.seedanceV2.openProject(App.seedanceV2.currentProjectId); App.seedanceV2.compose(); } } catch (e) {}
-        } else this._toast(d.detail || '应用失败', 'error');
-      } catch (e) { this._toast('网络错误', 'error'); }
+        } else this._toast(d.detail || '应用未完成', 'error');
+      } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
 
     _esc: function (s) { if (s == null) return ''; var d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; },

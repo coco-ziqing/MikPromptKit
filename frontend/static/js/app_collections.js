@@ -195,7 +195,7 @@ Object.assign(App, {
                 this.showToast('提示词不存在', 'error');
             }
         } catch(e) {
-            this.showToast(App._t('common.op_failed', '操作失败: ') + e.message, 'error');
+            this.showToast(App._t('common.op_failed', '操作未完成，稍后再试: ') + e.message, 'error');
         }
     },
 
@@ -259,7 +259,7 @@ Object.assign(App, {
                     workflow_id: cfg.config.active_workflow || ''
                 })
             });
-            if (!resp.ok) { this.showToast(App._t('auto.str_01b40748', '批处理请求失败'), 'error'); return; }
+            if (!resp.ok) { this.showToast(App._t('auto.str_01b40748', '批处理请求未响应'), 'error'); return; }
 
             var reader = resp.body.getReader();
             var decoder = new TextDecoder();
@@ -279,12 +279,12 @@ Object.assign(App, {
                             success = ev.success || 0;
                             errors = ev.errors || 0;
                         } else if (ev.done) {
-                            this.showToast('(' + ev.done + '/' + ev.total + ') ' + (ev.ok ? '✅ 完成' : '❌ ' + (ev.error || App._t('common.failed', '失败'))), ev.ok ? 'success' : 'error');
+                            this.showToast('(' + ev.done + '/' + ev.total + ') ' + (ev.ok ? '✅ 完成' : '❌ ' + (ev.error || App._t('common.failed', '未完成'))), ev.ok ? 'success' : 'error');
                         }
                     } catch(e) {}
                 }
             }
-            this.showToast('✅ 批量生成完成: ' + success + ' 成功, ' + errors + App._t('auto.str_f73d0c19', ' 失败'), errors > 0 ? 'warning' : 'success');
+            this.showToast('✅ 批量生成完成: ' + success + ' 成功, ' + errors + App._t('auto.str_f73d0c19', ' 未完成'), errors > 0 ? 'warning' : 'success');
             await this.loadPrompts();
         } catch(e) {
             this.showToast('批量生成异常: ' + e.message, 'error');
@@ -535,7 +535,7 @@ Object.assign(App, {
             await this.loadCollections();
             await this.loadCollectionItems();
         } else {
-            this.showToast('操作失败: ' + (data ? data.error : '未知错误'), 'error');
+            this.showToast('操作未完成，稍后再试: ' + (data ? data.error : '遇到意外情况，请稍后再试'), 'error');
         }
     },
 
@@ -593,9 +593,9 @@ Object.assign(App, {
             } else if (data && data.note) {
                 el.innerHTML = App._escape(original); this.showToast(data.note, 'info');
             } else {
-                el.innerHTML = App._escape(original); this.showToast('翻译失败: ' + (data ? (data.error || '未知') : '服务未响应'), 'error');
+                el.innerHTML = App._escape(original); this.showToast('翻译未完成: ' + (data ? (data.error || '未知') : '服务未响应'), 'error');
             }
-        } catch(e) { el.innerHTML = App._escape(original); this.showToast('翻译失败: ' + e.message, 'error'); }
+        } catch(e) { el.innerHTML = App._escape(original); this.showToast('翻译未完成: ' + e.message, 'error'); }
     },
 
     _findCardData(pid) {
@@ -701,7 +701,7 @@ Object.assign(App, {
             });
             var data = await res.json();
             if (!data || !data.ok) {
-                this.showToast(App._t('auto.upload_失败__', '上传失败: ') + (data ? data.error : App._t('common.unknown_error', '未知错误')), 'error');
+                this.showToast(App._t('auto.upload_失败__', '上传未完成: ') + (data ? data.error : App._t('common.unknown_error', '遇到意外情况，请稍后再试')), 'error');
                 return;
             }
             // 关联到提示词
@@ -715,10 +715,10 @@ Object.assign(App, {
                 await this.loadPrompts();
                 await this.loadThumbLibrary();
             } else {
-                this.showToast(App._t('auto.str_6d973dbe', '关联失败'), 'error');
+                this.showToast(App._t('auto.str_6d973dbe', '暂未关联成功'), 'error');
             }
         } catch(e) {
-            this.showToast(App._t('auto.upload_失败__', '上传失败: ') + e.message, 'error');
+            this.showToast(App._t('auto.upload_失败__', '上传未完成: ') + e.message, 'error');
         }
     },
 
@@ -733,7 +733,7 @@ Object.assign(App, {
             });
             var data = await res.json();
             if (!data || !data.ok) {
-                this.showToast(App._t('auto.upload_失败__', '上传失败: ') + (data ? data.error : App._t('common.unknown_error', '未知错误')), 'error');
+                this.showToast(App._t('auto.upload_失败__', '上传未完成: ') + (data ? data.error : App._t('common.unknown_error', '遇到意外情况，请稍后再试')), 'error');
                 return;
             }
             // 关联到提示词
@@ -747,10 +747,10 @@ Object.assign(App, {
                 await this.loadPrompts();
                 await this.loadThumbLibrary();
             } else {
-                this.showToast(App._t('auto.str_6d973dbe', '关联失败'), 'error');
+                this.showToast(App._t('auto.str_6d973dbe', '暂未关联成功'), 'error');
             }
         } catch(e) {
-            this.showToast(App._t('auto.upload_失败__', '上传失败: ') + e.message, 'error');
+            this.showToast(App._t('auto.upload_失败__', '上传未完成: ') + e.message, 'error');
         }
     },
 
@@ -970,7 +970,7 @@ Object.assign(App, {
             URL.revokeObjectURL(url);
             this.showToast(App._t('common.export', '导出成功'), 'success');
         } catch (e) {
-            this.showToast(App._t('common.export', '导出失败'), 'error');
+            this.showToast(App._t('common.export', '导出未完成'), 'error');
         }
     },
 
@@ -1107,7 +1107,7 @@ Object.assign(App, {
         if (b2) b2.style.display = data.total > 0 ? 'inline-flex' : 'none';
         } catch(e) {
             console.warn('loadTrash error:', e);
-            grid.innerHTML = '<div class="empty-state"><div class="icon">🗑️</div><p>加载回收站失败: ' + (e.message || App._t('common.unknown_error', '未知错误')) + '</p></div>';
+            grid.innerHTML = '<div class="empty-state"><div class="icon">🗑️</div><p>加载回收站未完成: ' + (e.message || App._t('common.unknown_error', '遇到意外情况，请稍后再试')) + '</p></div>';
         }
     },
 
@@ -1140,7 +1140,7 @@ Object.assign(App, {
             if (!res.ok) {
                 var errData = null;
                 try { errData = await res.json(); } catch(_) {}
-                var errMsg = (errData && errData.detail) || '删除失败（HTTP ' + res.status + '）';
+                var errMsg = (errData && errData.detail) || '未能删除（HTTP ' + res.status + '）';
                 // 内置词条不可永久删除，提示恢复
                 if (res.status === 403) {
                     errMsg = '内置词条不可永久删除，请使用「恢复」按钮还原';
@@ -1151,7 +1151,7 @@ Object.assign(App, {
             this.showToast(App._t('auto.str_968c6dbf', '已永久删除'), 'info');
             this.loadTrash();
         } catch(e) {
-            this.showToast('删除失败: ' + (e.message || '网络错误'), 'danger');
+            this.showToast('未能删除: ' + (e.message || '网络不太稳定，请稍后重试'), 'danger');
         }
     },
 
@@ -1196,7 +1196,7 @@ Object.assign(App, {
             this.loadModules();
             this.loadStats();
         } else {
-            self.showToast('移动失败: ' + (result ? result.error : App._t('common.unknown_error', '未知错误')), 'error');
+            self.showToast('移动未完成: ' + (result ? result.error : App._t('common.unknown_error', '遇到意外情况，请稍后再试')), 'error');
         }
     },
 

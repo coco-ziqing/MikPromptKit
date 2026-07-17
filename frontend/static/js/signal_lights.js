@@ -99,7 +99,7 @@ App.signalLights._setLight = function(id, msId, status) {
     } else {
         dot.classList.add('sl-dot-err');
         msEl.textContent = '';
-        el.title = status.error || App._t('auto.str_0745fc09', '连接失败');
+        el.title = status.error || App._t('auto.str_0745fc09', '连接未完成');
     }
 };
 

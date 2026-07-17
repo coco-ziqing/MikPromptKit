@@ -1,5 +1,11 @@
 ﻿# PromptKit — 提示词检索工具
 
+## 【长期铁律】产品设计哲学（2026-07-17 用户确立，功能开发全程贯彻）
+- **应用 = 朋友 + 得力助手**，服务于用户、服务于创作；不是牢笼、不是控制机器。交互与命名绝不能让用户感到被支配、被管理、被监视、被评判。
+- **协作共创理念**：用户是创作者主体，文案以用户为主语（我的/邀请/发起）；职责分工只为满足创作需求，是分工非等级；否定必附建设性出口；透明即尊重（用户可查自己足迹）；状态呈现由用户自控。
+- 术语改造基准：用户管理→团队空间，admin→主理人，owner→发起人，editor→共创者，reviewer→把关人，viewer→鉴赏者，驳回→建议打磨，批准→采纳，审核中→共审中，停用用户→暂停协作。只改显示层，API/DB 枚举不动。
+- 方案文档：`reports/UX优化方案_用户主体性命名改造_2026-07-17.md`
+
 ## 2026-07-16 Phase35.3-DAM 开发总结
 
 ### 开发时间
@@ -1117,11 +1123,6 @@ with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as zf:
 | 新增 `body.dark-theme` 选择器 | 28 处 |
 | HTML 内联类覆盖 | 1 处（`#headerStats`） |
 
-## Promoted From Short-Term Memory (2026-07-16)
-
-<!-- openclaw-memory-promotion:memory:memory/2026-07-10.md:11:14 -->
-- | # | 决策 | 结论 | |---|------|------| | 1 | 开源协议 | MIT | | 2 | 个人版 | 买断 ¥299（项目管理 + 资产管理） | [score=0.871 recalls=0 avg=0.620 source=memory/2026-07-10.md:11-14]
-
 ## 2026-07-16 Phase35.3b 检索增强开发总结
 
 ### 开发时间
@@ -1253,3 +1254,14 @@ with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as zf:
 
 ### 当前回归基线
 audit 18 + presence 11 + composer 18 + asset_library 20 + asset_review 21 + DAM 17 = 105/105
+
+## Promoted From Short-Term Memory (2026-07-17)
+
+<!-- openclaw-memory-promotion:memory:memory/2026-07-10.md:15:18 -->
+- | 3 | 团队版 | 订阅 ¥99/月 ¥999/年（+团队协作 ≤5席） | | 4 | License | 个人版=离线RSA+机器指纹 / 团队版=在线+14天宽限期 | | 5 | 多用户 | 纯本地局域网 + 预埋远程Tailscale/Relay | | 6 | 旧数据 | user_id=NULL → 全局共享 | [score=0.889 recalls=0 avg=0.620 source=memory/2026-07-10.md:15-18]
+<!-- openclaw-memory-promotion:memory:memory/2026-07-10.md:19:21 -->
+- | 7 | 试用期 | 14天全功能 | | 8 | 全包价 | ¥399/年 | | 9 | 能力边界 | 仅提示词管理+辅助预览，不生成最终图片/视频 | [score=0.889 recalls=0 avg=0.620 source=memory/2026-07-10.md:19-21]
+<!-- openclaw-memory-promotion:memory:memory/2026-07-10.md:28:28 -->
+- **文件**: `backend/plugin_manager.py` (720行) [score=0.889 recalls=0 avg=0.620 source=memory/2026-07-10.md:28-28]
+<!-- openclaw-memory-promotion:memory:memory/2026-07-10.md:36:36 -->
+- **文件**: `backend/db_migrate_phase18.py` (420行) [score=0.889 recalls=0 avg=0.620 source=memory/2026-07-10.md:36-36]

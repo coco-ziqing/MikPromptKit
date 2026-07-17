@@ -450,17 +450,17 @@ App.wordEditor._createModule = async function() {
             this._hideNewModule();
             App.showToast('模块 \'' + App._t('auto.str_2c7f8c16','模块 \'') + name + '\' 已创建并选中', 'success');
         } else {
-            App.showToast('创建失败: ' + (d ? d.error || d.detail || App._t('auto.str_4cd13eba', '名称可能重复') : ''), 'error');
+            App.showToast('创建未完成: ' + (d ? d.error || d.detail || App._t('auto.str_4cd13eba', '名称可能重复') : ''), 'error');
         }
     } catch(e) {
-        App.showToast('创建出错: ' + e.message, 'error');
+        App.showToast('创建遇到问题: ' + e.message, 'error');
     }
 };
 
 App.wordEditor._loadCard = async function() {
     try {
         var d = await App.fetchJSON('/api/v4/word-cards/' + this._cardId);
-        if (!d || !d.card) { App.showToast(App._t('auto.load_词卡失败', '加载词卡失败'), 'error'); return; }
+        if (!d || !d.card) { App.showToast(App._t('auto.load_词卡失败', '加载词卡未完成'), 'error'); return; }
         var c = d.card;
 
         document.getElementById('wcEditGroup').value = c.group_id || '';
@@ -516,7 +516,7 @@ App.wordEditor._loadCard = async function() {
         if (delBtn) delBtn.style.display = c.is_builtin ? 'none' : 'inline-block';
 
     } catch(e) {
-        App.showToast(App._t('common.load_failed', '加载失败: ') + e.message, 'error');
+        App.showToast(App._t('common.load_failed', '加载未完成: ') + e.message, 'error');
     }
 };
 
@@ -775,10 +775,10 @@ App.wordEditor._save = async function() {
                 }
             }
         } else {
-            App.showToast(App._t('common.save', '保存失败: ') + (result ? result.error || App._t('common.unknown_error', '未知错误') : App._t('common.net_error', '网络错误')), 'error');
+            App.showToast(App._t('common.save', '保存未完成，稍后再试: ') + (result ? result.error || App._t('common.unknown_error', '遇到意外情况，请稍后再试') : App._t('common.net_error', '网络不太稳定，请稍后重试')), 'error');
         }
     } catch(e) {
-        App.showToast(App._t('common.save', '保存出错: ') + e.message, 'error');
+        App.showToast(App._t('common.save', '保存遇到问题: ') + e.message, 'error');
     }
 };
 
@@ -799,7 +799,7 @@ App.wordEditor._delete = async function() {
             if (this._source === 'cards' && App.loadPrompts) App.loadPrompts();
         }
     } catch(e) {
-        App.showToast(App._t('common.delete', '删除失败: ') + e.message, 'error');
+        App.showToast(App._t('common.delete', '未能删除: ') + e.message, 'error');
     }
 };
 
@@ -827,10 +827,10 @@ App.wordEditor._aiAnalyze = async function() {
             if (d.meaning) document.getElementById('wcEditMeaning').value = d.meaning;
             App.showToast(App._t('auto.str_2af074b6', 'AI 分析完成'), 'success');
         } else {
-            App.showToast(App._t('auto.str_7b9d7831', 'AI 分析失败: ') + (d ? d.error : ''), 'warning');
+            App.showToast(App._t('auto.str_7b9d7831', 'AI 分析未完成: ') + (d ? d.error : ''), 'warning');
         }
     } catch(e) {
-        App.showToast(App._t('auto.str_e82a1516', 'AI 分析出错: ') + e.message, 'error');
+        App.showToast(App._t('auto.str_e82a1516', 'AI 分析遇到问题: ') + e.message, 'error');
     }
 
     if (btn) { btn.disabled = false; btn.textContent = '🤖 AI分析'; }
@@ -942,7 +942,7 @@ App.wordEditor._suggestGroup = async function() {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ content: content, name: name, meaning: meaning })
         });
-        if (!d || !d.ok) { App.showToast('建议失败', 'warning'); return; }
+        if (!d || !d.ok) { App.showToast('建议未完成', 'warning'); return; }
         
         var suggestions = d.suggestions || [];
         if (!suggestions.length) {
@@ -964,7 +964,7 @@ App.wordEditor._suggestGroup = async function() {
         }
         App.showToast(tip, top.confidence === 'high' ? 'success' : 'info');
     } catch(e) {
-        App.showToast('建议失败: ' + e.message, 'danger');
+        App.showToast('建议未完成: ' + e.message, 'danger');
     }
     if (btn) { btn.disabled = false; btn.textContent = '🤖 建议分组'; }
 };
@@ -1022,7 +1022,7 @@ App.wordEditor._showVersions = async function() {
 App.wordEditor._viewVersion = async function(cid, vid) {
     try {
         var d = await App.fetchJSON('/api/v4/word-cards/' + cid + '/versions/' + vid, { _timeoutMs: 5000 });
-        if (!d || !d.snapshot) { App.showToast('版本加载失败', 'warning'); return; }
+        if (!d || !d.snapshot) { App.showToast('版本加载未完成', 'warning'); return; }
         var s = d.snapshot;
         var h = '<div style="font-size:12px;font-weight:600;margin-bottom:10px;">📋 版本 v' + s.version + '</div>';
         h += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">内容:</div>';
@@ -1037,7 +1037,7 @@ App.wordEditor._viewVersion = async function(cid, vid) {
         h += '<div style="text-align:right;margin-top:10px;"><button class="btn btn-sm btn-primary" onclick="App.wordEditor._rollback(' + cid + ',' + vid + ')">↩ 回滚到此版本</button></div>';
         var list = document.getElementById('wcVersionList');
         if (list) list.innerHTML = h;
-    } catch(e) { App.showToast('加载版本失败: ' + e.message, 'danger'); }
+    } catch(e) { App.showToast('加载版本未完成: ' + e.message, 'danger'); }
 };
 
 App.wordEditor._rollback = async function(cid, vid) {
@@ -1055,7 +1055,7 @@ App.wordEditor._rollback = async function(cid, vid) {
             if (this._onSaved) this._onSaved();
             if (App.wordCards && App.wordCards.load) App.wordCards.load();
         }
-    } catch(e) { App.showToast('回滚失败: ' + e.message, 'danger'); }
+    } catch(e) { App.showToast('回滚未完成: ' + e.message, 'danger'); }
 };
 
 // ============ 缩略图管理 (Phase17: 新建+编辑双模式) ============
@@ -1095,9 +1095,9 @@ App.wordEditor._uploadThumb = async function(event) {
             await this._loadCard();
             try { await App.loadPrompts(); } catch(e) {}
         } else {
-            App.showToast('上传失败: ' + (d.detail || d.error || 'unknown'), 'error');
+            App.showToast('上传未完成: ' + (d.detail || d.error || 'unknown'), 'error');
         }
-    } catch(e) { App.showToast('上传出错: ' + e.message, 'error'); }
+    } catch(e) { App.showToast('上传遇到问题: ' + e.message, 'error'); }
     event.target.value = '';
 };
 
@@ -1127,10 +1127,10 @@ App.wordEditor._uploadVideo = async function(event) {
                 await this._loadCard();
                 try { await App.loadPrompts(); } catch(e) {}
             } else {
-                App.showToast('上传失败: ' + ((d2 && (d2.detail || d2.error)) || '服务器错误'), 'error');
+                App.showToast('上传未完成: ' + ((d2 && (d2.detail || d2.error)) || '服务器错误'), 'error');
             }
         } catch(e) {
-            App.showToast('上传出错: ' + e.message, 'error');
+            App.showToast('上传遇到问题: ' + e.message, 'error');
         }
         event.target.value = '';
         return;
@@ -1143,10 +1143,10 @@ App.wordEditor._uploadVideo = async function(event) {
     try {
         var resp = await fetch('/api/thumbnails/upload-video', { method: 'POST', body: formData });
         var d = await resp.json();
-        if (!d.ok) { throw new Error(d.detail || '上传到视频库失败'); }
+        if (!d.ok) { throw new Error(d.detail || '上传到视频库未完成'); }
         videoFilename = d.video_filename;
     } catch(e) {
-        App.showToast('上传到视频库失败: ' + e.message, 'error');
+        App.showToast('上传到视频库未完成: ' + e.message, 'error');
         event.target.value = '';
         return;
     }
@@ -1202,7 +1202,7 @@ App.wordEditor._openVideoLibrary = function() {
             await self._loadCard();
             try { await App.loadPrompts(); } catch(e) {}
         } else {
-            App.showToast('设置失败: ' + ((d && d.detail) || '服务器错误'), 'error');
+            App.showToast('设置未完成: ' + ((d && d.detail) || '服务器错误'), 'error');
         }
     };
     App._openThumbnailModal('videos');
@@ -1236,7 +1236,7 @@ App.wordEditor._openThumbLibrary = function() {
             await self._loadCard();
             try { await App.loadPrompts(); } catch(e) {}
         } else {
-            App.showToast('设置失败: ' + ((d && d.detail) || '服务器错误'), 'error');
+            App.showToast('设置未完成: ' + ((d && d.detail) || '服务器错误'), 'error');
         }
     };
     // Phase16.3: 视频选择已迁移到 _openVideoLibrary，此处只保留图片选择
@@ -1287,7 +1287,7 @@ App.wordEditor._clearThumb = async function() {
             await this._loadCard();
             try { await App.loadPrompts(); } catch(e) {}
         }
-    } catch(e) { App.showToast('清除失败: ' + e.message, 'error'); }
+    } catch(e) { App.showToast('清除未完成: ' + e.message, 'error'); }
 };
 
 // 刷新缩略图预览区域（统一入口，兼容新建/编辑模式 + 图片/视频双模式）

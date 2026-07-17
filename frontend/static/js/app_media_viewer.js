@@ -124,7 +124,7 @@ Object.assign(App, {
                 checkbox.nextElementSibling.textContent = d.collected ? '\u2b50' : '\u2606';
             }
         } catch (e) {
-            PK.toast('操作失败', 'error');
+            PK.toast('操作未完成，稍后再试', 'error');
         }
     },
 
@@ -146,7 +146,7 @@ Object.assign(App, {
                 }
             }
         } catch (e) {
-            collDiv.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">加载失败</span>';
+            collDiv.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">加载未完成</span>';
         }
     },
 
