@@ -1,0 +1,39 @@
+{
+  "plugin_id": "com.promptkit.asset",
+  "name": "资产管理专业版",
+  "version": "1.0.0",
+  "min_core_version": "5.1.0",
+  "author": "PromptKit Team",
+  "description": "资产管理专业版 v1.0 — AIGC产出资产统一管理：图片/视频上传入库/file_hash去重/版本链/标签/评分/生成参数溯源/提示词-词卡双向关联/画廊筛选预览",
+  "license_tier": "personal",
+  "dependencies": [],
+  "api_router_module": "api",
+  "db_migrations": [],
+  "frontend_modules": [
+    {
+      "name": "asset_manager.js",
+      "type": "js",
+      "entry": "pk_asset",
+      "description": "资产画廊 + 上传 + 版本 + 评分 + 溯源"
+    }
+  ],
+  "hooks": {},
+  "nav_buttons": [
+    {
+      "slot": "right",
+      "id": "navAssetMgmt",
+      "icon": "bi-images",
+      "label": "资产管理",
+      "view": "asset_mgmt",
+      "onClick": "window.PK_AssetManager && window.PK_AssetManager.open()",
+      "title": "资产管理 — 画廊/上传/版本/评分/溯源",
+      "order": 36
+    }
+  ],
+  "config": {
+    "storage_dir": "data/project_assets",
+    "allow_types": ["image", "video"],
+    "max_upload_mb": 500,
+    "dedup_enabled": true
+  }
+}

@@ -23,6 +23,10 @@ DEFAULT_CONFIG = {
     "openai_url": "https://api.openai.com/v1",
     "openai_key": "",
     "openai_model": "gpt-4o-mini",
+    # Kimi (Moonshot) — OpenAI 兼容接口
+    "kimi_url": "https://api.moonshot.cn/v1",
+    "kimi_key": "",  # 由用户在前端填写，加密存储（.gitignore 防护）
+    "kimi_model": "kimi-k2.6",
     "temperature": 0.7,
     "max_tokens": 2048,
     "system_prompt": "",
@@ -422,6 +426,8 @@ def get_config():
     safe = dict(cfg)
     if safe.get("openai_key"):
         safe["openai_key"] = safe["openai_key"][:6] + "..."
+    if safe.get("kimi_key"):
+        safe["kimi_key"] = safe["kimi_key"][:6] + "..."
     return {"ok": True, "config": safe}
 
 
@@ -435,12 +441,97 @@ def update_config(data: ConfigUpdate):
     return {"ok": True}
 
 
+# ============ Phase38: 全局主模型提供商端点 ============
+class AIProviderUpdate(BaseModel):
+    provider: str = ""  # ollama | kimi | openai
+    kimi_model: str = ""
+    ollama_model: str = ""
+
+class APIKeyUpdate(BaseModel):
+    key: str = ""  # 明文 API Key
+    provider: str = "kimi"  # kimi | openai
+
+@router.get("/ai-config")
+def get_ai_provider_config():
+    """获取全局 AI 提供商配置（主模型选择，密钥已脱敏）"""
+    from ollama_client import get_ai_config, _get_decrypted_kimi_key
+    cfg = get_ai_config()
+    kimi_ready = bool(_get_decrypted_kimi_key())
+    return {
+        "ok": True,
+        "provider": cfg.get("provider", "ollama"),
+        "ollama_model": cfg.get("ollama_model", "qwen3.5:9b"),
+        "kimi_model": cfg.get("kimi_model", "kimi-k2.6"),
+        "kimi_ready": kimi_ready,
+        "kimi_key_masked": _mask_stored_key("kimi"),
+        "ollama_ready": True,
+    }
+
+@router.post("/ai-config")
+def update_ai_provider_config(data: AIProviderUpdate):
+    """切换全局主模型提供商"""
+    from ollama_client import get_ai_config, save_ai_config
+    current = get_ai_config()
+    if data.provider:
+        current["provider"] = data.provider
+    if data.kimi_model:
+        current["kimi_model"] = data.kimi_model
+    if data.ollama_model:
+        current["ollama_model"] = data.ollama_model
+    save_ai_config(current)
+    return {"ok": True, "provider": current["provider"]}
+
+@router.post("/api-key")
+def set_api_key(data: APIKeyUpdate):
+    """设置/更新 API Key（加密存储到 DB）"""
+    from crypto_utils import encrypt_api_key
+    db = get_db()
+    key_name = f"{data.provider}_key_enc"
+    encrypted = encrypt_api_key(data.key.strip())
+    if not encrypted:
+        return {"ok": False, "error": "加密失败"}
+    db.execute(
+        "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+        [key_name, encrypted]
+    )
+    db.commit()
+    return {"ok": True, "provider": data.provider, "masked": _mask_key_safe(data.key.strip())}
+
+@router.delete("/api-key/{provider}")
+def delete_api_key(provider: str):
+    """删除 API Key"""
+    db = get_db()
+    db.execute("DELETE FROM config WHERE key=?", [f"{provider}_key_enc"])
+    db.commit()
+    return {"ok": True, "message": f"{provider} API key 已清除"}
+
+
+def _mask_stored_key(provider: str) -> str:
+    """读加密存储并脱敏"""
+    from crypto_utils import decrypt_api_key, mask_key
+    try:
+        db = get_db()
+        row = db.execute("SELECT value FROM config WHERE key=?", [f"{provider}_key_enc"]).fetchone()
+        if row and row["value"]:
+            plain = decrypt_api_key(row["value"])
+            return mask_key(plain) if plain else ""
+    except Exception:
+        pass
+    return ""
+
+
+def _mask_key_safe(key: str) -> str:
+    """安全脱敏"""
+    from crypto_utils import mask_key
+    return mask_key(key)
+
+
 @router.post("/test")
 async def test_prompt(data: TestRequest):
     """发送提示词到 LLM — 支持多轮对话历史"""
     cfg = _get_config()
     provider = data.provider or cfg.get("provider", "ollama")
-    model = data.model or cfg.get("ollama_model", "qwen3.5:9b")
+    model = data.model or (cfg.get("kimi_model", "kimi-k2.6") if provider == "kimi" else cfg.get("ollama_model", "qwen3.5:9b"))
     temperature = data.temperature if data.temperature is not None else cfg["temperature"]
     max_tokens = data.max_tokens if data.max_tokens is not None else cfg["max_tokens"]
     system = data.system_prompt if data.system_prompt is not None else cfg["system_prompt"]
@@ -464,23 +555,35 @@ async def test_prompt(data: TestRequest):
             _save_message(sid, "assistant", result["content"], model)
         return result
 
-    elif provider == "openai":
+    elif provider in ("openai", "kimi"):
+        # OpenAI 兼容 API（含 Kimi/Moonshot 等兼容服务）
         try:
             import httpx
-            base_url = cfg.get("openai_url", "https://api.openai.com/v1")
-            api_key = cfg.get("openai_key", "")
+            from ollama_client import _get_decrypted_kimi_key
+            if provider == "kimi":
+                base_url = cfg.get("kimi_url", "https://api.moonshot.cn/v1")
+                api_key = _get_decrypted_kimi_key()
+            else:
+                base_url = cfg.get("openai_url", "https://api.openai.com/v1")
+                api_key = cfg.get("openai_key", "")
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            # Kimi K2 系列只接受 temperature=1
+            req_temp = temperature
+            if provider == "kimi" and model.startswith("kimi-k2"):
+                req_temp = 1.0
             async with httpx.AsyncClient(timeout=120) as client:
                 resp = await client.post(f"{base_url.rstrip('/')}/chat/completions", json={
                     "model": model, "messages": messages,
-                    "temperature": temperature, "max_tokens": max_tokens
+                    "temperature": req_temp, "max_tokens": max_tokens
                 }, headers=headers)
                 r = resp.json()
+                if "error" in r:
+                    return {"ok": False, "error": r["error"].get("message", str(r["error"]))}
                 content = r.get("choices", [{}])[0].get("message", {}).get("content", "")
                 usage = r.get("usage", {})
                 _save_message(sid, "user", data.prompt, model)
                 _save_message(sid, "assistant", content, model)
-                return {"ok": True, "content": content, "model": model, "provider": "openai",
+                return {"ok": True, "content": content, "model": model, "provider": provider,
                         "usage": {"prompt_tokens": usage.get("prompt_tokens", 0),
                                   "completion_tokens": usage.get("completion_tokens", 0)}}
         except Exception as e:
@@ -513,7 +616,9 @@ async def test_stream(request: Request):
     # 用列表收集完整回复
     full_content = [""]
 
-    async def _stream():
+    provider = body.get("provider") or cfg.get("provider", "ollama")
+
+    async def _ollama_stream():
         async for line in ollama_stream(
             messages=messages, model=model,
             temperature=temperature, max_tokens=max_tokens, timeout_s=300
@@ -528,7 +633,54 @@ async def test_stream(request: Request):
                 pass
             yield line
 
-    return StreamingResponse(_stream(), media_type="text/event-stream")
+    async def _openai_stream(base_url: str, api_key: str):
+        """OpenAI 兼容 SSE 流式（含 Kimi）"""
+        import httpx
+        try:
+            # Kimi K2 系列只接受 temperature=1
+            stream_temp = temperature
+            if provider == "kimi" and model.startswith("kimi-k2"):
+                stream_temp = 1.0
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            async with httpx.AsyncClient(timeout=300) as client:
+                async with client.stream(
+                    "POST", f"{base_url.rstrip('/')}/chat/completions",
+                    json={
+                        "model": model, "messages": messages,
+                        "temperature": stream_temp, "max_tokens": max_tokens,
+                        "stream": True
+                    }, headers=headers
+                ) as resp:
+                    async for line in resp.aiter_lines():
+                        if line.startswith("data: "):
+                            data = line[6:]
+                            if data == "[DONE]":
+                                yield "data: [DONE]\n\n"
+                                _save_message(sid, "assistant", full_content[0], model)
+                                break
+                            try:
+                                chunk = json.loads(data)
+                                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    full_content[0] += content
+                                yield line + "\n\n"
+                            except json.JSONDecodeError:
+                                pass
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    if provider == "kimi":
+        from ollama_client import _get_decrypted_kimi_key
+        base_url = cfg.get("kimi_url", "https://api.moonshot.cn/v1")
+        api_key = _get_decrypted_kimi_key()
+        return StreamingResponse(_openai_stream(base_url, api_key), media_type="text/event-stream")
+    elif provider == "openai":
+        base_url = cfg.get("openai_url", "https://api.openai.com/v1")
+        api_key = cfg.get("openai_key", "")
+        return StreamingResponse(_openai_stream(base_url, api_key), media_type="text/event-stream")
+    else:
+        return StreamingResponse(_ollama_stream(), media_type="text/event-stream")
 
 
 @router.post("/compare")
@@ -621,7 +773,7 @@ async def optimize_prompt(data: OptimizeRequest):
     """Phase15: 智能提示词优化 — 模型预设×优化方向"""
     cfg = _get_config()
     provider = data.provider or cfg.get("provider", "ollama")
-    llm_model = data.model or cfg.get("ollama_model", "qwen3.5:9b")
+    llm_model = data.model or (cfg.get("kimi_model", "kimi-k2.6") if provider == "kimi" else cfg.get("ollama_model", "qwen3.5:9b"))
     temperature = data.temperature if data.temperature is not None else cfg["temperature"]
     max_tokens = cfg["max_tokens"]
 
@@ -644,52 +796,28 @@ async def optimize_prompt(data: OptimizeRequest):
 
     user_msg = f"原始提示词:\n{data.prompt}{user_extra}\n\n请输出优化结果:"
 
-    # 调用 LLM
-    if provider == "ollama":
-        result = await ollama_chat(
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
-            model=llm_model, temperature=temperature, max_tokens=max_tokens, timeout_s=180
-        )
-        if result.get("ok"):
-            optimized = result["content"]
-            # 自动保存到词卡库
-            saved_card = None
-            if data.save_to_library:
-                saved_card = _save_to_library(data.prompt, optimized, data.target_model, data.group_id)
-            return {
-                "ok": True,
-                "original": data.prompt,
-                "optimized": optimized,
-                "target_model": data.target_model,
-                "direction": data.direction,
-                "llm_model": llm_model,
-                "saved_card": saved_card
-            }
-        return {"ok": False, "error": result.get("error", "未知错误")}
-
-    elif provider == "openai":
-        try:
-            import httpx
-            base_url = cfg.get("openai_url", "https://api.openai.com/v1")
-            api_key = cfg.get("openai_key", "")
-            async with httpx.AsyncClient(timeout=180) as client:
-                resp = await client.post(f"{base_url.rstrip('/')}/chat/completions", json={
-                    "model": llm_model,
-                    "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
-                    "temperature": temperature, "max_tokens": max_tokens
-                }, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"})
-                r = resp.json()
-                optimized = r.get("choices", [{}])[0].get("message", {}).get("content", "")
-                saved_card = None
-                if data.save_to_library and optimized:
-                    saved_card = _save_to_library(data.prompt, optimized, data.target_model, data.group_id)
-                return {"ok": True, "original": data.prompt, "optimized": optimized,
-                        "target_model": data.target_model, "direction": data.direction,
-                        "llm_model": llm_model, "provider": "openai", "saved_card": saved_card}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    return {"ok": False, "error": f"不支持的 provider: {provider}"}
+    # 调用 LLM（多提供商统一路由 — ollama_chat 自动分发 kimi/openai/ollama）
+    result = await ollama_chat(
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
+        model=llm_model, provider=provider,
+        temperature=temperature, max_tokens=max_tokens, timeout_s=180
+    )
+    if result.get("ok"):
+        optimized = result["content"]
+        saved_card = None
+        if data.save_to_library:
+            saved_card = _save_to_library(data.prompt, optimized, data.target_model, data.group_id)
+        return {
+            "ok": True,
+            "original": data.prompt,
+            "optimized": optimized,
+            "target_model": data.target_model,
+            "direction": data.direction,
+            "llm_model": llm_model,
+            "provider": result.get("provider", provider),
+            "saved_card": saved_card
+        }
+    return {"ok": False, "error": result.get("error", "未知错误")}
 
 
 def _save_to_library(original: str, optimized: str, target_model: str, group_id: int = None) -> dict | None:

@@ -826,9 +826,20 @@ App._showBreadcrumb = function(show) {
 App._wcLoadPrompts = async function() {
     var s = this.state;
     if (s.currentGroupId === null) {
-        // 无选中分组 → 显示陈列架
         this._showShowcase();
         return;
+    }
+    
+    // 等待 renderPrompts 猴补丁就绪（wc_bridge 在 app_core 之前加载，hook 可能尚未完成）
+    if (typeof this.renderPrompts !== 'function') {
+        for (var _w = 0; _w < 15; _w++) {
+            await new Promise(function(r) { setTimeout(r, 200); });
+            if (typeof App.renderPrompts === 'function') break;
+        }
+        if (typeof this.renderPrompts !== 'function') {
+            this._showShowcase();
+            return;
+        }
     }
     
     // 进入具体分组 → 恢复 AI 工具栏 + 显示面包屑
@@ -837,7 +848,7 @@ App._wcLoadPrompts = async function() {
     this._showBreadcrumb(true);
     
     s.isLoading = true;
-    if (s.prompts.length === 0) this.renderPrompts();
+    if (s.prompts.length === 0 && typeof this.renderPrompts === 'function') this.renderPrompts();
 
     var qs = 'page=' + s.page + '&page_size=' + s.pageSize + '&group_id=' + s.currentGroupId;
     if (s.searchQuery) qs += '&search=' + encodeURIComponent(s.searchQuery);
@@ -1169,7 +1180,8 @@ App._updatePageTitle = function() {
     catch(e) { setTimeout(_wcHookRenderPrompts, 200); return; }
     var _origRP = App.renderPrompts;
     App.renderPrompts = function() {
-        if (this.state.currentGroupId === null && this.state.currentView === 'home') {
+        if (this.state.currentGroupId === null && this.state.currentView === 'home'
+            && !this.state.currentCategory && !this.state.searchQuery) {
             this._showShowcase();
             this._hideBatchBar();
             this._hideEditFilterBar();

@@ -63,6 +63,16 @@
                 </div>
             </div>
 
+            <!-- ↓ 下拉: AI 生成（插件预埋：角色/场景/分镜生成入口，衔接 ComfyUI） -->
+            <div class="nav-dropdown" id="navDropdownGenerator">
+                <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownGenerator')" title="AI 生成中心"><i class="bi bi-stars"></i><span class="nav-dd-text">生成</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
+                <div class="nav-dropdown-menu">
+                    <div class="nav-dropdown-item" onclick="App.switchView('generator_character')"><i class="bi bi-person-badge" style="color:#ec4899;"></i> 角色生成</div>
+                    <div class="nav-dropdown-item" onclick="if(window.PK_GENERATOR)PK_GENERATOR.viewScene();"><i class="bi bi-image" style="color:#10b981;"></i> 场景生成</div>
+                    <div class="nav-dropdown-item" onclick="if(window.PK_GENERATOR)PK_GENERATOR.viewStoryboard();"><i class="bi bi-camera-reels" style="color:#8b5cf6;"></i> 分镜生成</div>
+                </div>
+            </div>
+
             <!-- ↓ 下拉: 项目管理（项目看板 + 项目资产；已合并旧 v4media 入口去冗余） -->
             <div class="nav-dropdown" id="navDropdownProject">
                 <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownProject')" title="项目工坊"><i class="bi bi-kanban"></i><span class="nav-dd-text">项目</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
@@ -85,6 +95,21 @@
             </div>
 
             <span class="header-divider"></span>
+
+            <!-- Phase38: 主模型切换 -->
+            <div class="nav-dropdown" id="navDropdownModel">
+                <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownModel')" title="切换 AI 模型">
+                    <span id="modelProviderIcon" style="font-size:14px;">🧠</span>
+                    <span class="nav-dd-text" id="modelProviderLabel" style="font-size:11px;">Ollama</span>
+                    <i class="bi bi-chevron-down nav-dd-arrow" style="font-size:9px;"></i>
+                </button>
+                <div class="nav-dropdown-menu" style="right:0;">
+                    <div class="nav-dropdown-item" id="navModelOllama" onclick="App._switchAIModel('ollama')"><i class="bi bi-box"></i> Ollama 本地 <span style="font-size:9px;color:var(--text-muted);margin-left:auto;">qwen3.5:9b</span></div>
+                    <div class="nav-dropdown-item" id="navModelKimi" onclick="App._switchAIModel('kimi')"><i class="bi bi-cloud"></i> Kimi 云端 <span style="font-size:9px;color:var(--text-muted);margin-left:auto;">kimi-k2.6</span></div>
+                    <div class="nav-dd-sep"></div>
+                    <div class="nav-dropdown-item" onclick="App._kvOpen()"><i class="bi bi-shield-lock" style="color:#f59e0b;"></i> 密钥保管...</div>
+                </div>
+            </div>
 
             <button class="header-btn" id="btnLang" title="Switch Language" style="font-size:13px;font-weight:bold;min-width:32px;">中</button>
             <button class="header-btn" onclick="App.toggleTheme()" id="btnTheme" title="切换深色模式"><i class="bi bi-moon-stars"></i></button>
@@ -273,6 +298,11 @@
             <!-- 右面板: 词卡选取器 -->
             <div id="ccRightPanel" style="display:none;position:fixed;right:0;top:60px;width:320px;height:calc(100vh - 60px);background:var(--bg-card);border-left:1px solid var(--border-color);z-index:500;overflow-y:auto;box-shadow:-4px 0 20px rgba(0,0,0,0.1);"></div>
         </div>
+        <!-- Generator: 角色肖像生成 -->
+        <div id="viewGeneratorCharacter" class="view-panel">
+            <div id="genRoot" style="width:100%;height:calc(100vh - 60px);"></div>
+        </div>
+
         <!-- Scene Composer -->
         <div id="viewSceneComposer" class="view-panel" style="display:none;">
             <div class="page-header"><h2>🏞 场景设定组装器</h2><span class="count-info">环境/场景提示词工业化装配</span></div>
@@ -754,6 +784,7 @@
                         <label style="font-size:11px;color:var(--text-muted);white-space:nowrap;">🌡️ <input type="number" id="pgTemp" value="0.7" step="0.1" min="0" max="2" style="width:48px;font-size:12px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;"></label>
                         <select id="pgProvider" class="modal-input" style="width:auto;font-size:11px;padding:4px 6px;" onchange="App._pgToggleProvider()">
                             <option value="ollama">Ollama</option>
+                            <option value="kimi">Kimi (Moonshot)</option>
                             <option value="openai">OpenAI</option>
                         </select>
                         <input type="text" id="pgModel" class="modal-input" placeholder="模型" style="width:110px;font-size:11px;padding:4px 6px;">
@@ -983,7 +1014,7 @@
     <link rel="preload" href="/static/js/app_media.js?v=10.8" as="script">
     <link rel="preload" href="/static/js/word_editor.js?v=12.1" as="script">
     <!-- Phase15: wc_bridge 必须在 app_core 之前加载，分组导航交互重构 -->
-                            <script src="/static/js/wc_bridge.js?v=14.16"></script>
+                            <script src="/static/js/wc_bridge.js?v=14.17"></script>
     <script src="/static/js/signal_lights.js?v=5"></script>
     <script src="/static/js/app_core.js?v=13.92"></script>
     <script defer src="/static/js/auth_client.js?v=12"></script>
@@ -1010,7 +1041,7 @@
 <script defer src="/static/js/app_import_export.js?v=1"></script>
     <script defer src="/static/js/app_media.js?v=10.8"></script>
 <script defer src="/static/js/app_media_viewer.js?v=1"></script>
-    <script defer src="/static/js/ai_tools.js?v=8"></script>
+    <script defer src="/static/js/ai_tools.js?v=9"></script>
     <script defer src="/static/js/word_picker.js?v=5"></script>
     <script defer src="/static/js/word_editor.js?v=12.1"
 <script defer src="/static/js/word_version_history.js?v=1"></script>
@@ -1093,6 +1124,47 @@
         </div>
         <div id="diagList" style="flex:1;overflow-y:auto;background:#0f172a;font-family:Consolas,monospace;padding:4px 0;">
             <div style="padding:20px;text-align:center;color:#64748b;font-size:12px;">等待日志...</div>
+        </div>
+    </div>
+
+    <!-- Phase38-security: API 密钥设置弹窗 -->
+    <div class="modal-overlay" id="modalKeyVault" style="display:none;z-index:800;" onclick="if(event.target===this)App._kvClose()">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:480px;max-height:85vh;display:flex;flex-direction:column;">
+            <div class="modal-header">
+                <h5><i class="bi bi-shield-lock"></i> API 密钥保管</h5>
+                <button class="header-btn-sm" onclick="App._kvClose()">&times;</button>
+            </div>
+            <div class="modal-body" style="flex:1;overflow-y:auto;padding:16px;">
+                <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">
+                    <i class="bi bi-info-circle"></i> 密钥以 AES-256-GCM 加密存储于本地数据库，<b>不会上传、不会泄露到版本管理</b>。
+                </div>
+                <!-- Kimi -->
+                <div style="margin-bottom:16px;border:1px solid var(--border-color);border-radius:8px;padding:12px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                        <span style="font-size:18px;">☁️</span>
+                        <span style="font-weight:700;">Kimi (Moonshot)</span>
+                        <span id="kvKimiStatus" style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(239,68,68,0.15);color:#ef4444;margin-left:auto;">未配置</span>
+                    </div>
+                    <input type="password" id="kvKimiKey" class="modal-input" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" style="width:100%;font-size:12px;font-family:monospace;margin-bottom:8px;" onfocus="this.type='text'" onblur="if(!this.value)this.type='password'">
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-sm btn-primary" onclick="App._kvSave('kimi')" style="font-size:12px;flex:1;"><i class="bi bi-save"></i> 加密保存</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="App._kvDelete('kimi')" style="font-size:12px;"><i class="bi bi-trash"></i></button>
+                    </div>
+                </div>
+                <!-- OpenAI -->
+                <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px;opacity:0.6;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                        <span style="font-size:18px;">🤖</span>
+                        <span style="font-weight:700;">OpenAI</span>
+                        <span id="kvOpenaiStatus" style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(239,68,68,0.15);color:#ef4444;margin-left:auto;">未配置</span>
+                    </div>
+                    <input type="password" id="kvOpenaiKey" class="modal-input" placeholder="sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" style="width:100%;font-size:12px;font-family:monospace;margin-bottom:8px;" onfocus="this.type='text'" onblur="if(!this.value)this.type='password'">
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-sm btn-primary" onclick="App._kvSave('openai')" style="font-size:12px;flex:1;"><i class="bi bi-save"></i> 加密保存</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="App._kvDelete('openai')" style="font-size:12px;"><i class="bi bi-trash"></i></button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

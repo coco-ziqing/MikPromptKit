@@ -304,6 +304,7 @@ Object.assign(App, {
     updateCollectionBadge() {
         const total = this.state.collections.reduce((s, c) => s + c.item_count, 0);
         const badge = document.getElementById('collectionBadge');
+        if (!badge) return;
         if (total > 0) { badge.textContent = total; badge.style.display = 'block'; }
         else { badge.style.display = 'none'; }
     },

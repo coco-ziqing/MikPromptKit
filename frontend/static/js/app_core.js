@@ -208,9 +208,9 @@ var App = window.App || {
         document.getElementById('globalSearchBox').style.visibility = 'visible';
         
         try {
+            // Phase38: 并行加载：树 + 统计 + 收藏 + 词包 + 模型配置
             await Promise.all([
                 this.loadGroupTree().then(function() {
-                    // Phase14: 加载树后恢复分组选择
                     var savedGroupId = null;
                     try { savedGroupId = localStorage.getItem('promptkit_group_id'); } catch(e) {}
                     if (savedGroupId && parseInt(savedGroupId)) {
@@ -220,7 +220,8 @@ var App = window.App || {
                 }),
                 this.loadStats(),
                 this.loadCollections(),
-                this.loadWordpacks()
+                this.loadWordpacks(),
+                this._loadAIModelConfig()
             ]);
 
             // 恢复上次的视图状态（savedView/savedModule 已在 init 顶部读取）
@@ -390,33 +391,35 @@ var App = window.App || {
         // 导航按钮状态（下拉菜单模式下，仅保留有独立按钮的）
         document.querySelectorAll('.header-btn.nav-active').forEach(function(el) { el.classList.remove('nav-active'); });
 
+        // Phase18-fix: 所有 getElementById 加空检查，防止分组切换竞态 classList null 崩溃
+        var _safeShow = function(elId) { var e = document.getElementById(elId); if (e) e.classList.add('active-view'); };
+        var _sbox = function(v) { var e = document.getElementById('globalSearchBox'); if (e) e.style.visibility = v || 'hidden'; };
         if (view === 'home') {
-            document.getElementById('viewHome').classList.add('active-view');
-            document.getElementById('globalSearchBox').style.visibility = 'visible';
+            _safeShow('viewHome');
+            _sbox('visible');
             this._showSidebar();
             this._expandSidebar();
             this.renderSidebar();
             this.loadPrompts();
             this._updatePageTitle();
         } else if (view === 'collections') {
-            document.getElementById('viewCollections').classList.add('active-view');
+            _safeShow('viewCollections');
             this._hideSearchBox();
             this.renderCollections();
         } else if (view === 'wordpacks') {
-            document.getElementById('viewWordpacks').classList.add('active-view');
+            _safeShow('viewWordpacks');
             this._hideSearchBox();
             this.renderWordpacks();
         } else if (view === 'history') {
-            document.getElementById('viewHistory').classList.add('active-view');
+            _safeShow('viewHistory');
             this._hideSearchBox();
             this.loadHistory();
         } else if (view === 'trash') {
-            document.getElementById('viewTrash').classList.add('active-view');
+            _safeShow('viewTrash');
             this._hideSearchBox();
             this.loadTrash();
         } else if (view === 'v4media') {
-            var el = document.getElementById('viewV4media');
-            if (el) el.classList.add('active-view');
+            _safeShow('viewV4media');
             this._hideSearchBox();
             this._showSidebar();
             this._collapseSidebar();
@@ -425,7 +428,7 @@ var App = window.App || {
             this.state.currentModule = 'seedance';
             this.renderSidebar();
             this._closeMobileMenu();
-            document.getElementById('viewSeedance').classList.add('active-view');
+            _safeShow('viewSeedance');
             this._hideSearchBox();
             this._showSidebar();
             this._collapseSidebar();  // 组装器不需要功能模块侧边栏，自动折叠
@@ -472,6 +475,12 @@ var App = window.App || {
             this._hideSearchBox();
             this._showSidebar();
             this._collapseSidebar();
+        } else if (view === 'generator_character') {
+            // 角色肖像生成
+            var gcEl = document.getElementById('viewGeneratorCharacter');
+            if (gcEl) gcEl.classList.add('active-view');
+            this._hideSearchBox();
+            if (window.PK_GENERATOR && PK_GENERATOR.viewCharacter) PK_GENERATOR.viewCharacter();
         }
 
         // 关闭推荐面板
@@ -1045,6 +1054,142 @@ var App = window.App || {
             btn.innerHTML = isLandscape ? '<i class="bi bi-phone-landscape"></i>' : '<i class="bi bi-phone"></i>';
             btn.title = isLandscape ? '横屏模式 · 点击锁定' : '竖屏模式 · 点击锁定';
             btn.style.color = '';
+        }
+    },
+
+    // ===== Phase38: 主模型切换 =====
+    _aiModelState: { provider: 'ollama', kimi_model: 'kimi-k2.6', ollama_model: 'qwen3.5:9b' },
+
+    _loadAIModelConfig: async function() {
+        try {
+            var d = await this.fetchJSON('/api/playground/ai-config');
+            if (d && d.ok) {
+                this._aiModelState.provider = d.provider || 'ollama';
+                this._aiModelState.kimi_model = d.kimi_model || 'kimi-k2.6';
+                this._aiModelState.ollama_model = d.ollama_model || 'qwen3.5:9b';
+                this._updateModelIndicator();
+            }
+        } catch(e) {}
+    },
+
+    _switchAIModel: async function(provider) {
+        try {
+            var d = await this.fetchJSON('/api/playground/ai-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider: provider })
+            });
+            if (d && d.ok) {
+                this._aiModelState.provider = provider;
+                this._updateModelIndicator();
+                var name = provider === 'kimi' ? 'Kimi kimi-k2.6' : 'Ollama qwen3.5:9b';
+                this.showToast('已切换至 ' + name, 'success');
+            }
+        } catch(e) {
+            this.showToast('切换失败', 'error');
+        }
+    },
+
+    _updateModelIndicator: function() {
+        var icon = document.getElementById('modelProviderIcon');
+        var label = document.getElementById('modelProviderLabel');
+        var ollamaEl = document.getElementById('navModelOllama');
+        var kimiEl = document.getElementById('navModelKimi');
+        if (!icon || !label) return;
+        if (this._aiModelState.provider === 'kimi') {
+            icon.textContent = '☁️';
+            label.textContent = 'Kimi';
+            if (ollamaEl) ollamaEl.style.fontWeight = 'normal';
+            if (kimiEl) kimiEl.style.fontWeight = 'bold';
+        } else {
+            icon.textContent = '🧠';
+            label.textContent = 'Ollama';
+            if (ollamaEl) ollamaEl.style.fontWeight = 'bold';
+            if (kimiEl) kimiEl.style.fontWeight = 'normal';
+        }
+    },
+
+    // ===== Phase38-security: API 密钥保管 =====
+    _kvOpen: async function() {
+        var m = document.getElementById('modalKeyVault');
+        if (!m) return;
+        m.style.display = 'flex';
+        // 加载现有状态
+        this._kvRefreshStatus();
+    },
+
+    _kvClose: function() {
+        var m = document.getElementById('modalKeyVault');
+        if (m) m.style.display = 'none';
+        // 清空输入框
+        var e1 = document.getElementById('kvKimiKey');
+        var e2 = document.getElementById('kvOpenaiKey');
+        if (e1) { e1.value = ''; e1.type = 'password'; }
+        if (e2) { e2.value = ''; e2.type = 'password'; }
+    },
+
+    _kvRefreshStatus: async function() {
+        try {
+            var d = await this.fetchJSON('/api/playground/ai-config');
+            if (!d || !d.ok) return;
+            var ks = document.getElementById('kvKimiStatus');
+            var os = document.getElementById('kvOpenaiStatus');
+            if (ks) {
+                if (d.kimi_ready) {
+                    ks.textContent = d.kimi_key_masked || '已配置';
+                    ks.style.background = 'rgba(5,150,105,0.15)';
+                    ks.style.color = '#059669';
+                } else {
+                    ks.textContent = '未配置';
+                    ks.style.background = 'rgba(239,68,68,0.15)';
+                    ks.style.color = '#ef4444';
+                }
+            }
+            if (os) {
+                os.textContent = '未配置'; // OpenAI 暂不存储
+            }
+        } catch(e) {}
+    },
+
+    _kvSave: async function(provider) {
+        var input = document.getElementById(provider === 'kimi' ? 'kvKimiKey' : 'kvOpenaiKey');
+        if (!input || !input.value.trim()) {
+            this.showToast('请先输入 API Key', 'warning');
+            return;
+        }
+        try {
+            var d = await this.fetchJSON('/api/playground/api-key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider: provider, key: input.value.trim() })
+            });
+            if (d && d.ok) {
+                this.showToast(provider + ' 密钥已加密保存', 'success');
+                input.value = '';
+                input.type = 'password';
+                this._kvRefreshStatus();
+                if (provider === 'kimi') {
+                    this._aiModelState.provider = 'kimi';
+                    this._updateModelIndicator();
+                }
+            } else {
+                this.showToast((d && d.error) || '保存失败', 'error');
+            }
+        } catch(e) {
+            this.showToast('网络错误', 'error');
+        }
+    },
+
+    _kvDelete: async function(provider) {
+        if (!confirm('确认清除 ' + provider + ' 的 API Key？')) return;
+        try {
+            var d = await this.fetchJSON('/api/playground/api-key/' + provider, { method: 'DELETE' });
+            if (d && d.ok) {
+                this.showToast(provider + ' 密钥已清除', 'info');
+                this._kvRefreshStatus();
+            }
+        } catch(e) {
+            this.showToast('网络错误', 'error');
         }
     },
 

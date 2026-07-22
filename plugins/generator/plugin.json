@@ -1,0 +1,27 @@
+{
+  "plugin_id": "com.promptkit.generator",
+  "name": "AI 生成中心",
+  "version": "1.0.0",
+  "min_core_version": "5.1.0",
+  "author": "PromptKit Team",
+  "description": "AI生成中心 — 衔接 ComfyUI 进行角色/场景/分镜智能生成任务",
+  "license_tier": "personal",
+  "dependencies": [],
+  "api_router_module": "",
+  "db_migrations": [],
+  "frontend_modules": [
+    {
+      "name": "generator_ui.js",
+      "type": "js",
+      "entry": "pk_generator",
+      "description": "AI生成中心前端入口"
+    }
+  ],
+  "hooks": {},
+  "config": {
+    "enable_generation": false,
+    "comfyui_workflow_character": "",
+    "comfyui_workflow_scene": "",
+    "comfyui_workflow_storyboard": ""
+  }
+}

@@ -1,180 +1,75 @@
-# =============================================================================
-# PromptKit .gitignore — 开源仓库安全边界
-# =============================================================================
-# 
-# 此仓库为 MIT 开源版本。以下内容严格禁止入库：
-#   - RSA 私钥 / License Key / 签名生成工具
-#   - 商业插件源码（project_mgmt / asset_mgmt / team_collab）
-#   - 包含商业逻辑的构建/打包脚本
-#   - 用户数据、数据库备份、媒体资产
-#
-# 私有仓库路径: prompt-tool-dev-private/
-# 构建时由 build_merged.py 将私有部分注入开源核心
-# =============================================================================
+# PromptKit — 咪卡Mik词库
 
-# ================================================================
-# 🔒 商业敏感 — 绝对不可入库
-# ================================================================
-
-# License 密钥与签名（私钥 = 商业模型命脉）
-data/licenses/*.pem
-data/licenses/license_*.txt
-data/licenses/license_*.json
-data/licenses/private*
-data/licenses/*_key*
-
-# License 生成 / 激活服务端工具
-scripts/generate_license_key.py
-scripts/generate_license_key*
-tools/license_server.py
-tools/license_*
-
-# 商业插件包（付费分发）— 源码禁入，plugin.json 元数据例外
-plugins/project/*.py
-plugins/project/migrations/
-plugins/project/static/
-plugins/project/__pycache__/
-plugins/project_mgmt/
-plugins/asset_mgmt/
-plugins/team_collab/
-plugins/*_pro/
-plugins/*_enterprise/
-
-# ================================================================
-# 🛠 构建工具（私有仓库维护）
-# ================================================================
-
-tools/
-scripts/build_merged.py
-scripts/build_merged*
-scripts/package_release.py
-scripts/package_release*
-
-# ================================================================
-# Python
-# ================================================================
-
+# === Python ===
 __pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
+*.pyc
 *.pyo
-*.pyd
-.Python
-
-# ================================================================
-# 数据库 & 用户数据
-# ================================================================
-
-data/prompts.db
-data/prompts.db-*
-data/packages/*.pkb
-*.db-shm
-*.db-wal
-*.before_view_migration
-*.unify_final_bak
-*_before_unify.bak
-
-# ================================================================
-# 媒体资产（用户生成内容，不入版本管理）
-# ================================================================
-
-data/originals/
-data/thumbnails/
-data/videos/
-data/backups/
-data/wc_media/originals/
-data/wc_media/thumbs/
-data/wc_media/videos/
-data/wordcard_thumbs/
-data/wordcard_videos/
-data/character_images/
-data/temp_ocr/
-data/models/
-# Phase35+ 项目资产库/工作空间/角色档案（用户媒体，不入库）
-data/catalog_thumbs/
-data/project_assets/
-data/role_assets/
-data/role_thumbs/
-data/workspaces/
-data/projects/
-
-# Agent 构建产物
-agent/build/
-agent/*.spec
-agent/pk_agent.exe
-
-# ================================================================
-# 构建输出
-# ================================================================
-
+*.egg-info/
 dist/
 build/
-*.spec.bak
-dist_macos/
-*.dmg
-macos/resources/app.icns
-macos/resources/app_icons.iconset/
 
-# ================================================================
-# 系统文件
-# ================================================================
+# === 数据（含用户内容 + 加密密钥，绝不提交） ===
+data/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.pkb
 
-.DS_Store
-Thumbs.db
-Desktop.ini
+# === 环境变量 / 密钥（绝不提交） ===
+.env
+.env.*
+*.env
+data/.jwt_secret  # JWT 签名密钥
+# ⚠️ crypto_utils.py 加密算法代码可进版本管理（密钥由机器指纹派生，不可跨机复制）
 
-# ================================================================
-# IDE & Editor
-# ================================================================
+# === 虚拟环境 ===
+venv/
+.venv/
+env/
 
+# === IDE / 系统 ===
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
+.DS_Store
+Thumbs.db
 
-# ================================================================
-# 前端缓存
-# ================================================================
+# === 会话记忆（本地专属） ===
+memory/
+sessions/
 
-frontend/static/js/media-cache/
+# === Node ===
+node_modules/
+package-lock.json
 
-# ================================================================
-# 日志
-# ================================================================
+# === 打包产物 ===
+*.exe
+*.zip
+*.msi
 
-logs/
-*.log
-
-# ================================================================
-# 临时 & 测试脚本
-# ================================================================
-
-# 临时脚本（root级别 _开头文件）
-/_health_check.py
-_test_plugin_mgr.py
+# === 临时调试脚本 ===
+_check_*.py
+_health_check.py
+_summarize.py
 DREAMS.md
 
-# 后端调试散件归档目录（一次性脚本，不入库）
+# === 构建产物 ===
+agent/_build.log
+agent/pk_agent.spec
+
+# === 临时/研究代码 ===
+backend/_integrate_*.py
 backend/_scratch/
+
+# === 本地工具 ===
+tools/*.py
+tools/*.txt
+
+# === 运行时日志 ===
 backend/logs/
+logs/
 
-# 内存/梦境文件
-memory/.dreams/
-memory/dreaming/
-
-# ================================================================
-# 数据保留（仅保留目录结构）
-# ================================================================
-
-!data/.gitkeep
-
-# Plugins (disabled/archived)
-plugins/_disabled/
-
-# �ʼ����ã�����Ȩ�룬���ύ��.env.mail
-
-# JWT 持久化密钥（每机唯一，禁止入库）
-data/.jwt_secret
+# === 生成报告 ===
+reports/daily_*.html

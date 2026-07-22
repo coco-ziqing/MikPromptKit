@@ -112,14 +112,37 @@ App._pgLoadConfig = async function() {
         var modelEl = document.getElementById('pgModel');
         var tempEl = document.getElementById('pgTemp');
         if (providerEl) providerEl.value = c.provider || 'ollama';
-        if (modelEl) modelEl.value = c.ollama_model || 'qwen3.5:9b';
+        // 根据当前 provider 加载对应模型名
+        var pv = providerEl ? providerEl.value : 'ollama';
+        if (modelEl) {
+            if (pv === 'kimi') modelEl.value = c.kimi_model || 'moonshot-v1-8k';
+            else if (pv === 'openai') modelEl.value = c.openai_model || 'gpt-4o-mini';
+            else modelEl.value = c.ollama_model || 'qwen3.5:9b';
+        }
         if (tempEl) tempEl.value = c.temperature || 0.7;
     } catch(e) {}
 };
 
 // ===== Provider 切换 =====
 App._pgToggleProvider = function() {
-    // OpenAI 模式下可扩展
+    var providerEl = document.getElementById('pgProvider');
+    var modelEl = document.getElementById('pgModel');
+    if (!providerEl) return;
+    var pv = providerEl.value;
+    if (modelEl) {
+        if (pv === 'ollama') {
+            modelEl.placeholder = 'qwen3.5:9b';
+            modelEl.title = '输入 Ollama 模型名，如 qwen3.5:9b';
+        } else if (pv === 'kimi') {
+            modelEl.placeholder = 'kimi-k2.6';
+            modelEl.title = 'Kimi 模型: kimi-k2.6 / kimi-k2.7-code';
+            modelEl.value = 'kimi-k2.6';
+            this.showToast('已切换至 Kimi (Moonshot) 模型', 'info');
+        } else if (pv === 'openai') {
+            modelEl.placeholder = 'gpt-4o-mini';
+            modelEl.title = '输入 OpenAI 模型名，如 gpt-4o-mini';
+        }
+    }
 };
 
 // ===== 核心: 优化提示词 =====

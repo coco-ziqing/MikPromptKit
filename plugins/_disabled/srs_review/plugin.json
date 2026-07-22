@@ -1,0 +1,42 @@
+{
+  "plugin_id": "com.promptkit.srs-review",
+  "name": "间隔复习系统",
+  "version": "1.0.0",
+  "min_core_version": "5.1.0",
+  "author": "PromptKit Team",
+  "description": "基于 FSRS-5 算法的间隔重复复习系统 — 将提示词词卡转化为记忆卡片，支持图片/视频/文本三种卡片模式，自动参数优化，统计仪表盘。",
+  "license_tier": "free",
+  "dependencies": [],
+  "api_router_module": "api",
+  "db_migrations": ["001_review_tables.sql"],
+  "frontend_modules": [
+    {
+      "name": "srs-main.js",
+      "type": "js",
+      "entry": "srs_review",
+      "description": "复习界面核心 — 卡片翻转 + FSRS评分 + 统计仪表盘"
+    }
+  ],
+  "hooks": {
+    "on_db_init": "srs_review.hooks.on_db_init"
+  },
+  "nav_buttons": [
+    {
+      "slot": "right",
+      "id": "navSRSReview",
+      "icon": "bi-brain",
+      "label": "间隔复习",
+      "view": "srs_review",
+      "onClick": "window.__PK_PLUGINS__._views.srs_review()",
+      "title": "间隔复习 — 基于FSRS-5算法的智能记忆系统",
+      "order": 40
+    }
+  ],
+  "config": {
+    "target_retrievability": 0.90,
+    "daily_new_limit": 20,
+    "daily_review_limit": 200,
+    "review_order": "mixed",
+    "auto_enroll": false
+  }
+}

@@ -631,21 +631,57 @@ App.aiTools._ctxAdapt = function() {
     this.openOptimizer('adapt');
 };
 
+App.aiTools._translateLock = false;
+
+App.aiTools._translateTimer = null;
+
+App.aiTools._showTranslateProgress = function(elapsed) {
+    var msg = '正在翻译（Ollama 处理中，已等待 ' + (elapsed|0) + ' 秒）...';
+    App.showToast(msg, 'info');
+};
+
 App.aiTools._ctxTranslate = async function() {
     this._removeContextMenu();
     var pid = this._contextPromptId;
     if (!pid) return;
 
-    App.showToast('正在翻译...', 'info');
+    // 防连点：已有翻译进行中则忽略本次点击
+    if (App.aiTools._translateLock) {
+        App.showToast('已有翻译进行中，请等待完成', 'warning');
+        return;
+    }
+    App.aiTools._translateLock = true;
+
+    App.showToast('正在翻译（Ollama 处理中）...', 'info');
+
+    // 启动等待计时器，每 5 秒更新提示
+    var startTime = Date.now();
+    App.aiTools._translateTimer = setInterval(function() {
+        var elapsed = ((Date.now() - startTime) / 1000);
+        App.aiTools._showTranslateProgress(elapsed);
+        // 超过 30 秒后缩短更新间隔，让用户知道还在跑
+        if (elapsed > 120) {
+            App.showToast('翻译处理较慢，仍在等待（' + (elapsed|0) + ' 秒）...', 'warning');
+        }
+    }, 5000);
+
     try {
-        var d = await App.fetchJSON('/api/translate/' + pid + '?target_lang=zh');
+        // 单条翻译耗时 15~40 秒，设置 180 秒超时确保不因排队超时
+        var d = await App.fetchJSON('/api/translate/' + pid + '?target_lang=zh', { _timeoutMs: 180000 });
+        clearInterval(App.aiTools._translateTimer);
+        App.aiTools._translateTimer = null;
+
         if (d && d.ok && d.translated) {
             App.copyText(d.translated, App._t('common.copied', '已复制中文翻译'));
         } else {
             App.showToast(App._t('auto.str_31ff785e', '翻译未完成: ') + (d ? d.error : App._t('auto.str_1622dc9b', '未知')), 'error');
         }
     } catch(e) {
+        clearInterval(App.aiTools._translateTimer);
+        App.aiTools._translateTimer = null;
         App.showToast('翻译遇到问题: ' + e.message, 'error');
+    } finally {
+        App.aiTools._translateLock = false;
     }
 };
 

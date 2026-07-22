@@ -8,6 +8,12 @@ from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
+# 先把 backend 目录加入 sys.path，确保 paths 模块可导入（PowerShell 5.1 快捷方式可能不含工作目录）
+_dev_backend = os.path.dirname(os.path.abspath(__file__))
+if _dev_backend not in sys.path:
+    sys.path.insert(0, _dev_backend)
+
 from paths import get_base_dir, get_frontend_dir
 
 # 实际端口（__main__ 探测后设置，lifespan 读取）
@@ -15,9 +21,6 @@ ACTUAL_PORT = 8080
 
 BASE_DIR = get_base_dir()
 sys.path.insert(0, os.path.join(BASE_DIR, 'backend'))
-_dev_backend = os.path.dirname(os.path.abspath(__file__))
-if _dev_backend not in sys.path:
-    sys.path.insert(0, _dev_backend)
 
 from database import init_db, rebuild_fts, get_db, safe_commit
 from seed_data import SEED_PROMPTS, get_builtin_count
