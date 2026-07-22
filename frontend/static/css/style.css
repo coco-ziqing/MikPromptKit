@@ -216,22 +216,63 @@ body.dark-theme .nav-dd-sep { background: #334155; }
 .sidebar.collapsed {
     left: calc(-1 * var(--sidebar-width) + 28px);
 }
-/* 折叠按钮 — 固定停靠在侧边栏右边缘，折叠时跟随侧边栏露出 */
-.sidebar-toggle-btn {
-    position: fixed; top: 50%;
-    left: calc(var(--sidebar-width) - 28px);
-    transform: translateY(-50%);
-    width: 22px; height: 48px;
-    background: var(--bg-sidebar); border: 1px solid var(--border-color);
-    border-left: none; border-radius: 0 6px 6px 0;
+/* ── 折叠按钮通用样式 ── */
+.sidebar-toggle-btn,
+.s2-sidebar-toggle,
+.s2-right-toggle {
+    width: 14px; height: 72px;
+    border: 1px solid var(--border-color);
     display: flex; align-items: center; justify-content: center;
-    cursor: pointer; z-index: 110; color: var(--text-muted);
-    font-size: 11px; transition: left 0.25s ease, background 0.15s, color 0.15s;
+    cursor: pointer; color: var(--text-muted); font-size: 9px;
+    opacity: 0.15; user-select: none;
+    transition: opacity 0.2s ease, background 0.15s, color 0.15s;
+    /* 位置/圆角/去边方向由各自规则覆盖 */
 }
+.sidebar-toggle-btn::after,
+.s2-sidebar-toggle::after,
+.s2-right-toggle::after {
+    content: ''; position: absolute; top: 0; bottom: 0;
+}
+.sidebar-toggle-btn:hover,
+.s2-sidebar-toggle:hover,
+.s2-right-toggle:hover {
+    background: var(--hover-bg); color: var(--primary); opacity: 1;
+}
+/* 词卡分组侧边栏（左侧）*/
+.sidebar-toggle-btn {
+    position: fixed; top: 50%; left: calc(var(--sidebar-width) - 2px);
+    transform: translateY(-50%);
+    background: var(--bg-sidebar);
+    border-left: none; border-radius: 0 5px 5px 0;
+    z-index: 110;
+    transition: left 0.25s ease, opacity 0.2s ease, background 0.15s, color 0.15s;
+}
+.sidebar-toggle-btn::after { left: 80%; width: 22px; }
 .sidebar.collapsed ~ .sidebar-toggle-btn {
-    left: 2px;
+    left: calc(28px - 2px); opacity: 0.6;
 }
-.sidebar-toggle-btn:hover { background: var(--hover-bg); color: var(--primary); }
+/* 分镜组装器左侧栏 */
+.s2-sidebar-toggle {
+    position: absolute; left: 258px; top: 50%;
+    transform: translateY(-50%);
+    background: var(--bg-sidebar);
+    border-left: none; border-radius: 0 5px 5px 0;
+    z-index: 15;
+    transition: left 0.25s ease, opacity 0.2s ease, background 0.15s, color 0.15s;
+}
+.s2-sidebar-toggle::after { left: 80%; width: 22px; }
+.s2-sidebar.collapsed ~ .s2-sidebar-toggle { left: 0; opacity: 0.6; }
+/* 分镜组装器右侧面板 */
+.s2-right-toggle {
+    position: absolute; right: 278px; top: 50%;
+    transform: translateY(-50%);
+    background: var(--bg-sidebar);
+    border-right: none; border-radius: 5px 0 0 5px;
+    z-index: 15;
+    transition: right 0.25s ease, opacity 0.2s ease, background 0.15s, color 0.15s;
+}
+.s2-right-toggle::after { right: 80%; width: 22px; }
+.s2-right-panel.collapsed ~ .s2-right-toggle { right: 0; opacity: 0.6; }
 .sidebar::-webkit-scrollbar { width: 4px; }
 .sidebar::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
 /* 所有视图面板内容区滚动条统一 */
@@ -1675,10 +1716,6 @@ body.dark-theme .s2-dur-preset {
 /* 侧栏：支持折叠 */
 .s2-sidebar { width: 260px; min-width: 260px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; transition: width 0.25s ease; flex-shrink: 0; }
 .s2-sidebar.collapsed { width: 0; min-width: 0; overflow: hidden; }
-/* 侧栏折叠按钮 — 独立于侧栏，停在s2-layout左边缘 */
-.s2-sidebar-toggle { position: absolute; left: 260px; top: 50%; z-index: 15; width: 22px; height: 48px; border: 1px solid var(--border-color); border-left: none; border-radius: 0 6px 6px 0; background: var(--card-bg); cursor: pointer; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; justify-content: center; transform: translateY(-50%); transition: left 0.25s ease, background 0.15s, color 0.15s; user-select: none; }
-.s2-sidebar.collapsed ~ .s2-sidebar-toggle { left: 0; }
-.s2-sidebar-toggle:hover { background: var(--hover-bg); color: var(--primary); border-color: var(--primary); }
 .s2-editor { flex: 1; overflow-y: auto; padding-right: 4px; transition: margin-right 0.3s ease; }
 
 /* 搜索框 */
@@ -1786,10 +1823,6 @@ body.dark-theme .s2-project-del:hover { background: rgba(239,68,68,0.15); }
 .s2-right-panel { width: 280px; min-width: 280px; border-left: 1px solid var(--border-color); background: var(--bg-card); overflow-y: auto; overflow-x: hidden; transition: width 0.25s ease, min-width 0.25s ease; position: relative; flex-shrink: 0; }
 .s2-right-panel.collapsed { width: 0; min-width: 0; padding: 0; border-left: none; overflow: hidden; }
 .s2-right-panel .s2-panel-inner { width: 280px; min-width: 280px; padding: 10px 12px; height: 100%; overflow-y: auto; box-sizing: border-box; }
-/* 右侧折叠按钮 — 独立于面板，挂在s2-layout右边缘，与左侧toggle完全对称 */
-.s2-right-toggle { position: absolute; right: 280px; top: 50%; z-index: 15; width: 22px; height: 48px; border: 1px solid var(--border-color); border-right: none; border-radius: 6px 0 0 6px; background: var(--card-bg); cursor: pointer; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; justify-content: center; transform: translateY(-50%); transition: right 0.25s ease, background 0.15s, color 0.15s; user-select: none; }
-.s2-right-panel.collapsed ~ .s2-right-toggle { right: 0; }
-.s2-right-toggle:hover { background: var(--hover-bg); color: var(--primary); border-color: var(--primary); }
 /* 旧浮动手柄彻底移除 */
 .s2-right-handle { display: none !important; }
 /* 更新模版弹窗 */
@@ -2983,7 +3016,8 @@ body.dark-theme .ai-opt-modal {
 }
 .wc-edit-thumb-preview {
     width: 100%;
-    height: 90px;
+    min-height: 70px;
+    max-height: 160px;
     border-radius: 6px;
     border: 1px solid var(--border-color);
     display: flex;
@@ -2999,8 +3033,11 @@ body.dark-theme .ai-opt-modal {
 }
 .wc-edit-thumb-preview img,
 .wc-edit-thumb-preview video {
-    width: 100%; height: 100%;
-    object-fit: cover;
+    width: 100%;
+    height: auto;
+    max-height: 160px;
+    object-fit: contain;
+    display: block;
 }
 #wcEditThumbName {
     display: block;
@@ -3092,7 +3129,7 @@ body.dark-theme .wc-edit-thumb-preview { background: #334155; border-color: #475
         gap: 8px;
         padding: 12px 14px;
     }
-    .wc-edit-thumb-preview { height: 70px; }
+    .wc-edit-thumb-preview { max-height: 120px; }
     .wc-edit-meta-row { flex-wrap: wrap; }
 }
 

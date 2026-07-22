@@ -210,6 +210,34 @@ App._showShowcase = function() {
                 html += '</div>'; // close sub container
             }
             
+            // Phase20: sub 分组本身即为叶子容器（有词卡但无孙节点）
+            // 如角色设定/场景设定/全局画风/全局负面 — 紧凑平铺，不占整行
+            var selfLeafSubs = [];
+            for (var sl = 0; sl < root.children.length; sl++) {
+                var sub2 = root.children[sl];
+                if (sub2.group_type === 'sub' && sub2.card_count > 0
+                    && (!sub2.children || sub2.children.length === 0)) {
+                    selfLeafSubs.push(sub2);
+                }
+            }
+            if (selfLeafSubs.length > 0) {
+                var allSubCards = selfLeafSubs.reduce(function(s,g){return s+(g.card_count||0);},0);
+                html += '<div style="border-left:2px solid var(--border-color);margin-left:8px;margin-bottom:4px;padding:4px 0 4px 10px;border-radius:0 6px 6px 0;">';
+                html += '<span style="font-size:11px;color:var(--text-muted);font-weight:600;">📂 ' + allSubCards + ' 条</span>';
+                html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;">';
+                for (var sl2 = 0; sl2 < selfLeafSubs.length; sl2++) {
+                    var sub = selfLeafSubs[sl2];
+                    html += '<button onclick="event.stopPropagation();App.switchGroup(' + sub.id + ',\'' + (sub.name||'').replace(/'/g,"\\'") + '\')" ';
+                    html += 'class="showcase-leaf-btn" style="font-size:12px;padding:3px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.6;"';
+                    html += ' onmouseenter="this.style.borderColor=var(--primary);this.style.background=var(--hover-bg)" onmouseleave="this.style.borderColor=var(--border-color);this.style.background=var(--bg-card)"';
+                    html += '>';
+                    html += (sub.icon||'📋') + ' ' + App._escape(sub.name.replace(sub.icon||'','').trim());
+                    html += '<span style="font-size:10px;color:var(--text-muted);margin-left:3px;">' + (sub.card_count||0) + '</span>';
+                    html += '</button>';
+                }
+                html += '</div></div>';
+            }
+            
             // Phase17: atom 分组（root 直接叶子，无 sub 中间层）
             var atomLeaves = [];
             for (var a = 0; a < root.children.length; a++) {
@@ -765,6 +793,34 @@ App._wcDoBatchMove = function(ids, targetGroupId, groupName) {
     }).catch(function() { self.showToast('出错', 'error'); });
 };
 
+// Phase20: 批量清除预览（缩略图 + 视频）
+App._wcBatchClearPreview = function() {
+    var ids = [];
+    try { ids = Array.from(App.state.batchSelected); } catch(e) { ids = []; }
+    if (ids.length === 0) {
+        document.querySelectorAll('#promptList .batch-checkbox:checked').forEach(function(cb) {
+            ids.push(parseInt(cb.getAttribute('data-id')));
+        });
+    }
+    if (ids.length === 0) { this.showToast('请先勾选词卡', 'warning'); return; }
+    if (!confirm('确认清除 ' + ids.length + ' 条词卡的缩略图和视频预览？\n不会删除词卡内容本身。')) return;
+    var self = this;
+    fetch('/api/v4/word-cards/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'clear_preview', ids: ids })
+    }).then(function(r) {
+        if (r.ok) {
+            self.showToast('已清除 ' + ids.length + ' 条的预览媒体', 'success');
+            self.state.batchSelected.clear();
+            self.updateBatchCount();
+            self._wcLoadPrompts();
+        } else {
+            r.json().then(function(d) { self.showToast(d.detail || '操作失败', 'error'); });
+        }
+    }).catch(function() { self.showToast('出错', 'error'); });
+};
+
 // Phase15: 隐藏编辑工具栏
 App._hideBatchBar = function() {
     var bb = document.getElementById('batchBar');
@@ -1188,7 +1244,18 @@ App._updatePageTitle = function() {
             return;
         }
         _origRP.call(this);
-        if (this.state.editMode) this._wcInjectMoveButtons();
+        if (this.state.editMode) {
+            this._wcInjectMoveButtons();
+            // 恢复编辑模式全局 UI（batchBar/editFilterBar/AI 工具栏）
+            // 防止 _showShowcase 隐藏后未恢复的竞态
+            var eb = document.getElementById('batchBar');
+            var fb = document.getElementById('editFilterBar');
+            if (eb && eb.style.display !== 'flex') eb.style.display = 'flex';
+            if (fb) fb.style.display = 'block';
+            var btn = document.getElementById('btnEditMode');
+            if (btn) { btn.style.color = '#4f46e5'; btn.classList.add('active'); }
+            if (App.aiTools) App.aiTools.showToolbar();
+        }
         // P0-6: 拖拽词卡到侧边栏分组
         this._wcSetupCardDrag();
     };

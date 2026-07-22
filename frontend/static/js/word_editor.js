@@ -486,12 +486,12 @@ App.wordEditor._loadCard = async function() {
         var clearBtn = document.getElementById('wcEditThumbClearBtn');
         if (thumbRow) thumbRow.style.display = 'block';
         if (c.thumbnail && thumbPreview && thumbName) {
-            thumbPreview.innerHTML = '<img id="wcEditThumbPreview" src="/api/v4/word-cards/thumbnails/' + c.thumbnail + '" style="width:100%;height:100%;border-radius:6px;object-fit:cover;">';
+            thumbPreview.innerHTML = '<img id="wcEditThumbPreview" src="/api/v4/word-cards/thumbnails/' + c.thumbnail + '" style="width:100%;max-height:160px;border-radius:6px;object-fit:contain;">';
             thumbName.textContent = c.thumbnail.substring(0, 20) + (c.thumbnail.length > 20 ? '...' : '');
             if (clearBtn) clearBtn.style.display = 'inline-block';
         } else if (c.preview_media && thumbPreview && thumbName) {
             var posterFromThumb = c.thumbnail ? ('/api/v4/word-cards/thumbnails/' + c.thumbnail) : ('');
-            thumbPreview.innerHTML = '<video id="wcEditThumbPreview" src="/api/v4/word-cards/videos/' + c.preview_media + '" controls muted preload="metadata" poster="' + posterFromThumb + '" style="width:100%;height:100%;border-radius:6px;object-fit:cover;"></video>';
+            thumbPreview.innerHTML = '<video id="wcEditThumbPreview" src="/api/v4/word-cards/videos/' + c.preview_media + '" controls muted preload="metadata" poster="' + posterFromThumb + '" style="width:100%;max-height:160px;border-radius:6px;object-fit:contain;"></video>';
             thumbName.textContent = '🎬 ' + c.preview_media.substring(0, 25);
             if (clearBtn) clearBtn.style.display = 'inline-block';
         } else {
@@ -1308,7 +1308,7 @@ App.wordEditor._refreshThumbPreview = function() {
             posterUrl = '/api/thumbnails/file/' + baseName;
         }
         if (area) {
-            area.innerHTML = '<video id="wcEditThumbPreview" src="' + videoSrc + '" muted loop playsinline preload="metadata" poster="' + posterUrl + '" style="width:100%;height:100%;border-radius:6px;object-fit:cover;" onmouseenter="this.play()" onmouseleave="this.pause();this.currentTime=0"></video>';
+            area.innerHTML = '<video id="wcEditThumbPreview" src="' + videoSrc + '" muted loop playsinline preload="metadata" poster="' + posterUrl + '" style="width:100%;max-height:160px;border-radius:6px;object-fit:contain;" onmouseenter="this.play()" onmouseleave="this.pause();this.currentTime=0"></video>';
         }
         if (thumbName) thumbName.textContent = '🎬 ' + (
             this._pendingVideoSource
@@ -1318,7 +1318,7 @@ App.wordEditor._refreshThumbPreview = function() {
         if (clearBtn) clearBtn.style.display = 'inline-block';
     } else if (this._pendingThumbBlobUrl || this._pendingThumbFile || this._pendingThumbSource) {
         if (area) {
-            area.innerHTML = '<img id="wcEditThumbPreview" src="' + (this._pendingThumbBlobUrl || '/api/thumbnails/file/' + this._pendingThumbSource) + '" style="width:100%;height:100%;border-radius:6px;object-fit:cover;">';
+            area.innerHTML = '<img id="wcEditThumbPreview" src="' + (this._pendingThumbBlobUrl || '/api/thumbnails/file/' + this._pendingThumbSource) + '" style="width:100%;max-height:160px;border-radius:6px;object-fit:contain;">';
         }
         if (thumbName) thumbName.textContent = this._pendingThumbSource
             ? this._pendingThumbSource.substring(0, 25)

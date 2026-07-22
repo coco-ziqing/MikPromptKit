@@ -3,74 +3,95 @@
 封面内容管理 API — 首页封面页的标题/描述/图片可编辑存储
 表: app_cover_content
 """
-import json, os, sqlite3, time, shutil, uuid, base64
+import json, os, sqlite3, time, shutil, uuid, base64, random
 from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File
 
 router = APIRouter(tags=["封面管理"], prefix="/api/cover")
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "prompts.db")
 
+_ensured = False  # 延迟初始化标记（避免模块 import 时 DB 锁冲突）
+
 def _rw():
-    conn = sqlite3.connect(DB_PATH, timeout=2)
+    conn = sqlite3.connect(DB_PATH, timeout=5)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 def _ro():
-    conn = sqlite3.connect(DB_PATH, timeout=2)
+    conn = sqlite3.connect(DB_PATH, timeout=5)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 def _ensure_table():
-    db = _rw()
-    try:
-        db.execute("""
-        CREATE TABLE IF NOT EXISTS app_cover_content (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            config_key   TEXT UNIQUE NOT NULL,
-            config_value TEXT DEFAULT '',
-            updated_at   TEXT DEFAULT (datetime('now','localtime'))
-        )""")
-        # 种子默认内容
-        defaults = {
-            "title": "咪卡Mik词库",
-            "subtitle": "AIGC 提示词全流程管理平台",
-            "description": "专为 AI 影视创作者打造。从剧本构思到分镜输出，\n一站管理角色、场景、提示词，支持局域网多端协同。\n内置 Ollama 16 模型池 + ComfyUI 无缝集成。",
-            "description_full": "AIGC影片制作全流程管理平台。\n\n核心能力：\n• 提示词快捷检索与复用\n• 角色/场景资产管理\n• 分镜段落编排\n• 团队协同与权限控制\n• 局域网多端同步",
-            "features": json.dumps([
-                {"icon":"🔍","title":"智能检索复用","desc":"关键词 + 语义双引擎，FTS5 全文叠加 AI 重排，700+ 词卡秒级精准调用"},
-                {"icon":"🎬","title":"图像·视频双词库","desc":"图像描述词与视频运镜词分类管理，自动首帧封面、悬停预览"},
-                {"icon":"🎞","title":"分镜全流程","desc":"总项目→分段→镜头三层提示词继承，剧本、角色、场景一体编排"},
-                {"icon":"📋","title":"项目 & 团队协同","desc":"7 阶段看板/甘特/里程碑，实时同步、在线状态、评论通知、邀请协作"},
-                {"icon":"🖼","title":"资产管理溯源","desc":"产出图片/视频入库，SHA256 去重、版本链、评分与提示词溯源"},
-                {"icon":"🤖","title":"本地 AI 引擎","desc":"Ollama 16 模型池（翻译/优化/自动标签/语义搜索）+ ComfyUI 无缝集成"}
-            ], ensure_ascii=False),
-            "cover_images": json.dumps([
-                {"src":"/static/img/covers/06825845.png","alt":"工作台总览","label":"全流程工作台"},
-                {"src":"/static/img/covers/0127e752.png","alt":"提示词检索","label":"提示词词库"},
-                {"src":"/static/img/covers/98bec4b8.png","alt":"资产与分镜","label":"资产·分镜"}
-            ], ensure_ascii=False),
-            "version": "v5.18",
-            "login_hint": "登录，开启创作",
-        }
-        for k, v in defaults.items():
-            db.execute(
-                "INSERT OR IGNORE INTO app_cover_content (config_key, config_value) VALUES (?,?)",
-                [k, v])
-        db.commit()
-    finally:
-        db.close()
-
-_ensure_table()
+    """幂等建表+种子，带重试防 DB 锁"""
+    global _ensured
+    if _ensured:
+        return
+    max_retries = 5
+    for attempt in range(max_retries):
+        db = None
+        try:
+            db = sqlite3.connect(DB_PATH, timeout=5)
+            db.row_factory = sqlite3.Row
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("""
+            CREATE TABLE IF NOT EXISTS app_cover_content (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                config_key   TEXT UNIQUE NOT NULL,
+                config_value TEXT DEFAULT '',
+                updated_at   TEXT DEFAULT (datetime('now','localtime'))
+            )""")
+            # 种子默认内容
+            defaults = {
+                "title": "咪卡Mik词库",
+                "subtitle": "AIGC 提示词全流程管理平台",
+                "description": "专为 AI 影视创作者打造。从剧本构思到分镜输出，\n一站管理角色、场景、提示词，支持局域网多端协同。\n内置 Ollama 16 模型池 + ComfyUI 无缝集成。",
+                "description_full": "AIGC影片制作全流程管理平台。\n\n核心能力：\n\u2022 提示词快捷检索与复用\n\u2022 角色/场景资产管理\n\u2022 分镜段落编排\n\u2022 团队协同与权限控制\n\u2022 局域网多端同步",
+                "features": json.dumps([
+                    {"icon":"\U0001f50d","title":"智能检索复用","desc":"关键词 + 语义双引擎，FTS5 全文叠加 AI 重排，700+ 词卡秒级精准调用"},
+                    {"icon":"\U0001f3ac","title":"图像·视频双词库","desc":"图像描述词与视频运镜词分类管理，自动首帧封面、悬停预览"},
+                    {"icon":"\U0001f39e","title":"分镜全流程","desc":"总项目→分段→镜头三层提示词继承，剧本、角色、场景一体编排"},
+                    {"icon":"\U0001f4cb","title":"项目 & 团队协同","desc":"7 阶段看板/甘特/里程碑，实时同步、在线状态、评论通知、邀请协作"},
+                    {"icon":"\U0001f5bc","title":"资产管理溯源","desc":"产出图片/视频入库，SHA256 去重、版本链、评分与提示词溯源"},
+                    {"icon":"\U0001f916","title":"本地 AI 引擎","desc":"Ollama 16 模型池（翻译/优化/自动标签/语义搜索）+ ComfyUI 无缝集成"}
+                ], ensure_ascii=False),
+                "cover_images": json.dumps([
+                    {"src":"/static/img/covers/06825845.png","alt":"工作台总览","label":"全流程工作台"},
+                    {"src":"/static/img/covers/0127e752.png","alt":"提示词检索","label":"提示词词库"},
+                    {"src":"/static/img/covers/98bec4b8.png","alt":"资产与分镜","label":"资产·分镜"}
+                ], ensure_ascii=False),
+                "version": "v5.18",
+                "login_hint": "登录，开启创作",
+            }
+            for k, v in defaults.items():
+                db.execute(
+                    "INSERT OR IGNORE INTO app_cover_content (config_key, config_value) VALUES (?,?)",
+                    [k, v])
+            db.commit()
+            _ensured = True
+            return  # 成功，退出
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower() and attempt < max_retries - 1:
+                wait_ms = 100 * (2 ** attempt) + random.randint(0, 100)
+                time.sleep(wait_ms / 1000.0)
+                continue
+            raise  # 非锁错误，或重试耗尽
+        finally:
+            if db:
+                db.close()
+    # 重试耗尽
+    raise RuntimeError("cover_api: 数据库初始化失败，重试 5 次仍被锁")
 
 # ============================================================
-# API
+# API — 每个端点首次调用时懒初始化
 # ============================================================
 
 @router.get("")
 def get_cover():
     """获取封面内容"""
+    _ensure_table()
     db = _ro()
     try:
         rows = db.execute("SELECT config_key, config_value FROM app_cover_content").fetchall()
@@ -111,6 +132,7 @@ def _verify_admin(request: Request):
 @router.put("")
 def update_cover(data: dict = Body(...), request: Request = None):
     """更新封面内容 — 仅管理员"""
+    _ensure_table()
     if request:
         _verify_admin(request)
     db = _rw()
@@ -132,6 +154,7 @@ def update_cover(data: dict = Body(...), request: Request = None):
 @router.get("/gallery")
 def list_cover_gallery(media_type: str = ""):
     """列出可用于封面的媒体 — 直接从磁盘+DB扫描"""
+    _ensure_table()
     BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     THUMB_DIR = os.path.join(BASE, "data", "thumbnails")
     VIDEO_DIR = os.path.join(BASE, "data", "videos")
@@ -203,6 +226,7 @@ def list_cover_gallery(media_type: str = ""):
 @router.post("/upload")
 async def upload_cover_image(file: UploadFile = File(None)):
     """上传封面图片 — 复用 thumbnails 模块基础设施"""
+    _ensure_table()
     import shutil, uuid
     UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "frontend", "static", "img", "covers")
     os.makedirs(UPLOAD_DIR, exist_ok=True)

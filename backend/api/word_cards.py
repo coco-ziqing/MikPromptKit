@@ -275,6 +275,19 @@ def batch_operation(data: dict):
     elif action == "delete":
         # Phase17: 统一软删除 — 防止自定义词卡永久丢失
         db.execute(f"UPDATE word_card SET is_deleted=1,deleted_at=datetime('now','localtime') WHERE id IN ({ph})", ids)
+    elif action == "clear_preview":
+        # 批量清除缩略图/视频预览
+        cleared = 0
+        for cid in ids:
+            row = db.execute("SELECT thumbnail, preview_media FROM word_card WHERE id=?", [cid]).fetchone()
+            if row:
+                _safe_remove_media(row["thumbnail"], row["preview_media"])
+                db.execute(
+                    "UPDATE word_card SET thumbnail='', preview_media='', media_type='image', updated_at=datetime('now','localtime') WHERE id=?",
+                    [cid])
+                cleared += 1
+        safe_commit()
+        return {"ok": True, "action": action, "count": cleared}
     elif action == "copy":
         tg = data.get("group_id")
         for cid in ids:
