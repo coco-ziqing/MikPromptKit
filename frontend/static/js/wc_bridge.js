@@ -1585,7 +1585,7 @@ App._showActivationDialog = function(mode, tier) {
     var ov = document.createElement('div');
     ov.className = 'modal-overlay'; ov.style.zIndex = '99999';
     ov.onclick = function(e) { if (e.target === ov) ov.remove(); };
-    ov.innerHTML = '<div class="modal-box" style="max-width:440px;" onclick="event.stopPropagation()">' +
+    ov.innerHTML = '<div class="modal-box" style="max-width:440px;background:var(--bg-card);border-radius:12px;padding:24px;" onclick="event.stopPropagation()">' +
         '<h4 style="margin:0 0 4px;">\uD83D\uDD10 激活 ' + label + '</h4>' +
         '<p style="font-size:12px;color:var(--text-muted);margin:0 0 16px;">' +
         '\uD83C\uDF89 个人词库版完全免费开源。<br>' + label + '需要主机绑定+激活码解锁扩展功能。</p>' +
