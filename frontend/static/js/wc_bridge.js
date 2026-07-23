@@ -412,7 +412,7 @@ App._showSubGroupBrowser = function(rootId, rootKey) {
     
     // 「全部词卡」大按钮
     html += '<div style="padding:12px 20px;">';
-    html += '<button onclick="App.switchGroup(' + root.id + ',\'' + (root.name||'').replace(/'/g,"\\'") + '\')" class="subgroup-browser-all" style="width:100%;padding:12px 16px;border:2px solid var(--primary,#3b82f6);border-radius:10px;background:var(--primary-light,rgba(59,130,246,.08));color:var(--primary,#3b82f6);font-size:15px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;" onmouseenter="this.style.background=var(--primary,#3b82f6);this.style.color='#fff'" onmouseleave="this.style.background=var(--primary-light,rgba(59,130,246,.08));this.style.color=var(--primary,#3b82f6)">';
+    html += '<button onclick="App.switchGroup(' + root.id + ',\'' + (root.name||'').replace(/'/g,"\\'") + '\')" onmouseenter="this.style.background=var(--primary,#3b82f6);this.style.color=\x27#fff\x27" onmouseleave="this.style.background=var(--primary-light,rgba(59,130,246,.08));this.style.color=var(--primary,#3b82f6)" class="subgroup-browser-all" style="width:100%;padding:12px 16px;border:2px solid var(--primary,#3b82f6);border-radius:10px;background:var(--primary-light,rgba(59,130,246,.08));color:var(--primary,#3b82f6);font-size:15px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;">';
     html += '<span style="font-size:20px;">📋</span> 全部词卡 <span style="font-size:13px;opacity:.8;">(' + totalCards + ' 条)</span>';
     html += '</button>';
     html += '</div>';
