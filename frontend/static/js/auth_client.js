@@ -76,7 +76,7 @@
           localStorage.setItem('pk_user', JSON.stringify(d.user));
           // 管理员可见元素
           if (d.user.role === 'admin') {
-            document.querySelectorAll('.admin-only').forEach(function(el){ el.classList.remove('admin-only'); });
+            document.querySelectorAll('.admin-only').forEach(function(el){ el.classList.remove('admin-only'); el.classList.add('admin-shown'); });
           }
           this._checkDone = true;
           return;
@@ -253,7 +253,7 @@
           localStorage.setItem('pk_user', JSON.stringify(d.user));
           this._token = d.token; this._user = d.user; this._loggedIn = true;
           if (d.user.role === 'admin') {
-            document.querySelectorAll('.admin-only').forEach(function(el){ el.classList.remove('admin-only'); });
+            document.querySelectorAll('.admin-only').forEach(function(el){ el.classList.remove('admin-only'); el.classList.add('admin-shown'); });
           }
           var m = document.getElementById('pkAuthModal'); if (m) m.remove();
           this._hideCover();

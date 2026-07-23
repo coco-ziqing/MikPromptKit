@@ -3681,7 +3681,7 @@ body.pk-auth-active{overflow:hidden}
 .aum-container .user-footer{font-size:10px;color:var(--text-muted)}
 .aum-container .empty{text-align:center;padding:60px 20px;color:var(--text-muted);grid-column:1/-1}
 .aum-container .empty .icon{font-size:48px;display:block;margin-bottom:12px}
-.admin-only{display:none}
+.admin-only{display:none}.admin-shown{display:flex!important}
 
 /* Phase35.3-DAM — 资产管家样式 */
 .fs-header h4 { color: var(--text-primary, #1e293b); }
