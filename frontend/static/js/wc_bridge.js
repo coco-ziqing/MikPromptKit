@@ -887,9 +887,17 @@ App._wcLoadPrompts = async function() {
         this._showShowcase();
         return;
     }
-    
-    // 等待 renderPrompts 猴补丁就绪（wc_bridge 在 app_core 之前加载，hook 可能尚未完成）
+    // 防御：渲染器未就绪或分组ID无效时直接降级到陈列架
     if (typeof this.renderPrompts !== 'function') {
+        if (!this.state.groupTree || this.state.groupTree.length === 0) {
+            this._showShowcase();
+            return;
+        }
+        // 分组存在性检查
+        var found = false;
+        var findGid = function(nodes) { for (var i=0;i<nodes.length;i++){ if(nodes[i].id===s.currentGroupId){found=true;return;} if(nodes[i].children)findGid(nodes[i].children); }};
+        findGid(this.state.groupTree);
+        if (!found) { s.currentGroupId=null; this._showShowcase(); return; }
         for (var _w = 0; _w < 15; _w++) {
             await new Promise(function(r) { setTimeout(r, 200); });
             if (typeof App.renderPrompts === 'function') break;
