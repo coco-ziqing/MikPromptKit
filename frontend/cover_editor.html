@@ -36,7 +36,7 @@ h2{margin:0;font-size:15px;font-weight:700}a{color:var(--text-muted);text-decora
 <div class="toast" id="toast"></div>
 <script>
 function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
-var CVE={_data:{},_imgCount:3,_formSnapshot:null,
+var CVE={_data:{},_imgCount:3,_formSnapshot:null,_skipSnapshot:false,
 async init(){var t=localStorage.getItem('pk_token_v1');if(!t){location.href='/';return;}var u;try{u=JSON.parse(localStorage.getItem('pk_user'));}catch(e){}if(!u||u.role!=='admin'){document.getElementById('app').innerHTML='<div style="text-align:center;padding:80px 20px;color:var(--text-muted);"><div style="font-size:48px;margin-bottom:12px;">🚫</div><h4>仅管理员可编辑封面内容</h4><p>请使用管理员账户登录</p><a href="/">← 返回首页</a></div>';return;}try{var r=await fetch('/api/cover');var d=await r.json();if(d.ok)this._data=d.cover||{};}catch(e){}this._imgCount=Math.max(this._imgCount, (Array.isArray(this._data.cover_images)?this._data.cover_images.length:0), 1);this._featCount=Math.max((Array.isArray(this._data.features)?this._data.features.length:0), 1);this.render();},
 toast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast toast-'+(t||'success')+' show';setTimeout(function(){el.classList.remove('show')},2000);},
 // 保存表单当前值到快照，防止重绘丢数据
@@ -47,7 +47,9 @@ _snap(k,def){return(this._formSnapshot&&this._formSnapshot[k])||def||'';},
 render(){
   var d=this._data,images=Array.isArray(d.cover_images)?d.cover_images:[],feats=Array.isArray(d.features)?d.features:[];
   this._imgCount=Math.max(this._imgCount, images.length, 1);
-  this._saveFormSnapshot();
+  // 只有未设标志时才读 DOM 做快照；removeSlot/removeFeat 已手动重建 snapshot 并设 _skipSnapshot
+  if(!this._skipSnapshot){this._saveFormSnapshot();}
+  this._skipSnapshot=false;
   var h='';
   h+='<div class="form-group"><label>🔍 工具名称</label><input type="text" id="cv_title" value="'+esc(this._snap('cv_title',d.title||'咪卡Mik词库'))+'"></div>';
   h+='<div class="form-group"><label>📌 副标题</label><input type="text" id="cv_subtitle" value="'+esc(this._snap('cv_subtitle',d.subtitle||''))+'"></div>';
@@ -83,8 +85,10 @@ render(){
 },
 addImage(){this._saveFormSnapshot();this._imgCount++;this.render();},
 addFeature(){this._saveFormSnapshot();this._featCount++;this.render();},
-removeFeat(idx){if(this._featCount<=1)return;this._saveFormSnapshot();var newS={};var j=0;for(var i=0;i<this._featCount;i++){if(i===idx)continue;if(this._formSnapshot){newS['cv_feat_icon_'+j]=this._formSnapshot['cv_feat_icon_'+i]||'';newS['cv_feat_title_'+j]=this._formSnapshot['cv_feat_title_'+i]||'';newS['cv_feat_desc_'+j]=this._formSnapshot['cv_feat_desc_'+i]||'';}j++;}for(var k=0;k<this._featCount;k++){delete this._formSnapshot['cv_feat_icon_'+k];delete this._formSnapshot['cv_feat_title_'+k];delete this._formSnapshot['cv_feat_desc_'+k];}this._formSnapshot=Object.assign(this._formSnapshot||{},newS);this._featCount--;this.render();},
-removeSlot(idx){if(this._imgCount<=1)return;this._saveFormSnapshot();var newS={};var j=0;for(var i=0;i<this._imgCount;i++){if(i===idx)continue;if(this._formSnapshot){newS['cv_img_src_'+j]=this._formSnapshot['cv_img_src_'+i]||'';newS['cv_img_alt_'+j]=this._formSnapshot['cv_img_alt_'+i]||'';newS['cv_img_label_'+j]=this._formSnapshot['cv_img_label_'+i]||'';}j++;}this._formSnapshot=Object.assign(this._formSnapshot||{},newS);this._imgCount--;this.render();},
+removeFeat(idx){if(this._featCount<=1)return;this._saveFormSnapshot();var newS={};var j=0;for(var i=0;i<this._featCount;i++){if(i===idx)continue;if(this._formSnapshot){newS['cv_feat_icon_'+j]=this._formSnapshot['cv_feat_icon_'+i]||'';newS['cv_feat_title_'+j]=this._formSnapshot['cv_feat_title_'+i]||'';newS['cv_feat_desc_'+j]=this._formSnapshot['cv_feat_desc_'+i]||'';}j++;}for(var k=0;k<this._featCount;k++){delete this._formSnapshot['cv_feat_icon_'+k];delete this._formSnapshot['cv_feat_title_'+k];delete this._formSnapshot['cv_feat_desc_'+k];}this._formSnapshot=Object.assign(this._formSnapshot||{},newS);this._featCount--;// 同步删除服务器数据中的对应项，防止render()用features.length恢复计数
+var fts=Array.isArray(this._data.features)?this._data.features:[];fts.splice(idx,1);this._data.features=fts;this._skipSnapshot=true;this.render();},
+removeSlot(idx){if(this._imgCount<=1)return;this._saveFormSnapshot();var newS={};var j=0;for(var i=0;i<this._imgCount;i++){if(i===idx)continue;if(this._formSnapshot){newS['cv_img_src_'+j]=this._formSnapshot['cv_img_src_'+i]||'';newS['cv_img_alt_'+j]=this._formSnapshot['cv_img_alt_'+i]||'';newS['cv_img_label_'+j]=this._formSnapshot['cv_img_label_'+i]||'';}j++;}this._formSnapshot=Object.assign(this._formSnapshot||{},newS);this._imgCount--;// 同步删除服务器数据中的对应项，防止render()用images.length恢复计数
+var imgs=Array.isArray(this._data.cover_images)?this._data.cover_images:[];imgs.splice(idx,1);this._data.cover_images=imgs;this._skipSnapshot=true;this.render();},
 
 pickFromGallery(idx){
   var self=this;this._saveFormSnapshot();
