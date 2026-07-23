@@ -68,6 +68,18 @@ button{padding:10px 20px;border:none;border-radius:8px;font-size:14px;font-weigh
 </div>
 
 <script>
+// 读取 URL 参数自动预选版本
+(function() {
+  var p = new URLSearchParams(window.location.search);
+  var tier = p.get('tier');
+  if (tier === 'personal' || tier === 'team') {
+    document.getElementById('tier').value = tier;
+    // 更新标题提示
+    var label = tier === 'personal' ? '个人项目版' : '团队项目版';
+    document.querySelector('.sub').textContent = '为「' + label + '」生成绑定主机的激活码';
+  }
+})();
+
 async function generate() {
   var fp = document.getElementById('fingerprint').value.trim();
   if (fp.length < 8) { showError('请输入有效的目标主机指纹（至少8位hex）'); return; }
