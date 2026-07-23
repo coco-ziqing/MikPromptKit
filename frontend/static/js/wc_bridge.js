@@ -21,13 +21,11 @@ App.loadGroupTree = async function() {
     try {
         var d = await this.fetchJSON('/api/v4/word-cards/groups/tree');
         if (d && d.tree) {
-            // Phase27: 角色/场景根组默认折叠，点击父组时右侧显示子分组浏览器
+            // 所有根组/父组默认折叠，点击三角展开，点击名称打开子分组浏览器
             var _ensureCollapsed = function(nodes) {
                 for (var i = 0; i < nodes.length; i++) {
                     var n = nodes[i];
-                    if (n.group_key === 'char_root' || n.group_key === 'scene_root') {
-                        if (n._expanded === undefined) n._expanded = false;
-                    }
+                    if (n._expanded === undefined) n._expanded = false;
                     if (n.children) _ensureCollapsed(n.children);
                 }
             };
@@ -598,34 +596,26 @@ App._renderTreeNode = function(node, depth) {
     
     var nodeId = 'treeNode_' + (node.group_type || '') + '_' + node.id;
     
-    // ── ROOT: 名称区域点击 → 子分组浏览器（char_root/scene_root/root_atom_image/global_* 等）──
-    var hasOnlyLeafSubs = false;
-    if (node.children && node.children.length > 0 && node.group_type !== 'sub') {
-        // 所有一级子节点都是无孙节点的叶子 → 用子分组浏览器
-        hasOnlyLeafSubs = node.children.every(function(c) {
-            return !c.children || c.children.length === 0;
-        });
-    }
+    // ── ROOT: 箭头→折叠/展开, 名称区域→子分组浏览器 ──
     var isRoot = node.group_type === 'root' || (node.children && node.children.length > 0 && node.group_type !== 'sub');
     if (isRoot) {
-        var isExpanded = node._expanded !== false;
-        var arrow = isExpanded ? '▼' : '▶';
-        var expandIcon = '<span class="tree-arrow" data-node="' + nodeId + '" onclick="event.stopPropagation();App._toggleTreeNode(\'' + nodeId + '\',' + node.id + ')" style="cursor:pointer;width:20px;display:inline-block;font-size:12px;text-align:center;">' + arrow + '</span>';
+        var isExpanded = node._expanded === true;
+        var arrow = isExpanded ? '\u25BC' : '\u25B6';
+        // 箭头只负责折叠/展开，stopPropagation 防止冒泡到名称点击
+        var expandIcon = '<span class="tree-arrow" onclick="event.stopPropagation();App._toggleTreeNode(\x27' + nodeId + '\x27,' + node.id + ')" style="cursor:pointer;width:20px;display:inline-block;font-size:12px;text-align:center;">' + arrow + '</span>';
         
         var rootAddBtn = '';
         if (this.state.editMode) {
-            rootAddBtn = '<button class="tree-add-btn" onclick="event.stopPropagation();App._treeQuickAdd(' + node.id + ')" title="在此根下新建子分类">+</button>';
+            rootAddBtn = '<button class="tree-add-btn" onclick="event.stopPropagation();App._treeQuickAdd(' + node.id + ')\" title=\"在此根下新建子分类\">+</button>';
         }
         
-        // 名称区域点击：有 leaf-sub 子节点时打开子分组浏览器，否则切换分组
-        var nameOnClick = hasOnlyLeafSubs
-            ? 'onclick="event.stopPropagation();App._showSubGroupBrowser(' + node.id + ',\'' + (node.group_key||'').replace(/'/g,"\\'") + '\')"'
-            : '';
+        // 名称/图标区域点击 → 子分组浏览器（所有有子节点的父组统一行为）
+        var nameOnClick = 'onclick="event.stopPropagation();App._showSubGroupBrowser(' + node.id + ',\x27' + (node.group_key||'').replace(/'/g,"\\'") + '\x27)"';
         
         var html = '<div id="' + nodeId + '" class="tree-node tree-root">' +
             expandIcon +
-            '<span ' + nameOnClick + ' style="font-size:17px;width:22px;text-align:center;' + (nameOnClick?'cursor:pointer;':'') + '">' + icon + '</span>' +
-            '<span ' + nameOnClick + ' style="font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;' + (nameOnClick?'cursor:pointer;':'') + '">' + App._escape(displayName) + '</span>' +
+            '<span ' + nameOnClick + ' style="font-size:17px;width:22px;text-align:center;cursor:pointer;" title="查看子分组">' + icon + '</span>' +
+            '<span ' + nameOnClick + ' style="font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;cursor:pointer;" title="查看子分组">' + App._escape(displayName) + '</span>' +
             countStr +
             rootAddBtn +
             '</div>';
