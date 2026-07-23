@@ -397,8 +397,24 @@ App._showSubGroupBrowser = function(rootId, rootKey) {
     sumCards(root.children);
     
     var subs = root.children.filter(function(c) {
-        return c.group_type === 'sub' && (!c.children || c.children.length === 0);
+        // 只取叶子节点（无孙节点）作为子分组卡片展示
+        // 不限制 group_type → 覆盖 sub/atom/builtin/custom/seedance 等所有类型
+        return !c.children || c.children.length === 0;
     });
+    // 若一级子节点全是中间容器，则取下一层叶子
+    if (subs.length === 0 && root.children.some(function(c){ return c.children && c.children.length > 0; })) {
+        for (var ri = 0; ri < root.children.length; ri++) {
+            var mid = root.children[ri];
+            if (mid.children) {
+                for (var mi = 0; mi < mid.children.length; mi++) {
+                    var leaf = mid.children[mi];
+                    if (!leaf.children || leaf.children.length === 0) {
+                        subs.push(leaf);
+                    }
+                }
+            }
+        }
+    }
     
     // 分组名称清洗
     var cleanName = (root.name || root.group_key || '').replace(/^[🎭🏞🖼🎬\s]+/, '').trim();
