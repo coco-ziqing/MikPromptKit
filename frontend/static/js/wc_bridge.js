@@ -452,7 +452,8 @@ App._renderTreeNode = function(node, depth) {
     
     // 计算 countStr
     var countStr = '';
-    if (node.group_type === 'root' || node.group_type === 'sub') {
+    var hasChildren = node.children && node.children.length > 0;
+    if (node.group_type === 'root' || node.group_type === 'sub' || hasChildren) {
         // 递归统计所有后代叶子节点的 card_count
         var totalCards = 0;
         function sumRecursive(ns) {
@@ -473,8 +474,9 @@ App._renderTreeNode = function(node, depth) {
     
     var nodeId = 'treeNode_' + (node.group_type || '') + '_' + node.id;
     
-    // ── ROOT: 只有根节点可折叠 ──
-    if (node.group_type === 'root') {
+    // ── ROOT: 树根节点(a group_type='root' 或有子节点且非 sub)可折叠 ──
+    var isRoot = node.group_type === 'root' || (node.children && node.children.length > 0 && node.group_type !== 'sub');
+    if (isRoot) {
         var isExpanded = node._expanded !== false;
         var arrow = isExpanded ? '▼' : '▶';
         var expandIcon = '<span class="tree-arrow" data-node="' + nodeId + '" style="cursor:pointer;width:20px;display:inline-block;font-size:12px;text-align:center;">' + arrow + '</span>';
