@@ -145,10 +145,7 @@ body {
     z-index: 2;
 }
 .search-mode-btn:hover { background: var(--hover-bg,#f1f5f9); }
-/* 行内搜索框的搜索模式按钮覆盖：取消absolute定位，适配flex布局 */
-#inlineSearchBox { display: flex !important; flex: 0 1 260px !important; min-width: 180px !important; max-width: 360px !important; position: static !important; }
-#inlineSearchBox input { flex: 1; min-width: 0; }
-#inlineSearchModeBtn { position: static !important; transform: none !important; right: auto !important; flex-shrink: 0; }
+/* 行内搜索框 —— 按钮嵌在输入框内部右侧 */
 .header-actions { display: flex; align-items: center; gap: 6px; margin-left: 12px; }
 .header-btn {
     width: 34px; height: 34px; border: none; border-radius: 8px;
