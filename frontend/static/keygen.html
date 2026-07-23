@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PromptKit 激活码生成器</title>
+<style>
+:root{--bg:#0f172a;--card-bg:#1e293b;--text:#f1f5f9;--text-muted:#94a3b8;--border:#334155;--primary:#3b82f6;--success:#10b981}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:var(--card-bg);border:1px solid var(--border);border-radius:16px;padding:32px;max-width:520px;width:100%}
+h2{margin:0 0 4px;font-size:20px}h2 span{font-size:14px;color:var(--text-muted);font-weight:400}
+p.sub{margin:0 0 24px;font-size:13px;color:var(--text-muted)}
+label{display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+input,select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px;margin-bottom:14px;outline:none}
+input:focus,select:focus{border-color:var(--primary)}
+.row{display:flex;gap:10px}.row>div{flex:1}
+button{padding:10px 20px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-gen{width:100%;background:var(--primary);color:#fff;font-size:16px;padding:14px}
+.btn-gen:hover{opacity:.9}
+.result{display:none;margin-top:20px;padding:16px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:10px}
+.result .code{font-size:22px;font-weight:800;letter-spacing:2px;color:var(--success);text-align:center;font-family:monospace;margin:8px 0}
+.result .meta{font-size:12px;color:var(--text-muted);text-align:center}
+.copy-btn{margin-top:10px;width:100%;background:var(--success);color:#fff}
+.error{display:none;margin-top:12px;padding:12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;color:#ef4444;font-size:13px}
+.footnote{margin-top:20px;font-size:11px;color:var(--text-muted);text-align:center}
+</style>
+</head>
+<body>
+<div class="card">
+<h2>🔐 <span>PromptKit</span><br>激活码生成器</h2>
+<p class="sub">为个人项目版 / 团队项目版生成绑定主机的激活码</p>
+
+<label>版本</label>
+<select id="tier">
+  <option value="personal">📦 个人项目版 (PKP-)</option>
+  <option value="team">👥 团队项目版 (PKT-)</option>
+</select>
+
+<label>目标主机指纹</label>
+<input type="text" id="fingerprint" placeholder="从目标机的 /api/license/info 获取…" maxlength="32" autocomplete="off">
+
+<div class="row">
+  <div>
+    <label>有效期</label>
+    <select id="days">
+      <option value="30">30 天</option>
+      <option value="90">90 天（季度）</option>
+      <option value="180">180 天</option>
+      <option value="365" selected>365 天（年）</option>
+      <option value="0">永久</option>
+    </select>
+  </div>
+  <div>
+    <label>生成</label>
+    <button class="btn-gen" onclick="generate()">⚡ 生成激活码</button>
+  </div>
+</div>
+
+<div class="result" id="result">
+  <div class="meta" id="meta">个人版 · 365天 · 指纹 d9e484f3…</div>
+  <div class="code" id="code">PKP-XXXX-XXXX-XXXX</div>
+  <button class="copy-btn" onclick="copy()">📋 复制激活码</button>
+</div>
+
+<div class="error" id="error"></div>
+
+<p class="footnote">目标主机数据库需含有相同的 .license_seed 文件（位于 data/ 目录）</p>
+</div>
+
+<script>
+async function generate() {
+  var fp = document.getElementById('fingerprint').value.trim();
+  if (fp.length < 8) { showError('请输入有效的目标主机指纹（至少8位hex）'); return; }
+  var tier = document.getElementById('tier').value;
+  var days = parseInt(document.getElementById('days').value);
+
+  var errEl = document.getElementById('error');
+  var resEl = document.getElementById('result');
+  errEl.style.display = 'none';
+  resEl.style.display = 'none';
+
+  try {
+    var r = await fetch('/api/license/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier: tier, fingerprint: fp, days: days })
+    });
+    var d = await r.json();
+    if (d.ok && d.code) {
+      document.getElementById('code').textContent = d.code;
+      var label = tier === 'personal' ? '个人版' : '团队版';
+      var daysLabel = days === 0 ? '永久' : days + '天';
+      document.getElementById('meta').textContent = label + ' · ' + daysLabel + ' · 指纹 ' + fp.slice(0,8) + '…';
+      resEl.style.display = 'block';
+    } else {
+      showError(d.detail || '生成失败');
+    }
+  } catch(e) { showError('网络错误: ' + e.message); }
+}
+
+function copy() {
+  var code = document.getElementById('code').textContent;
+  navigator.clipboard.writeText(code).then(function() {
+    var btn = document.querySelector('.copy-btn');
+    btn.textContent = '✅ 已复制!';
+    setTimeout(function() { btn.textContent = '📋 复制激活码'; }, 2000);
+  });
+}
+
+function showError(msg) {
+  var el = document.getElementById('error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+</script>
+</body>
+</html>

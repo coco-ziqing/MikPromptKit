@@ -181,3 +181,21 @@ def deactivate_license(data: dict = Body(...)):
     if os.path.exists(p):
         os.remove(p)
     return {"ok": True, "message": f"{'个人项目版' if tier == 'personal' else '团队项目版'}已解除激活"}
+
+
+@router.post("/generate")
+def generate_activation_code(data: dict = Body(...)):
+    """生成激活码 — 管理员工具，需提供目标主机指纹"""
+    tier = (data.get("tier") or "").strip()
+    fingerprint = (data.get("fingerprint") or "").strip()
+    days = int(data.get("days", 365))
+    if tier not in ("personal", "team"):
+        raise HTTPException(400, "参数错误：tier 必须为 personal 或 team")
+    if len(fingerprint) < 8:
+        raise HTTPException(400, "fingerprint 长度不足")
+    try:
+        from keygen import generate_code
+        code = generate_code(tier, fingerprint, days)
+        return {"ok": True, "code": code, "tier": tier, "days": days, "fingerprint": fingerprint[:8] + "..."}
+    except Exception as e:
+        raise HTTPException(500, f"生成失败: {str(e)}")

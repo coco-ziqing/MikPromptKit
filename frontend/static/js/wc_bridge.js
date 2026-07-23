@@ -1541,6 +1541,12 @@ App._switchMode = async function(mode, btn) {
                 return;
             }
         } catch(e) {}
+        // 预加载本机指纹供激活弹窗显示
+        try {
+            var fr = await fetch('/api/license/info');
+            var fd = await fr.json();
+            if (fd.ok) App._licenseFingerprint = fd.fingerprint;
+        } catch(e2) {}
         App._showActivationDialog(mode, tier);
         setTimeout(function() {
             var cur = App.state._currentMode || 'library';
@@ -1588,7 +1594,8 @@ App._showActivationDialog = function(mode, tier) {
     ov.innerHTML = '<div class="modal-box" style="max-width:440px;background:var(--bg-card);border-radius:12px;padding:24px;" onclick="event.stopPropagation()">' +
         '<h4 style="margin:0 0 4px;">\uD83D\uDD10 激活 ' + label + '</h4>' +
         '<p style="font-size:12px;color:var(--text-muted);margin:0 0 16px;">' +
-        '\uD83C\uDF89 个人词库版完全免费开源。<br>' + label + '需要主机绑定+激活码解锁扩展功能。</p>' +
+        '\uD83C\uDF89 个人词库版完全免费开源。<br>' + label + '需主机绑定+激活码解锁。</p>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;padding:8px;background:var(--bg);border-radius:6px;">本机指纹: <code style="word-break:break-all;">' + (App._licenseFingerprint||'加载中...') + '</code> <a href="/static/keygen.html" target="_blank" style="color:var(--primary);font-weight:600;">\uD83D\uDCCB 生成器</a></div>' +
         '<div id="licMsg" style="font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;display:none;"></div>' +
         '<div class="form-group"><label style="font-size:12px;">激活码</label>' +
         '<input type="text" id="licCode" placeholder="' + fmt + '-XXXX-XXXX-XXXX" style="width:100%;padding:10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input);color:var(--text-main);font-size:14px;text-transform:uppercase;letter-spacing:1px;" maxlength="19" autofocus>' +
