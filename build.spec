@@ -96,3 +96,9 @@ coll = COLLECT(
     upx_exclude=[],
     name='PromptKit',
 )
+
+# 清理 COLLECT 外的冗余 EXE 文件（dist/PromptKit.exe 无 _internal/ 无法独立运行）
+import os as _os
+_redundant = Path(ROOT) / 'dist' / 'PromptKit.exe'
+if _redundant.exists():
+    _os.remove(str(_redundant))
