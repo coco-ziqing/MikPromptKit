@@ -558,19 +558,19 @@ var App = window.App || {
         this.state._searchMode = modes[this.state._searchMode] || 'keyword';
         var btn = document.getElementById('searchModeBtn');
         var inlineBtn = document.getElementById('inlineSearchModeBtn');
+        var self = this;
         var update = function(el) {
             if (!el) return;
             if (self.state._searchMode === 'semantic') {
-                el.innerHTML = '<span style="font-weight:600;">🧠</span>';
+                el.innerHTML = '<span style="font-weight:600;">\uD83E\uDDE0</span>';
                 el.title = '语义搜索（点击切换回关键词）';
                 el.style.color = '#818cf8';
             } else {
-                el.innerHTML = '🔤';
+                el.innerHTML = '\uD83D\uDD24';
                 el.title = '关键词搜索（点击切换为语义）';
                 el.style.color = '#94a3b8';
             }
         };
-        var self = this;
         update(btn);
         update(inlineBtn);
         // 如果当前有搜索词，重新搜索
