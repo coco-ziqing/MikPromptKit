@@ -1519,6 +1519,39 @@ App._wcSetupCardDrag = function() {
     });
 };
 
+// 全局辅助：复制本机指纹（激活弹窗内按钮调用）
+window._licCopyFp = function() {
+    var fp = App._licenseFingerprint || '';
+    var btn = document.getElementById('licFpCopy');
+    var msg = document.getElementById('licFpMsg');
+    var done = function() {
+        if (btn) { btn.textContent = '\u2705 已复制'; btn.style.background = '#059669'; btn.style.color = '#fff'; btn.style.borderColor = '#059669'; }
+        if (msg) { msg.style.display = 'block'; msg.style.background = 'rgba(16,185,129,.1)'; msg.style.color = '#10b981'; msg.textContent = '\u2705 指纹已复制到剪贴板'; }
+        setTimeout(function() {
+            if (btn) { btn.textContent = '\uD83D\uDCCB 复制指纹'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
+            if (msg) { msg.style.display = 'none'; }
+        }, 1800);
+    };
+    if (!fp) return;
+    try {
+        navigator.clipboard.writeText(fp).then(done).catch(function() {
+            var ta = document.createElement('textarea');
+            ta.value = fp; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+            document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); } catch(e) {}
+            document.body.removeChild(ta);
+            done();
+        });
+    } catch(e) {
+        var ta = document.createElement('textarea');
+        ta.value = fp; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch(e2) {}
+        document.body.removeChild(ta);
+        done();
+    }
+};
+
 // ============================================================
 // 三模式版本切换 + 许可激活
 // ============================================================
@@ -1598,8 +1631,10 @@ App._showActivationDialog = function(mode, tier) {
         '<div style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">\uD83D\uDD0D 本机指纹</label>' +
         '<div style="display:flex;gap:8px;align-items:center;">' +
         '<code style="flex:1;padding:8px 10px;background:var(--bg);border:1px solid var(--border-color);border-radius:6px;font-size:12px;word-break:break-all;color:var(--text);">' + (App._licenseFingerprint||'加载中...') + '</code>' +
-        '<button id="licFpCopy" onclick="var fp=(App._licenseFingerprint||\x27\x27);var b=this;navigator.clipboard.writeText(fp).then(function(){b.textContent=\x27\u2705 已复制\x27;b.style.background=\x27#059669\x27;setTimeout(function(){b.textContent=\x27\uD83D\uDCCB 复制指纹\x27;b.style.background=\x27\x27},1800)}).catch(function(){var ta=document.createElement(\x27textarea\x27);ta.value=fp;ta.style.position=\x27fixed\x27;ta.style.left=\x27-9999px\x27;document.body.appendChild(ta);ta.select();document.execCommand(\x27copy\x27);document.body.removeChild(ta);b.textContent=\x27\u2705 已复制\x27;b.style.background=\x27#059669\x27;setTimeout(function(){b.textContent=\x27\uD83D\uDCCB 复制指纹\x27;b.style.background=\x27\x27},1800)})" style="padding:8px 14px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s;" onmouseenter="this.style.borderColor=var(--primary);this.style.color=var(--primary)" onmouseleave="this.style.borderColor=var(--border-color);this.style.color=var(--text)">\uD83D\uDCCB 复制指纹</button>' +
-        '</div></div>' +
+        '<button id="licFpCopy" onclick="window._licCopyFp()" style="padding:8px 14px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s;" onmouseenter="this.style.borderColor=var(--primary);this.style.color=var(--primary)" onmouseleave="this.style.borderColor=var(--border-color);this.style.color=var(--text)">\uD83D\uDCCB 复制指纹</button>' +
+        '</div>' +
+        '<div id="licFpMsg" style="font-size:11px;margin-top:6px;padding:6px 10px;border-radius:4px;display:none;"></div>' +
+        '</div>' +
         '<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">' +
         '<a href="/static/keygen.html" target="_blank" style="color:var(--primary);">\uD83D\uDD0C 打开激活码生成器 →</a></div>' +
         '<div id="licMsg" style="font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;display:none;"></div>' +
