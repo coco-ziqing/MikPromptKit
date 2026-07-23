@@ -23,7 +23,11 @@ except Exception:
 router = APIRouter(tags=["资产库"])
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.abspath(os.path.join(HERE, "..", "..", "data"))
+try:
+    from paths import get_data_dir
+    DATA_DIR = get_data_dir()
+except Exception:
+    DATA_DIR = os.path.abspath(os.path.join(HERE, "..", "..", "data"))
 DB = os.path.join(DATA_DIR, "prompts.db")
 WS_ROOT = os.path.join(DATA_DIR, "workspaces")
 THUMB_DIR = os.path.join(DATA_DIR, "catalog_thumbs")

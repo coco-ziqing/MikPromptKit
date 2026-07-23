@@ -15,7 +15,11 @@ except Exception:
 
 router = APIRouter(tags=["项目角色场景实例"])
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.abspath(os.path.join(HERE, "..", "..", "data"))
+try:
+    from paths import get_data_dir
+    DATA_DIR = get_data_dir()
+except Exception:
+    DATA_DIR = os.path.abspath(os.path.join(HERE, "..", "..", "data"))
 DB = os.path.join(DATA_DIR, "prompts.db")
 ROLE_ASSET_DIR = os.path.join(DATA_DIR, "role_assets")
 ROLE_THUMB_DIR = os.path.join(DATA_DIR, "role_thumbs")
