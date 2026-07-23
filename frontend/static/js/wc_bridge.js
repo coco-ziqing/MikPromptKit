@@ -368,8 +368,12 @@ App._showSubGroupBrowser = function(rootId, rootKey) {
     findRoot(tree);
     if (!root || !root.children) return;
     
-    // 切换到首页视图
-    if (typeof this.switchView === 'function') this.switchView('home');
+    // 子分组浏览器绕过 switchView → loadPrompts 链，直接操作 DOM
+    // 避免 async _wcLoadPrompts 在浏览器 HTML 写入后再覆盖 promptList
+    this.state.currentGroupId = null;
+    this.state.currentGroupName = '';
+    var vh = document.getElementById('viewHome');
+    if (vh) vh.classList.add('active-view');
     
     // 记住父组ID，后续从子分组返回时可回到此处
     this.state._browserParentId = rootId;
