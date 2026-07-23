@@ -34,7 +34,7 @@ os.makedirs(WC_VIDEO_DIR, exist_ok=True)
 
 @router.get("/libraries")
 def list_libraries(category: str = Query(None)):
-    """获取所有维度词库列表"""
+    """获取所有维度词库列表（含子组卡片递归统计）"""
     db = get_db()
     if category:
         rows = db.execute(
@@ -50,6 +50,15 @@ def list_libraries(category: str = Query(None)):
             "SELECT COUNT(*) as cnt FROM prompt_word_card WHERE library_id=?",
             [r["id"]]
         ).fetchone()["cnt"]
+        # Phase20 兼容：父容器组（global_style/global_negative）自身无卡片，
+        # 递归统计其子组 word_card 数量
+        if card_count == 0:
+            child_count = db.execute("""
+                SELECT COUNT(*) as cnt FROM word_card wc
+                INNER JOIN word_card_group wcg ON wc.group_id = wcg.id
+                WHERE wcg.parent_group_id = ? AND wc.is_deleted = 0
+            """, [r["id"]]).fetchone()["cnt"]
+            card_count = child_count
         result.append({**dict(r), "card_count": card_count})
     return {"libraries": result}
 

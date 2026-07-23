@@ -33,10 +33,13 @@ st,d = call("POST","/api/devices/pair-code", token=ADMIN)
 check("生成配对码", st==200 and "code" in d and len(d["code"])==6)
 pair_code = d.get("code","")
 
-# editor也能配对（先测试）
-st2,d2 = call("POST","/api/devices/pair-code", token=EDITOR)
-check("editor也能配对", st2==200 and "code" in d2)
-editor_code = d2.get("code","")
+# editor 不能配对（require_role("admin") 守卫生效）
+st2,_ = call("POST","/api/devices/pair-code", token=EDITOR)
+check("editor不能配对", st2==403)
+
+# viewer 也不能配对
+st_v,_ = call("POST","/api/devices/pair-code", token=VIEWER)
+check("viewer不能配对", st_v==403)
 
 # === 2 注册（用editor的码，因为配完即用，admin的码已被editor覆盖） ===
 st,_ = call("POST","/api/device/register", {"name":"test","platform":"win"})
