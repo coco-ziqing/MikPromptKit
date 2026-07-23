@@ -80,8 +80,8 @@ def verify_code(code: str, fingerprint: str) -> dict:
     sig_given = (m.group(2) + m.group(3) + m.group(4)).lower()
     tier = "personal" if prefix == "PKP" else "team"
 
-    # 尝试匹配 payload（tier+days—需要枚举有效期范围）
-    for days in range(0, 3660, 30):  # 0, 30, 60, ... 3650 → 支持0(永久)和月度
+    # 尝试匹配 payload（tier+days — 覆盖所有可选有效期）
+    for days in (0, 30, 90, 180, 365, 730, 1825):
         payload = f"{tier[:8]:<8}{days:04d}{fingerprint[:32]}"
         sig = hmac.new(seed, payload.encode(), hashlib.sha256).hexdigest()[:12]
         if sig == sig_given:
