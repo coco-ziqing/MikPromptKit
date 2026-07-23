@@ -13,6 +13,7 @@ App.state.groupTree = [];        // 嵌套树 [{...children:[...]}]
 App.state.currentGroupId = null; // 当前选中的分组 ID (数字)
 App.state.currentGroupName = ''; // 当前选中分组名
 App.state.showcaseGroups = [];   // 陈列架分组列表（叶子节点）
+App.state._browserParentId = null; // 从子分组浏览器进入的父组ID, 返回时重新打开浏览器
 
 // ============================================================
 // 1. loadGroupTree: 加载嵌套分组树
@@ -83,6 +84,7 @@ App.switchGroup = async function(groupId, groupName) {
 App.switchAllGroups = function() {
     this.state.currentGroupId = null;
     this.state.currentGroupName = '';
+    this.state._browserParentId = null;
     this.state.searchQuery = '';
     this.state.page = 1;
     // 回到陈列架时保存当前选择 → 清空（陈列架无批量操作）
@@ -368,6 +370,9 @@ App._showSubGroupBrowser = function(rootId, rootKey) {
     
     // 切换到首页视图
     if (typeof this.switchView === 'function') this.switchView('home');
+    
+    // 记住父组ID，后续从子分组返回时可回到此处
+    this.state._browserParentId = rootId;
     
     var container = document.getElementById('promptList');
     if (!container) return;
@@ -985,6 +990,29 @@ App._scrollSidebarToGroup = function(groupId) {
     }
     // 滚动：目标元素显示在侧边栏顶部下方 80px
     sidebar.scrollTo({ top: Math.max(0, el.offsetTop - 80), behavior: 'smooth' });
+};
+
+// Phase15: 智能返回 — 从子分组返回父组浏览器, 从父组返回词库首页
+App._wcGoBack = function() {
+    var pid = this.state._browserParentId;
+    if (pid) {
+        // 当前有浏览器父组 → 返回父组浏览器
+        var tree = this.state.groupTree;
+        var root = null;
+        var findRoot = function(nodes) {
+            for (var i = 0; i < nodes.length; i++) {
+                if (nodes[i].id === pid) { root = nodes[i]; return; }
+                if (nodes[i].children) findRoot(nodes[i].children);
+            }
+        };
+        findRoot(tree);
+        if (root) {
+            this._showSubGroupBrowser(pid, root.group_key || '');
+            return;
+        }
+    }
+    // 无父组上下文 → 返回词库首页
+    this.switchAllGroups();
 };
 
 // Phase15: 返回按钮 + 标题路径 — 整合到 page-header 行内
