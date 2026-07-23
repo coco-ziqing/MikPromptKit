@@ -205,7 +205,7 @@ var App = window.App || {
         // 初始默认显示 home 视图（延迟到树加载完成后渲染）
         // 先不调用 switchView，等 tree 加载完再渲染
         document.getElementById('viewHome').classList.add('active-view');
-        document.getElementById('globalSearchBox').style.visibility = 'visible';
+        // 搜索框已迁至词库页 header 行内，导航栏不再显示
         
         try {
             // Phase38: 并行加载：树 + 统计 + 收藏 + 词包 + 模型配置
@@ -393,7 +393,7 @@ var App = window.App || {
 
         // Phase18-fix: 所有 getElementById 加空检查，防止分组切换竞态 classList null 崩溃
         var _safeShow = function(elId) { var e = document.getElementById(elId); if (e) e.classList.add('active-view'); };
-        var _sbox = function(v) { var e = document.getElementById('globalSearchBox'); if (e) e.style.visibility = v || 'hidden'; };
+        var _sbox = function(v) { var e = document.getElementById('globalSearchBox'); if (e) e.style.display = (v==='visible')?'none':'none'; };
         if (view === 'home') {
             _safeShow('viewHome');
             _sbox('visible');

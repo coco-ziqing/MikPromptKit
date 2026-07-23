@@ -25,7 +25,9 @@
             <button class="pk-mode-btn" data-mode="project" onclick="App._switchMode('project',this)" title="项目管理 / 看板 / 资产库">📦</button>
             <button class="pk-mode-btn" data-mode="team" onclick="App._switchMode('team',this)" title="共享项目 / 成员协作 / 审核">👥</button>
         </div>
-        <div class="search-box" id="globalSearchBox"><input type="text" id="searchInput" placeholder="搜索提示词，Ctrl+F 快速定位" autocomplete="off" data-i18n-placeholder="search.placeholder" data-i18n-placeholder-zh="搜索提示词，Ctrl+F 快速定位"><i class="bi bi-search search-icon"></i><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()" title="切换搜索模式" data-i18n-title="search.mode.toggle" data-i18n-title-zh="切换搜索模式">🔤</button></div>
+        <!-- 搜索框已迁移到词库页header行内，此处保留隐藏DOM供JS引用 -->
+        <div class="search-box" id="globalSearchBox" style="display:none;"><input type="text" id="searchInput" placeholder="搜索提示词"><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()">🔤</button></div>
+        <span class="header-divider"></span>
         <div class="header-actions">
             <!-- ↓ 下拉: 词库 -->
             <div class="nav-dropdown" id="navDropdownLibrary">
@@ -169,6 +171,8 @@
                         <h3 id="pageTitle" style="white-space:nowrap;">提示词列表</h3>
                         <span class="count-info" id="countInfo" style="white-space:nowrap;">加载中...</span>
                     </div>
+                    <!-- 搜索框迁移至此：只在词库页可见，选中分组后出现，词库首页隐藏 -->
+                    <div class="search-box" id="inlineSearchBox" style="display:none;max-width:260px;flex-shrink:1;"><input type="text" id="inlineSearchInput" placeholder="搜索词卡..." autocomplete="off" style="width:100%;padding:5px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;outline:none;" onkeydown="if(event.key==='Enter')App._wcSearchInline()"></div>
                     <div id="pageHeaderRight" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;"></div>
                 </div>
             </div>
