@@ -70,6 +70,11 @@ App.switchGroup = async function(groupId, groupName) {
     // 按钮状态在 _wcLoadPrompts 数据加载完成后自动更新
     var si = document.getElementById('searchInput');
     if (si) si.value = '';
+    // 行内搜索框：选中分组后显示
+    var isb = document.getElementById('inlineSearchBox');
+    var isi = document.getElementById('inlineSearchInput');
+    if (isb) isb.style.display = 'flex';
+    if (isi) isi.value = '';
     try { localStorage.setItem('promptkit_group_id', String(groupId)); } catch(e) {}
     
     this._closeMobileMenu();
@@ -92,6 +97,9 @@ App.switchAllGroups = function() {
     // 陈列架不显示批量栏，无需 updateBatchCount
     var si = document.getElementById('searchInput');
     if (si) si.value = '';
+    // 陈列架/子分组浏览器不显示行内搜索框
+    var isb = document.getElementById('inlineSearchBox');
+    if (isb) isb.style.display = 'none';
     try { localStorage.removeItem('promptkit_group_id'); } catch(e) {}
     this._closeMobileMenu();
     // switchView('home') 内部会调用 renderSidebar + loadPrompts → _wcLoadPrompts → _showShowcase
@@ -992,7 +1000,6 @@ App._hideEditFilterBar = function() {
     var fb = document.getElementById('editFilterBar');
     if (fb) fb.style.display = 'none';
 };
-
 // Phase15: 侧边栏滚动到选中分组（使其靠近顶部，父级可见）
 App._scrollSidebarToGroup = function(groupId) {
     var sidebar = document.getElementById('sidebar');

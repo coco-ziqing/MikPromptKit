@@ -171,8 +171,8 @@
                         <h3 id="pageTitle" style="white-space:nowrap;">提示词列表</h3>
                         <span class="count-info" id="countInfo" style="white-space:nowrap;">加载中...</span>
                     </div>
-                    <!-- 搜索框迁移至此：只在词库页可见，选中分组后出现，词库首页隐藏 -->
-                    <div class="search-box" id="inlineSearchBox" style="display:none;max-width:260px;flex-shrink:1;"><input type="text" id="inlineSearchInput" placeholder="搜索词卡..." autocomplete="off" style="width:100%;padding:5px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;outline:none;" onkeydown="if(event.key==='Enter')App._wcSearchInline()"></div>
+                    <!-- 行内搜索框：与隐藏searchInput双向同步 -->
+                    <div class="search-box" id="inlineSearchBox" style="display:none;max-width:280px;flex-shrink:1;"><input type="text" id="inlineSearchInput" placeholder="搜索词卡..." autocomplete="off" style="width:100%;padding:5px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;outline:none;" oninput="var h=document.getElementById('searchInput');if(h){h.value=this.value;h.dispatchEvent(new Event('input',{bubbles:true}));}"></div>
                     <div id="pageHeaderRight" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;"></div>
                 </div>
             </div>
