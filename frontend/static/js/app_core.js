@@ -630,25 +630,25 @@ var App = window.App || {
             container.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><p>未找到语义相似的提示词</p></div>';
             return;
         }
+        var self = this;
         var html = '<div class="prompt-grid">';
         for (var i = 0; i < items.length; i++) {
             var p = items[i];
             var score = (p.semantic_score * 100).toFixed(0);
-            html += '<div class="prompt-card" data-id="' + card.id + '" onclick="App.showCardDetail(' + card.id + ')">';
+            html += '<div class="prompt-card" data-id="' + p.id + '" onclick="App.showCardDetail(' + p.id + ')">';
             html += '<div class="card-body">';
             html += '<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;">';
-            html += '<span class="card-type-badge card-type-' + (card.card_type||'image') + '">' + ((card.card_type||'image')==='video'?'🎬':'📷') + ' ' + (card.card_type||App._t('auto.str_20def794', '图片')) + '</span>';
             html += '<span style="font-size:10px;color:#818cf8;">🧠 相似度 ' + score + '%</span>';
             html += '</div>';
-            html += '<div class="card-content" id="cc_' + card.id + '">' + this._escape(card.content || '') + '</div>';
-            if (card.meaning) html += '<div class="card-meaning">' + this._escape(card.meaning) + '</div>';
+            html += '<div class="card-content" id="cc_' + p.id + '">' + self._escape(p.content || '') + '</div>';
+            if (p.meaning) html += '<div class="card-meaning">' + self._escape(p.meaning) + '</div>';
             html += '<div style="display:flex;gap:4px;">';
-            if (card.module) html += '<span class="card-badge">' + this._escape(this._moduleDisplayName(card.module)) + '</span>';
-            if (card.category) html += '<span class="card-badge" style="background:#f0fdf4;color:#059669;">' + this._escape(card.category) + '</span>';
+            if (p.module) html += '<span class="card-badge">' + self._escape(self._moduleDisplayName(p.module)) + '</span>';
+            if (p.category) html += '<span class="card-badge" style="background:#f0fdf4;color:#059669;">' + self._escape(p.category) + '</span>';
             html += '</div>';
             html += '</div>';
             html += '<div class="card-actions">';
-            html += '<button class="btn-copy" onclick="App.handleCopy(' + card.id + ', \'' + this._escape(card.content).replace(/'/g, "\\'") + '\')">复制</button>';
+            html += '<button class="btn-copy" onclick="App.handleCopy(' + p.id + ', \'' + self._escape(p.content).replace(/'/g, "\\'") + '\')">复制</button>';
             html += '</div>';
             html += '</div>';
         }
