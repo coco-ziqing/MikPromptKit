@@ -401,7 +401,7 @@ var App = window.App || {
             this._expandSidebar();
             this.renderSidebar();
             this.loadPrompts();
-            this._updatePageTitle();
+            // 标题由 loadPrompts → _wcLoadPrompts 在数据加载后设定，此处不覆盖
         } else if (view === 'collections') {
             _safeShow('viewCollections');
             this._hideSearchBox();
@@ -812,8 +812,10 @@ var App = window.App || {
         this._updatePageTitle();
     },
 
-    // 更新页面标题为「模块名 + 提示词列表」
+    // 更新页面标题
     _updatePageTitle() {
+        // v5.22.1: 词库首页标题由 _wcLoadPrompts / _showShowcase 设置,
+        // 此函数现在仅为 legacy home 视图设置通用标题"提示词列表"
         var el = document.getElementById('pageTitle');
         if (!el) return;
         var m = this.state.currentModule;
