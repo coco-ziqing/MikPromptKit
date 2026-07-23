@@ -16,7 +16,11 @@ except Exception:
 
 router = APIRouter(tags=["用户管理"], prefix="/api/auth")
 
-DB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "prompts.db")
+try:
+    from paths import get_db_path
+    DB = get_db_path()
+except Exception:
+    DB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "prompts.db")
 
 def _rw():
     conn = sqlite3.connect(DB, timeout=2)

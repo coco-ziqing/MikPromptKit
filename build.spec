@@ -27,8 +27,8 @@ for item in (ROOT / 'plugins').rglob('*'):
             continue
         all_datas.append((str(item), str(rel.parent)))
 
-# VERSION 文件
-all_datas.append((str(ROOT / 'VERSION'), 'VERSION'))
+# VERSION 文件（放在 _internal 根目录，不是子目录 VERSION/）
+all_datas.append((str(ROOT / 'VERSION'), '.'))
 
 a = Analysis(
     [str(ROOT / 'backend' / 'main.py')],

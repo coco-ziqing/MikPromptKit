@@ -25,7 +25,11 @@ from jwt_auth import get_current_user, require_role
 
 router = APIRouter(prefix="/api/audit", tags=["审计日志"])
 
-DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "prompts.db")
+try:
+    from paths import get_db_path
+    DB = get_db_path()
+except Exception:
+    DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "prompts.db")
 _init_done = False
 _init_lock = threading.Lock()
 

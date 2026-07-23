@@ -340,7 +340,11 @@ def _check_pillow() -> dict:
 def _check_database() -> dict:
     """检测数据库读写 — 使用独立连接避免与主服务连接冲突"""
     import sqlite3, time, os
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'prompts.db')
+    try:
+        from paths import get_db_path
+        db_path = get_db_path()
+    except Exception:
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'prompts.db')
     if not os.path.exists(db_path):
         return {"ok": False, "error": "数据库文件不存在", "hint": "数据库不可用，服务无法正常运行"}
 
@@ -460,7 +464,11 @@ def _check_self_reachable() -> dict:
 def _check_wal_integrity() -> dict:
     """检测 SQLite WAL 完整性 — 独立连接，避免与主服务锁冲突"""
     import sqlite3, os
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'prompts.db')
+    try:
+        from paths import get_db_path
+        db_path = get_db_path()
+    except Exception:
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'prompts.db')
     conn = None
     try:
         conn = sqlite3.connect(db_path, timeout=5)

@@ -13,7 +13,11 @@ from typing import Optional
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..", "..")
-DB = os.path.join(ROOT, "data", "prompts.db")
+try:
+    from paths import get_db_path
+    DB = get_db_path()
+except Exception:
+    DB = os.path.join(ROOT, "data", "prompts.db")
 ARCHIVE_ROOT = os.path.join(ROOT, "data", "archive")
 PROXY_ROOT = os.path.join(ARCHIVE_ROOT, "proxy")
 os.makedirs(PROXY_ROOT, exist_ok=True)

@@ -8,7 +8,11 @@ from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File
 
 router = APIRouter(tags=["封面管理"], prefix="/api/cover")
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "prompts.db")
+try:
+    from paths import get_db_path
+    DB_PATH = get_db_path()
+except Exception:
+    DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "prompts.db")
 
 _ensured = False  # 延迟初始化标记（避免模块 import 时 DB 锁冲突）
 

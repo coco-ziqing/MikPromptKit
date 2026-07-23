@@ -17,7 +17,11 @@ from jwt_auth import require_role
 
 # ── 路径 ──
 HERE = os.path.dirname(os.path.abspath(__file__))
-DB = os.path.join(HERE, "..", "..", "data", "prompts.db")
+try:
+    from paths import get_db_path
+    DB = get_db_path()
+except Exception:
+    DB = os.path.join(HERE, "..", "..", "data", "prompts.db")
 BACKUP_ROOT = os.path.join(HERE, "..", "..", "data", "backup_store")
 os.makedirs(BACKUP_ROOT, exist_ok=True)
 

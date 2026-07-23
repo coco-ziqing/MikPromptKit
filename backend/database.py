@@ -518,6 +518,7 @@ def init_db():
                 description     TEXT DEFAULT '',
                 group_type      TEXT DEFAULT 'builtin',
                 parent_group_id INTEGER DEFAULT NULL,
+                seedance_subtype TEXT DEFAULT '',
                 sort_order      INTEGER DEFAULT 0,
                 is_active       INTEGER DEFAULT 1,
                 created_at      TEXT DEFAULT (datetime('now','localtime')),

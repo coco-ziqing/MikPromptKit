@@ -12,7 +12,11 @@ from typing import Optional
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..", "..")
-DB = os.path.join(ROOT, "data", "prompts.db")
+try:
+    from paths import get_db_path
+    DB = get_db_path()
+except Exception:
+    DB = os.path.join(ROOT, "data", "prompts.db")
 sys.path.insert(0, os.path.join(HERE, ".."))
 
 from ai_tagger import analyze_file, batch_tag_unlabeled, enqueue_tag_analysis
