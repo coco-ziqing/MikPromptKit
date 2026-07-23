@@ -1552,10 +1552,40 @@ window._licCopyFp = function() {
     }
 };
 
+// 确认解除激活弹窗
+App._confirmDeactivate = function(mode) {
+    var tier = mode === 'project' ? 'personal' : 'team';
+    var label = mode === 'project' ? '个人项目版' : '团队项目版';
+    if (!confirm('确认退出' + label + '？\n\n将解除本机激活绑定，返回个人词库版。\n如需再次使用需重新激活。')) return;
+    var self = this;
+    fetch('/api/license/deactivate', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: tier })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.ok) {
+            // 切换回词库版
+            document.querySelectorAll('.pk-mode-btn').forEach(function(b){ b.classList.remove('active'); });
+            var libBtn = document.querySelector('.pk-mode-btn[data-mode="library"]');
+            if (libBtn) libBtn.classList.add('active');
+            self.state._currentMode = 'library';
+            try { localStorage.setItem('promptkit_mode', 'library'); } catch(e) {}
+            self._enterLibraryMode();
+            if (typeof PK !== 'undefined' && PK.toast) PK.toast('\u2705 ' + label + '已解除激活，已返回词库版', 'success');
+        } else {
+            alert(d.detail || '解除失败');
+        }
+    }).catch(function() { alert('网络错误'); });
+};
+
 // ============================================================
 // 三模式版本切换 + 许可激活
 // ============================================================
 App._switchMode = async function(mode, btn) {
+    // 已激活模式再次点击 → 弹确认 → 解除激活并返回词库版
+    if (App.state._currentMode === mode && mode !== 'library') {
+        App._confirmDeactivate(mode);
+        return;
+    }
     document.querySelectorAll('.pk-mode-btn').forEach(function(b){ b.classList.remove('active'); });
     if (btn) btn.classList.add('active');
     App.state._currentMode = mode;
@@ -1636,7 +1666,7 @@ App._showActivationDialog = function(mode, tier) {
         '<div id="licFpMsg" style="font-size:11px;margin-top:6px;padding:6px 10px;border-radius:4px;display:none;"></div>' +
         '</div>' +
         '<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">' +
-        '<a href="/static/keygen.html" target="_blank" style="color:var(--primary);">\uD83D\uDD0C 打开激活码生成器 →</a></div>' +
+        '<a href="/static/keygen.html?tier=' + tier + '" target="_blank" style="color:var(--primary);">\uD83D\uDD0C 打开激活码生成器 →</a></div>' +
         '<div id="licMsg" style="font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;display:none;"></div>' +
         '<div class="form-group"><label style="font-size:12px;">激活码</label>' +
         '<input type="text" id="licCode" placeholder="' + fmt + '-XXXX-XXXX-XXXX" style="width:100%;padding:10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input);color:var(--text-main);font-size:14px;text-transform:uppercase;letter-spacing:1px;" maxlength="19" autofocus>' +
