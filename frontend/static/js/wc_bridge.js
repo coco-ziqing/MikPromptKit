@@ -403,7 +403,7 @@ App._showSubGroupBrowser = function(rootId, rootKey) {
     
     var html = '<div style="padding:0;">';
     html += '<div class="subgroup-browser-header" style="padding:16px 20px 12px;border-bottom:1px solid var(--border-color);">';
-    html += '<h3 style="margin:0 0 4px;font-size:18px;display:flex;align-items:center;gap:8px;">';
+    html += '<h3 style="margin:0 0 4px;font-size:18px;display:flex;align-items:center;gap:8px;color:var(--text-main);">';
     html += '<span style="font-size:24px;">' + (root.icon || '📁') + '</span>';
     html += App._escape(cleanName);
     html += '</h3>';
@@ -424,11 +424,11 @@ App._showSubGroupBrowser = function(rootId, rootKey) {
         var sIcon = sub.icon || '📄';
         var sName = (sub.name || '').replace(/^[🎭🏞🖼🎬\s]+/, '').trim();
         if (sIcon && sName.indexOf(sIcon) === 0) sName = sName.substring(sIcon.length).trim();
-        html += '<button onclick="event.stopPropagation();App.switchGroup(' + sub.id + ',\'' + (sub.name||'').replace(/'/g,"\\'") + '\')" class="subgroup-browser-card" style="padding:14px 16px;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-card);cursor:pointer;text-align:left;transition:all .15s;" onmouseenter="this.style.borderColor=var(--primary);this.style.background=var(--hover-bg)" onmouseleave="this.style.borderColor=var(--border-color);this.style.background=var(--bg-card)">';
-        html += '<div style="display:flex;align-items:center;gap:8px;">';
-        html += '<span style="font-size:20px;">' + sIcon + '</span>';
-        html += '<span style="font-weight:600;font-size:14px;flex:1;">' + App._escape(sName) + '</span>';
-        html += '<span style="font-size:11px;color:var(--text-muted);background:var(--bg-main);padding:2px 8px;border-radius:10px;">' + (sub.card_count || 0) + ' 条</span>';
+        html += '<button onclick="event.stopPropagation();App.switchGroup(' + sub.id + ',\'' + (sub.name||'').replace(/'/g,"\\'") + '\')" class="subgroup-browser-card" style="padding:14px 16px;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-card);cursor:pointer;text-align:left;transition:all .15s;" onmouseenter="this.style.borderColor=var(\x27--primary\x27);this.style.boxShadow=var(\x27--card-shadow,0 2px 12px rgba(0,0,0,.1)\x27)" onmouseleave="this.style.borderColor=var(\x27--border-color\x27);this.style.boxShadow=\x27none\x27">';
+        html += '<div style="display:flex;align-items:center;gap:10px;">';
+        html += '<span style="font-size:20px;flex-shrink:0;">' + sIcon + '</span>';
+        html += '<span style="font-weight:600;font-size:14px;flex:1;color:var(--text-main);">' + App._escape(sName) + '</span>';
+        html += '<span style="font-size:11px;font-weight:600;color:var(--primary,#3b82f6);background:var(--primary-light,rgba(59,130,246,.1));padding:3px 10px;border-radius:10px;flex-shrink:0;">' + (sub.card_count || 0) + ' 条</span>';
         html += '</div>';
         html += '</button>';
     }
@@ -574,7 +574,10 @@ App._renderTreeNode = function(node, depth) {
     // 计算 countStr
     var countStr = '';
     var hasChildren = node.children && node.children.length > 0;
-    if (node.group_type === 'root' || node.group_type === 'sub' || hasChildren) {
+    // sub 无子节点 → 自身即为叶子，直接用 card_count，不递归（递归会因无 children 永远为 0）
+    if (node.group_type === 'sub' && !hasChildren) {
+        countStr = '<span class="count-badge" style="font-size:11px;">' + (node.card_count || 0) + '</span>';
+    } else if (node.group_type === 'root' || hasChildren) {
         // 递归统计所有后代叶子节点的 card_count
         var totalCards = 0;
         function sumRecursive(ns) {
@@ -595,12 +598,12 @@ App._renderTreeNode = function(node, depth) {
     
     var nodeId = 'treeNode_' + (node.group_type || '') + '_' + node.id;
     
-    // ── ROOT: 名称区域点击 → 子分组浏览器（char_root/scene_root 等）─────────────────────
+    // ── ROOT: 名称区域点击 → 子分组浏览器（char_root/scene_root/root_atom_image/global_* 等）──
     var hasOnlyLeafSubs = false;
     if (node.children && node.children.length > 0 && node.group_type !== 'sub') {
-        // 所有一级子节点都是无孙节点的 sub-leaf → 用子分组浏览器
+        // 所有一级子节点都是无孙节点的叶子 → 用子分组浏览器
         hasOnlyLeafSubs = node.children.every(function(c) {
-            return c.group_type === 'sub' && (!c.children || c.children.length === 0);
+            return !c.children || c.children.length === 0;
         });
     }
     var isRoot = node.group_type === 'root' || (node.children && node.children.length > 0 && node.group_type !== 'sub');
