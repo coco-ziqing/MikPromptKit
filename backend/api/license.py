@@ -116,34 +116,41 @@ def license_info():
 
 @router.post("/activate")
 def activate_license(data: dict = Body(...)):
-    """激活许可 — 仅管理员"""
+    """激活许可 — HMAC签名验证 + 主机绑定"""
     code = (data.get("code") or "").strip()
     tier = (data.get("tier") or "").strip()
     if not code or tier not in ("personal", "team"):
         raise HTTPException(400, "参数错误：code + tier(personal|team) 必填")
 
-    # 验证激活码（简单版：前缀匹配+长度校验，生产环境替换为真实验证服务）
-    valid = False
-    licensed_to = ""
-    expires = ""
-
-    if tier == "personal":
-        # 个人版激活码格式: PKP-XXXX-XXXX-XXXX
-        import re
-        if re.match(r'^PKP-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$', code, re.IGNORECASE):
-            valid = True
-            licensed_to = "个人版许可"
-    elif tier == "team":
-        # 团队版激活码格式: PKT-XXXX-XXXX-XXXX
-        import re
-        if re.match(r'^PKT-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$', code, re.IGNORECASE):
-            valid = True
-            licensed_to = "团队版许可"
-
-    if not valid:
-        raise HTTPException(400, "激活码无效，请检查格式（PKP-... 个人版 / PKT-... 团队版）")
+    # HMAC 签名验证（使用 keygen.py 的种子密钥）
+    try:
+        from keygen import verify_code
+    except ImportError:
+        verify_code = None
 
     fp = _machine_fingerprint()
+    licensed_to = ""
+    expires = ""
+    days = 0
+
+    if verify_code:
+        result = verify_code(code, fp)
+        if not result["valid"]:
+            raise HTTPException(400, result.get("error", "激活码无效"))
+        tier_check = result.get("tier", "")
+        if tier_check and tier_check != tier:
+            raise HTTPException(400, f"这是{tier_check}版的激活码，不能用于{tier}版")
+        licensed_to = "个人版许可" if tier == "personal" else "团队版许可"
+        days = result.get("days", 0)
+        if days > 0:
+            expires = time.strftime("%Y-%m-%d", time.localtime(time.time() + days * 86400))
+    else:
+        # 降级模式：仅格式校验（首次运行 keygen.py 生成 seed 后自动启用签名验证）
+        import re
+        pattern = r'^PK[PT]-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$'
+        if not re.match(pattern, code, re.IGNORECASE):
+            raise HTTPException(400, "激活码格式无效。请先运行 python backend/keygen.py --help 生成激活码")
+        licensed_to = "个人版许可" if tier == "personal" else "团队版许可"
 
     # 检查是否已绑定其他主机
     existing = _read_license(tier)
@@ -157,10 +164,11 @@ def activate_license(data: dict = Body(...)):
         "licensed_to": licensed_to,
         "activated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "expires": expires,
+        "days": days,
         "machine_name": platform.node(),
     }
     _write_license(tier, license_data)
-    return {"ok": True, "message": f"{'个人项目版' if tier == 'personal' else '团队项目版'}已激活", "fingerprint": fp}
+    return {"ok": True, "message": f"{'个人项目版' if tier == 'personal' else '团队项目版'}已激活", "fingerprint": fp, "expires": expires}
 
 
 @router.delete("/deactivate")
