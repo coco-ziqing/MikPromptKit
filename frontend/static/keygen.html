@@ -100,11 +100,37 @@ async function generate() {
 
 function copy() {
   var code = document.getElementById('code').textContent;
-  navigator.clipboard.writeText(code).then(function() {
-    var btn = document.querySelector('.copy-btn');
+  var btn = document.querySelector('.copy-btn');
+  var fallback = function() {
+    // 降级方案：execCommand（兼容 HTTP/LAN 环境）
+    var ta = document.createElement('textarea');
+    ta.value = code; ta.style.position='fixed'; ta.style.left='-9999px';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch(e) {}
+    document.body.removeChild(ta);
+  };
+  var done = function() {
     btn.textContent = '✅ 已复制!';
-    setTimeout(function() { btn.textContent = '📋 复制激活码'; }, 2000);
-  });
+    btn.style.background = '#059669';
+    showToast('激活码已复制到剪贴板');
+    setTimeout(function() { btn.textContent = '📋 复制激活码'; btn.style.background = ''; }, 2000);
+  };
+  try {
+    navigator.clipboard.writeText(code).then(done).catch(function(){ fallback(); done(); });
+  } catch(e) { fallback(); done(); }
+}
+
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:var(--success,#10b981);color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:99999;transition:opacity .3s;opacity:0;pointer-events:none;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._tid);
+  t._tid = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
 }
 
 function showError(msg) {
