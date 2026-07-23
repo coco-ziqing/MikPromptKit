@@ -78,6 +78,9 @@
           if (d.user.role === 'admin') {
             document.querySelectorAll('.admin-only').forEach(function(el){ el.classList.remove('admin-only'); el.classList.add('admin-shown'); });
           }
+          // 显示模式切换条
+          var ms = document.getElementById('pkModeSwitcher');
+          if (ms) ms.style.display = 'flex';
           this._checkDone = true;
           return;
         }

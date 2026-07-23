@@ -19,6 +19,12 @@
     <header class="navbar-tool">
         <button class="header-btn" id="btnMenu" onclick="App.toggleMobileMenu()" style="display:none;" title="菜单" data-i18n-title="nav.menu" data-i18n-title-zh="菜单"><i class="bi bi-list"></i></button>
         <div class="brand" onclick="App.switchAllGroups?App.switchAllGroups():App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> <span data-i18n="nav.brand" data-i18n-zh="咪卡Mik词库">咪卡Mik词库</span> <small id="brandVersion">5.0.0</small></div>
+        <!-- 三模式版本切换条 -->
+        <div class="pk-mode-switcher" id="pkModeSwitcher" style="display:none;">
+            <button class="pk-mode-btn active" data-mode="library" onclick="App._switchMode('library',this)" title="个人词库 / 组装器 / AI 工具">📚 个人词库</button>
+            <button class="pk-mode-btn" data-mode="project" onclick="App._switchMode('project',this)" title="项目管理 / 看板 / 资产库">📦 个人项目</button>
+            <button class="pk-mode-btn" data-mode="team" onclick="App._switchMode('team',this)" title="共享项目 / 成员协作 / 审核">👥 团队项目</button>
+        </div>
         <div class="search-box" id="globalSearchBox"><input type="text" id="searchInput" placeholder="搜索提示词，Ctrl+F 快速定位" autocomplete="off" data-i18n-placeholder="search.placeholder" data-i18n-placeholder-zh="搜索提示词，Ctrl+F 快速定位"><i class="bi bi-search search-icon"></i><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()" title="切换搜索模式" data-i18n-title="search.mode.toggle" data-i18n-title-zh="切换搜索模式">🔤</button></div>
         <div class="header-actions">
             <!-- ↓ 下拉: 词库 -->

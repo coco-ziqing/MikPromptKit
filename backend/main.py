@@ -521,6 +521,9 @@ app.include_router(dam_search_router)
 # Phase35.3c 版本/分层/自检/备份
 from api.dam_vault import router as dam_vault_router
 app.include_router(dam_vault_router)
+# v5.22.1: 许可激活（主机绑定+秘钥）
+from api.license import router as license_router
+app.include_router(license_router)
 
 # Phase18: 插件系统由 lifespan 初始化（db/app 就绪后）
 

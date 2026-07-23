@@ -3683,6 +3683,12 @@ body.pk-auth-active{overflow:hidden}
 .aum-container .empty .icon{font-size:48px;display:block;margin-bottom:12px}
 .admin-only{display:none}.admin-shown{display:flex!important}
 
+/* ===== 三模式版本切换条 ===== */
+.pk-mode-switcher{display:flex;gap:2px;padding:4px;background:var(--bg-main,#0f172a);border-radius:10px;border:1px solid var(--border-color,#334155);flex-shrink:0;margin-left:8px}
+.pk-mode-btn{padding:5px 14px;border:none;border-radius:7px;background:transparent;color:var(--text-muted,#94a3b8);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .15s}
+.pk-mode-btn:hover{color:var(--text-primary);background:var(--hover-bg)}
+.pk-mode-btn.active{background:var(--primary,#3b82f6);color:#fff;box-shadow:0 1px 4px rgba(59,130,246,.3)}
+
 /* Phase35.3-DAM — 资产管家样式 */
 .fs-header h4 { color: var(--text-primary, #1e293b); }
 .fs-empty { text-align:center; padding:30px 20px; color: var(--text-muted); }

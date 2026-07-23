@@ -1519,4 +1519,122 @@ App._wcSetupCardDrag = function() {
     });
 };
 
+// ============================================================
+// 三模式版本切换 + 许可激活
+// ============================================================
+App._switchMode = async function(mode, btn) {
+    document.querySelectorAll('.pk-mode-btn').forEach(function(b){ b.classList.remove('active'); });
+    if (btn) btn.classList.add('active');
+    App.state._currentMode = mode;
+    try { localStorage.setItem('promptkit_mode', mode); } catch(e) {}
+
+    if (mode === 'library') {
+        App._enterLibraryMode();
+    } else {
+        var tier = mode === 'project' ? 'personal' : 'team';
+        try {
+            var r = await fetch('/api/license/info');
+            var d = await r.json();
+            if (d.ok && d.tiers && d.tiers[tier] && d.tiers[tier].active && d.tiers[tier].bound) {
+                if (mode === 'project') App._enterProjectMode();
+                else App._enterTeamMode();
+                return;
+            }
+        } catch(e) {}
+        App._showActivationDialog(mode, tier);
+        setTimeout(function() {
+            var cur = App.state._currentMode || 'library';
+            document.querySelectorAll('.pk-mode-btn').forEach(function(b){
+                b.classList.toggle('active', b.dataset.mode === cur);
+            });
+        }, 200);
+    }
+};
+
+App._enterLibraryMode = function() {
+    this._showSidebar();
+    this._expandSidebar();
+    var sb = document.getElementById('globalSearchBox'); if (sb) sb.style.visibility = 'visible';
+    this.switchAllGroups();
+};
+
+App._enterProjectMode = function() {
+    this._collapseSidebar();
+    var sb = document.getElementById('globalSearchBox'); if (sb) sb.style.visibility = 'hidden';
+    if (window.PK && PK.open) { PK.open(); }
+    else if (window.__PK_PLUGINS__ && __PK_PLUGINS__._views && __PK_PLUGINS__._views.project_mgmt) {
+        __PK_PLUGINS__._views.project_mgmt();
+    }
+    if (App && App._collapseSidebar) App._collapseSidebar();
+};
+
+App._enterTeamMode = function() {
+    App._enterProjectMode();
+    setTimeout(function() {
+        if (window.PK_ASSETLIB && PK_ASSETLIB.open) {
+            PK_ASSETLIB.open();
+            var filterEl = document.getElementById('pkAssetFilter');
+            if (filterEl) filterEl.value = 'shared';
+        }
+    }, 800);
+};
+
+App._showActivationDialog = function(mode, tier) {
+    var label = mode === 'project' ? '个人项目版' : '团队项目版';
+    var fmt = mode === 'project' ? 'PKP' : 'PKT';
+    var ov = document.createElement('div');
+    ov.className = 'modal-overlay'; ov.style.zIndex = '99999';
+    ov.onclick = function(e) { if (e.target === ov) ov.remove(); };
+    ov.innerHTML = '<div class="modal-box" style="max-width:440px;" onclick="event.stopPropagation()">' +
+        '<h4 style="margin:0 0 4px;">\uD83D\uDD10 激活 ' + label + '</h4>' +
+        '<p style="font-size:12px;color:var(--text-muted);margin:0 0 16px;">' +
+        '\uD83C\uDF89 个人词库版完全免费开源。<br>' + label + '需要主机绑定+激活码解锁扩展功能。</p>' +
+        '<div id="licMsg" style="font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;display:none;"></div>' +
+        '<div class="form-group"><label style="font-size:12px;">激活码</label>' +
+        '<input type="text" id="licCode" placeholder="' + fmt + '-XXXX-XXXX-XXXX" style="width:100%;padding:10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input);color:var(--text-main);font-size:14px;text-transform:uppercase;letter-spacing:1px;" maxlength="19" autofocus>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:14px;">' +
+        '<button class="btn btn-secondary" onclick="this.closest(\x27.modal-overlay\x27).remove()" style="flex:1;">取消</button>' +
+        '<button class="btn btn-primary" id="licActivate" style="flex:1;">\uD83D\uDD13 激活</button>' +
+        '</div>' +
+        '<div style="margin-top:12px;font-size:11px;color:var(--text-muted);text-align:center;">获取激活码请联系 PromptKit Team</div>' +
+        '</div>';
+    document.body.appendChild(ov);
+    var self = this;
+    document.getElementById('licActivate').onclick = async function() {
+        var code = document.getElementById('licCode').value.trim();
+        if (!code) return;
+        var btn2 = document.getElementById('licActivate');
+        btn2.disabled = true; btn2.textContent = '激活中...';
+        try {
+            var r2 = await fetch('/api/license/activate', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code, tier: tier })
+            });
+            var d2 = await r2.json();
+            var msg = document.getElementById('licMsg');
+            if (d2.ok) {
+                msg.style.display = 'block';
+                msg.style.background = 'var(--primary-light,rgba(16,185,129,.1))';
+                msg.style.color = '#10b981';
+                msg.textContent = '\u2705 ' + d2.message + '！正在进入...';
+                setTimeout(function() {
+                    ov.remove();
+                    document.querySelectorAll('.pk-mode-btn').forEach(function(b){ b.classList.remove('active'); });
+                    var targetBtn = document.querySelector('.pk-mode-btn[data-mode="' + mode + '"]');
+                    if (targetBtn) targetBtn.classList.add('active');
+                    App.state._currentMode = mode;
+                    if (mode === 'project') App._enterProjectMode();
+                    else App._enterTeamMode();
+                }, 1000);
+            } else {
+                msg.style.display = 'block';
+                msg.style.background = '#fef2f2'; msg.style.color = '#ef4444';
+                msg.textContent = '\u274C ' + (d2.detail || '激活失败');
+                btn2.disabled = false; btn2.textContent = '\uD83D\uDD13 激活';
+            }
+        } catch(e2) { btn2.disabled = false; btn2.textContent = '\uD83D\uDD13 激活'; }
+    };
+};
+
 })();
