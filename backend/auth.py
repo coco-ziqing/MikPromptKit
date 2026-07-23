@@ -360,6 +360,28 @@ async def upload_avatar(request: Request, file: UploadFile = File(...)):
     return {"ok": True, "avatar_url": avatar_url}
 
 
+@router.delete("/me/avatar")
+def clear_avatar(request: Request):
+    """清除用户头像，恢复为系统默认首字母头像"""
+    user = get_current_user(request)
+    if not user.get("authenticated"):
+        raise HTTPException(401, "请先登录")
+    uid = user["id"]
+    # 清理磁盘文件
+    for name in os.listdir(_AVATAR_DIR):
+        if name.startswith(f"{uid}_"):
+            try: os.remove(os.path.join(_AVATAR_DIR, name))
+            except Exception: pass
+    # 清空 DB 记录
+    db = _rw()
+    try:
+        db.execute("UPDATE users SET avatar_url='' WHERE id=?", [uid])
+        db.commit()
+    finally:
+        db.close()
+    return {"ok": True, "message": "头像已清除"}
+
+
 @router.get("/avatar/{user_id}/{filename}")
 def serve_avatar(user_id: int, filename: str):
     """提供头像资源（公开访问，支持浏览器缓存）"""

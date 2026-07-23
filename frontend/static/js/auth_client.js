@@ -412,11 +412,14 @@
         ov.innerHTML = '<div class="pk-auth-modal" style="max-width:540px;width:94vw;max-height:92vh;overflow-y:auto;" onclick="event.stopPropagation()">'
           +'<div style="display:flex;justify-content:flex-end;margin-bottom:6px;"><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'pkProfileOverlay\').remove()" style="font-size:18px;line-height:1;padding:2px 8px;">✕</button></div>'
           +'<div style="text-align:center;margin-bottom:12px;">'
-            +'<div id="pkProfAvatarWrap" style="position:relative;display:inline-block;cursor:pointer;" onclick="PK_AUTH_CLIENT._pickAvatar()">'
+            +'<div id="pkProfAvatarWrap" style="display:inline-block;position:relative;">'
               +'<div id="pkProfAvatarImg">'+avH+'</div>'
-              +'<div style="position:absolute;bottom:-2px;right:-2px;width:28px;height:28px;border-radius:12px;background:var(--primary,#3b82f6);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid var(--bg-card,#1e293b);box-shadow:0 2px 8px rgba(0,0,0,.3);" title="更换头像">📷</div>'
             +'</div>'
             +'<input type="file" id="pkAvatarInput" accept="image/*" style="display:none;" onchange="PK_AUTH_CLIENT._doUploadAvatar()">'
+            +'<div style="margin-top:10px;display:flex;gap:6px;justify-content:center;">'
+              +(av?'<button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation();PK_AUTH_CLIENT._pickAvatar()" style="font-size:11px;padding:5px 12px;">📷 替换</button>':'<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();PK_AUTH_CLIENT._pickAvatar()" style="font-size:11px;padding:5px 12px;">📷 上传头像</button>')
+              +(av?'<button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation();PK_AUTH_CLIENT._clearAvatar()" style="font-size:11px;padding:5px 12px;">🗑 清除</button>':'')
+            +'</div>'
             +'<h4 style="margin:8px 0 2px;font-size:17px;color:var(--text-main);">'+self._esc(u.display_name||u.username||'')+'</h4>'
             +'<div style="font-size:12px;color:var(--text-muted);">@'+self._esc(u.username||'')+' · '+roleName+'</div>'
           +'</div>'
@@ -443,6 +446,28 @@
 
     _pickAvatar: function() {
       var inp = document.getElementById('pkAvatarInput'); if (inp) inp.click();
+    },
+
+    _clearAvatar: async function() {
+      if (!confirm('确认清除头像？将恢复为系统默认首字母头像。')) return;
+      var self = this;
+      try {
+        var r = await fetch('/api/auth/me/avatar', { method: 'DELETE', headers: { 'Authorization': '***' + self._token } });
+        var d = await r.json();
+        if (d.ok) {
+          // 刷新个人详情弹窗
+          var ov = document.getElementById('pkProfileOverlay');
+          if (ov) ov.remove();
+          // 更新缓存的用户数据
+          if (self._user) self._user.avatar_url = '';
+          // 刷新头像显示
+          self._injectNavButton(0);
+          // 重新打开个人详情
+          setTimeout(function() { self._showProfile(); }, 200);
+        } else {
+          alert(d.detail || '清除未完成');
+        }
+      } catch(e) { alert('网络错误'); }
     },
 
     _doUploadAvatar: function() {
@@ -599,6 +624,8 @@
       try { if (window.PK_PRESENCE) PK_PRESENCE.disconnect(); } catch(e){}
       var pw = document.getElementById('pkPresenceWrap'); if (pw) pw.remove();
       localStorage.removeItem('pk_token_v1'); localStorage.removeItem('pk_user');
+      // 清理残留的分组/视图状态，防止重新登录后加载到过期分组ID导致卡死
+      try { localStorage.removeItem('promptkit_group_id'); localStorage.removeItem('promptkit_view'); localStorage.removeItem('promptkit_module'); } catch(e) {}
       this._token = null; this._user = null; this._loggedIn = false;
       var w = document.getElementById('navDropdownUser'); if (w) w.remove();
       // 隐藏管理员专属入口（退出登录后）
