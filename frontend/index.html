@@ -21,9 +21,9 @@
         <div class="brand" onclick="App.switchAllGroups?App.switchAllGroups():App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> <span data-i18n="nav.brand" data-i18n-zh="咪卡Mik词库">咪卡Mik词库</span> <small id="brandVersion">5.0.0</small></div>
         <!-- 三模式版本切换条 -->
         <div class="pk-mode-switcher" id="pkModeSwitcher" style="display:none;">
-            <button class="pk-mode-btn active" data-mode="library" onclick="App._switchMode('library',this)" title="个人词库 / 组装器 / AI 工具">📚 个人词库</button>
-            <button class="pk-mode-btn" data-mode="project" onclick="App._switchMode('project',this)" title="项目管理 / 看板 / 资产库">📦 个人项目</button>
-            <button class="pk-mode-btn" data-mode="team" onclick="App._switchMode('team',this)" title="共享项目 / 成员协作 / 审核">👥 团队项目</button>
+            <button class="pk-mode-btn active" data-mode="library" onclick="App._switchMode('library',this)" title="个人词库 / 组装器 / AI 工具">📚</button>
+            <button class="pk-mode-btn" data-mode="project" onclick="App._switchMode('project',this)" title="项目管理 / 看板 / 资产库">📦</button>
+            <button class="pk-mode-btn" data-mode="team" onclick="App._switchMode('team',this)" title="共享项目 / 成员协作 / 审核">👥</button>
         </div>
         <div class="search-box" id="globalSearchBox"><input type="text" id="searchInput" placeholder="搜索提示词，Ctrl+F 快速定位" autocomplete="off" data-i18n-placeholder="search.placeholder" data-i18n-placeholder-zh="搜索提示词，Ctrl+F 快速定位"><i class="bi bi-search search-icon"></i><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()" title="切换搜索模式" data-i18n-title="search.mode.toggle" data-i18n-title-zh="切换搜索模式">🔤</button></div>
         <div class="header-actions">
@@ -60,10 +60,14 @@
             <div class="nav-dropdown" id="navDropdownTools">
                 <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownTools')" title="系统工具"><i class="bi bi-gear"></i><span class="nav-dd-text">工具</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
                 <div class="nav-dropdown-menu">
+                    <div class="nav-dropdown-item" onclick="App._switchAIModel('ollama')"><i class="bi bi-box"></i> AI模型: Ollama</div>
+                    <div class="nav-dropdown-item" onclick="App._switchAIModel('kimi')"><i class="bi bi-cloud"></i> AI模型: Kimi</div>
+                    <div class="nav-dd-sep"></div>
                     <div class="nav-dropdown-item" onclick="App.showBackupInfo()"><i class="bi bi-database"></i> 数据备份</div>
                     <div class="nav-dropdown-item" onclick="App.showSyncPanel()"><i class="bi bi-arrow-left-right"></i> 数据同步</div>
                     <div class="nav-dropdown-item" onclick="App.monitor.open()"><i class="bi bi-speedometer2"></i> 服务监测</div>
                     <div class="nav-dropdown-item" onclick="App.openComfyConfig()"><i class="bi bi-puzzle"></i> 扩展工具</div>
+                    <div class="nav-dropdown-item" onclick="App._kvOpen()"><i class="bi bi-shield-lock" style="color:#f59e0b;"></i> 密钥保管</div>
                     <div class="nav-dd-sep"></div>
                     <div class="nav-dropdown-item admin-only" onclick="location.href='/cover_editor.html'"><i class="bi bi-palette"></i> 封面编辑</div>
                 </div>
@@ -102,20 +106,7 @@
 
             <span class="header-divider"></span>
 
-            <!-- Phase38: 主模型切换 -->
-            <div class="nav-dropdown" id="navDropdownModel">
-                <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownModel')" title="切换 AI 模型">
-                    <span id="modelProviderIcon" style="font-size:14px;">🧠</span>
-                    <span class="nav-dd-text" id="modelProviderLabel" style="font-size:11px;">Ollama</span>
-                    <i class="bi bi-chevron-down nav-dd-arrow" style="font-size:9px;"></i>
-                </button>
-                <div class="nav-dropdown-menu" style="right:0;">
-                    <div class="nav-dropdown-item" id="navModelOllama" onclick="App._switchAIModel('ollama')"><i class="bi bi-box"></i> Ollama 本地 <span style="font-size:9px;color:var(--text-muted);margin-left:auto;">qwen3.5:9b</span></div>
-                    <div class="nav-dropdown-item" id="navModelKimi" onclick="App._switchAIModel('kimi')"><i class="bi bi-cloud"></i> Kimi 云端 <span style="font-size:9px;color:var(--text-muted);margin-left:auto;">kimi-k2.6</span></div>
-                    <div class="nav-dd-sep"></div>
-                    <div class="nav-dropdown-item" onclick="App._kvOpen()"><i class="bi bi-shield-lock" style="color:#f59e0b;"></i> 密钥保管...</div>
-                </div>
-            </div>
+            <!-- Phase38: 主模型切换（已收敛到工具菜单） -->
 
             <button class="header-btn" id="btnLang" title="Switch Language" style="font-size:13px;font-weight:bold;min-width:32px;">中</button>
             <button class="header-btn" onclick="App.toggleTheme()" id="btnTheme" title="切换深色模式"><i class="bi bi-moon-stars"></i></button>
