@@ -1007,6 +1007,9 @@ App._wcGoBack = function() {
         };
         findRoot(tree);
         if (root) {
+            // 清空当前分组ID, 防止 switchView('home') 触发 _wcLoadPrompts 覆盖浏览器
+            this.state.currentGroupId = null;
+            this.state.currentGroupName = '';
             this._showSubGroupBrowser(pid, root.group_key || '');
             return;
         }
