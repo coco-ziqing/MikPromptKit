@@ -527,7 +527,9 @@ def asset_file(cid: int, request: Request):
             raise HTTPException(403, "无权访问")
         pabs = _project_abs(c, proj)
         fpath = os.path.join(pabs, (r["local_rel_path"] or "").replace("/", os.sep))
-        if not (os.path.isfile(fpath) and os.path.abspath(fpath).startswith(DATA_DIR)):
+        # 防穿越校验：必须在 project_abs 内 || DATA_DIR/workspaces 内
+        safe_roots = (os.path.abspath(pabs), os.path.abspath(os.path.join(DATA_DIR, 'workspaces')))
+        if not (os.path.isfile(fpath) and any(os.path.abspath(fpath).startswith(sr) for sr in safe_roots)):
             raise HTTPException(404, "文件不在服务器（可能仅存于本地设备盘）")
         return FileResponse(fpath, filename=r["filename"])
     finally:
