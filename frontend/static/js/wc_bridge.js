@@ -379,8 +379,7 @@ App._showSubGroupBrowser = function(rootId, rootKey) {
     this._showBreadcrumb(false);
     this._hideEditFilterBar();
     
-    // 展开侧边栏对应根节点
-    this._expandSidebarNode(rootId);
+    // 不展开侧边栏 —— 父组名称区域仅打开右侧子分组浏览器，三角箭头控制侧边栏折叠
     
     // 递归统计总卡片数
     var totalCards = 0;
