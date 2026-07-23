@@ -14,7 +14,7 @@ _dev_backend = os.path.dirname(os.path.abspath(__file__))
 if _dev_backend not in sys.path:
     sys.path.insert(0, _dev_backend)
 
-from paths import get_base_dir, get_frontend_dir
+from paths import get_base_dir, get_frontend_dir, get_resource_dir
 
 # 实际端口（__main__ 探测后设置，lifespan 读取）
 ACTUAL_PORT = 8080
@@ -33,7 +33,11 @@ from logger import api_log, capture_exception
 def _read_app_version() -> str:
     """从根目录 VERSION 文件读取版本号，读取失败时回退默认值"""
     try:
-        with open(os.path.join(BASE_DIR, 'VERSION'), 'r', encoding='utf-8') as f:
+        # 优先 EXE 同级（开发环境）
+        ver_path = os.path.join(BASE_DIR, 'VERSION')
+        if not os.path.exists(ver_path):
+            ver_path = os.path.join(get_resource_dir(), 'VERSION')
+        with open(ver_path, 'r', encoding='utf-8') as f:
             v = f.read().strip()
             if v:
                 return v
@@ -112,6 +116,82 @@ def _migrate_v4(db):
     # 如需重新迁移执行 backend/migrate_unify_cards.py (2026-07-16)
 
 
+def _seed_char_and_scene_groups(db):
+    """Phase20: 角色/场景分组种子（幂等，兼容 frozen 环境）"""
+    import hashlib
+    char_root = ("char_root", "🎭 角色设定", "🎭")
+    scene_root = ("scene_root", "🏞 场景设定", "🏞")
+    char_subs = [
+        ("char_gender_age","性别年龄","👥"),("char_hair","发型发色","💇"),("char_face","脸型五官","👁"),
+        ("char_expression","表情神态","😊"),("char_body","体型身材","🧍"),("char_clothing","服装服饰","👗"),
+        ("char_accessory","配饰道具","💍"),("char_pose","姿态动作","🤸"),("char_style","画风风格","🎨"),
+        ("char_lighting","光照氛围","💡"),("char_color","色调质感","🎞"),("char_occupation","职业身份","🪪"),
+        ("char_temperament","气质性格","✨"),("char_background","背景场景","🏞"),
+    ]
+    scene_subs = [
+        ("scene_location","场景类型","🏠"),("scene_architecture","建筑风格","🏛"),("scene_time","时间时刻","🕐"),
+        ("scene_season","季节气候","🍂"),("scene_weather","天气现象","🌦"),("scene_atmosphere","氛围情绪","🎭"),
+        ("scene_lighting","光影效果","💡"),("scene_color","色彩搭配","🎨"),("scene_perspective","视角取景","📐"),
+        ("scene_composition","构图布局","🖼"),("scene_details","细节元素","✨"),("scene_style","画风风格","🎨"),
+        ("scene_quality","画质参数","📐"),
+    ]
+    for root_key, root_name, root_icon in [char_root, scene_root]:
+        existing = db.execute("SELECT id FROM word_card_group WHERE group_key=?", [root_key]).fetchone()
+        if not existing:
+            sort_base = 6 if root_key == "char_root" else 7
+            db.execute("""INSERT INTO word_card_group (name,group_key,icon,group_type,parent_group_id,sort_order,is_active,created_at,updated_at)
+                         VALUES (?,?,?,'custom',NULL,?,1,datetime('now','localtime'),datetime('now','localtime'))""",
+                      [root_name, root_key, root_icon, sort_base])
+            root_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            print(f"[Seed] 根组 {root_key} id={root_id}")
+        else:
+            root_id = existing[0]
+        subs = char_subs if root_key == "char_root" else scene_subs
+        for idx, (key, name, icon) in enumerate(subs):
+            existing_sub = db.execute("SELECT id FROM word_card_group WHERE group_key=?", [key]).fetchone()
+            if not existing_sub:
+                db.execute("""INSERT INTO word_card_group (name,group_key,icon,group_type,parent_group_id,sort_order,is_active,created_at,updated_at)
+                             VALUES (?,?,?,'sub',?,?,1,datetime('now','localtime'),datetime('now','localtime'))""",
+                          [name, key, icon, root_id, idx + 1])
+    try:
+        db.execute("COMMIT")
+    except Exception:
+        pass
+    print(f"[Seed] 角色/场景分组: {len(char_subs)}+{len(scene_subs)} 子组完成")
+
+
+def _seed_phase20_style_neg_subgroups(db):
+    """Phase20: 全局画风/全局负面二级子分组（幂等）"""
+    style_root_id = db.execute("SELECT id FROM word_card_group WHERE group_key='style_root'").fetchone()
+    neg_root_id = db.execute("SELECT id FROM word_card_group WHERE group_key='negative'").fetchone()
+    if not style_root_id:
+        sid = db.execute("SELECT id FROM word_card_group WHERE name LIKE '%画风%' AND group_type='seedance'").fetchone()
+        style_root_id = [sid[0]] if sid else None
+    if not neg_root_id:
+        nid = db.execute("SELECT id FROM word_card_group WHERE name LIKE '%负面%' AND group_type='seedance'").fetchone()
+        neg_root_id = [nid[0]] if nid else None
+    style_subs = [("🎨 写实风格","global_style_realistic","🖼️"),("🎨 动漫卡通","global_style_anime","✨"),("🎨 艺术风格","global_style_artistic","🎨")]
+    neg_subs = [("⚠️ 人物形态","global_neg_body","👤"),("⚠️ 画面质量","global_neg_quality","🔍"),("⚠️ 技术渲染","global_neg_render","⚙️")]
+    for root_id, subs, table_name in [(style_root_id, style_subs, "全局画风"), (neg_root_id, neg_subs, "全局负面")]:
+        if not root_id:
+            print(f"[Seed] Phase20 {table_name}: 未找到父组，跳过")
+            continue
+        rid = root_id if isinstance(root_id, int) else root_id[0]
+        existing = db.execute("SELECT COUNT(*) as c FROM word_card_group WHERE parent_group_id=? AND is_active=1", [rid]).fetchone()[0]
+        if existing > 0:
+            print(f"[Seed] Phase20 {table_name}: 已有 {existing} 个子组，跳过")
+            continue
+        for idx, (name, key, icon) in enumerate(subs):
+            db.execute("""INSERT INTO word_card_group (name,group_key,icon,group_type,parent_group_id,sort_order,is_active,created_at,updated_at)
+                         VALUES (?,?,?,'sub',?,?,1,datetime('now','localtime'),datetime('now','localtime'))""",
+                      [name, key, icon, rid, idx + 1])
+        print(f"[Seed] Phase20 {table_name}: {len(subs)} 个子组完成")
+    try:
+        db.execute("COMMIT")
+    except Exception:
+        pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -168,6 +248,22 @@ async def lifespan(app: FastAPI):
         safe_commit()
     except Exception as e:
         print("[Seedance V2] 种子初始化失败:", e)
+
+    # Phase20: 角色/场景分组种子（首次启动幂等建组，EXE 环境必需）
+    # 注意：种子脚本内部 __file__ 路径在 frozen 环境失效，
+    # 改为内联种子逻辑，直接使用 lifespan 传入的 db 连接
+    try:
+        _seed_char_and_scene_groups(db)
+        print("[Seed] 角色/场景分组种子完成")
+    except Exception as e:
+        print(f"[Seed] 角色/场景种子跳过: {e}")
+
+    # Phase20: 全局画风/负面二级子分组迁移
+    try:
+        _seed_phase20_style_neg_subgroups(db)
+        print("[Seed] Phase20 二级子分组迁移完成")
+    except Exception as e:
+        print(f"[Seed] Phase20 迁移跳过: {e}")
 
     # v4 数据迁移: prompts→prompt_cards, prompt_library→library_assets
     _migrate_v4(db)

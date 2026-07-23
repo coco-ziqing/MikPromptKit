@@ -213,19 +213,25 @@ class PluginManager:
         
         # 插件目录基于工作区根目录（而非 backend/ 子目录），兼容从 backend/ 启动
         try:
-            from paths import get_base_dir
+            from paths import get_base_dir, get_resource_dir
             _workspace_root = Path(get_base_dir())
+            _resource_root = Path(get_resource_dir())
         except Exception:
             _workspace_root = Path(__file__).resolve().parent.parent
+            _resource_root = _workspace_root
         self.plugins: Dict[str, PluginInstance] = {}   # plugin_id → PluginInstance
         self.hook_registry: Dict[str, List[Callable]] = {}  # hook_name → [callback, ...]
-        self.plugins_dir: Path = _workspace_root / "plugins"
-        self.disabled_dir: Path = _workspace_root / "plugins" / "_disabled"
+        # 打包环境下插件在 _internal/plugins/，开发环境在工作区 plugins/
+        self.plugins_dir: Path = _resource_root / "plugins"
+        self.disabled_dir: Path = _resource_root / "plugins" / "_disabled"
         self._initialized = True
         
-        # 确保目录存在
-        self.plugins_dir.mkdir(parents=True, exist_ok=True)
-        self.disabled_dir.mkdir(parents=True, exist_ok=True)
+        # 确保目录存在（打包环境下跳过写入）
+        try:
+            self.plugins_dir.mkdir(parents=True, exist_ok=True)
+            self.disabled_dir.mkdir(parents=True, exist_ok=True)
+        except (OSError, PermissionError):
+            pass  # frozen 环境下 _internal/ 只读
     
     # ================================================================
     # 插件发现

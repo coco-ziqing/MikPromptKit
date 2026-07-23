@@ -9,18 +9,32 @@ from pathlib import Path
 ROOT = Path(r'C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev')
 block_cipher = None
 
-# ---------- 前端静态文件 datas ----------
-frontend_files = []
+# ---------- 前端 + 插件 datas ----------
+all_datas = []
+
+# 前端静态文件
 for item in (ROOT / 'frontend').rglob('*'):
     if item.is_file() and '__pycache__' not in str(item):
         rel = item.relative_to(ROOT)
-        frontend_files.append((str(item), str(rel.parent)))
+        all_datas.append((str(item), str(rel.parent)))
+
+# 开源插件（打包到 _internal/plugins/，供 plugin_manager 从 get_resource_dir() 发现）
+for item in (ROOT / 'plugins').rglob('*'):
+    if item.is_file() and '__pycache__' not in str(item):
+        rel = item.relative_to(ROOT)
+        # 排除禁用/商业插件
+        if len(rel.parts) >= 2 and rel.parts[1] in ('_disabled',):
+            continue
+        all_datas.append((str(item), str(rel.parent)))
+
+# VERSION 文件
+all_datas.append((str(ROOT / 'VERSION'), 'VERSION'))
 
 a = Analysis(
     [str(ROOT / 'backend' / 'main.py')],
     pathex=[str(ROOT), str(ROOT / 'backend')],
     binaries=[],
-    datas=frontend_files,
+    datas=all_datas,
     hiddenimports=[
         'fastapi', 'fastapi.staticfiles',
         'uvicorn', 'uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto',
