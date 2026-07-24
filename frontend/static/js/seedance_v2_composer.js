@@ -134,6 +134,13 @@
     // 🚀 独立分镜模板入口：免许可，不关联任何项目
     App.seedanceV2.openStandalone = async function() {
         this._standaloneMode = true;
+        // 确保删除弹窗存在（独立模式不走 init 流程）
+        if (!document.getElementById('s2ProjectDelPop')) {
+            var d2 = document.createElement('div'); d2.id = 's2ProjectDelPop'; d2.className = 's2-global-del-popover';
+            d2.style.cssText = 'display:none;position:fixed;z-index:999;';
+            d2.innerHTML = '<span class="s2-del-popover-text">确定删除此项目？</span><button class="s2-del-proj-confirm">确认</button><button class="s2-proj-del-cancel">取消</button>';
+            document.body.appendChild(d2);
+        }
         // 直接进入 seedance 视图，不走 switchView 常规流程
         document.querySelectorAll('.view-panel').forEach(function(el){ el.classList.remove('active-view'); });
         var seedanceEl = document.getElementById('viewSeedance');
@@ -314,7 +321,7 @@
         this._saving=false;
     };
 
-    App.seedanceV2.showProjectDelPopover = function(btnEl,pid){var pv=document.getElementById('s2ProjectDelPop');if(!pv)return;var r=btnEl.getBoundingClientRect();pv.dataset.projectId=pid;pv.style.position='fixed';pv.style.left=Math.max(4,r.left-140)+'px';pv.style.top=(r.bottom+4)+'px';pv.style.display='flex';};
+    App.seedanceV2.showProjectDelPopover = function(btnEl,pid){var pv=document.getElementById('s2ProjectDelPop');if(!pv)return;var r=btnEl.getBoundingClientRect();pv.dataset.projectId=pid;pv.style.position='fixed';pv.style.left=Math.max(4,r.left-140)+'px';pv.style.top=(r.bottom+4)+'px';pv.style.display='flex';var confirm=pv.querySelector('.s2-del-proj-confirm');var cancel=pv.querySelector('.s2-proj-del-cancel');if(confirm)confirm.onclick=function(){App.seedanceV2.confirmDeleteProject(pid);pv.style.display='none';};if(cancel)cancel.onclick=function(){pv.style.display='none';};};
     App.seedanceV2.quickDeleteProject = function(id){this.deleteProject(id);};
     App.seedanceV2.toggleBatchDelete = function(){var c=document.querySelectorAll('.s2-project-check:checked');var b=document.getElementById('s2BatchDelHeader');if(b)b.style.display=c.length>0?'inline-flex':'none';};
     App.seedanceV2.batchDeleteProjects = function(){var c=document.querySelectorAll('.s2-project-check:checked');if(!c.length||!confirm(App._t('common.ok', '确定删除选中的 ')+c.length+' 个项目？'))return;var ids=[];for(var i=0;i<c.length;i++)ids.push(parseInt(c[i].dataset.pid));var self=this;(async function(){for(var j=0;j<ids.length;j++)await App.fetchJSON('/api/seedance/v2/projects/'+ids[j],{method:'DELETE'});await self.loadProjects();self.renderProjectList();if(self.currentProjectId&&ids.indexOf(self.currentProjectId)>=0){self.currentProjectId=null;self.currentProject=null;self.scenes=[];self.renderComposerEmpty();}App.showToast(App._t('auto.str_023f5967', '已删除 ')+ids.length+' 个项目','info');})();};
@@ -657,7 +664,7 @@
         if (p.template_id) {
             h+='<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._showUpdateTemplatePopup('+p.id+','+p.template_id+')" style="color:#7c3aed;border-color:#7c3aed;margin-right:6px;" title="当前组装的提示词操作">📤 更新模版</button>';
         }
-        h+='<button class="btn btn-sm btn-success" onclick="App.seedanceV2.saveProject()">💾 保存</button><button class="btn btn-sm btn-danger" onclick="App.seedanceV2.confirmDeleteProject('+p.id+')">🗑 删除</button></div></div>';
+        h+='<button class="btn btn-sm btn-success" onclick="App.seedanceV2.saveProject()">💾 保存</button><button class="btn btn-sm btn-danger" onclick="App.seedanceV2.confirmDeleteProject('+(p.id||this.currentProjectId)+')">🗑 删除</button></div></div>';
         // ① 分镜列表（可折叠）
         h+='<div class="s2-section s2-shotlist-section" id="s2ShotListSection"><div class="s2-section-title" onclick="App.seedanceV2._toggleShotList()" title="点击折叠/展开" style="cursor:pointer;">🎬 分镜列表 <span class="s2-badge">'+this.scenes.length+' 镜头</span> <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span><button id="s2ToggleAllBtn" class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._toggleAllScenes()" title="折叠/展开全部子镜头" style="margin-left:auto;font-size:10px;padding:2px 8px;color:#6366f1;border-color:#6366f1;">▶ 折叠全部</button></div><div class="s2-shotlist-body">'+this._buildTimelineHTML()+'<div class="s2-scenes-container" id="s2ScenesContainer"></div></div></div>';
         // ② 全局参数（分镜设完再调全局）
