@@ -19,12 +19,6 @@
     <header class="navbar-tool">
         <button class="header-btn" id="btnMenu" onclick="App.toggleMobileMenu()" style="display:none;" title="菜单" data-i18n-title="nav.menu" data-i18n-title-zh="菜单"><i class="bi bi-list"></i></button>
         <div class="brand" onclick="App.switchAllGroups?App.switchAllGroups():App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> <span data-i18n="nav.brand" data-i18n-zh="咪卡Mik词库">咪卡Mik词库</span> <small id="brandVersion">5.0.0</small></div>
-        <!-- 三模式版本切换条 -->
-        <div class="pk-mode-switcher" id="pkModeSwitcher" style="display:none;">
-            <button class="pk-mode-btn active" data-mode="library" onclick="App._switchMode('library',this)" title="个人词库 / 组装器 / AI 工具">📚</button>
-            <button class="pk-mode-btn" data-mode="project" onclick="App._switchMode('project',this)" title="项目管理 / 看板 / 资产库">📦</button>
-            <button class="pk-mode-btn" data-mode="team" onclick="App._switchMode('team',this)" title="共享项目 / 成员协作 / 审核">👥</button>
-        </div>
         <!-- 搜索框已迁移到词库页header行内，此处保留隐藏DOM供JS引用 -->
         <div class="search-box" id="globalSearchBox" style="display:none;"><input type="text" id="searchInput" placeholder="搜索提示词"><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()">🔤</button></div>
         <span class="header-divider"></span>
@@ -38,10 +32,12 @@
                     <div class="nav-dropdown-item" onclick="App.switchView('history')"><i class="bi bi-clock-history"></i> 最近使用</div>
                     <div class="nav-dd-sep"></div>
                     <div class="nav-dropdown-item" onclick="App.switchView('atom_editor')"><i class="bi bi-puzzle" style="color:#f59e0b;"></i> 原子引擎</div>
-                    <div class="nav-dropdown-item" onclick="App.switchView('wcmanager')"><i class="bi bi-grid-3x3-gap-fill"></i> 我的词库</div>
+                    <div class="nav-dropdown-item" onclick="App.switchView('wcmanager')"><i class="bi bi-grid-3x3-gap-fill"></i> 词卡管理</div>
                     <div class="nav-dropdown-item" onclick="App.openPlayground()"><i class="bi bi-cpu"></i> 词卡优化</div>
                     <div class="nav-dropdown-item" onclick="App.openScreenshotImport()"><i class="bi bi-camera"></i> 截图导入</div>
                     <div class="nav-dropdown-item" onclick="App.switchView('trash')"><i class="bi bi-trash"></i> 词卡回收</div>
+                    <div class="nav-dd-sep"></div>
+                    <div class="nav-dropdown-item" onclick="App.seedanceV2.openStandalone()"><i class="bi bi-film" style="color:#8b5cf6;"></i> 分镜模板</div>
                     <div class="nav-dd-sep"></div>
                     <span id="pluginNavDropdownItems"></span>
                 </div>
@@ -54,7 +50,7 @@
                     <div class="nav-dropdown-item" onclick="App.switchView('character_composer')"><i class="bi bi-person-badge" style="color:#ec4899;"></i> 角色组装器</div>
                     <div class="nav-dropdown-item" onclick="App.switchView('scene_composer')"><i class="bi bi-image" style="color:#10b981;"></i> 场景组装器</div>
                     <div class="nav-dropdown-item" onclick="App.switchView('unified_composer')"><i class="bi bi-layers" style="color:#8b5cf6;"></i> 生图组装器</div>
-                    <div class="nav-dropdown-item" onclick="App.switchView('seedance')"><i class="bi bi-camera-reels" style="color:#8b5cf6;"></i> 分镜组装器</div>
+                    <div class="nav-dropdown-item pk-need-project" onclick="if(!App._checkProjectGate())return;App.switchView('seedance')"><i class="bi bi-camera-reels" style="color:#8b5cf6;"></i> 分镜组装器</div>
                 </div>
             </div>
 
@@ -62,14 +58,11 @@
             <div class="nav-dropdown" id="navDropdownTools">
                 <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownTools')" title="系统工具"><i class="bi bi-gear"></i><span class="nav-dd-text">工具</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
                 <div class="nav-dropdown-menu">
-                    <div class="nav-dropdown-item" onclick="App._switchAIModel('ollama')"><i class="bi bi-box"></i> AI模型: Ollama</div>
-                    <div class="nav-dropdown-item" onclick="App._switchAIModel('kimi')"><i class="bi bi-cloud"></i> AI模型: Kimi</div>
+                    <div class="nav-dropdown-item" onclick="App.openModelManager()"><i class="bi bi-cpu"></i> 模型管理</div>
                     <div class="nav-dd-sep"></div>
                     <div class="nav-dropdown-item" onclick="App.showBackupInfo()"><i class="bi bi-database"></i> 数据备份</div>
                     <div class="nav-dropdown-item" onclick="App.showSyncPanel()"><i class="bi bi-arrow-left-right"></i> 数据同步</div>
-                    <div class="nav-dropdown-item" onclick="App.monitor.open()"><i class="bi bi-speedometer2"></i> 服务监测</div>
                     <div class="nav-dropdown-item" onclick="App.openComfyConfig()"><i class="bi bi-puzzle"></i> 扩展工具</div>
-                    <div class="nav-dropdown-item" onclick="window.open('/static/keygen.html','_blank')"><i class="bi bi-key-fill" style="color:#f59e0b;"></i> 激活码生成器</div>
                     <div class="nav-dropdown-item" onclick="App._kvOpen()"><i class="bi bi-shield-lock" style="color:#f59e0b;"></i> 密钥保管</div>
                     <div class="nav-dd-sep"></div>
                     <div class="nav-dropdown-item admin-only" onclick="location.href='/cover_editor.html'"><i class="bi bi-palette"></i> 封面编辑</div>
@@ -78,11 +71,11 @@
 
             <!-- ↓ 下拉: AI 生成（插件预埋：角色/场景/分镜生成入口，衔接 ComfyUI） -->
             <div class="nav-dropdown" id="navDropdownGenerator">
-                <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownGenerator')" title="AI 生成中心"><i class="bi bi-stars"></i><span class="nav-dd-text">生成</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
+                <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownGenerator')" title="AI 生成中心" class="pk-need-team"><i class="bi bi-stars"></i><span class="nav-dd-text">生成</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
                 <div class="nav-dropdown-menu">
-                    <div class="nav-dropdown-item" onclick="App.switchView('generator_character')"><i class="bi bi-person-badge" style="color:#ec4899;"></i> 角色生成</div>
-                    <div class="nav-dropdown-item" onclick="if(window.PK_GENERATOR)PK_GENERATOR.viewScene();"><i class="bi bi-image" style="color:#10b981;"></i> 场景生成</div>
-                    <div class="nav-dropdown-item" onclick="if(window.PK_GENERATOR)PK_GENERATOR.viewStoryboard();"><i class="bi bi-camera-reels" style="color:#8b5cf6;"></i> 分镜生成</div>
+                    <div class="nav-dropdown-item pk-need-team" onclick="if(!App._checkTeamGate('AI生成'))return;App.switchView('generator_character')"><i class="bi bi-person-badge" style="color:#ec4899;"></i> 角色生成</div>
+                    <div class="nav-dropdown-item pk-need-team" onclick="if(!App._checkTeamGate('AI生成'))return;if(window.PK_GENERATOR)PK_GENERATOR.viewScene();"><i class="bi bi-image" style="color:#10b981;"></i> 场景生成</div>
+                    <div class="nav-dropdown-item pk-need-team" onclick="if(!App._checkTeamGate('AI生成'))return;if(window.PK_GENERATOR)PK_GENERATOR.viewStoryboard();"><i class="bi bi-camera-reels" style="color:#8b5cf6;"></i> 分镜生成</div>
                 </div>
             </div>
 
@@ -90,11 +83,11 @@
             <div class="nav-dropdown" id="navDropdownProject">
                 <button class="header-btn nav-dropdown-btn nav-dd-label" onclick="App._toggleDropdown('navDropdownProject')" title="项目工坊"><i class="bi bi-kanban"></i><span class="nav-dd-text">项目</span><i class="bi bi-chevron-down nav-dd-arrow"></i></button>
                 <div class="nav-dropdown-menu">
-                    <div class="nav-dropdown-item" onclick="if(window.PK)PK.open();else if(window.__PK_PLUGINS__&&__PK_PLUGINS__._views&&__PK_PLUGINS__._views.project_mgmt)__PK_PLUGINS__._views.project_mgmt();if(window.App&&App._collapseSidebar)App._collapseSidebar();"><i class="bi bi-kanban" style="color:#3b82f6;"></i> 项目看板</div>
-                    <div class="nav-dropdown-item" onclick="if(window.PK_ASSETLIB)PK_ASSETLIB.open()"><i class="bi bi-box-seam" style="color:#8b5cf6;"></i> 作品资产</div>
-                    <div class="nav-dropdown-item" onclick="if(window.PK_ROLES)PK_ROLES.open()"><i class="bi bi-people" style="color:#ec4899;"></i> 项目设定</div>
+                    <div class="nav-dropdown-item pk-need-project" onclick="if(!App._checkProjectGate())return;if(window.PK)PK.open();else if(window.__PK_PLUGINS__&&__PK_PLUGINS__._views&&__PK_PLUGINS__._views.project_mgmt)__PK_PLUGINS__._views.project_mgmt();if(window.App&&App._collapseSidebar)App._collapseSidebar();"><i class="bi bi-kanban" style="color:#3b82f6;"></i> 项目看板</div>
+                    <div class="nav-dropdown-item pk-need-project" onclick="if(!App._checkProjectGate())return;if(window.PK_ASSETLIB)PK_ASSETLIB.open()"><i class="bi bi-box-seam" style="color:#8b5cf6;"></i> 作品资产</div>
+                    <div class="nav-dropdown-item pk-need-project" onclick="if(!App._checkProjectGate())return;if(window.PK_ROLES)PK_ROLES.open()"><i class="bi bi-people" style="color:#ec4899;"></i> 项目设定</div>
                     <div class="nav-dd-sep"></div>
-                    <div class="nav-dropdown-item" onclick="if(window.PK_FILESTEWARD)PK_FILESTEWARD.open()"><i class="bi bi-folder-symlink" style="color:#059669;"></i> 资产管家</div>
+                    <div class="nav-dropdown-item pk-need-project" onclick="if(!App._checkProjectGate())return;if(window.PK_FILESTEWARD)PK_FILESTEWARD.open()"><i class="bi bi-folder-symlink" style="color:#059669;"></i> 资产管家</div>
                 </div>
             </div>
 
@@ -117,7 +110,13 @@
 
             <!-- 插件按钮 --><span id="pluginNavRight" style="display:flex;align-items:center;gap:4px;"></span>
 
-            <span id="headerStats" class="badge bg-light text-dark" style="font-size:12px;">加载中...</span>
+        <div class="pk-mode-switcher" id="pkModeSwitcher" style="display:none;">
+            <button class="pk-mode-btn active" data-mode="library" onclick="App._switchMode('library',this)" title="个人词库 / 组装器 / AI 工具">📚</button>
+            <button class="pk-mode-btn" data-mode="project" onclick="App._switchMode('project',this)" title="项目管理 / 看板 / 资产库">📦</button>
+            <button class="pk-mode-btn" data-mode="team" onclick="App._switchMode('team',this)" title="共享项目 / 成员协作 / 审核">👥</button>
+        </div>
+
+            <span id="headerStats" class="badge bg-light text-dark" style="font-size:12px;margin-left:auto;flex-shrink:0;">加载中...</span>
         </div>
     </header>
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="App.toggleMobileMenu()"></div>
@@ -238,7 +237,7 @@
         </div>
         <div id="viewWCManager" class="view-panel">
             <div class="page-header" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-                <h3 style="margin:0;"><i class="bi bi-grid-3x3-gap-fill"></i> 我的词库</h3>
+                <h3 style="margin:0;"><i class="bi bi-grid-3x3-gap-fill"></i> 词卡管理</h3>
                 <span id="wcStats" style="font-size:11px;color:var(--text-muted);">加载中...</span>
                 <div style="flex:1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                     <input id="wcSearch" class="modal-input" placeholder="🔍 搜索..." style="width:160px;font-size:12px;padding:5px 8px;" onkeydown="if(event.key==='Enter')App.wordCards.search()">
@@ -1017,10 +1016,10 @@
     <link rel="preload" href="/static/js/app_media.js?v=10.8" as="script">
     <link rel="preload" href="/static/js/word_editor.js?v=12.1" as="script">
     <!-- Phase15: wc_bridge 必须在 app_core 之前加载，分组导航交互重构 -->
-                            <script src="/static/js/wc_bridge.js?v=14.25"></script>
+                            <script src="/static/js/wc_bridge.js?v=14.30"></script>
     <script src="/static/js/signal_lights.js?v=5"></script>
-    <script src="/static/js/app_core.js?v=13.94"></script>
-    <script defer src="/static/js/auth_client.js?v=12"></script>
+    <script src="/static/js/app_core.js?v=13.95"></script>
+    <script defer src="/static/js/auth_client.js?v=17"></script>
 <script defer src="/static/js/pk_terms.js?v=2"></script>
 <script defer src="/static/js/pk_common.js?v=1"></script>
 <script defer src="/static/js/pk_card_bridge.js?v=1"></script>

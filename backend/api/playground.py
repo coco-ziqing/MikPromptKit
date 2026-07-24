@@ -464,6 +464,7 @@ def get_ai_provider_config():
         "kimi_model": cfg.get("kimi_model", "kimi-k2.6"),
         "kimi_ready": kimi_ready,
         "kimi_key_masked": _mask_stored_key("kimi"),
+        "openai_key_masked": _mask_stored_key("openai"),
         "ollama_ready": True,
     }
 

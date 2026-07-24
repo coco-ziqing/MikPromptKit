@@ -81,6 +81,12 @@
           // 显示模式切换条
           var ms = document.getElementById('pkModeSwitcher');
           if (ms) ms.style.display = 'flex';
+          // 加载许可锁态（wc_bridge 可能仍在轮询中，延迟尝试）
+          var tryLockInit = function(n) {
+            if (typeof App !== 'undefined' && App._initLicenseLocks) { App._initLicenseLocks(); return; }
+            if (n < 20) setTimeout(function(){ tryLockInit(n+1); }, 150);
+          };
+          tryLockInit(0);
           this._checkDone = true;
           return;
         }
@@ -319,28 +325,35 @@
       wrap.id = 'navDropdownUser';
       wrap.className = 'nav-dropdown';
 
-      // 按钮 — 匹配 header-btn nav-dropdown-btn nav-dd-label 样式
+      // 按钮 — 固定显示「账户」
       var btn = document.createElement('button');
       btn.id = 'btnAuthUser';
       btn.className = 'header-btn nav-dropdown-btn nav-dd-label';
-      btn.title = '账户';
-      var dn = (user.display_name||user.username||'?');
-      var short = dn.substring(0,4);
+      btn.title = (user.display_name||user.username||'账户');
       var av = user.avatar_url || '';
       var btnIcon = av
         ? '<img src="'+av+'" crossorigin="anonymous" class="pk-nav-avatar" style="width:18px;height:18px;border-radius:6px;object-fit:cover;vertical-align:middle;" onerror="this.style.display=\'none\'">'
         : '';
-      btn.innerHTML = btnIcon + '<span class="nav-dd-text pk-no-i18n">' + self._esc(short) + '</span><i class="bi bi-chevron-down nav-dd-arrow"></i>';
+      btn.innerHTML = btnIcon + '<span class="nav-dd-text pk-no-i18n">账户</span><i class="bi bi-chevron-down nav-dd-arrow"></i>';
       btn.onclick = function(e) { e.stopPropagation(); self._showUserMenu(e); };
       wrap.appendChild(btn);
+
+      // 预加载许可状态（避免菜单打开时的 async 时序问题）
+      fetch('/api/license/info').then(function(r){return r.json();}).then(function(d){
+        if (d.ok && d.tiers) {
+          self._cachedTiers = {
+            personal: d.tiers.personal && d.tiers.personal.active,
+            team: d.tiers.team && d.tiers.team.active
+          };
+        }
+      }).catch(function(){});
 
       // 下拉菜单（按需创建，点击时生成到 body）
       wrap._userMenuHandler = function(e) { self._showUserMenu(e); };
 
-      // 插入到「项目」下拉后面
-      var ref = document.getElementById('navDropdownProject');
-      if (ref && ref.nextSibling) ref.parentNode.insertBefore(wrap, ref.nextSibling);
-      else if (ref) ref.parentNode.appendChild(wrap);
+      // 插入到 🩺 诊断按钮左边
+      var ref = document.getElementById('btnDiagConsole');
+      if (ref) ref.parentNode.insertBefore(wrap, ref);
       else actions.appendChild(wrap);
     },
 
@@ -350,6 +363,12 @@
       var user = this._user || {};
       var isAdmin = user.role === 'admin';
       var roleName = {admin:'主理人',editor:'共创者',viewer:'鉴赏者'}[user.role]||user.role;
+      // 先渲染菜单骨架，同时异步刷新许可状态
+      var ct = this._cachedTiers || {};
+      var personalActive = ct.personal || false;
+      var teamActive = ct.team || false;
+      var self = this;
+      this._refreshTiers();  // 后台刷新，下次打开菜单即生效
 
       menu = document.createElement('div');
       menu.id = 'pkUserMenu';
@@ -364,21 +383,35 @@
       h += '<div style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-top:2px;"><span>'+(isAdmin?'🔷':'🟢')+' '+roleName+'</span><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span> 在线</div></div></div>';
 
       // 菜单项
+      var currentMode = App.state._currentMode || 'library';
+
       var items = [
-        {icon:'👥', label:'团队空间', action:"if(window.AUM)AUM.open()", show:isAdmin},
+        {id:'menuTeamSpace', icon:'👥', label:'团队空间', action:function(){if(window.AUM)AUM.open()}, show:isAdmin},
         {divider:true, show:isAdmin},
-        {icon:'👤', label:'个人详情', action:'PK_AUTH_CLIENT._showProfile()', show:true},
-        {icon:'🔄', label:'切换账户', action:'PK_AUTH_CLIENT._switchAccount()', show:true},
-        {icon:'🔓', label:'退出登录', action:'PK_AUTH_CLIENT._doLogout()', show:true, danger:true},
+        {id:'menuProfile', icon:'👤', label:'个人详情', action:function(){PK_AUTH_CLIENT._showProfile()}, show:true},
+        {id:'menuSwitchAcct', icon:'🔄', label:'切换账户', action:function(){PK_AUTH_CLIENT._switchAccount()}, show:true},
+        {divider:true, show:personalActive || teamActive},
+        {id:'menuDeact', icon:'🔒', label:'退出激活', action:function(){PK_AUTH_CLIENT._deactivateMode()}, show:personalActive || teamActive},
+        {divider:true, show:personalActive || teamActive},
+        {id:'menuLogout', icon:'🔓', label:'退出登录', action:function(){PK_AUTH_CLIENT._doLogout()}, show:true, danger:true},
       ];
 
       items.forEach(function(item){
         if (!item.show) return;
         if (item.divider) { h += '<div style="height:1px;background:var(--border-color);margin:4px 0;"></div>'; return; }
-        h += '<button class="pk-menu-item'+(item.danger?' pk-menu-danger':'')+'" onclick="'+item.action+'">'+item.icon+' '+item.label+'</button>';
+        h += '<button class="pk-menu-item'+(item.danger?' pk-menu-danger':'')+'" data-action-id="'+item.id+'">'+item.icon+' '+item.label+'</button>';
       });
 
       menu.innerHTML = h;
+      // 事件委托
+      menu.addEventListener('click', function(ev) {
+        var btn = ev.target.closest('.pk-menu-item');
+        if (!btn) return;
+        var aid = btn.dataset.actionId;
+        for (var i = 0; i < items.length; i++) {
+          if (items[i].id === aid && items[i].action) { items[i].action(); return; }
+        }
+      });
       document.body.appendChild(menu);
       var cls = function(ev){if(!menu.contains(ev.target)){menu.remove();document.removeEventListener('click',cls);}};
       setTimeout(function(){document.addEventListener('click',cls);},10);
@@ -611,6 +644,19 @@
       }).catch(function(){ if (typeof PK!=='undefined'&&PK.toast) PK.toast('网络不太稳定，请稍后重试', 'error'); });
     },
 
+    // 刷新许可缓存（激活/退出后调用，使菜单按钮立即可见）
+    _refreshTiers: function() {
+      var self = this;
+      fetch('/api/license/info').then(function(r){return r.json();}).then(function(d){
+        if (d.ok && d.tiers) {
+          self._cachedTiers = {
+            personal: d.tiers.personal && d.tiers.personal.active,
+            team: d.tiers.team && d.tiers.team.active
+          };
+        }
+      }).catch(function(){});
+    },
+
     // 切换账户
     _switchAccount: function() {
       if (confirm('确定要切换账户？当前账户将登出。')) {
@@ -623,17 +669,54 @@
       if (this._token) {
         fetch('/api/auth/logout',{method:'POST',headers:{'Authorization':'***'+this._token}}).catch(function(){});
       }
-      // Phase34: 断开在线状态通道并移除指示器
       try { if (window.PK_PRESENCE) PK_PRESENCE.disconnect(); } catch(e){}
       var pw = document.getElementById('pkPresenceWrap'); if (pw) pw.remove();
       localStorage.removeItem('pk_token_v1'); localStorage.removeItem('pk_user');
-      // 清理残留的分组/视图状态，防止重新登录后加载到过期分组ID导致卡死
       try { localStorage.removeItem('promptkit_group_id'); localStorage.removeItem('promptkit_view'); localStorage.removeItem('promptkit_module'); } catch(e) {}
       this._token = null; this._user = null; this._loggedIn = false;
       var w = document.getElementById('navDropdownUser'); if (w) w.remove();
-      // 隐藏管理员专属入口（退出登录后）
       document.querySelectorAll('.nav-dropdown-item.admin-only').forEach(function(el){ el.classList.add('admin-only'); });
       this._showCover();
+    },
+
+    _deactivateMode: async function(tier) {
+      var self = this;
+      // 自动判定退出哪个版本：团队优先
+      var ct = this._cachedTiers || {};
+      tier = tier || (ct.team ? 'team' : 'personal');
+      var label = tier === 'team' ? '团队项目版' : '个人项目版';
+      if (!confirm('确认退出 ' + label + ' 激活？\n退出后对应功能将被锁定。')) return;
+      try {
+        var r = await fetch('/api/license/deactivate', {
+          method: 'DELETE',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({tier: tier})
+        });
+        var d = await r.json();
+        if (d.ok) {
+          if (tier === 'team') {
+            self._cachedTiers.team = false;
+            // 退出团队版 → 自动回退到个人项目版（如果个人版仍激活）
+            if (self._cachedTiers.personal) {
+              App._activeTiers = {personal: true, team: false};
+              App._refreshModeBtnLocks();
+              App._switchMode('project', document.querySelector('.pk-mode-btn[data-mode="project"]'));
+            } else {
+              App._activeTiers = {personal: false, team: false};
+              App._refreshModeBtnLocks();
+              App._switchMode('library', document.querySelector('.pk-mode-btn[data-mode="library"]'));
+            }
+          } else {
+            self._cachedTiers.personal = false;
+            App._activeTiers = {personal: false, team: self._cachedTiers.team || false};
+            App._refreshModeBtnLocks();
+            App._switchMode('library', document.querySelector('.pk-mode-btn[data-mode="library"]'));
+          }
+          if (typeof PK !== 'undefined' && PK.toast) PK.toast('已退出' + label, 'info');
+        } else {
+          alert(d.detail || '操作失败');
+        }
+      } catch(e) { alert('网络错误: ' + e.message); }
     },
 
     // ---- Fetch 拦截 ----

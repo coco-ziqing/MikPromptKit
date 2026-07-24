@@ -231,11 +231,13 @@ async def lifespan(app: FastAPI):
     try:
         from semantic import _ML_OK
         if _ML_OK:
-            from semantic import rebuild_all_embeddings
+            from semantic import rebuild_all_embeddings, rebuild_wc_embeddings
             import threading
             t = threading.Thread(target=rebuild_all_embeddings, daemon=True)
             t.start()
-            print("[语义搜索] 索引重建已启动")
+            t2 = threading.Thread(target=rebuild_wc_embeddings, daemon=True)
+            t2.start()
+            print("[语义搜索] 索引重建已启动（旧表 + 词卡双通道）")
         else:
             print("[语义搜索] ML 依赖不可用，跳过")
     except Exception as e:

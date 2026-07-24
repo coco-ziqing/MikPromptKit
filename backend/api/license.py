@@ -168,12 +168,16 @@ def activate_license(data: dict = Body(...)):
         "machine_name": platform.node(),
     }
     _write_license(tier, license_data)
+    # 团队版激活 → 级联激活个人项目版
+    if tier == 'team':
+        if not _read_license('personal'):
+            _write_license('personal', dict(license_data, tier='personal', licensed_to='团队版赠送个人项目版许可'))
     return {"ok": True, "message": f"{'个人项目版' if tier == 'personal' else '团队项目版'}已激活", "fingerprint": fp, "expires": expires}
 
 
 @router.delete("/deactivate")
 def deactivate_license(data: dict = Body(...)):
-    """解除激活 — 仅管理员"""
+    """解除激活 — 团队版和个人版独立退出，不级联"""
     tier = (data.get("tier") or "").strip()
     if tier not in ("personal", "team"):
         raise HTTPException(400, "参数错误：tier(personal|team) 必填")

@@ -347,6 +347,15 @@ App.wordPicker._pickCard = async function(cardId) {
 
 App.wordPicker._onSearch = function(query) {
     this._searchQuery = query;
+    // 防抖 300ms
+    if (this._searchTimer) clearTimeout(this._searchTimer);
+    var self = this;
+    this._searchTimer = setTimeout(function() { self._load(); }, 300);
+};
+
+App.wordPicker._onSearchInstant = function() {
+    // Enter 键立即搜索
+    if (this._searchTimer) clearTimeout(this._searchTimer);
     this._load();
 };
 

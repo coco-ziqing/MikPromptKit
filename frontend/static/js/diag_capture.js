@@ -350,7 +350,7 @@
                 badge.style.display = 'none';
             }
         };
-        // Phase17: 放到最后面
+        // 插入到 header-actions 末尾
         actions.appendChild(btn);
     }
 

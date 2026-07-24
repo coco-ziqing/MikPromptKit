@@ -40,27 +40,36 @@
 
         App.performSemanticSearch = function(query, page) {
             App.showSkeleton();
-            var url = '/api/search/semantic?q=' + encodeURIComponent(query.trim()) + '&limit=' + App.pageSize + '&offset=' + ((page - 1) * App.pageSize || 0);
+            var ps = App.pageSize || 50;
+            var url = '/api/v2/search/wc-semantic?q=' + encodeURIComponent(query.trim()) + '&top_k=' + ps;
             if (App.currentModule) url += '&module=' + encodeURIComponent(App.currentModule);
             fetch(url)
                 .then(function(r) { return r.json(); })
                 .then(function(d) {
-                    if (d && d.results) {
-                        // 将语义搜索结果包装为与普通搜索一致的格式
+                    if (d && d.items) {
                         App.renderPrompts({
-                            items: d.results,
-                            total: d.total || d.results.length,
+                            items: d.items.map(function(it) { return {
+                                id: it.id,
+                                content: it.content,
+                                name: it.name,
+                                meaning: it.meaning,
+                                module: it.module,
+                                category: it.category,
+                                tags: it.tags,
+                                score: it.score,
+                                group_name: it.group_name
+                            };}),
+                            total: d.total || d.items.length,
                             page: page || 1,
-                            page_size: App.pageSize,
-                            total_pages: Math.max(1, Math.ceil((d.total || d.results.length) / App.pageSize))
+                            page_size: ps,
+                            total_pages: Math.max(1, Math.ceil((d.total || d.items.length) / ps))
                         });
                         App._lastSearchQuery = query;
                         App._lastSearchTimestamp = Date.now();
                     }
                 })
                 .catch(function(e) {
-                    console.error('[Semantic Search] 搜索未完成:', e);
-                    App.showToast(App._t('auto.str_a4b0155e', '语义搜索请求未响应'), 'error');
+                    console.error('[Semantic Search] error:', e);
                 });
         };
 

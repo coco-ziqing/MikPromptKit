@@ -128,10 +128,82 @@
     App.seedanceV2.getLibraryById = function(id) { for(var i=0;i<this.libraries.length;i++){if(this.libraries[i].id===id)return this.libraries[i];} return null; };
 
     // 项目管理
-    App.seedanceV2.loadProjects = async function() { var d=await App.fetchJSON('/api/seedance/v2/projects?page_size=100'); if(d) this.projects = d.items; };
-    App.seedanceV2.createProject = async function() { var n=prompt(App._t('auto.str_424063a1', '项目名称:'),'新项目 '+(this.projects.length+1)); if(!n)return; var d=await App.fetchJSON('/api/seedance/v2/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})}); if(d&&d.ok){await this.loadProjects();this.renderProjectList();this.openProject(d.id);App.showToast('项目已创建','success');} };
-    App.seedanceV2.deleteProject = async function(id){var d=await App.fetchJSON('/api/seedance/v2/projects/'+id,{method:'DELETE'});if(d&&d.ok){if(this.currentProjectId===id){this.currentProjectId=null;this.currentProject=null;this.scenes=[];this.renderComposerEmpty();}await this.loadMasterProjects();await this.loadProjects();this.renderProjectList();App.showToast('分镜组已删除','info');}};
+    App.seedanceV2.loadProjects = async function() { var url=this._standaloneMode?'/api/seedance/v2/projects?orphaned=true&page_size=100':'/api/seedance/v2/projects?page_size=100'; var d=await App.fetchJSON(url); if(d) this.projects = d.items; };
+    App.seedanceV2.createProject = async function() { var n=prompt(App._t('auto.str_424063a1', '项目名称:'),'新项目 '+(this.projects.length+1)); if(!n)return; var d=await App.fetchJSON('/api/seedance/v2/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})}); if(d&&d.ok){await this.loadProjects();this._renderList();this.openProject(d.id);App.showToast('项目已创建','success');} };
+
+    // 🚀 独立分镜模板入口：免许可，不关联任何项目
+    App.seedanceV2.openStandalone = async function() {
+        this._standaloneMode = true;
+        // 直接进入 seedance 视图，不走 switchView 常规流程
+        document.querySelectorAll('.view-panel').forEach(function(el){ el.classList.remove('active-view'); });
+        var seedanceEl = document.getElementById('viewSeedance');
+        if (seedanceEl) seedanceEl.classList.add('active-view');
+        App._hideSearchBox(); App._showSidebar(); App._collapseSidebar();
+        // 加载孤立分镜项目
+        var d = await App.fetchJSON('/api/seedance/v2/projects?orphaned=true&page_size=100');
+        if (d) this.projects = d.items;
+        this.renderStandaloneList();
+        this.currentProjectId = null; this.currentProject = null; this.scenes = [];
+        this.renderComposerEmpty();
+        // 设置切换 tab 为 composer
+        this.switchSeedanceTab('composer');
+    };
+
+    // 独立模板列表渲染（简化版，去除项目关联信息）
+    App.seedanceV2.renderStandaloneList = function() {
+        var c = document.getElementById('s2ProjectList');
+        if (!c) return;
+        var h = '<div class="s2-project-header"><h5>📋 独立分镜模板</h5>' +
+            '<div class="s2-header-actions">' +
+            '<button class="btn btn-sm btn-primary" onclick="App.seedanceV2._standaloneCreate()">+ 新建模板</button>' +
+            '</div></div>' +
+            '<div style="font-size:11px;color:var(--text-muted);padding:0 0 8px;">自由分镜模板，不归属于任何项目，随时可用</div>';
+        if (!this.projects.length) {
+            h += '<div class="s2-empty">暂无独立模板<br><span style="font-size:11px;color:var(--text-muted);">创建的分镜模板可在此独立管理</span></div>';
+        } else {
+            for (var i = 0; i < this.projects.length; i++) {
+                var p = this.projects[i];
+                var a = p.id === this.currentProjectId ? ' s2-project-active' : '';
+                h += '<div class="s2-project-item' + a + '" data-pid="' + p.id + '">' +
+                    '<div class="s2-project-info" onclick="App.seedanceV2.openProject(' + p.id + ')">' +
+                    '<div class="s2-project-name">' + App._escape(p.name || '未命名') + '</div>' +
+                    '<div class="s2-project-meta">' + p.scene_count + ' 镜头 · ' + (p.total_duration || 15) + 's</div>' +
+                    '</div>' +
+                    '<button class="s2-project-del" onclick="event.stopPropagation();App.seedanceV2.showProjectDelPopover(this,' + p.id + ')">✖</button>' +
+                    '</div>';
+            }
+        }
+        c.innerHTML = h;
+    };
+
+    // 创建独立模板
+    App.seedanceV2._standaloneCreate = async function() {
+        var n = prompt('分镜模板名称：', '新模板 ' + (this.projects.length + 1));
+        if (!n) return;
+        var d = await App.fetchJSON('/api/seedance/v2/projects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: n })
+        });
+        if (d && d.ok) {
+            await this.loadProjects();
+            this.renderStandaloneList();
+            this.openProject(d.id);
+            App.showToast('独立模板已创建', 'success');
+        }
+    };
+
+    // 退出独立模板模式
+    App.seedanceV2.exitStandalone = function() {
+        this._standaloneMode = false;
+        this.currentProjectId = null;
+        this.currentProject = null;
+        this.scenes = [];
+        App.switchView('home');
+    };
+    App.seedanceV2.deleteProject = async function(id){var d=await App.fetchJSON('/api/seedance/v2/projects/'+id,{method:'DELETE'});if(d&&d.ok){if(this.currentProjectId===id){this.currentProjectId=null;this.currentProject=null;this.scenes=[];this.renderComposerEmpty();}await this.loadMasterProjects();await this.loadProjects();this._renderList();App.showToast('分镜组已删除','info');}};
     App.seedanceV2.confirmDeleteProject = function(id){if(!confirm(App._t('common.ok', '确定删除此项目？所有镜头数据将永久丢失。')))return;this.deleteProject(id);};
+    App.seedanceV2._renderList = function() { if (this._standaloneMode) this.renderStandaloneList(); else this.renderProjectList(); };
     // 闭环: 组装器 → 回写场景模版
     // 弹出更新模版选择窗口
     App.seedanceV2._showUpdateTemplatePopup = function(projectId, templateId) {
@@ -207,7 +279,7 @@
     App.seedanceV2.updateTemplate = function(projectId, templateId) {
         App.seedanceV2._showUpdateTemplatePopup(projectId, templateId);
     };
-    App.seedanceV2.openProject=async function(id){this.currentProjectId=id;try{localStorage.setItem('promptkit_seedance_project',id);localStorage.setItem('promptkit_view','seedance');localStorage.setItem('promptkit_seedance_tab','composer');}catch(e){}try{var d=await App.fetchJSON('/api/seedance/v2/projects/'+id);if(!d){App.showToast('加载项目失败: 无响应','error');return;}this.currentProject=d.project;if(window.PK_PRESENCE)PK_PRESENCE.reportLocation('分镜',d.project.name||'',d.project.id||0);this.scenes=d.scenes;this._restoreExtUnitConfig();var editor=document.getElementById('s2Editor');var savedScroll=editor?editor.scrollTop:0;this.renderProjectList();this.renderProjectEditor();this.renderScenes();this.compose();var self=this;requestAnimationFrame(function(){var e=document.getElementById('s2Editor');if(e&&savedScroll>0)e.scrollTop=savedScroll;});}catch(e){App.showToast('加载项目异常: '+e.message,'error');console.warn('openProject error:',e);}};
+    App.seedanceV2.openProject=async function(id){this.currentProjectId=id;try{localStorage.setItem('promptkit_seedance_project',id);localStorage.setItem('promptkit_view','seedance');localStorage.setItem('promptkit_seedance_tab','composer');}catch(e){}try{var d=await App.fetchJSON('/api/seedance/v2/projects/'+id);if(!d){App.showToast('加载项目失败: 无响应','error');return;}this.currentProject=d.project;if(window.PK_PRESENCE)PK_PRESENCE.reportLocation('分镜',d.project.name||'',d.project.id||0);this.scenes=d.scenes;this._restoreExtUnitConfig();var editor=document.getElementById('s2Editor');var savedScroll=editor?editor.scrollTop:0;this._renderList();this.renderProjectEditor();this.renderScenes();this.compose();var self=this;requestAnimationFrame(function(){var e=document.getElementById('s2Editor');if(e&&savedScroll>0)e.scrollTop=savedScroll;});}catch(e){App.showToast('加载项目异常: '+e.message,'error');console.warn('openProject error:',e);}};
     App.seedanceV2.saveProject = async function(){
         if(!this.currentProjectId)return;
         if(this._saving){App.showToast('正在保存，请稍后','warning');return;}

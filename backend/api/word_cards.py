@@ -126,6 +126,26 @@ def delete_group(group_id: int):
 
 # ==================== 选取器 (静态路径) ====================
 
+@router.get("/suggestions")
+def search_suggestions(q: str = Query(..., min_length=2), limit: int = Query(8, le=20)):
+    """搜索建议：输入2字+后实时返回高频匹配词卡名单"""
+    db = get_db()
+    like = f"%{q}%"
+    rows = db.execute("""
+        SELECT id, name, content, usage_count
+        FROM word_card
+        WHERE is_deleted=0 AND (name LIKE ? OR content LIKE ? OR meaning LIKE ? OR tags LIKE ?)
+        ORDER BY usage_count DESC, heat_weight DESC
+        LIMIT ?
+    """, [like, like, like, like, limit]).fetchall()
+    suggestions = []
+    for r in rows:
+        name = r["name"] or (r["content"] or "")[:30]
+        content = (r["content"] or "")[:80]
+        suggestions.append({"id": r["id"], "name": name, "snippet": content, "usage": r["usage_count"]})
+    return {"ok": True, "suggestions": suggestions, "total": len(suggestions)}
+
+
 @router.get("/picker")
 def picker_cards(group_type: str = Query("seedance"), search: str = Query(None),
                   page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200)):
@@ -139,7 +159,7 @@ def picker_cards(group_type: str = Query("seedance"), search: str = Query(None),
         if search:
             fids = _fts_search(db, search)
             if fids: cw.append(f"wc.id IN ({','.join(map(str,fids))})")
-            else: cw.append("(wc.content LIKE ? OR wc.name LIKE ?)"); cp.extend([f"%{search}%"]*2)
+            else: cw.append("(wc.content LIKE ? OR wc.name LIKE ? OR wc.meaning LIKE ? OR wc.tags LIKE ? OR wc.scene LIKE ? OR wc.content_en LIKE ? OR wc.content_zh LIKE ?)"); cp.extend([f"%{search}%"]*7)
         cards = db.execute(f"SELECT wc.id,wc.name,wc.content,wc.meaning,wc.thumbnail,wc.media_type,wc.icon,wc.usage_count,wc.heat_weight,wc.tags,wc.module FROM word_card wc WHERE {' AND '.join(cw)} ORDER BY wc.heat_weight DESC,wc.usage_count DESC,wc.sort_order ASC LIMIT ?", cp+[page_size]).fetchall()
         items = []
         for c in cards:
@@ -393,6 +413,12 @@ async def batch_create_from_text(data: dict):
                 [gid, name, content, meaning, "[]", "custom", "batch", "image", "{}", max_sort + 1]
             )
             cid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            # 异步更新语义向量（静默失败）
+            try:
+                from semantic import update_wc_embedding
+                update_wc_embedding(cid, content)
+            except Exception:
+                pass
             created.append({"id": cid, "content": content[:60], "name": name[:30], "group_id": gid, "group_name": it.get("group_name", ""), "meaning": meaning[:40]})
         except Exception as e:
             errors.append({"content": it.get("content", "")[:40], "error": str(e)[:100]})
@@ -837,7 +863,7 @@ def update_card(card_id: int, data: dict):
         params.append(card_id)
         db.execute(f"UPDATE word_card SET {', '.join(fields)} WHERE id=?", params); safe_commit()
         if data.get("content"):
-            try: from semantic import update_embedding; update_embedding(card_id, data["content"])
+            try: from semantic import update_wc_embedding; update_wc_embedding(card_id, data["content"])
             except: pass
     return {"ok":True}
 
@@ -891,7 +917,7 @@ def list_cards(page: int = Query(1,ge=1), page_size: int = Query(50,ge=1,le=200)
         s = search.strip(); like = f"%{s}%"
         fids = _fts_search(db, s)
         if fids: where.append(f"wc.id IN ({','.join(map(str,fids))})")
-        else: where.append("(wc.content LIKE ? OR wc.name LIKE ? OR wc.meaning LIKE ? OR wc.tags LIKE ?)"); params.extend([like]*4)
+        else: where.append("(wc.content LIKE ? OR wc.name LIKE ? OR wc.meaning LIKE ? OR wc.tags LIKE ? OR wc.scene LIKE ? OR wc.content_en LIKE ? OR wc.content_zh LIKE ?)"); params.extend([like]*7)
     w = " AND ".join(where)
     sc = {"sort_order":"wc.sort_order","usage_count":"wc.usage_count","updated_at":"wc.updated_at","created_at":"wc.created_at","name":"wc.name"}.get(sort, "wc.sort_order")
     sd = "DESC" if order == "desc" else "ASC"
@@ -918,7 +944,7 @@ def create_card(data: dict):
                [gid,(data.get("name") or content)[:60],content,data.get("meaning",""),data.get("scene",""),data.get("module","custom"),data.get("category",""),json.dumps(data.get("tags",[]),ensure_ascii=False),data.get("icon",""),data.get("thumbnail",""),data.get("preview_media",""),data.get("media_type","image"),card_role,gid])
     safe_commit()
     cid = safe_count("SELECT last_insert_rowid()")
-    try: from semantic import update_embedding; update_embedding(cid, content)
+    try: from semantic import update_wc_embedding; update_wc_embedding(cid, content)
     except: pass
     return {"ok":True,"id":cid}
 
@@ -1026,9 +1052,89 @@ def reorder_cards(data: dict):
 
 # ==================== 辅助 ====================
 
+def _fts_contains(text: str, query: str) -> bool:
+    """判断 query 是否被 text 包含（忽略大小写、N-gram 子串匹配）"""
+    if not text or not query: return False
+    tl, ql = text.lower(), query.lower()
+    if ql in tl: return True
+    # 2-gram 子串
+    for i in range(len(query) - 1):
+        if query[i:i+2].lower() in tl: return True
+    return False
+
+
 def _fts_search(db, query: str) -> list:
+    """FTS5 搜索 — N-gram OR + 列权重(name 匹配 ×1.5) → 排序后返回 rowid"""
     try:
-        safe = ' AND '.join(f'"{w}"' for w in query.split() if len(w) >= 2)
-        if not safe: safe = query
-        return [r["rowid"] for r in db.execute("SELECT rowid FROM word_card_fts WHERE word_card_fts MATCH ? LIMIT 100", [safe]).fetchall()]
-    except: return []
+        has_chinese = bool(re.search(r'[\u4e00-\u9fff]', query))
+        results = []  # [(rowid, score), ...]
+
+        if has_chinese:
+            clean_cn = re.sub(r'[^\u4e00-\u9fff]', '', query)
+            grams = []
+            for size in [3, 2]:
+                for i in range(len(clean_cn) - size + 1):
+                    g = clean_cn[i:i+size]
+                    if g not in grams: grams.append(g)
+            if grams:
+                fts_query = ' OR '.join(f'"{g}"*' for g in grams[:15])
+                try:
+                    rows = db.execute(
+                        "SELECT rowid, rank FROM word_card_fts WHERE word_card_fts MATCH ? LIMIT 200",
+                        [fts_query]).fetchall()
+                    # 列权重: name 列命中额外 +50%
+                    for r in rows:
+                        score = 1.0 / max(float(r["rank"] or 1), 0.1)
+                        # 检测 name 列是否匹配
+                        try:
+                            nm = db.execute("SELECT name FROM word_card WHERE id=?", [r["rowid"]]).fetchone()
+                            if nm and nm["name"]:
+                                if _fts_contains(nm["name"], query):
+                                    score *= 1.5
+                        except Exception: pass
+                        results.append((r["rowid"], score))
+                    results.sort(key=lambda x: -x[1])
+                    if results: return [rid for rid, _ in results[:200]]
+                except Exception: pass
+
+        # 策略C2: 英文/混合→分词AND + 前缀扩展
+        cleaned = re.sub(r'[^\w\u4e00-\u9fff]', ' ', query).strip()
+        tokens = [w for w in cleaned.split() if len(w) >= 2]
+        if tokens:
+            safe = ' AND '.join(f'"{w}"*' for w in tokens[:10])
+            try:
+                rows = db.execute(
+                    "SELECT rowid, rank FROM word_card_fts WHERE word_card_fts MATCH ? LIMIT 200",
+                    [safe]).fetchall()
+                for r in rows:
+                    score = 1.0 / max(float(r["rank"] or 1), 0.1)
+                    try:
+                        nm = db.execute("SELECT name FROM word_card WHERE id=?", [r["rowid"]]).fetchone()
+                        if nm and nm["name"] and _fts_contains(nm["name"], query):
+                            score *= 1.5
+                    except Exception: pass
+                    results.append((r["rowid"], score))
+                results.sort(key=lambda x: -x[1])
+                if results: return [rid for rid, _ in results[:200]]
+            except Exception:
+                pass
+
+        # 策略C3: LIKE 子串回退（多关键词 OR 拆分）
+        sub_queries = [query]
+        if has_chinese and len(query) >= 4:
+            # 中文长句默认也拆分 LIKE 子串并行检索
+            cn_parts = re.findall(r'[\u4e00-\u9fff]{2,4}', query)
+            sub_queries = cn_parts[:6] if cn_parts else [query]
+        ids = set()
+        for sq in sub_queries:
+            like = f"%{sq}%"
+            rows = db.execute(
+                "SELECT id FROM word_card WHERE is_deleted=0 AND (content LIKE ? OR name LIKE ? OR meaning LIKE ? OR tags LIKE ? OR scene LIKE ? OR content_en LIKE ? OR content_zh LIKE ?) LIMIT 100",
+                [like]*7).fetchall()
+            for r in rows:
+                ids.add(r["id"])
+            if len(ids) >= 100:
+                break
+        return list(ids)[:200]
+    except Exception:
+        return []

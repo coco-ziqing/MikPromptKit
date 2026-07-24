@@ -1,14 +1,15 @@
 """
 v4.0.0-phase12.5: 语义搜索 API 升级
-- 新增混合搜索端点: FTS5 + embedding + LLM Rerank
-- 保留原有语义搜索端点（兼容）
+- 混合搜索端点: FTS5 + embedding + LLM Rerank（支持 word_card）
+- 词卡语义搜索独立端点
+- 保留原有语义搜索端点（兼容旧 prompts 表）
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
-import json
+import json, threading
 from database import get_db, safe_commit
 from semantic import search, rebuild_all_embeddings, get_status, update_embedding
-import threading
+from semantic import search_word_cards, rebuild_wc_embeddings
 
 router = APIRouter(prefix="/api/v2/search", tags=["search"])
 
@@ -53,11 +54,49 @@ def semantic_search(data: SearchQuery):
 @router.post("/hybrid")
 async def hybrid_search(data: HybridSearchQuery):
     """
-    混合搜索: FTS5 关键词 + 语义向量 + LLM 语义重排
-    三阶段渐进搜索，结果精准度大幅提升
+    混合搜索（旧 prompts 表兼容）: FTS5 关键词 + 语义向量 + LLM 语义重排
     """
     from llm_rerank import hybrid_search as hs
     return await hs(data.query, top_k=data.top_k, use_rerank=data.use_rerank)
+
+
+@router.post("/wc-hybrid")
+async def wc_hybrid_search(data: HybridSearchQuery):
+    """
+    词卡混合搜索: FTS5 + 语义向量 + LLM重排（word_card 数据源）
+    三阶段渐进搜索，结果精准度大幅提升
+    """
+    from llm_rerank import hybrid_search_word_cards as hs
+    return await hs(data.query, top_k=data.top_k, use_rerank=data.use_rerank)
+
+
+@router.get("/wc-semantic")
+def wc_semantic_search(q: str = Query(..., description="搜索关键词"),
+                       top_k: int = Query(20, ge=1, le=50),
+                       group_id: int = Query(None, description="限定分组ID，包含子孙分组")):
+    """词卡语义搜索（余弦相似度 + 热度加权 + 缓存优化）"""
+    results = search_word_cards(q, top_k=top_k, group_id=group_id)
+    items = []
+    for r in results:
+        try:
+            tags = json.loads(r["tags"]) if isinstance(r["tags"], str) else (r["tags"] or [])
+        except Exception:
+            tags = []
+        items.append({
+            "id": r["id"],
+            "name": r["name"],
+            "content": r["content"],
+            "meaning": r["meaning"],
+            "module": r["module"],
+            "category": r["category"],
+            "tags": tags,
+            "thumbnail": r.get("thumbnail"),
+            "icon": r.get("icon"),
+            "usage_count": r.get("usage_count", 0),
+            "group_name": r.get("group_name", ""),
+            "score": r["score"]
+        })
+    return {"ok": True, "items": items, "total": len(items)}
 
 
 @router.get("/status")
@@ -72,6 +111,16 @@ def rebuild_index():
     t = threading.Thread(target=_rebuild, daemon=True)
     t.start()
     return {"ok": True, "message": "索引重建已启动"}
+
+
+@router.post("/rebuild-wc")
+def rebuild_wc_index():
+    """重建所有词卡语义向量索引"""
+    def _rebuild():
+        rebuild_wc_embeddings()
+    t = threading.Thread(target=_rebuild, daemon=True)
+    t.start()
+    return {"ok": True, "message": "词卡语义索引重建已启动"}
 
 
 # ==================== Phase13.4: 高级搜索 ====================

@@ -15,8 +15,10 @@ RERANK_SYSTEM = """你是提示词搜索排序专家。请对候选提示词按�
 
 规则：
 1. 优先匹配核心语义（主体/风格/场景），其次匹配修饰词
-2. 中文查询优先匹配中文释义，英文查询优先匹配原文
-3. 每个候选打分0-10，只返回JSON数组
+2. 中文查询优先匹配中文释义，英文查询优先匹配原文或英文译文
+3. 英文查询时，content_en 字段中的英文文本匹配权重 ×1.3
+4. 使用频次高的提示词适当提升排名（但不主导排序）
+5. 每个候选打分0-10，只返回JSON数组
 
 输入格式：
 查询: {query}
@@ -80,8 +82,134 @@ async def llm_rerank(query: str, candidates: List[dict], top_k: int = 10) -> Lis
     return candidates[:top_k]
 
 
+async def hybrid_search_word_cards(query: str, top_k: int = 10, use_rerank: bool = True) -> dict:
+    """词卡混合搜索: FTS5关键词 + 语义向量 + LLM重排（三阶段）"""
+    t0 = time.time()
+    query = query.strip()
+    if not query:
+        return {"ok": True, "query": query, "total": 0, "elapsed_ms": 0, "reranked": False, "items": []}
+
+    db = get_db()
+
+    # Phase 1: FTS5 关键词搜索 word_card
+    fts_results = _fts_search_wc(db, query, 30)
+
+    # Phase 2: 语义向量精排（模型就绪时启用）
+    merged = {}
+    for r in fts_results:
+        merged[r["id"]] = {
+            "id": r["id"], "name": r.get("name", ""), "content": r["content"],
+            "meaning": r.get("meaning", ""), "module": r.get("module", ""),
+            "category": r.get("category", ""), "tags": r.get("tags", "[]"),
+            "thumbnail": r.get("thumbnail", ""), "icon": r.get("icon", ""),
+            "usage_count": r.get("usage_count", 0), "score": 1.0
+        }
+
+    try:
+        from semantic import get_status
+        st = get_status()
+        if st.get("model_loaded") and st.get("ml_available"):
+            from semantic import search_word_cards
+            loop = asyncio.get_event_loop()
+            try:
+                semantic_results = await asyncio.wait_for(
+                    loop.run_in_executor(None, search_word_cards, query, 30),
+                    timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                semantic_results = []
+            for r in (semantic_results or []):
+                if r["id"] in merged:
+                    merged[r["id"]]["score"] += r.get("score", 0) * 0.7
+                else:
+                    merged[r["id"]] = {
+                        "id": r["id"], "name": r.get("name", ""), "content": r["content"],
+                        "meaning": r.get("meaning", ""), "module": r.get("module", ""),
+                        "category": r.get("category", ""), "tags": r.get("tags", "[]"),
+                        "thumbnail": r.get("thumbnail", ""), "icon": r.get("icon", ""),
+                        "usage_count": r.get("usage_count", 0),
+                        "score": r.get("score", 0) * 0.7
+                    }
+    except Exception:
+        pass
+
+    candidates = sorted(merged.values(), key=lambda x: -x["score"])[:max(top_k, 20)]
+
+    # Phase 3: LLM 语义重排
+    reranked = False
+    if use_rerank and len(candidates) > 3:
+        try:
+            candidates = await llm_rerank(query, candidates, top_k)
+            reranked = True
+        except Exception:
+            pass
+
+    elapsed = round((time.time() - t0) * 1000)
+    return {
+        "ok": True, "query": query, "total": len(candidates),
+        "elapsed_ms": elapsed, "reranked": reranked, "items": candidates[:top_k]
+    }
+
+
+def _fts_search_wc(db, query: str, limit: int = 30) -> list:
+    """FTS5 全文搜索 — 中文N-gram OR + 英文前缀AND + LIKE子串"""
+    results = []
+    has_chinese = bool(re.search(r'[\u4e00-\u9fff]', query))
+    _cols = "SELECT wc.id, wc.name, wc.content, wc.meaning, wc.module, wc.category, wc.tags, wc.thumbnail, wc.icon, wc.usage_count FROM word_card wc JOIN word_card_fts fts ON wc.id = fts.rowid WHERE word_card_fts MATCH ? AND wc.is_deleted = 0 LIMIT ?"
+
+    try:
+        if has_chinese:
+            # C1: 中文N-gram OR（截断词可命中）
+            clean_cn = re.sub(r'[^\u4e00-\u9fff]', '', query)
+            grams = []
+            for size in [3, 2]:
+                for i in range(len(clean_cn) - size + 1):
+                    g = clean_cn[i:i+size]
+                    if g not in grams: grams.append(g)
+            if grams:
+                fts_query = ' OR '.join(f'"{g}"*' for g in grams[:15])
+                try:
+                    rows = db.execute(_cols, [fts_query, limit]).fetchall()
+                    results = [dict(r) for r in rows]
+                except Exception:
+                    pass
+
+        if not results:
+            # C2: 英文分词 AND + 前缀
+            cleaned = re.sub(r'[^\w\u4e00-\u9fff]', ' ', query).strip()
+            tokens = [w for w in cleaned.split() if len(w) >= 2]
+            if tokens:
+                safe = ' AND '.join(f'"{w}"*' for w in tokens[:10])
+                try:
+                    rows = db.execute(_cols, [safe, limit]).fetchall()
+                    results = [dict(r) for r in rows]
+                except Exception:
+                    pass
+
+        if not results:
+            # C3: LIKE 子串回退
+            sub_queries = [query]
+            if has_chinese and len(query) >= 4:
+                cn_parts = re.findall(r'[\u4e00-\u9fff]{2,4}', query)
+                sub_queries = cn_parts[:6] if cn_parts else [query]
+            ids = set()
+            for sq in sub_queries:
+                like = f"%{sq}%"
+                rows = db.execute(
+                    "SELECT id, name, content, meaning, module, category, tags, thumbnail, icon, usage_count FROM word_card WHERE is_deleted = 0 AND (content LIKE ? OR name LIKE ? OR meaning LIKE ? OR tags LIKE ? OR scene LIKE ? OR content_en LIKE ? OR content_zh LIKE ?) LIMIT 100",
+                    [like]*7).fetchall()
+                for r in rows:
+                    if str(r["id"]) not in [str(x.get("id","")) for x in results]:
+                        results.append(dict(r))
+                if len(results) >= limit: break
+            results = results[:limit]
+    except Exception as e:
+        print(f"[WC-FTS] Error: {e}")
+    return results
+
+
 async def hybrid_search(query: str, top_k: int = 10, use_rerank: bool = True) -> dict:
-    """混合搜索: FTS5关键词 + LIKE回退（语义搜索只在模型就绪时启用）"""
+    """混合搜索(旧prompts表): FTS5关键词 + LIKE回退（语义搜索只在模型就绪时启用）"""
     t0 = time.time()
     query = query.strip()
     if not query:

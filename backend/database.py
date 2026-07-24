@@ -562,26 +562,26 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_wc_builtin ON word_card(is_builtin);
             CREATE INDEX IF NOT EXISTS idx_wc_source ON word_card(source, source_id);
 
-            -- FTS5 全文索引
+            -- FTS5 全文索引（覆盖词卡全部文本字段）
             CREATE VIRTUAL TABLE IF NOT EXISTS word_card_fts USING fts5(
-                content, meaning, name, tags,
+                content, meaning, name, tags, scene, content_en, content_zh,
                 content='word_card', content_rowid='id'
             );
 
-            -- 触发器：自动同步 FTS
+            -- 触发器：自动同步 FTS（全部文本字段）
             CREATE TRIGGER IF NOT EXISTS wc_fts_ai AFTER INSERT ON word_card BEGIN
-                INSERT INTO word_card_fts(rowid, content, meaning, name, tags)
-                VALUES (new.id, new.content, new.meaning, new.name, new.tags);
+                INSERT INTO word_card_fts(rowid, content, meaning, name, tags, scene, content_en, content_zh)
+                VALUES (new.id, new.content, new.meaning, new.name, new.tags, new.scene, new.content_en, new.content_zh);
             END;
             CREATE TRIGGER IF NOT EXISTS wc_fts_ad AFTER DELETE ON word_card BEGIN
-                INSERT INTO word_card_fts(word_card_fts, rowid, content, meaning, name, tags)
-                VALUES ('delete', old.id, old.content, old.meaning, old.name, old.tags);
+                INSERT INTO word_card_fts(word_card_fts, rowid, content, meaning, name, tags, scene, content_en, content_zh)
+                VALUES ('delete', old.id, old.content, old.meaning, old.name, old.tags, old.scene, old.content_en, old.content_zh);
             END;
             CREATE TRIGGER IF NOT EXISTS wc_fts_au AFTER UPDATE ON word_card BEGIN
-                INSERT INTO word_card_fts(word_card_fts, rowid, content, meaning, name, tags)
-                VALUES ('delete', old.id, old.content, old.meaning, old.name, old.tags);
-                INSERT INTO word_card_fts(rowid, content, meaning, name, tags)
-                VALUES (new.id, new.content, new.meaning, new.name, new.tags);
+                INSERT INTO word_card_fts(word_card_fts, rowid, content, meaning, name, tags, scene, content_en, content_zh)
+                VALUES ('delete', old.id, old.content, old.meaning, old.name, old.tags, old.scene, old.content_en, old.content_zh);
+                INSERT INTO word_card_fts(rowid, content, meaning, name, tags, scene, content_en, content_zh)
+                VALUES (new.id, new.content, new.meaning, new.name, new.tags, new.scene, new.content_en, new.content_zh);
             END;
 
             -- Phase34: seedance ID 映射表 + prompt_* 视图（原为 CREATE TABLE，迁移已改为 VIEW）

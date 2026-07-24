@@ -1528,7 +1528,8 @@ App._wcSetupCardDrag = function() {
 
 // 全局辅助：复制本机指纹（激活弹窗内按钮调用）
 window._licCopyFp = function() {
-    var fp = App._licenseFingerprint || '';
+    var fpEl = document.getElementById('licFpDisplay');
+    var fp = (fpEl && fpEl.textContent !== '⏳ 获取中...') ? fpEl.textContent : (App._licenseFingerprint || '');
     var btn = document.getElementById('licFpCopy');
     var msg = document.getElementById('licFpMsg');
     var done = function() {
@@ -1588,71 +1589,147 @@ App._confirmDeactivate = function(mode) {
 // 三模式版本切换 + 许可激活
 // ============================================================
 App._switchMode = async function(mode, btn) {
-    // 已激活模式再次点击 → 弹确认 → 解除激活并返回词库版
-    if (App.state._currentMode === mode && mode !== 'library') {
-        App._confirmDeactivate(mode);
-        return;
+    // 已激活模式再次点击 → 不重复
+    if (App.state._currentMode === mode) return;
+
+    // 目标版本非词库时，检查许可状态
+    if (mode !== 'library') {
+        var tier = mode === 'project' ? 'personal' : 'team';
+        try {
+            var r = await fetch('/api/license/info');
+            var d = await r.json();
+            if (d.ok && d.tiers) {
+                // 层级包含：团队激活→个人也激活
+                var teamActive = d.tiers.team && d.tiers.team.active;
+                var personalActive = d.tiers.personal && d.tiers.personal.active;
+                App._activeTiers = {personal: personalActive || teamActive, team: teamActive};
+                var targetActive = (tier === 'team') ? teamActive : (personalActive || teamActive);
+                if (!targetActive) {
+                    // 未激活 → 弹激活窗口
+                    App._showActivationDialog(mode, tier);
+                    return;  // 不切换
+                }
+                // ✅ 激活通过 → 刷新按钮锁态
+                App._refreshModeBtnLocks();
+            }
+        } catch(e) {}
     }
+
     document.querySelectorAll('.pk-mode-btn').forEach(function(b){ b.classList.remove('active'); });
     if (btn) btn.classList.add('active');
     App.state._currentMode = mode;
     try { localStorage.setItem('promptkit_mode', mode); } catch(e) {}
 
-    if (mode === 'library') {
-        App._enterLibraryMode();
-    } else {
-        var tier = mode === 'project' ? 'personal' : 'team';
-        try {
-            var r = await fetch('/api/license/info');
-            var d = await r.json();
-            if (d.ok && d.tiers && d.tiers[tier] && d.tiers[tier].active && d.tiers[tier].bound) {
-                if (mode === 'project') App._enterProjectMode();
-                else App._enterTeamMode();
-                return;
-            }
-        } catch(e) {}
-        // 预加载本机指纹供激活弹窗显示
-        try {
-            var fr = await fetch('/api/license/info');
-            var fd = await fr.json();
-            if (fd.ok) App._licenseFingerprint = fd.fingerprint;
-        } catch(e2) {}
-        App._showActivationDialog(mode, tier);
-        setTimeout(function() {
-            var cur = App.state._currentMode || 'library';
-            document.querySelectorAll('.pk-mode-btn').forEach(function(b){
-                b.classList.toggle('active', b.dataset.mode === cur);
-            });
-        }, 200);
-    }
+    var brand = document.querySelector('.brand span');
+    var names = {library:'Mik词库·个人工具版', project:'Mik词库·个人项目版', team:'Mik词库·团队项目版'};
+    if (brand) brand.textContent = names[mode] || 'Mik词库·个人工具版';
+
+    if (mode === 'library') App._enterLibraryMode();
+    else if (mode === 'project') App._enterProjectMode();
+    else App._enterTeamMode();
 };
 
 App._enterLibraryMode = function() {
-    this._showSidebar();
-    this._expandSidebar();
-    var sb = document.getElementById('globalSearchBox'); if (sb) sb.style.visibility = 'visible';
-    this.switchAllGroups();
+    var brand = document.querySelector('.brand span');
+    if (brand) brand.textContent = 'Mik词库·个人工具版';
 };
 
 App._enterProjectMode = function() {
-    this._collapseSidebar();
-    var sb = document.getElementById('globalSearchBox'); if (sb) sb.style.visibility = 'hidden';
-    if (window.PK && PK.open) { PK.open(); }
-    else if (window.__PK_PLUGINS__ && __PK_PLUGINS__._views && __PK_PLUGINS__._views.project_mgmt) {
-        __PK_PLUGINS__._views.project_mgmt();
-    }
-    if (App && App._collapseSidebar) App._collapseSidebar();
+    var brand = document.querySelector('.brand span');
+    if (brand) brand.textContent = 'Mik词库·个人项目版';
 };
 
 App._enterTeamMode = function() {
-    App._enterProjectMode();
-    setTimeout(function() {
-        if (window.PK_ASSETLIB && PK_ASSETLIB.open) {
-            PK_ASSETLIB.open();
-            var filterEl = document.getElementById('pkAssetFilter');
-            if (filterEl) filterEl.value = 'shared';
+    var brand = document.querySelector('.brand span');
+    if (brand) brand.textContent = 'Mik词库·团队项目版';
+};
+
+// ---- 版本锁定机制 ----
+
+// 加载时预检许可状态，设置按钮锁态
+App._initLicenseLocks = async function() {
+    try {
+        var r = await fetch('/api/license/info');
+        var d = await r.json();
+        if (d.ok && d.tiers) {
+            var teamActive = d.tiers.team && d.tiers.team.active;
+            var personalActive = d.tiers.personal && d.tiers.personal.active;
+            App._activeTiers = {personal: personalActive || teamActive, team: teamActive};
         }
-    }, 800);
+    } catch(e) {}
+    App._refreshModeBtnLocks();
+    App._installProjectGate();
+};
+
+// 刷新模式按钮锁态
+App._refreshModeBtnLocks = function() {
+    var tiers = App._activeTiers || {};
+    var btns = document.querySelectorAll('.pk-mode-btn');
+    btns.forEach(function(b) {
+        var mode = b.dataset.mode;
+        if (mode === 'library') { b.classList.remove('pk-mode-locked'); return; }
+        if (mode === 'project') {
+            if (tiers.personal) b.classList.remove('pk-mode-locked');
+            else b.classList.add('pk-mode-locked');
+        }
+        if (mode === 'team') {
+            if (tiers.team) b.classList.remove('pk-mode-locked');
+            else b.classList.add('pk-mode-locked');
+        }
+    });
+    // 同步刷新导航锁态
+    App._refreshNavLocks();
+};
+
+// 刷新所有需项目许可的导航项锁态
+App._refreshNavLocks = function() {
+    var tiers = App._activeTiers || {};
+    var projUnlocked = !!(tiers.personal || tiers.team);
+    var teamUnlocked = !!tiers.team;
+    // 项目相关：个人项目版及以上解锁
+    document.querySelectorAll('.pk-need-project').forEach(function(el) {
+        if (projUnlocked) { el.classList.remove('pk-nav-locked'); }
+        else { el.classList.add('pk-nav-locked'); }
+    });
+    // 团队专属：仅团队版解锁
+    document.querySelectorAll('.pk-need-team').forEach(function(el) {
+        if (teamUnlocked) { el.classList.remove('pk-nav-locked'); }
+        else { el.classList.add('pk-nav-locked'); }
+    });
+};
+
+// 全局拦截：点击锁定的项目功能时弹出激活窗口（捕获阶段，早于 onclick）
+App._installProjectGate = function() {
+    if (App._projectGateInstalled) return;
+    App._projectGateInstalled = true;
+    document.addEventListener('click', function(e) {
+        var locked = e.target.closest('.pk-nav-locked');
+        if (!locked) return;
+        e.stopPropagation();
+        e.preventDefault();
+        App._showActivationDialog('project', 'personal');
+    }, true);
+};
+
+// 项目版守卫：检查个人项目版或以上是否激活，未激活弹激活窗口
+// 所有项目相关功能入口前调用此方法
+App._checkProjectGate = function(reason) {
+    var tiers = App._activeTiers || {};
+    if (tiers.personal || tiers.team) return true;  // 个人项目版或团队版已激活，放行
+    // 未激活 → 弹激活窗口引导激活个人项目版
+    App._showActivationDialog('project', 'personal');
+    return false;
+};
+
+// 团队版守卫：未激活时弹提醒，返回 false；已激活返回 true
+// 所有需团队许可的功能入口前调用此方法
+App._checkTeamGate = function(reason) {
+    var tiers = App._activeTiers || {};
+    if (tiers.team) return true;  // 已激活，放行
+    // 未激活 → 弹提醒
+    var msg = reason || '此功能需要团队项目版许可';
+    alert(msg + '\n\n点击「👥」按钮激活团队项目版后即可使用。');
+    return false;
 };
 
 App._showActivationDialog = function(mode, tier) {
@@ -1662,29 +1739,41 @@ App._showActivationDialog = function(mode, tier) {
     ov.className = 'modal-overlay'; ov.style.zIndex = '99999';
     ov.onclick = function(e) { if (e.target === ov) ov.remove(); };
     ov.innerHTML = '<div class="modal-box" style="max-width:440px;background:var(--bg-card);border-radius:12px;padding:24px;" onclick="event.stopPropagation()">' +
-        '<h4 style="margin:0 0 4px;">\uD83D\uDD10 激活 ' + label + '</h4>' +
+        '<h4 style="margin:0 0 4px;">🔐 激活 ' + label + '</h4>' +
         '<p style="font-size:12px;color:var(--text-muted);margin:0 0 16px;">' +
-        '\uD83C\uDF89 个人词库版完全免费开源。<br>' + label + '需主机绑定+激活码解锁。</p>' +
-        '<div style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">\uD83D\uDD0D 本机指纹</label>' +
+        '🎉 个人词库版完全免费开源。<br>' + label + '需主机绑定+激活码解锁。</p>' +
+        '<div style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">🔍 本机指纹</label>' +
         '<div style="display:flex;gap:8px;align-items:center;">' +
-        '<code style="flex:1;padding:8px 10px;background:var(--bg);border:1px solid var(--border-color);border-radius:6px;font-size:12px;word-break:break-all;color:var(--text);">' + (App._licenseFingerprint||'加载中...') + '</code>' +
-        '<button id="licFpCopy" onclick="window._licCopyFp()" style="padding:8px 14px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s;" onmouseenter="this.style.borderColor=var(--primary);this.style.color=var(--primary)" onmouseleave="this.style.borderColor=var(--border-color);this.style.color=var(--text)">\uD83D\uDCCB 复制指纹</button>' +
+        '<code id="licFpDisplay" style="flex:1;padding:8px 10px;background:var(--bg);border:1px solid var(--border-color);border-radius:6px;font-size:12px;word-break:break-all;color:var(--text);">⏳ 获取中...</code>' +
+        '<button id="licFpCopy" onclick="window._licCopyFp()" style="padding:8px 14px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s;" onmouseenter="this.style.borderColor=var(--primary);this.style.color=var(--primary)" onmouseleave="this.style.borderColor=var(--border-color);this.style.color=var(--text)">📋 复制指纹</button>' +
         '</div>' +
         '<div id="licFpMsg" style="font-size:11px;margin-top:6px;padding:6px 10px;border-radius:4px;display:none;"></div>' +
         '</div>' +
         '<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">' +
-        '<a href="/static/keygen.html?tier=' + tier + '" target="_blank" style="color:var(--primary);">\uD83D\uDD0C 打开激活码生成器 →</a></div>' +
+        '<a href="/static/keygen.html?tier=' + tier + '" target="_blank" style="color:var(--primary);">🔌 打开激活码生成器 →</a></div>' +
         '<div id="licMsg" style="font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;display:none;"></div>' +
         '<div class="form-group"><label style="font-size:12px;">激活码</label>' +
         '<input type="text" id="licCode" placeholder="' + fmt + '-XXXX-XXXX-XXXX" style="width:100%;padding:10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input);color:var(--text-main);font-size:14px;text-transform:uppercase;letter-spacing:1px;" maxlength="19" autofocus>' +
         '</div>' +
         '<div style="display:flex;gap:8px;margin-top:14px;">' +
-        '<button class="btn btn-secondary" onclick="this.closest(\x27.modal-overlay\x27).remove()" style="flex:1;">取消</button>' +
-        '<button class="btn btn-primary" id="licActivate" style="flex:1;">\uD83D\uDD13 激活</button>' +
+        '<button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()" style="flex:1;">取消</button>' +
+        '<button class="btn btn-primary" id="licActivate" style="flex:1;">🔓 激活</button>' +
         '</div>' +
         '<div style="margin-top:12px;font-size:11px;color:var(--text-muted);text-align:center;">获取激活码请联系 PromptKit Team</div>' +
         '</div>';
     document.body.appendChild(ov);
+
+    // 实时获取本机指纹
+    fetch('/api/license/info').then(function(r){return r.json();}).then(function(d){
+        var fpEl = document.getElementById('licFpDisplay');
+        if (fpEl && d.ok) {
+            fpEl.textContent = d.fingerprint;
+            App._licenseFingerprint = d.fingerprint;
+        }
+    }).catch(function(){
+        var fpEl = document.getElementById('licFpDisplay');
+        if (fpEl) fpEl.textContent = '获取失败，请刷新重试';
+    });
     var self = this;
     document.getElementById('licActivate').onclick = async function() {
         var code = document.getElementById('licCode').value.trim();
@@ -1703,6 +1792,14 @@ App._showActivationDialog = function(mode, tier) {
                 msg.style.background = 'var(--primary-light,rgba(16,185,129,.1))';
                 msg.style.color = '#10b981';
                 msg.textContent = '\u2705 ' + d2.message + '！正在进入...';
+                if (window.PK_AUTH_CLIENT) PK_AUTH_CLIENT._refreshTiers();
+                // 刷新许可状态，解锁导航锁定
+                if (tier === 'team') {
+                    App._activeTiers = {personal: true, team: true};
+                } else {
+                    App._activeTiers = {personal: true, team: App._activeTiers ? App._activeTiers.team : false};
+                }
+                App._refreshModeBtnLocks();
                 setTimeout(function() {
                     ov.remove();
                     document.querySelectorAll('.pk-mode-btn').forEach(function(b){ b.classList.remove('active'); });

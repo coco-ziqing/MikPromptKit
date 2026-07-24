@@ -1116,6 +1116,240 @@ var App = window.App || {
         }
     },
 
+    // ===== 模型管理面板 =====
+    _mmCfg: {}, _mmSelectedProvider: 'ollama', _mmSelectedModel: '',
+
+    openModelManager: function() {
+        var panel = document.getElementById('viewModelManager');
+        if (!panel) return;
+        // 隐藏其他面板
+        document.querySelectorAll('.view-panel').forEach(function(p){ p.style.display='none'; });
+        panel.style.display = 'block';
+        this._mmLoad();
+    },
+
+    closeModelManager: function() {
+        var panel = document.getElementById('viewModelManager');
+        if (panel) panel.style.display = 'none';
+        document.getElementById('viewHome').style.display = 'block';
+    },
+
+    _mmLoad: async function() {
+        try {
+            var d = await this.fetchJSON('/api/playground/ai-config');
+            if (d && d.ok) {
+                this._mmCfg = d;
+                this._mmSelectedProvider = d.provider || 'ollama';
+                this._mmSelectedModel = d.provider === 'kimi' ? (d.kimi_model || 'kimi-k2.6') : (d.ollama_model || 'qwen3.5:9b');
+                this._mmRenderCurrent();
+                this._mmRenderProviders();
+                this._mmRenderModelSelect();
+                this._mmRenderApiKeys();
+                this._mmLoadOllamaStatus();
+            }
+        } catch(e) {}
+    },
+
+    _mmRenderCurrent: function() {
+        var cfg = this._mmCfg;
+        var provName = cfg.provider === 'kimi' ? 'Kimi' : 'Ollama 本地';
+        var modelName = cfg.provider === 'kimi' ? (cfg.kimi_model||'kimi-k2.6') : (cfg.ollama_model||'qwen3.5:9b');
+        var icon = cfg.provider === 'kimi' ? '☁️' : '🧠';
+        var el = document.getElementById('mmCurrentModel');
+        if (el) el.innerHTML = '<span style="font-size:24px;">'+icon+'</span><span>'+provName+' / '+modelName+'</span>';
+        var st = document.getElementById('mmCurrentStatus');
+        if (st) {
+            st.innerHTML = '提供商: <b>'+provName+'</b> &nbsp;|&nbsp; 模型: <b>'+modelName+'</b>' +
+                (cfg.kimi_ready ? ' &nbsp;|&nbsp; <span style="color:#10b981;">● Kimi API 就绪</span>' : '') +
+                (cfg.ollama_ready ? ' &nbsp;|&nbsp; <span style="color:#10b981;">● Ollama 就绪</span>' : '');
+        }
+    },
+
+    _mmRenderProviders: function() {
+        var self = this;
+        var cfg = this._mmCfg;
+        var providers = [
+            {id:'ollama', icon:'🧠', name:'Ollama 本地', desc:'qwen3.5:9b · 免费本地', ready:cfg.ollama_ready},
+            {id:'kimi', icon:'☁️', name:'Kimi', desc:'kimi-k2.6 · 云端API', ready:cfg.kimi_ready}
+        ];
+        var container = document.getElementById('mmProviders');
+        if (!container) return;
+        var h = '';
+        providers.forEach(function(p){
+            var active = self._mmSelectedProvider === p.id ? ' active' : '';
+            h += '<button class="mm-provider-btn'+active+'" onclick="App._mmSelectProvider(\''+p.id+'\')" data-provider="'+p.id+'">';
+            h += '<span class="mm-provider-icon">'+p.icon+'</span>';
+            h += '<div style="text-align:left;"><div>'+p.name+'</div><div style="font-size:11px;color:var(--text-muted);">'+p.desc+'</div></div>';
+            h += '<span style="margin-left:auto;font-size:10px;color:'+(p.ready?'#10b981':'#ef4444')+';">'+(p.ready?'就绪':'需配置')+'</span>';
+            h += '</button>';
+        });
+        container.innerHTML = h;
+    },
+
+    _mmSelectProvider: function(provider) {
+        this._mmSelectedProvider = provider;
+        this._mmRenderProviders();
+        this._mmRenderModelSelect();
+    },
+
+    _mmRenderModelSelect: function() {
+        var self = this;
+        var prov = this._mmSelectedProvider;
+        var dropdown = document.getElementById('mmModelDropdown');
+        if (!dropdown) return;
+        if (prov === 'ollama') {
+            dropdown.innerHTML = '<option value="">加载 Ollama 模型列表...</option>';
+            this._mmLoadOllamaModels();
+        } else if (prov === 'kimi') {
+            var models = ['kimi-k2.6','kimi-k2-thinking','kimi-k2.5'];
+            var h = '';
+            models.forEach(function(m){
+                var sel = self._mmSelectedModel === m ? ' selected' : '';
+                h += '<option value="'+m+'"'+sel+'>'+m+'</option>';
+            });
+            dropdown.innerHTML = h;
+            this._mmSelectedModel = dropdown.value;
+        }
+    },
+
+    _mmOnModelChange: function() {
+        var dd = document.getElementById('mmModelDropdown');
+        if (dd) this._mmSelectedModel = dd.value;
+    },
+
+    _mmApplyModel: async function() {
+        var prov = this._mmSelectedProvider;
+        var model = this._mmSelectedModel || document.getElementById('mmModelDropdown').value;
+        if (!model) { alert('请选择一个模型'); return; }
+        var body = { provider: prov };
+        if (prov === 'kimi') body.kimi_model = model;
+        else body.ollama_model = model;
+        try {
+            var d = await this.fetchJSON('/api/playground/ai-config', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify(body)
+            });
+            var ar = document.getElementById('mmActionResult');
+            if (d && d.ok) {
+                this._aiModelState.provider = prov;
+                if (prov === 'kimi') this._aiModelState.kimi_model = model;
+                else this._aiModelState.ollama_model = model;
+                this._updateModelIndicator();
+                ar.style.display='block'; ar.style.background='rgba(16,185,129,.1)'; ar.style.color='#10b981';
+                ar.textContent = '✅ 已切换至 ' + (prov==='kimi'?'Kimi':'Ollama') + ' / ' + model;
+                this._mmRenderCurrent();
+            } else {
+                ar.style.display='block'; ar.style.background='#fef2f2'; ar.style.color='#ef4444';
+                ar.textContent = '❌ 应用失败: ' + (d&&d.detail||'未知错误');
+            }
+        } catch(e) {
+            var ar = document.getElementById('mmActionResult');
+            ar.style.display='block'; ar.style.background='#fef2f2'; ar.style.color='#ef4444';
+            ar.textContent = '❌ 网络错误: ' + e.message;
+        }
+    },
+
+    _mmTestModel: async function() {
+        var prov = this._mmSelectedProvider;
+        var model = this._mmSelectedModel || document.getElementById('mmModelDropdown').value;
+        if (!model) { alert('请选择一个模型'); return; }
+        var ar = document.getElementById('mmActionResult');
+        ar.style.display='block'; ar.style.background='rgba(59,130,246,.1)'; ar.style.color='#3b82f6';
+        ar.textContent = '🔬 测试连接中...';
+        try {
+            var d = await this.fetchJSON('/api/playground/chat', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ message:'Hi', model:model, provider:prov })
+            });
+            if (d && d.ok) {
+                ar.style.background='rgba(16,185,129,.1)'; ar.style.color='#10b981';
+                ar.textContent = '✅ 连接成功！模型已响应。';
+            } else {
+                ar.style.background='#fef2f2'; ar.style.color='#ef4444';
+                ar.textContent = '❌ 连接失败: ' + (d&&(d.error||d.detail)||'无响应');
+            }
+        } catch(e) {
+            ar.style.background='#fef2f2'; ar.style.color='#ef4444';
+            ar.textContent = '❌ 连接失败: ' + e.message;
+        }
+    },
+
+    _mmRenderApiKeys: function() {
+        var self = this;
+        var cfg = this._mmCfg;
+        var container = document.getElementById('mmApiKeys');
+        if (!container) return;
+        var providers = [
+            {id:'kimi', icon:'☁️', name:'Kimi API Key', masked:cfg.kimi_key_masked||'-'},
+            {id:'openai', icon:'🤖', name:'OpenAI API Key', masked:cfg.openai_key_masked||'-'}
+        ];
+        var h = '';
+        providers.forEach(function(p){
+            h += '<div class="mm-api-key-row">';
+            h += '<span class="mm-provider-icon">'+p.icon+'</span>';
+            h += '<span style="font-size:13px;font-weight:500;min-width:100px;color:var(--text-main);">'+p.name+'</span>';
+            h += '<span style="font-size:11px;color:var(--text-muted);flex:1;">'+p.masked+'</span>';
+            h += '<button class="btn btn-sm btn-secondary" onclick="App._mmEditKey(\''+p.id+'\')" style="font-size:11px;">编辑</button>';
+            h += '</div>';
+        });
+        container.innerHTML = h || '<span style="font-size:12px;color:var(--text-muted);">无 API 密钥配置</span>';
+    },
+
+    _mmEditKey: function(provider) {
+        var label = provider === 'kimi' ? 'Kimi' : 'OpenAI';
+        var key = prompt('输入 ' + label + ' API Key（保存后加密存储）：');
+        if (key === null) return;
+        if (!key.trim()) { alert('Key 不能为空'); return; }
+        var self = this;
+        this.fetchJSON('/api/playground/api-key', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ provider: provider, key: key.trim() })
+        }).then(function(d){
+            if (d && d.ok) {
+                self.showToast(label + ' API Key 已保存', 'success');
+                self._mmLoad();
+            }
+        }).catch(function(){});
+    },
+
+    _mmLoadOllamaStatus: async function() {
+        var el = document.getElementById('mmOllamaStatus');
+        try {
+            var d = await this.fetchJSON('/api/health/check');
+            var ollama = d && d.services && d.services.ollama;
+            if (ollama && ollama.ready) {
+                el.innerHTML = '<span style="color:#10b981;">● 运行中</span> &nbsp;|&nbsp; 服务地址: ' + (ollama.url||'http://localhost:11434');
+                this._mmLoadOllamaModels();
+            } else {
+                el.innerHTML = '<span style="color:#f59e0b;">● 未连接</span> &nbsp;请确认 Ollama 服务已启动';
+            }
+        } catch(e) {
+            el.innerHTML = '<span style="color:#ef4444;">● 检测失败</span>';
+        }
+    },
+
+    _mmLoadOllamaModels: async function() {
+        var dd = document.getElementById('mmModelDropdown');
+        if (!dd) return;
+        var self = this;
+        try {
+            var d = await this.fetchJSON('/api/playground/models');
+            if (d && d.ok && d.models && d.models.length) {
+                var h = '';
+                d.models.forEach(function(m){
+                    var sel = self._mmSelectedModel === m.name ? ' selected' : '';
+                    h += '<option value="'+m.name+'"'+sel+'>'+m.name+' ('+m.size+')</option>';
+                });
+                dd.innerHTML = h;
+                self._mmSelectedModel = dd.value || d.models[0].name;
+            } else {
+                dd.innerHTML = '<option value="qwen3.5:9b">qwen3.5:9b</option>';
+            }
+        } catch(e) {
+            dd.innerHTML = '<option value="qwen3.5:9b">qwen3.5:9b</option>';
+        }
+    },
+
     // ===== Phase38-security: API 密钥保管 =====
     _kvOpen: async function() {
         var m = document.getElementById('modalKeyVault');
