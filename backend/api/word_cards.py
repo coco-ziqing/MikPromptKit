@@ -670,6 +670,14 @@ async def upload_card_video(card_id: int, file: UploadFile = File(...)):
     dest = os.path.join(WC_VIDEO_DIR, filename)
     with open(dest, "wb") as f:
         f.write(raw_data)
+    # 同时保存一份到全局视频库（使视频库能展示）
+    try:
+        import shutil
+        global_video_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "videos")
+        os.makedirs(global_video_dir, exist_ok=True)
+        shutil.copy2(dest, os.path.join(global_video_dir, filename))
+    except Exception:
+        pass
     # DB 操作放在最后 — 无 async 断点，不会持锁等待
     db = get_db()
     card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])

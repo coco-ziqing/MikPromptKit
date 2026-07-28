@@ -10,17 +10,17 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='28' font-size='28'>⚛️</text></svg>">
     <title>咪卡Mik词库</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/static/css/bootstrap-icons.css" rel="stylesheet">
     <link href="/static/css/style.css?v=12.21" rel="stylesheet">
     <!-- Phase18: 插件系统前端静态资源 -->
-    <link href="/plugins/com.promptkit.project/project_dashboard.css?v=11" rel="stylesheet">
+    <link href="/plugins/com.promptkit.project/project_dashboard.css?v=12" rel="stylesheet">
 </head>
 <body>
     <header class="navbar-tool">
         <button class="header-btn" id="btnMenu" onclick="App.toggleMobileMenu()" style="display:none;" title="菜单" data-i18n-title="nav.menu" data-i18n-title-zh="菜单"><i class="bi bi-list"></i></button>
         <div class="brand" onclick="App.switchAllGroups?App.switchAllGroups():App.switchView('home')" style="cursor:pointer;"><i class="bi bi-search-heart"></i> <span data-i18n="nav.brand" data-i18n-zh="咪卡Mik词库">咪卡Mik词库</span> <small id="brandVersion">5.0.0</small></div>
         <!-- 搜索框已迁移到词库页header行内，此处保留隐藏DOM供JS引用 -->
-        <div class="search-box" id="globalSearchBox" style="display:none;"><input type="text" id="searchInput" placeholder="搜索提示词"><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()">🔤</button></div>
+        <form autocomplete="off" onsubmit="return false" style="display:inline;"><div class="search-box" id="globalSearchBox" style="display:none;"><input type="text" id="searchInput" placeholder="搜索提示词" autocomplete="off"><button class="search-mode-btn" id="searchModeBtn" onclick="App.toggleSearchMode()" style="border-style:solid;appearance:none;-webkit-appearance:none;">🔤</button></div></form>
         <span class="header-divider"></span>
         <div class="header-actions">
             <!-- ↓ 下拉: 词库 -->
@@ -161,6 +161,16 @@
         <div id="viewAdminUsers" class="view-panel" style="display:none;"></div>
         <div id="viewProjectAssets" class="view-panel" style="display:none;"></div>
         <div id="viewProjectRoles" class="view-panel" style="display:none;"></div>
+        <div id="viewModelManager" class="view-panel" style="display:none;padding:24px;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                <h3 style="margin:0;"><i class="bi bi-cpu"></i> AI 模型管理中心</h3>
+                <button class="btn btn-sm btn-outline-secondary" onclick="App.closeModelManager()" title="返回 (ESC)">✕</button>
+            </div>
+            <div id="mmApiKeys"></div>
+            <div style="margin-top:20px;text-align:center;">
+                <button class="btn btn-outline-primary btn-sm" onclick="App._mmAddCustom()">+ 添加自定义模型厂商</button>
+            </div>
+        </div>
         <div id="viewHome" class="view-panel">
             <div id="viewHomeTop" class="view-home-top">
                 <div id="categoryTabs"></div>
@@ -170,7 +180,7 @@
                         <h3 id="pageTitle" style="white-space:nowrap;">提示词列表</h3>
                         <span class="count-info" id="countInfo" style="white-space:nowrap;">加载中...</span>
                         <!-- 搜索框+切换按钮紧凑同行 -->
-                        <div id="inlineSearchBox" style="display:none;flex:0 1 300px;min-width:200px;margin-left:8px;"><input type="text" id="inlineSearchInput" placeholder="🔍 搜索词卡..." autocomplete="off" style="flex:1;min-width:0;padding:6px 10px;border:1px solid var(--border-color);border-right:0;border-radius:8px 0 0 8px;background:var(--bg);color:var(--text);font-size:13px;outline:none;" oninput="var h=document.getElementById('searchInput');if(h){h.value=this.value;h.dispatchEvent(new Event('input',{bubbles:true}));}" onfocus="this.style.borderColor='var(--primary)';var nb=document.getElementById('inlineSearchModeBtn');if(nb)nb.style.borderColor='var(--primary)'" onblur="this.style.borderColor='';var nb=document.getElementById('inlineSearchModeBtn');if(nb)nb.style.borderColor=''"><button id="inlineSearchModeBtn" onclick="(function(){var s=App.state;var m=s._searchMode;s._searchMode=m==='semantic'?'keyword':'semantic';var el=document.getElementById('inlineSearchModeBtn');var el2=document.getElementById('searchModeBtn');var u=function(e){if(!e)return;if(s._searchMode==='semantic'){e.innerHTML='🧠';e.title='语义搜索|点击切换';e.style.color='#818cf8'}else{e.innerHTML='🔤';e.title='关键词搜索|点击切换';e.style.color='#94a3b8'}};u(el);u(el2);if(s.searchQuery){s.page=1;if(s._searchMode==='semantic'){App._semanticSearch(s.searchQuery)}else{App.loadPrompts()}}App.showToast('已切换到 '+(s._searchMode==='semantic'?'🧠 语义搜索':'🔤 关键词搜索'),'info')})()" title="关键词/语义搜索" style="padding:6px 10px;border:1px solid var(--border-color);border-left:0;border-radius:0 8px 8px 0;background:var(--bg);color:var(--text-muted);font-size:15px;cursor:pointer;flex-shrink:0;line-height:1;">🔤</button></div>
+                        <form autocomplete="off" onsubmit="return false" style="margin:0;"><div id="inlineSearchBox" style="display:none;flex:0 1 300px;min-width:200px;margin-left:8px;border:1px solid var(--border-color);border-radius:8px;overflow:hidden;"><input type="text" id="inlineSearchInput" placeholder="🔍 搜索词卡..." autocomplete="off" name="search-term" style="flex:1;min-width:0;padding:6px 10px;border:none;border-radius:0;background:var(--bg);color:var(--text);font-size:13px;outline:none;appearance:none;-webkit-appearance:none;" oninput="var h=document.getElementById('searchInput');if(h){h.value=this.value;h.dispatchEvent(new Event('input',{bubbles:true}));}" onfocus="this.parentElement.style.borderColor='var(--primary)';var nb=document.getElementById('inlineSearchModeBtn');if(nb)nb.style.borderColor='var(--primary)'" onblur="this.parentElement.style.borderColor='';var nb=document.getElementById('inlineSearchModeBtn');if(nb)nb.style.borderColor=''"><button id="inlineSearchModeBtn" onclick="(function(){var s=App.state;var m=s._searchMode;s._searchMode=m==='semantic'?'keyword':'semantic';var el=document.getElementById('inlineSearchModeBtn');var el2=document.getElementById('searchModeBtn');var u=function(e){if(!e)return;if(s._searchMode==='semantic'){e.innerHTML='🧠';e.title='语义搜索|点击切换';e.style.color='#818cf8'}else{e.innerHTML='🔤';e.title='关键词搜索|点击切换';e.style.color='#94a3b8'}};u(el);u(el2);if(s.searchQuery){s.page=1;if(s._searchMode==='semantic'){App._semanticSearch(s.searchQuery)}else{App.loadPrompts()}}App.showToast('已切换到 '+(s._searchMode==='semantic'?'🧠 语义搜索':'🔤 关键词搜索'),'info')})()" title="关键词/语义搜索" style="padding:6px 10px;border:none;border-radius:0;background:var(--bg);color:var(--text);font-size:15px;cursor:pointer;flex-shrink:0;line-height:1;appearance:none;-webkit-appearance:none;">🔤</button></div></form>
                     </div>
                     <div id="pageHeaderRight" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;"></div>
                 </div>
@@ -392,11 +402,18 @@
         </div>
     </div>
 
-    <div class="modal-overlay viewer-modal" id="modalImageViewer" style="display:none;z-index:300;background:rgba(0,0,0,0.85);" onclick="if(event.target===this){App.closeImageViewer()}">
-        <div class="viewer-split">
-            <div class="viewer-left">
+    <div class="modal-overlay viewer-modal" id="modalImageViewer" style="display:none;z-index:300;background:rgba(0,0,0,0.92);" onclick="if(event.target===this){App.closeImageViewer()}">
+        <div class="viewer-split" style="height:96vh;margin:2vh;">
+            <div class="viewer-left" style="flex:1;position:relative;">
                 <div id="imageViewerContainer" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;user-select:none;cursor:grab;">
-                    <img id="imageViewerImg" src="" style="transition:transform 0.05s;transform-origin:0 0;">
+                    <img id="imageViewerImg" src="" style="max-width:100%;max-height:100%;transition:transform 0.05s;transform-origin:center;">
+                </div>
+                <!-- 缩放工具栏 -->
+                <div style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:6px;background:rgba(0,0,0,0.7);border-radius:8px;padding:4px;z-index:10;">
+                    <button class="viewer-btn" onclick="App.zoomImageViewer('fit')" title="适应窗口" style="font-size:12px;padding:4px 10px;border:none;background:rgba(255,255,255,0.15);color:#fff;border-radius:6px;cursor:pointer;">⊡ 适应</button>
+                    <button class="viewer-btn" onclick="App.zoomImageViewer('100')" title="原始尺寸" style="font-size:12px;padding:4px 10px;border:none;background:rgba(255,255,255,0.15);color:#fff;border-radius:6px;cursor:pointer;">1:1 原始</button>
+                    <button class="viewer-btn" onclick="App.zoomImageViewer('in')" title="放大" style="font-size:12px;padding:4px 10px;border:none;background:rgba(255,255,255,0.15);color:#fff;border-radius:6px;cursor:pointer;">🔍+</button>
+                    <button class="viewer-btn" onclick="App.zoomImageViewer('out')" title="缩小" style="font-size:12px;padding:4px 10px;border:none;background:rgba(255,255,255,0.15);color:#fff;border-radius:6px;cursor:pointer;">🔍-</button>
                 </div>
             </div>
             <div class="viewer-right" id="imgViewerRight">
@@ -1012,13 +1029,13 @@
     <!-- #6 预加载大模块，提前发起请求 -->
     <link rel="preload" href="/static/js/seedance_v2_composer.js?v=100" as="script">
     <link rel="preload" href="/static/js/app_tools.js?v=9.5" as="script">
-    <link rel="preload" href="/static/js/app_collections.js?v=10.14" as="script">
-    <link rel="preload" href="/static/js/app_media.js?v=10.8" as="script">
-    <link rel="preload" href="/static/js/word_editor.js?v=12.1" as="script">
+    <link rel="preload" href="/static/js/app_collections.js?v=10.15" as="script">
+    <link rel="preload" href="/static/js/app_media.js?v=14" as="script">
+    <link rel="preload" href="/static/js/word_editor.js?v=12.4" as="script">
     <!-- Phase15: wc_bridge 必须在 app_core 之前加载，分组导航交互重构 -->
                             <script src="/static/js/wc_bridge.js?v=14.30"></script>
     <script src="/static/js/signal_lights.js?v=5"></script>
-    <script src="/static/js/app_core.js?v=13.95"></script>
+    <script src="/static/js/app_core.js?v=95"></script>
     <script defer src="/static/js/auth_client.js?v=17"></script>
 <script defer src="/static/js/pk_terms.js?v=2"></script>
 <script defer src="/static/js/pk_common.js?v=1"></script>
@@ -1038,14 +1055,14 @@
     <script defer src="/static/js/health_check.js?v=5"></script>
     <script defer src="/static/js/app_sync.js?v=9.3"></script>
     <script defer src="/static/js/app_editor.js?v=11.15"></script>
-    <script defer src="/static/js/app_collections.js?v=10.14"></script>
+    <script defer src="/static/js/app_collections.js?v=10.15"></script>
     <script defer src="/static/js/app_tools.js?v=9.5"></script>
 <script defer src="/static/js/app_import_export.js?v=1"></script>
-    <script defer src="/static/js/app_media.js?v=10.8"></script>
-<script defer src="/static/js/app_media_viewer.js?v=1"></script>
+    <script defer src="/static/js/app_media.js?v=14"></script>
+<script defer src="/static/js/app_media_viewer.js?v=9"></script>
     <script defer src="/static/js/ai_tools.js?v=9"></script>
     <script defer src="/static/js/word_picker.js?v=5"></script>
-    <script defer src="/static/js/word_editor.js?v=12.1"
+    <script defer src="/static/js/word_editor.js?v=12.4"
 <script defer src="/static/js/word_version_history.js?v=1"></script>
 <script defer src="/static/js/word_thumbnail.js?v=1"></script>></script>
     <script defer src="/static/js/word_card_manager.js?v=8"></script>
@@ -1054,7 +1071,7 @@
     <script defer src="/static/js/v3_composer.js?v=9.5"></script>
     <script defer src="/static/js/app_i18n.js?v=10"></script>
     <script defer src="/static/js/seedance_v2_composer.js?v=100"></script>
-<script defer src="/static/js/_s2_master_nav.js?v=1"></script>
+<script defer src="/static/js/_s2_master_nav.js?v=2"></script>
 <script defer src="/static/js/seedance_output.js?v=2"></script>
 <script defer src="/static/js/seedance_pickers.js?v=1"></script>
 <script defer src="/static/js/seedance_media_cards.js?v=1"></script>
@@ -1077,7 +1094,7 @@
     <script defer src="/static/js/plugin_license.js?v=1"></script>
     <script defer src="/static/js/plugin_host.js?v=2"></script>
     <!-- Phase18: 项目管理插件 -->
-    <script defer src="/plugins/com.promptkit.project/project_dashboard.js?v=9"></script>
+    <script defer src="/plugins/com.promptkit.project/project_dashboard.js?v=14"></script>
 
 
 <div class="modal-overlay" id="sceneReviewModal" style="display:none;z-index:700;align-items:center;justify-content:center;" onclick="if(event.target===this)App.seedanceV2.closeSceneReview()">

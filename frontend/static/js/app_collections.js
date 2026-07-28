@@ -438,7 +438,7 @@ Object.assign(App, {
             var collHtml = '';
             for (var ci = 0; ci < colls.length; ci++) {
                 var cc = colls[ci];
-                collHtml += '<span class="coll-badge" ondblclick="App.switchView(\'collections\');App.openCollection(' + cc.id + ')" title="双击进入「' + this._escape(cc.name) + '」收藏分组">' + (cc.icon || '⭐') + '</span>';
+                collHtml += '<span class="coll-badge" ondblclick="App.switchView(\'collections\');App.openCollection(' + cc.id + ')" oncontextmenu="event.preventDefault();event.stopPropagation();App._showCollBadgeMenu(event,' + cc.id + ',' + p.id + ')" title="双击进入「' + this._escape(cc.name) + '」收藏分组 | 右键移除">' + (cc.icon || '⭐') + '</span>';
             }
             const isSelected = this.state.batchSelected.has(p.id);
             const selectedClass = isSelected ? 'selected' : '';
@@ -512,6 +512,23 @@ Object.assign(App, {
         this.showToast('已移除', 'info');
         await this.loadCollections();
         await this.loadCollectionItems();
+    },
+
+    _showCollBadgeMenu(e, cid, pid) {
+        this._closeCollBadgeMenu();
+        var menu = document.createElement('div');
+        menu.id = 'collBadgeCtxMenu';
+        menu.style.cssText = 'position:fixed;z-index:9999;background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:4px 0;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.2);';
+        menu.style.left = e.clientX + 'px';
+        menu.style.top = e.clientY + 'px';
+        menu.innerHTML = '<div class="coll-ctx-item" onclick="App.removeFromCollection(' + cid + ',' + pid + ');App._closeCollBadgeMenu()" style="padding:8px 16px;cursor:pointer;font-size:13px;color:var(--danger,#ef4444);">🗑 移除此收藏分组</div>';
+        document.body.appendChild(menu);
+        setTimeout(function(){ document.addEventListener('click', App._closeCollBadgeMenu, { once: true }); }, 0);
+    },
+
+    _closeCollBadgeMenu() {
+        var m = document.getElementById('collBadgeCtxMenu');
+        if (m) m.remove();
     },
 
     async batchRemoveFromCollection() {

@@ -86,7 +86,6 @@ App.wordEditor._ensureModal = function() {
     overlay.id = 'modalWordEdit';
     overlay.className = 'modal-overlay';
     overlay.style.cssText = 'display:none;z-index:550;';
-    overlay.onclick = function(e) { if (e.target === overlay) App.wordEditor.close(); };
 
     overlay.innerHTML = '' +
     // Phase19: 双栏布局 — 左栏主填写流 + 右栏元数据/媒体，sticky footer 始终可见
@@ -133,7 +132,7 @@ App.wordEditor._ensureModal = function() {
     '<span id="wcEditThumbName">未设置</span>' +
     '<div class="wc-edit-thumb-actions">' +
     '<input type="file" id="wcEditThumbInput" accept="image/*" style="display:none;" onchange="App.wordEditor._uploadThumb(event)">' +
-    '<button type="button" class="wc-edit-thumb-btn wc-edit-thumb-upload" onclick="document.getElementById(\'wcEditThumbInput\').click()">📤 上传</button>' +
+    '<button type="button" class="wc-edit-thumb-btn wc-edit-thumb-upload" onclick="document.getElementById(\'wcEditThumbInput\').click()">📤 图片</button>' +
     '<button type="button" class="wc-edit-thumb-btn wc-edit-thumb-lib" onclick="App.wordEditor._openThumbLibrary()">🖼 图库</button>' +
     '<input type="file" id="wcEditVideoInput" accept="video/mp4,video/webm,video/quicktime,video/x-msvideo" style="display:none;" onchange="App.wordEditor._uploadVideo(event)">' +
     '<button type="button" class="wc-edit-thumb-btn wc-edit-thumb-video" onclick="document.getElementById(\'wcEditVideoInput\').click()">🎬 视频</button>' +
@@ -485,14 +484,15 @@ App.wordEditor._loadCard = async function() {
         var thumbName = document.getElementById('wcEditThumbName');
         var clearBtn = document.getElementById('wcEditThumbClearBtn');
         if (thumbRow) thumbRow.style.display = 'block';
-        if (c.thumbnail && thumbPreview && thumbName) {
+        // 视频优先：有视频则显示视频预览
+        if (c.preview_media && thumbPreview && thumbName) {
+            var posterFromThumb = c.thumbnail ? ('/api/v4/word-cards/thumbnails/' + c.thumbnail) : ('');
+            thumbPreview.innerHTML = '<video id="wcEditThumbPreview" src="/api/v4/word-cards/videos/' + c.preview_media + '" muted preload="metadata" poster="' + posterFromThumb + '" style="width:100%;max-height:160px;border-radius:6px;object-fit:contain;" onmouseenter="this.play()" onmouseleave="this.pause();this.currentTime=0"></video>';
+            thumbName.textContent = '🎬 ' + c.preview_media.substring(0, 25);
+            if (clearBtn) clearBtn.style.display = 'inline-block';
+        } else if (c.thumbnail && thumbPreview && thumbName) {
             thumbPreview.innerHTML = '<img id="wcEditThumbPreview" src="/api/v4/word-cards/thumbnails/' + c.thumbnail + '" style="width:100%;max-height:160px;border-radius:6px;object-fit:contain;">';
             thumbName.textContent = c.thumbnail.substring(0, 20) + (c.thumbnail.length > 20 ? '...' : '');
-            if (clearBtn) clearBtn.style.display = 'inline-block';
-        } else if (c.preview_media && thumbPreview && thumbName) {
-            var posterFromThumb = c.thumbnail ? ('/api/v4/word-cards/thumbnails/' + c.thumbnail) : ('');
-            thumbPreview.innerHTML = '<video id="wcEditThumbPreview" src="/api/v4/word-cards/videos/' + c.preview_media + '" controls muted preload="metadata" poster="' + posterFromThumb + '" style="width:100%;max-height:160px;border-radius:6px;object-fit:contain;"></video>';
-            thumbName.textContent = '🎬 ' + c.preview_media.substring(0, 25);
             if (clearBtn) clearBtn.style.display = 'inline-block';
         } else {
             if (thumbPreview) thumbPreview.innerHTML = '<span style="font-size:28px;color:var(--text-muted);">🖼</span>';
@@ -757,7 +757,7 @@ App.wordEditor._save = async function() {
                 this._resetContentForBatchAdd();
 
             } else {
-                // 编辑模式 — 更新后保持 cardId
+                // 编辑模式 — 保存后自动关闭弹窗
                 this._cardId = newId;
                 App.showToast(App._t('auto.str_03f4d8a4', '词卡已保存'), 'success');
 
@@ -773,6 +773,9 @@ App.wordEditor._save = async function() {
                 } else if (App.wordCards && App.wordCards.load) {
                     App.wordCards.load();
                 }
+                
+                // 保存后关闭弹窗
+                this.close();
             }
         } else {
             App.showToast(App._t('common.save', '保存未完成，稍后再试: ') + (result ? result.error || App._t('common.unknown_error', '遇到意外情况，请稍后再试') : App._t('common.net_error', '网络不太稳定，请稍后重试')), 'error');

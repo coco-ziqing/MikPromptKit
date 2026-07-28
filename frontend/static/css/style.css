@@ -146,9 +146,9 @@ body {
 }
 .search-mode-btn:hover { background: var(--hover-bg,#f1f5f9); }
 /* 行内搜索框的搜索模式按钮覆盖：取消absolute定位，适配flex布局 */
-#inlineSearchBox { display: flex !important; flex: 0 1 260px !important; min-width: 180px !important; max-width: 360px !important; position: static !important; }
-#inlineSearchBox input { flex: 1; min-width: 0; }
-#inlineSearchModeBtn { position: static !important; transform: none !important; right: auto !important; flex-shrink: 0; }
+#inlineSearchBox { display: flex !important; flex: 0 1 260px !important; min-width: 180px !important; max-width: 360px !important; }
+#inlineSearchBox input { flex: 1; min-width: 0; border: none !important; }
+#inlineSearchModeBtn { flex-shrink: 0; border: none !important; border-radius: 0 !important; }
 .header-actions { display: flex; align-items: center; gap: 6px; flex:1; }
 .header-btn {
     width: 34px; height: 34px; border: none; border-radius: 8px;
@@ -3757,3 +3757,15 @@ body.dark-theme .fs-chip-blue { background: rgba(59,130,246,0.2); color: #93c5fd
 body.dark-theme .fs-chip-red { background: rgba(239,68,68,0.2); color: #fca5a5; }
 body.dark-theme .fs-chip-yellow { background: rgba(245,158,11,0.2); color: #fcd34d; }
 body.dark-theme .fs-device-card:hover { border-color: #6366f1; }
+
+/* 视频库播放按钮 */
+.thumb-video-wrap { position: relative; cursor: pointer; }
+.thumb-video-play-btn {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    width: 40px; height: 40px; background: rgba(0,0,0,0.6); color: #fff;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; pointer-events: auto; transition: opacity 0.2s; z-index: 2;
+}
+.thumb-video-wrap:hover .thumb-video-play-btn { opacity: 1; }
+.thumb-video-wrap:has(video[controls]) .thumb-video-play-btn,
+.thumb-video-wrap video::-webkit-media-controls { display: none; }

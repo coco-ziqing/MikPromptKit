@@ -89,7 +89,7 @@ for(var i=0;i<S._masterProjects.length;i++){if(S._masterProjects[i].id===mid2){m
 var mpName=mp?mp.name:'总项目';
 var subs=mp?(mp.sub_projects||[]):[];
 var h='<div class="s2-project-header">';
-h+='<button class="btn btn-xs btn-outline" onclick="App.seedanceV2.goBackToMasters()" style="margin-right:8px;">← 返回</button>';
+h+='<button class="btn btn-xs btn-outline" onclick="App.seedanceV2.goBackToMasters()" style="margin-right:4px;">← 总项目</button>';h+='<button class="btn btn-xs btn-outline" onclick="if(window.App){App.switchView(\'project_mgmt\');setTimeout(function(){if(window.PK&&PK._selectMaster)PK._selectMaster('+mid2+');setTimeout(function(){if(PK._switchPhase)PK._switchPhase(\'P3\');if(PK._switchP3Tab)PK._switchP3Tab(\'segments\');},400);},400);}" style="margin-right:8px;" title="返回项目看板分镜段落">📋 看板</button>';
 h+='<h5 style="display:inline;">📁 '+App._escape(mpName)+'</h5>';
 h+='<span style="font-size:11px;color:var(--text-muted);margin-left:8px;">'+subs.length+'个分镜组</span>';
 h+='<button class="btn btn-sm btn-primary" style="float:right;" onclick="App.seedanceV2.createProject()">+ 新建</button>';

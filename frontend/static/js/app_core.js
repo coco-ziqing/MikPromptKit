@@ -1,4 +1,4 @@
-/**
+﻿/**
  * PromptKit — 核心框架模块 (app_core.js)
  * 状态/初始化/事件/视图/搜索/数据/模块/复制/模板变量/Toast
  * 自动生成 — 勿手动编辑
@@ -1117,241 +1117,161 @@ var App = window.App || {
     },
 
     // ===== 模型管理面板 =====
-    _mmCfg: {}, _mmSelectedProvider: 'ollama', _mmSelectedModel: '',
 
+
+    // ===== AI 模型管理中心（入口）=====
     openModelManager: function() {
         var panel = document.getElementById('viewModelManager');
+        if (!panel) { this._mmCreatePanel(); panel = document.getElementById('viewModelManager'); }
         if (!panel) return;
-        // 隐藏其他面板
-        document.querySelectorAll('.view-panel').forEach(function(p){ p.style.display='none'; });
+        document.querySelectorAll('.view-panel').forEach(function(p){ p.style.display = 'none'; });
         panel.style.display = 'block';
         this._mmLoad();
+        if (!this._mmEscBound) { this._mmEscBound = true; var self = this;
+            document.addEventListener('keydown', function mmEsc(e) { if (e.key==='Escape' && document.getElementById('viewModelManager').style.display==='block') self.closeModelManager(); });
+        }
     },
 
     closeModelManager: function() {
         var panel = document.getElementById('viewModelManager');
         if (panel) panel.style.display = 'none';
-        document.getElementById('viewHome').style.display = 'block';
+        var home = document.getElementById('viewHome');
+        if (home && home.classList.contains('active-view')) home.style.display = 'block';
+        else {
+            document.getElementById('viewHome').style.display = 'block';
+            if (!document.getElementById('viewHome').classList.contains('active-view'))
+                document.getElementById('viewHome').classList.add('active-view');
+        }
     },
-
-    _mmLoad: async function() {
-        try {
-            var d = await this.fetchJSON('/api/playground/ai-config');
-            if (d && d.ok) {
-                this._mmCfg = d;
-                this._mmSelectedProvider = d.provider || 'ollama';
-                this._mmSelectedModel = d.provider === 'kimi' ? (d.kimi_model || 'kimi-k2.6') : (d.ollama_model || 'qwen3.5:9b');
-                this._mmRenderCurrent();
-                this._mmRenderProviders();
-                this._mmRenderModelSelect();
-                this._mmRenderApiKeys();
-                this._mmLoadOllamaStatus();
-            }
-        } catch(e) {}
-    },
-
-    _mmRenderCurrent: function() {
-        var cfg = this._mmCfg;
-        var provName = cfg.provider === 'kimi' ? 'Kimi' : 'Ollama 本地';
-        var modelName = cfg.provider === 'kimi' ? (cfg.kimi_model||'kimi-k2.6') : (cfg.ollama_model||'qwen3.5:9b');
-        var icon = cfg.provider === 'kimi' ? '☁️' : '🧠';
-        var el = document.getElementById('mmCurrentModel');
-        if (el) el.innerHTML = '<span style="font-size:24px;">'+icon+'</span><span>'+provName+' / '+modelName+'</span>';
-        var st = document.getElementById('mmCurrentStatus');
-        if (st) {
-            st.innerHTML = '提供商: <b>'+provName+'</b> &nbsp;|&nbsp; 模型: <b>'+modelName+'</b>' +
-                (cfg.kimi_ready ? ' &nbsp;|&nbsp; <span style="color:#10b981;">● Kimi API 就绪</span>' : '') +
-                (cfg.ollama_ready ? ' &nbsp;|&nbsp; <span style="color:#10b981;">● Ollama 就绪</span>' : '');
+    // ===== AI 模型管理中心 =====
+    _mmCreatePanel: function() {
+        // 面板已通过 index.html 静态创建，此处作为 fallback
+        var div = document.getElementById('viewModelManager');
+        if (!div) {
+            div = document.createElement('div');
+            div.id = 'viewModelManager';
+            div.className = 'view-panel';
+            div.style.cssText = 'display:none;padding:24px;overflow-y:auto;';
+            div.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h3 style="margin:0;">AI 模型管理中心</h3><button class="btn btn-sm btn-outline-secondary" onclick="App.closeModelManager()" title="返回 (ESC)">✕</button></div><div id="mmApiKeys"></div><div style="margin-top:20px;text-align:center;"><button class="btn btn-outline-primary btn-sm" onclick="App._mmAddCustom()">+ 添加自定义模型厂商</button></div>';
+            var mc = document.getElementById('mainContent');
+            if (mc) mc.appendChild(div);
         }
     },
 
-    _mmRenderProviders: function() {
-        var self = this;
-        var cfg = this._mmCfg;
-        var providers = [
-            {id:'ollama', icon:'🧠', name:'Ollama 本地', desc:'qwen3.5:9b · 免费本地', ready:cfg.ollama_ready},
-            {id:'kimi', icon:'☁️', name:'Kimi', desc:'kimi-k2.6 · 云端API', ready:cfg.kimi_ready}
-        ];
-        var container = document.getElementById('mmProviders');
+    _mmBuiltinProviders: [
+        {id:'deepseek',name:'DeepSeek',icon:'🐋',base_url:'https://api.deepseek.com/v1',models:'deepseek-chat,deepseek-reasoner,deepseek-v4-flash',desc:'DeepSeek V4 系列'},
+        {id:'kimi',name:'Kimi MoonShot',icon:'☁️',base_url:'https://api.moonshot.cn/v1',models:'kimi-k2.6,kimi-k2-thinking,kimi-k2.5',desc:'月之暗面 Kimi 模型'},
+        {id:'openai',name:'OpenAI',icon:'🤖',base_url:'https://api.openai.com/v1',models:'gpt-4o,gpt-4o-mini',desc:'ChatGPT API'}
+    ],
+
+    _mmLoad: async function() {
+        try {
+            var d = await this.fetchJSON('/api/playground/api-keys');
+            this._mmKeys = d && d.ok ? (d.keys || {}) : {};
+            this._mmCustom = d && d.ok ? (d.custom_providers || []) : [];
+            this._mmRenderApiKeys();
+        } catch(e) { this._mmKeys = {}; this._mmCustom = []; this._mmRenderApiKeys(); }
+    },
+
+    _mmAllProviders: function() {
+        return this._mmBuiltinProviders.concat(this._mmCustom || []);
+    },
+
+    _mmRenderApiKeys: function() {
+        var self = this, container = document.getElementById('mmApiKeys');
         if (!container) return;
         var h = '';
-        providers.forEach(function(p){
-            var active = self._mmSelectedProvider === p.id ? ' active' : '';
-            h += '<button class="mm-provider-btn'+active+'" onclick="App._mmSelectProvider(\''+p.id+'\')" data-provider="'+p.id+'">';
-            h += '<span class="mm-provider-icon">'+p.icon+'</span>';
-            h += '<div style="text-align:left;"><div>'+p.name+'</div><div style="font-size:11px;color:var(--text-muted);">'+p.desc+'</div></div>';
-            h += '<span style="margin-left:auto;font-size:10px;color:'+(p.ready?'#10b981':'#ef4444')+';">'+(p.ready?'就绪':'需配置')+'</span>';
-            h += '</button>';
+        this._mmAllProviders().forEach(function(p) {
+            var saved = self._mmKeys[p.id] || {};
+            var hasKey = !!saved.key_masked;
+            h += '<div style="border:1px solid '+(hasKey?'#10b981':'var(--border-color)')+';border-radius:12px;padding:16px;margin-bottom:14px;">';
+            // Header
+            h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+            h += '<span style="font-size:22px;">'+p.icon+'</span>';
+            h += '<div style="flex:1;"><div style="font-weight:700;font-size:14px;">'+p.name+'</div><div style="font-size:11px;color:var(--text-muted);">'+p.desc+'</div></div>';
+            h += '<span id="mmStatus_'+p.id+'" style="font-size:10px;padding:3px 10px;border-radius:10px;white-space:nowrap;'+(hasKey?'background:rgba(5,150,105,0.15);color:#059669;':'background:rgba(239,68,68,0.15);color:#ef4444;')+'">'+(hasKey?'已配置 '+saved.key_masked:'未配置')+'</span>';
+            if (self._mmCustom && self._mmCustom.some(function(c){return c.id===p.id;})) {
+                h += '<button class="btn btn-sm btn-outline-danger" onclick="App._mmDeleteProvider(\''+p.id+'\')" style="font-size:10px;padding:2px 6px;" title="删除厂商">✕</button>';
+            }
+            h += '</div>';
+            // Form
+            h += '<div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;">';
+            h += '<div style="display:flex;flex-direction:column;gap:8px;">';
+            h += '<div><label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:2px;">API Endpoint</label><input type="text" id="mmBaseUrl_'+p.id+'" class="modal-input" value="'+_escapeHtml(saved.base_url||p.base_url)+'" style="font-size:11px;font-family:monospace;width:100%;"></div>';
+            h += '<div><label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:2px;">API Key</label><div style="display:flex;gap:4px;"><input type="password" autocomplete="off" id="mmKey_'+p.id+'" class="modal-input" placeholder="sk-..." style="flex:1;font-size:11px;font-family:monospace;"><button class="btn btn-sm btn-outline-secondary" onclick="event.preventDefault();var el=document.getElementById(\'mmKey_'+p.id+'\');el.type=el.type===\'password\'?\'text\':\'password\';" style="font-size:11px;padding:4px 8px;flex-shrink:0;" title="显示/隐藏">👁</button></div></div>';
+            h += '<div><label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:2px;">模型列表（逗号分隔）</label><input type="text" id="mmModels_'+p.id+'" class="modal-input" value="'+_escapeHtml(saved.models||p.models)+'" style="font-size:11px;width:100%;"></div>';
+            h += '</div>';
+            h += '<div style="display:flex;flex-direction:column;gap:6px;padding-top:18px;">';
+            h += '<button class="btn btn-sm btn-primary" onclick="App._mmSaveKey(\''+p.id+'\')" style="font-size:12px;white-space:nowrap;">💾 加密保存</button>';
+            h += '<button class="btn btn-sm btn-outline-secondary" onclick="App._mmTestKey(\''+p.id+'\')" style="font-size:11px;">🔗 测试连接</button>';
+            if (hasKey) h += '<button class="btn btn-sm btn-outline-danger" onclick="App._mmDeleteKey(\''+p.id+'\')" style="font-size:11px;">🗑 清除</button>';
+            h += '</div>';
+            h += '</div>';
+            h += '<div id="mmTestResult_'+p.id+'" style="margin-top:8px;font-size:11px;min-height:18px;"></div>';
+            h += '</div>';
         });
         container.innerHTML = h;
     },
 
-    _mmSelectProvider: function(provider) {
-        this._mmSelectedProvider = provider;
-        this._mmRenderProviders();
-        this._mmRenderModelSelect();
-    },
-
-    _mmRenderModelSelect: function() {
-        var self = this;
-        var prov = this._mmSelectedProvider;
-        var dropdown = document.getElementById('mmModelDropdown');
-        if (!dropdown) return;
-        if (prov === 'ollama') {
-            dropdown.innerHTML = '<option value="">加载 Ollama 模型列表...</option>';
-            this._mmLoadOllamaModels();
-        } else if (prov === 'kimi') {
-            var models = ['kimi-k2.6','kimi-k2-thinking','kimi-k2.5'];
-            var h = '';
-            models.forEach(function(m){
-                var sel = self._mmSelectedModel === m ? ' selected' : '';
-                h += '<option value="'+m+'"'+sel+'>'+m+'</option>';
-            });
-            dropdown.innerHTML = h;
-            this._mmSelectedModel = dropdown.value;
-        }
-    },
-
-    _mmOnModelChange: function() {
-        var dd = document.getElementById('mmModelDropdown');
-        if (dd) this._mmSelectedModel = dd.value;
-    },
-
-    _mmApplyModel: async function() {
-        var prov = this._mmSelectedProvider;
-        var model = this._mmSelectedModel || document.getElementById('mmModelDropdown').value;
-        if (!model) { alert('请选择一个模型'); return; }
-        var body = { provider: prov };
-        if (prov === 'kimi') body.kimi_model = model;
-        else body.ollama_model = model;
+    _mmSaveKey: async function(provider) {
+        var keyEl = document.getElementById('mmKey_'+provider);
+        var urlEl = document.getElementById('mmBaseUrl_'+provider);
+        var modelsEl = document.getElementById('mmModels_'+provider);
+        var key = (keyEl && keyEl.value.trim()) || '';
+        var url = (urlEl && urlEl.value.trim()) || '';
+        var models = (modelsEl && modelsEl.value.trim()) || '';
+        if (url && !url.match(/^https?:\/\/.+/)) { this.showToast('请输入有效的 API Endpoint','warning'); return; }
         try {
-            var d = await this.fetchJSON('/api/playground/ai-config', {
+            var d = await this.fetchJSON('/api/playground/api-keys', {
                 method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify(body)
-            });
-            var ar = document.getElementById('mmActionResult');
-            if (d && d.ok) {
-                this._aiModelState.provider = prov;
-                if (prov === 'kimi') this._aiModelState.kimi_model = model;
-                else this._aiModelState.ollama_model = model;
-                this._updateModelIndicator();
-                ar.style.display='block'; ar.style.background='rgba(16,185,129,.1)'; ar.style.color='#10b981';
-                ar.textContent = '✅ 已切换至 ' + (prov==='kimi'?'Kimi':'Ollama') + ' / ' + model;
-                this._mmRenderCurrent();
-            } else {
-                ar.style.display='block'; ar.style.background='#fef2f2'; ar.style.color='#ef4444';
-                ar.textContent = '❌ 应用失败: ' + (d&&d.detail||'未知错误');
-            }
-        } catch(e) {
-            var ar = document.getElementById('mmActionResult');
-            ar.style.display='block'; ar.style.background='#fef2f2'; ar.style.color='#ef4444';
-            ar.textContent = '❌ 网络错误: ' + e.message;
-        }
-    },
-
-    _mmTestModel: async function() {
-        var prov = this._mmSelectedProvider;
-        var model = this._mmSelectedModel || document.getElementById('mmModelDropdown').value;
-        if (!model) { alert('请选择一个模型'); return; }
-        var ar = document.getElementById('mmActionResult');
-        ar.style.display='block'; ar.style.background='rgba(59,130,246,.1)'; ar.style.color='#3b82f6';
-        ar.textContent = '🔬 测试连接中...';
-        try {
-            var d = await this.fetchJSON('/api/playground/chat', {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ message:'Hi', model:model, provider:prov })
+                body:JSON.stringify({provider:provider, key:key, base_url:url, models:models, custom_providers:self._mmCustom||[]})
             });
             if (d && d.ok) {
-                ar.style.background='rgba(16,185,129,.1)'; ar.style.color='#10b981';
-                ar.textContent = '✅ 连接成功！模型已响应。';
-            } else {
-                ar.style.background='#fef2f2'; ar.style.color='#ef4444';
-                ar.textContent = '❌ 连接失败: ' + (d&&(d.error||d.detail)||'无响应');
-            }
-        } catch(e) {
-            ar.style.background='#fef2f2'; ar.style.color='#ef4444';
-            ar.textContent = '❌ 连接失败: ' + e.message;
-        }
+                this.showToast(provider+' API Key 已加密保存', 'success');
+                if (keyEl) { keyEl.value = ''; keyEl.type = 'password'; }
+                if (urlEl) urlEl.value = '';
+                if (modelsEl) modelsEl.value = '';
+                this._mmLoad();
+            } else { this.showToast((d&&d.error)||'保存失败', 'error'); }
+        } catch(e) { this.showToast('网络错误', 'error'); }
     },
 
-    _mmRenderApiKeys: function() {
-        var self = this;
-        var cfg = this._mmCfg;
-        var container = document.getElementById('mmApiKeys');
-        if (!container) return;
-        var providers = [
-            {id:'kimi', icon:'☁️', name:'Kimi API Key', masked:cfg.kimi_key_masked||'-'},
-            {id:'openai', icon:'🤖', name:'OpenAI API Key', masked:cfg.openai_key_masked||'-'}
-        ];
-        var h = '';
-        providers.forEach(function(p){
-            h += '<div class="mm-api-key-row">';
-            h += '<span class="mm-provider-icon">'+p.icon+'</span>';
-            h += '<span style="font-size:13px;font-weight:500;min-width:100px;color:var(--text-main);">'+p.name+'</span>';
-            h += '<span style="font-size:11px;color:var(--text-muted);flex:1;">'+p.masked+'</span>';
-            h += '<button class="btn btn-sm btn-secondary" onclick="App._mmEditKey(\''+p.id+'\')" style="font-size:11px;">编辑</button>';
-            h += '</div>';
-        });
-        container.innerHTML = h || '<span style="font-size:12px;color:var(--text-muted);">无 API 密钥配置</span>';
-    },
-
-    _mmEditKey: function(provider) {
-        var label = provider === 'kimi' ? 'Kimi' : 'OpenAI';
-        var key = prompt('输入 ' + label + ' API Key（保存后加密存储）：');
-        if (key === null) return;
-        if (!key.trim()) { alert('Key 不能为空'); return; }
-        var self = this;
-        this.fetchJSON('/api/playground/api-key', {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ provider: provider, key: key.trim() })
-        }).then(function(d){
-            if (d && d.ok) {
-                self.showToast(label + ' API Key 已保存', 'success');
-                self._mmLoad();
-            }
-        }).catch(function(){});
-    },
-
-    _mmLoadOllamaStatus: async function() {
-        var el = document.getElementById('mmOllamaStatus');
+    _mmDeleteKey: async function(provider) {
+        if (!confirm('确认清除 '+provider+' 的 API Key？')) return;
         try {
-            var d = await this.fetchJSON('/api/health/check');
-            var ollama = d && d.services && d.services.ollama;
-            if (ollama && ollama.ready) {
-                el.innerHTML = '<span style="color:#10b981;">● 运行中</span> &nbsp;|&nbsp; 服务地址: ' + (ollama.url||'http://localhost:11434');
-                this._mmLoadOllamaModels();
-            } else {
-                el.innerHTML = '<span style="color:#f59e0b;">● 未连接</span> &nbsp;请确认 Ollama 服务已启动';
-            }
-        } catch(e) {
-            el.innerHTML = '<span style="color:#ef4444;">● 检测失败</span>';
-        }
+            var d = await this.fetchJSON('/api/playground/api-keys/'+provider, {method:'DELETE'});
+            if (d && d.ok) { this.showToast(provider+' 已清除', 'info'); this._mmLoad(); }
+        } catch(e) { this.showToast('网络错误', 'error'); }
     },
 
-    _mmLoadOllamaModels: async function() {
-        var dd = document.getElementById('mmModelDropdown');
-        if (!dd) return;
-        var self = this;
+    _mmTestKey: async function(provider) {
+        var resultEl = document.getElementById('mmTestResult_'+provider);
+        if (resultEl) resultEl.innerHTML = '<span style="color:var(--text-muted);">⏳ 测试连接中...</span>';
         try {
-            var d = await this.fetchJSON('/api/playground/models');
-            if (d && d.ok && d.models && d.models.length) {
-                var h = '';
-                d.models.forEach(function(m){
-                    var sel = self._mmSelectedModel === m.name ? ' selected' : '';
-                    h += '<option value="'+m.name+'"'+sel+'>'+m.name+' ('+m.size+')</option>';
-                });
-                dd.innerHTML = h;
-                self._mmSelectedModel = dd.value || d.models[0].name;
-            } else {
-                dd.innerHTML = '<option value="qwen3.5:9b">qwen3.5:9b</option>';
-            }
-        } catch(e) {
-            dd.innerHTML = '<option value="qwen3.5:9b">qwen3.5:9b</option>';
-        }
+            var d = await this.fetchJSON('/api/playground/api-keys/'+provider+'/test');
+            if (resultEl) resultEl.innerHTML = d && d.ok
+                ? '<span style="color:#10b981;">✅ '+d.message+'</span>'
+                : '<span style="color:#ef4444;">❌ '+(d&&d.error||'连接失败')+'</span>';
+        } catch(e) { if (resultEl) resultEl.innerHTML = '<span style="color:#ef4444;">❌ 测试失败</span>'; }
     },
 
-    // ===== Phase38-security: API 密钥保管 =====
-    _kvOpen: async function() {
+    _mmAddCustom: function() {
+        var name = prompt('输入模型厂商名称（如：通义千问）：'); if (!name) return;
+        var id = 'custom_' + Date.now();
+        var icon = prompt('输入图标 emoji（如：🔮）：','🔌'); if (!icon) return;
+        var url = prompt('输入 API Endpoint（如：https://dashscope.aliyuncs.com/compatible-mode/v1）：','https://'); if (!url) return;
+        var models = prompt('输入默认模型（逗号分隔，如：qwen-plus,qwen-max）：','');
+        this._mmCustom = this._mmCustom || [];
+        this._mmCustom.push({id:id, name:name, icon:icon, base_url:url, models:models||'', desc:'自定义模型服务'});
+        this._mmRenderApiKeys();
+    },
+
+    _mmDeleteProvider: function(id) {
+        if (!confirm('确认删除此自定义厂商？相关联的 API Key 也会被清除。')) return;
+        this._mmCustom = (this._mmCustom || []).filter(function(c){return c.id!==id;});
+        this.fetchJSON('/api/playground/api-keys/'+id, {method:'DELETE'}).catch(function(){});
+        this._mmRenderApiKeys();
+    },    _kvOpen: async function() {
         var m = document.getElementById('modalKeyVault');
         if (!m) return;
         m.style.display = 'flex';

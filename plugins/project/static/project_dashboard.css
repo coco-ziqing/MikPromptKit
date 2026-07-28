@@ -117,6 +117,12 @@ body.dark-theme .pk-modal-actions{border-color:#334155}
 body.dark-theme .pk-modal .form-group input,body.dark-theme .pk-modal .form-group textarea,body.dark-theme .pk-modal .form-group select{background:#0f172a;border-color:#475569;color:#e2e8f0}
 .pk-modal textarea{resize:vertical;min-height:80px}
 
+/* ===== 弹窗关闭按钮 ===== */
+.pk-modal-close-btn{position:fixed;top:16px;right:16px;width:36px;height:36px;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:22px;line-height:1;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:1001;transition:background 0.2s}
+.pk-modal-close-btn:hover{background:rgba(220,38,38,0.85)}
+body.dark-theme .pk-modal-close-btn{background:rgba(255,255,255,0.15);color:#fff}
+body.dark-theme .pk-modal-close-btn:hover{background:rgba(220,38,38,0.85)}
+
 /* ===== 按钮 ===== */
 .btn{padding:8px 16px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
 .btn-sm{padding:5px 10px;font-size:11px}

@@ -507,6 +507,120 @@ def delete_api_key(provider: str):
     return {"ok": True, "message": f"{provider} API key 已清除"}
 
 
+class APIKeySaveBody(BaseModel):
+    provider: str = ""
+    key: str = ""
+    base_url: str = ""
+    models: str = ""
+    custom_providers: list = []
+
+
+# === Phase38-ext: 动态 Provider 管理 ===
+
+@router.get("/api-keys")
+def list_api_keys():
+    """列出所有已保存的 API Key 和自定义 Provider"""
+    from crypto_utils import decrypt_api_key, mask_key
+    db = get_db()
+    keys = {}
+    custom_providers = []
+    rows = db.execute("SELECT key, value FROM config WHERE key LIKE '%_key_enc' OR key LIKE '%_base_url' OR key LIKE '%_models' OR key = 'custom_providers'").fetchall()
+    for r in rows:
+        k = r[0]
+        v = r[1]
+        if k.endswith('_key_enc'):
+            prov = k.replace('_key_enc','')
+            plain = decrypt_api_key(v)
+            keys[prov] = {"key_masked": mask_key(plain) if plain else "", "has_key": bool(plain)}
+        elif k.endswith('_base_url'):
+            prov = k.replace('_base_url','')
+            if prov not in keys: keys[prov] = {}
+            keys[prov]["base_url"] = v
+        elif k.endswith('_models'):
+            prov = k.replace('_models','')
+            if prov not in keys: keys[prov] = {}
+            keys[prov]["models"] = v
+        elif k == 'custom_providers':
+            try: custom_providers = json.loads(v)
+            except: pass
+    return {"ok": True, "keys": keys, "custom_providers": custom_providers}
+
+
+@router.post("/api-keys")
+def set_api_key_ext(data: APIKeySaveBody):
+    """保存/更新 API Key + 配置（加密存储）+ 自定义 Provider 持久化"""
+    from crypto_utils import encrypt_api_key
+    provider = data.provider.strip()
+    key = data.key.strip()
+    base_url = data.base_url.strip()
+    models = data.models.strip()
+    custom_providers = data.custom_providers or []
+    if not provider:
+        return {"ok": False, "error": "provider 不能为空"}
+    db = get_db()
+    if key:
+        encrypted = encrypt_api_key(key)
+        db.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?,?)",[f"{provider}_key_enc",encrypted])
+    if base_url:
+        db.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?,?)",[f"{provider}_base_url",base_url])
+    if models:
+        db.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?,?)",[f"{provider}_models",models])
+    # 持久化自定义 providers
+    if custom_providers:
+        db.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('custom_providers',?)",[json.dumps(custom_providers, ensure_ascii=False)])
+    db.commit()
+    return {"ok": True, "provider": provider}
+
+
+@router.delete("/api-keys/{provider}")
+def delete_api_key_ext(provider: str):
+    """删除指定 Provider 的所有配置"""
+    db = get_db()
+    for suffix in ["_key_enc","_base_url","_models"]:
+        db.execute("DELETE FROM config WHERE key=?",[f"{provider}{suffix}"])
+    db.commit()
+    return {"ok": True, "message": f"{provider} 已清除"}
+
+
+@router.get("/api-keys/{provider}/test")
+def test_api_key(provider: str):
+    """测试 API Key 连接"""
+    from crypto_utils import decrypt_api_key
+    db = get_db()
+    row = db.execute("SELECT value FROM config WHERE key=?",[f"{provider}_key_enc"]).fetchone()
+    if not row or not row[0]:
+        return {"ok": False, "error": "未配置 API Key"}
+    key = decrypt_api_key(row[0])
+    if not key:
+        return {"ok": False, "error": "解密失败"}
+    url_row = db.execute("SELECT value FROM config WHERE key=?",[f"{provider}_base_url"]).fetchone()
+    base = (url_row[0] if url_row else "https://api.openai.com/v1").rstrip('/')
+    
+    try:
+        import httpx
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        with httpx.Client(timeout=10.0) as client:
+            # Try /models endpoint first
+            r = client.get(f"{base}/models", headers=headers)
+            if r.status_code == 200:
+                data = r.json()
+                count = len(data.get("data", []) or [])
+                return {"ok": True, "message": f"连接成功，可用模型 {count} 个"}
+            elif r.status_code == 401:
+                return {"ok": False, "error": "API Key 无效 (401)"}
+            elif r.status_code == 403:
+                return {"ok": False, "error": "权限不足 (403)"}
+            else:
+                # Try chat completion as fallback
+                r2 = client.post(f"{base}/chat/completions", json={"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"hi"}],"max_tokens":1}, headers=headers)
+                if r2.status_code < 500:
+                    return {"ok": True, "message": f"API 响应正常 ({r2.status_code})"}
+                return {"ok": False, "error": f"连接异常: HTTP {r.status_code}"}
+    except httpx.ConnectError:
+        return {"ok": False, "error": "无法连接，请检查 Endpoint"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:100]}
+
 def _mask_stored_key(provider: str) -> str:
     """读加密存储并脱敏"""
     from crypto_utils import decrypt_api_key, mask_key

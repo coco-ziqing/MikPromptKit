@@ -346,6 +346,11 @@ VIDEO_DIR = os.path.join(
     "data", "videos"
 )
 os.makedirs(VIDEO_DIR, exist_ok=True)
+WC_VIDEO_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "wc_media", "videos"
+)
+os.makedirs(WC_VIDEO_DIR, exist_ok=True)
 
 def _probe_video_info(filepath):
     """用 ffprobe 探测视频 fps、分辨率、时长"""
@@ -804,15 +809,29 @@ def trim_video(data: dict):
 def list_video_library(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200)):
     """获取视频库列表（分页）——缓存加速，封面延迟生成"""
     try:
-        all_files = [f for f in os.listdir(VIDEO_DIR)
-                     if os.path.isfile(os.path.join(VIDEO_DIR, f)) and
-                     os.path.splitext(f)[1].lower() in ALLOWED_VIDEO_EXT]
-    except FileNotFoundError:
         all_files = []
-    all_files.sort(key=lambda f: os.path.getmtime(os.path.join(VIDEO_DIR, f)), reverse=True)
-    total = len(all_files)
+        # 扫描全局视频目录
+        for d in [VIDEO_DIR, WC_VIDEO_DIR]:
+            try:
+                for f in os.listdir(d):
+                    fp = os.path.join(d, f)
+                    if os.path.isfile(fp) and os.path.splitext(f)[1].lower() in ALLOWED_VIDEO_EXT:
+                        all_files.append((f, fp))
+            except FileNotFoundError:
+                pass
+        # 去重（同一文件名保留VIDEO_DIR优先）
+        seen = {}
+        unique = []
+        for f, fp in all_files:
+            if f not in seen:
+                seen[f] = True
+                unique.append((f, fp))
+        unique.sort(key=lambda x: os.path.getmtime(x[1]), reverse=True)
+    except Exception:
+        unique = []
+    total = len(unique)
     offset = (page - 1) * page_size
-    page_files = all_files[offset:offset + page_size]
+    page_files = unique[offset:offset + page_size]
     db = get_db()
     used_rows = db.execute("SELECT prompt_id, filename FROM prompt_videos").fetchall()
     used_set = {r["filename"]: r["prompt_id"] for r in used_rows}
@@ -821,8 +840,7 @@ def list_video_library(page: int = Query(1, ge=1), page_size: int = Query(50, ge
     needs_cover = []
 
     items = []
-    for f in page_files:
-        fpath = os.path.join(VIDEO_DIR, f)
+    for f, fpath in page_files:
         size = os.path.getsize(fpath)
 
         # 从 video_cache 读元数据（避免每次 ffprobe）
@@ -941,6 +959,11 @@ def delete_video_file(filename: str):
     vpath = os.path.join(VIDEO_DIR, safe_name)
     if os.path.exists(vpath):
         os.remove(vpath)
+    else:
+        # 也检查词卡视频目录
+        wc_vpath = os.path.join(WC_VIDEO_DIR, safe_name)
+        if os.path.exists(wc_vpath):
+            os.remove(wc_vpath)
     base = os.path.splitext(safe_name)[0]
     # 删除封面文件（含 _poster1.jpg, _poster2.jpg）
     for suffix in ['', '_poster1', '_poster2']:

@@ -1,11 +1,11 @@
-/**
+﻿/**
  * app_media_viewer.js — 媒体查看器模块（从 app_media.js 拆出）
  * 原图查看器(滚轮缩放+拖拽移动) + 视频查看器(逐帧控制) + 缩略图关联
  * 加载后自动覆盖 app_media.js 中的同名方法
  */
 (function() {
 'use strict';
-if (!App || App.openImageViewer) return;
+// 覆盖 app_media.js 中同名方法
 
 Object.assign(App, {
 
@@ -16,65 +16,122 @@ Object.assign(App, {
         var container = document.getElementById('imageViewerContainer');
         var img = document.getElementById('imageViewerImg');
 
-        if (!filename) { PK.toast('暂无原图', 'warning'); return; }
+        if (!filename) { App.showToast('暂无原图', 'warning'); return; }
 
         modal.style.display = 'flex';
 
-        modal.onclick = function(e) { if (e.target === modal) modal.style.display = 'none'; };
-
         // 加载新图片
-        img.src = '/api/media/image/' + filename + '?t=' + Date.now();
-        img.style.transform = 'scale(1) translate(0,0)';
+        img.src = '/api/media/original/' + filename + '?t=' + Date.now();
+        img.style.maxWidth = '100%';
+        img.style.maxHeight = '100%';
+        img.style.transform = 'scale(1)';
         img.style.cursor = 'grab';
+
+        // 加载右侧提示词详情
+        if (promptId && App._renderViewerRight) {
+            App._renderViewerRight('imgViewer', promptId);
+        }
 
         // 重置拖拽状态
         img._isDragging = false;
-        img._startX = 0;
-        img._startY = 0;
-        img._translateX = 0;
-        img._translateY = 0;
+        img._startX = 0; img._startY = 0;
+        img._translateX = 0; img._translateY = 0;
         img._scale = 1;
 
         // 滚轮缩放
         img.onwheel = function(e) {
             e.preventDefault();
             var delta = e.deltaY > 0 ? 0.9 : 1.1;
-            img._scale = Math.max(0.2, Math.min(10, (img._scale || 1) * delta));
+            img._scale = Math.max(0.15, Math.min(10, (img._scale || 1) * delta));
+            img.style.maxWidth = 'none';
+            img.style.maxHeight = 'none';
             img.style.transform = 'scale(' + img._scale + ') translate(' + (img._translateX || 0) + 'px,' + (img._translateY || 0) + 'px)';
         };
 
-        // 鼠标拖拽
+        // 鼠标拖拽 — 使用 addEventListener 避免被覆盖
+        var _mmove = function(e) {
+            if (!img._isDragging) return;
+            img._translateX = e.clientX - img._startX;
+            img._translateY = e.clientY - img._startY;
+            img.style.transform = 'scale(' + (img._scale || 1) + ') translate(' + img._translateX + 'px,' + img._translateY + 'px)';
+        };
+        var _mup = function(e) {
+            img._isDragging = false;
+            img.style.cursor = 'grab';
+        };
+
+        // 移除旧监听器防止重复
+        document.removeEventListener('mousemove', img._mmove);
+        document.removeEventListener('mouseup', img._mup);
+        img._mmove = _mmove;
+        img._mup = _mup;
+        document.addEventListener('mousemove', _mmove);
+        document.addEventListener('mouseup', _mup);
+
         img.onmousedown = function(e) {
             if (e.button !== 0) return;
             img._isDragging = true;
             img._startX = e.clientX - (img._translateX || 0);
             img._startY = e.clientY - (img._translateY || 0);
             img.style.cursor = 'grabbing';
+            e.preventDefault();
         };
 
-        document.onmousemove = function(e) {
-            if (!img._isDragging) return;
-            img._translateX = e.clientX - img._startX;
-            img._translateY = e.clientY - img._startY;
-            img.style.transform = 'scale(' + (img._scale || 1) + ') translate(' + img._translateX + 'px,' + img._translateY + 'px)';
+        // 键盘 ESC 关闭 + 清理
+        var _khandler = function(e) {
+            if (e.key === 'Escape') {
+                modal.style.display = 'none';
+                document.removeEventListener('keydown', _khandler);
+                document.removeEventListener('mousemove', img._mmove);
+                document.removeEventListener('mouseup', img._mup);
+            }
         };
+        document.addEventListener('keydown', _khandler);
+    },
 
-        document.onmouseup = function() {
-            img._isDragging = false;
-            img.style.cursor = 'grab';
-        };
+    zoomImageViewer: function(action) {
+        var img = document.getElementById('imageViewerImg');
+        if (!img) return;
 
-        // 键盘 ESC 关闭
-        document.onkeydown = function(e) {
-            if (e.key === 'Escape') { modal.style.display = 'none'; document.onkeydown = null; }
-        };
+        if (action === 'fit') {
+            img._scale = 1;
+            img._translateX = 0;
+            img._translateY = 0;
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '100%';
+            img.style.transform = 'scale(1) translate(0,0)';
+        } else if (action === '100') {
+            img._scale = 1;
+            img._translateX = 0;
+            img._translateY = 0;
+            img.style.maxWidth = 'none';
+            img.style.maxHeight = 'none';
+            img.style.transform = 'scale(1) translate(0,0)';
+        } else if (action === 'in') {
+            img._scale = Math.min(10, (img._scale || 1) * 1.5);
+            img.style.maxWidth = 'none';
+            img.style.maxHeight = 'none';
+            img.style.transform = 'scale(' + img._scale + ') translate(' + (img._translateX || 0) + 'px,' + (img._translateY || 0) + 'px)';
+        } else if (action === 'out') {
+            img._scale = Math.max(0.15, (img._scale || 1) / 1.5);
+            if (img._scale <= 1) {
+                img._scale = 1;
+                img._translateX = 0;
+                img._translateY = 0;
+                img.style.maxWidth = '100%';
+                img.style.maxHeight = '100%';
+                img.style.transform = 'scale(1) translate(0,0)';
+            } else {
+                img.style.transform = 'scale(' + img._scale + ') translate(' + (img._translateX || 0) + 'px,' + (img._translateY || 0) + 'px)';
+            }
+        }
     },
 
     // ============ 视频查看器(逐帧控制) ============
 
     openVideoViewer(filename, promptId) {
         var modal = document.getElementById('modalVideoViewer');
-        if (!filename) { PK.toast('暂无视频', 'warning'); return; }
+        if (!filename) { App.showToast('暂无视频', 'warning'); return; }
 
         var container = document.getElementById('videoViewerContainer');
         var video = document.getElementById('videoViewerVideo');
@@ -115,40 +172,6 @@ Object.assign(App, {
     },
 
     // ============ 缩略图关联（从查看器中勾选收藏/关联）============
-
-    async _toggleViewerCollect(cid, pid, checkbox) {
-        try {
-            var d = await PK.json('/api/v2/collections/toggle', { card_id: cid, prompt_id: pid });
-            if (d && d.ok) {
-                checkbox.checked = d.collected;
-                checkbox.nextElementSibling.textContent = d.collected ? '\u2b50' : '\u2606';
-            }
-        } catch (e) {
-            PK.toast('操作未完成，稍后再试', 'error');
-        }
-    },
-
-    async _loadViewerCollections(prefix, pid, collDiv) {
-        try {
-            var d = await PK.json('/api/v2/collections/list', { prompt_id: pid });
-            if (d && d.collections) {
-                collDiv.innerHTML = '';
-                for (var c of d.collections) {
-                    var cb = document.createElement('input');
-                    cb.type = 'checkbox'; cb.id = prefix + c.id;
-                    cb.checked = c.collected;
-                    cb.onchange = this._toggleViewerCollect.bind(this, c.id, pid, cb);
-                    var lb = document.createElement('label');
-                    lb.htmlFor = prefix + c.id;
-                    lb.textContent = c.name + ' ' + (c.collected ? '\u2b50' : '\u2606');
-                    collDiv.appendChild(cb); collDiv.appendChild(lb);
-                    collDiv.appendChild(document.createElement('br'));
-                }
-            }
-        } catch (e) {
-            collDiv.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">加载未完成</span>';
-        }
-    },
 
 }); // end Object.assign
 console.log('[PK] app_media_viewer loaded');

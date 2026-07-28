@@ -50,13 +50,25 @@ Object.assign(App, {
 
     // 视频库缩略图悬停播放
     _bindVideoLibHover() {
-        var videos = document.querySelectorAll('.thumb-video-preview');
-        for (var i = 0; i < videos.length; i++) {
-            var v = videos[i];
-            v.removeEventListener('mouseenter', App._playVideo);
-            v.removeEventListener('mouseleave', App._pauseVideo);
-            v.addEventListener('mouseenter', App._playVideo);
-            v.addEventListener('mouseleave', App._pauseVideo);
+        var wraps = document.querySelectorAll('.thumb-video-wrap');
+        for (var i = 0; i < wraps.length; i++) {
+            var w = wraps[i];
+            var v = w.querySelector('.thumb-video-preview');
+            var btn = w.querySelector('.thumb-video-play-btn');
+            if (!v) continue;
+            // Click to toggle play
+            w.onclick = function(e) {
+                var video = this.querySelector('.thumb-video-preview');
+                if (!video) return;
+                if (video.paused) { video.play(); } else { video.pause(); }
+            };
+            // Auto-hide play button
+            v.onplay = function() { var b = this.parentElement.querySelector('.thumb-video-play-btn'); if (b) b.style.opacity = '0'; };
+            v.onpause = function() { var b = this.parentElement.querySelector('.thumb-video-play-btn'); if (b) b.style.opacity = '1'; };
+            v.onended = v.onpause;
+            // Hover play
+            w.addEventListener('mouseenter', function() { v.muted = true; v.play().catch(function(){}); });
+            w.addEventListener('mouseleave', function() { v.pause(); v.currentTime = 0; });
         }
     },
 
@@ -413,7 +425,7 @@ Object.assign(App, {
             var clickAttr = bm ? '' : ' onclick="App.selectVideoThumbnail(\'' + item.filename + '\')"';
             html += '<div class="thumb-item ' + selectedClass + '"' + clickAttr + '>' +
                 (bm ? '<input type="checkbox" class="thumb-batch-cb" data-filename="' + item.filename + '" onchange="App.toggleThumbBatchItem(this)"' + isChecked + '>' : '') +
-                (cover ? '<div class="thumb-video-wrap"><video class="thumb-video-preview" src="/api/thumbnails/video/' + item.filename + '" poster="' + cover + '" loop muted playsinline preload="none"></video></div>' : '<div style="background:#334155;width:100%;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:28px;">&#9654;</div>') +
+                (cover ? '<div class="thumb-video-wrap"><video class="thumb-video-preview" src="/api/thumbnails/video/' + item.filename + '" poster="' + cover + '" loop muted playsinline preload="metadata"></video><div class="thumb-video-play-btn">▶</div></div>' : '<div style="background:#334155;width:100%;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:28px;">&#9654;</div>') +
                 usedBadge + info +
                 '<div class="thumb-item-footer">' +
                   '<span class="thumb-item-name" title="' + (item.original_name || item.filename) + '">' + (item.original_name || item.filename) + '</span>' +
