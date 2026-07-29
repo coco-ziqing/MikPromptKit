@@ -2493,8 +2493,39 @@ body.dark-theme .sl-dot-off { background: #64748b; }
 body.dark-theme .sl-dot-on { box-shadow: 0 0 6px 2px rgba(16,185,129,0.7); }
 body.dark-theme .sl-dot-err { box-shadow: 0 0 6px 2px rgba(239,68,68,0.7); }
 
-
-
+/* ===== 服务健康指示灯（header 内嵌） ===== */
+#svcIndicator {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    font-size: 9px;
+    cursor: pointer;
+    transition: all 0.35s ease;
+    margin: 0 2px;
+    user-select: none;
+}
+#svcIndicator.svc-on {
+    color: #10b981;
+    background: rgba(16,185,129,0.1);
+    box-shadow: 0 0 6px 2px rgba(16,185,129,0.35);
+    animation: sl-pulse 2s ease-in-out infinite;
+}
+#svcIndicator.svc-off {
+    color: #ef4444;
+    background: rgba(239,68,68,0.1);
+    box-shadow: 0 0 6px 2px rgba(239,68,68,0.35);
+    animation: sl-blink 0.8s ease-in-out infinite;
+}
+#svcIndicator.svc-unknown {
+    color: #94a3b8;
+    background: rgba(148,163,184,0.1);
+}
+body.dark-theme #svcIndicator.svc-on {
+    box-shadow: 0 0 8px 3px rgba(16,185,129,0.55);
+}
+body.dark-theme #svcIndicator.svc-off {
+    box-shadow: 0 0 8px 3px rgba(239,68,68,0.55);
+}
 
 .s2-ext-tags { display: inline-flex; gap: 4px; flex-wrap: wrap; margin-left: 4px; }
 .s2-ext-tag {
@@ -3769,3 +3800,103 @@ body.dark-theme .fs-device-card:hover { border-color: #6366f1; }
 .thumb-video-wrap:hover .thumb-video-play-btn { opacity: 1; }
 .thumb-video-wrap:has(video[controls]) .thumb-video-play-btn,
 .thumb-video-wrap video::-webkit-media-controls { display: none; }
+
+/* ============ 导航栏优化补丁 v5.2.0 ============ */
+
+/* ── 汉堡菜单：桌面端隐藏，移动端(≤768px)由响应式规则激活 ── */
+#btnMenu { display: none; }
+
+/* ── 品牌 ── */
+.navbar-tool .brand {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    margin-right: 48px;
+}
+.navbar-tool .brand small { font-size: 11px; font-weight: 500; opacity: 0.75; }
+
+/* ── 账户区域与后续控件间距 ── */
+#navAccountSlot { margin-right: 32px; }
+
+/* ── 下拉菜单按钮：字号层级 + 呼吸间距 ── */
+.nav-dropdown { flex-shrink: 0; }
+.nav-dropdown-btn {
+    padding: 0 10px;
+    gap: 6px;
+    font-size: 13px;
+    line-height: 1;
+}
+.nav-dd-text {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0;
+    line-height: 1;
+    letter-spacing: 0.2px;
+}
+.nav-dd-label .bi { font-size: 15px; line-height: 1; }
+.nav-dropdown-btn .nav-dd-arrow {
+    font-size: 10px;
+    margin-left: 1px;
+    line-height: 1;
+    opacity: 0.7;
+    transition: transform 0.2s, opacity 0.15s;
+}
+.nav-dropdown-btn:hover .nav-dd-arrow { opacity: 1; }
+
+/* ── 下拉组间距 ── */
+.header-actions { gap: 6px; }
+
+/* ── 分割线：优雅比例 ── */
+.header-divider {
+    display: inline-block;
+    flex-shrink: 0;
+    min-width: 1.5px;
+    width: 1.5px;
+    height: 26px;
+    border-radius: 0.75px;
+    margin: 0 8px;
+    background: var(--border-color);
+    opacity: 0.8;
+}
+
+/* ── 列数滑条按钮 34×34 ── */
+.column-slider-wrap .header-btn {
+    width: 34px;
+    height: 34px;
+    font-size: 15px;
+    border-radius: 8px;
+}
+
+/* ── 模式切换按钮 34×34 ── */
+.pk-mode-btn {
+    width: 34px;
+    height: 34px;
+    font-size: 15px;
+}
+
+/* ── 导航栏字体基准 ── */
+.navbar-tool { font-size: 13px; }
+#btnLang { font-size: 13px !important; }
+#headerStats { font-size: 12px; }
+
+/* ── 暗色主题分割线 ── */
+body.dark-theme .header-divider {
+    background: #64748b;
+    opacity: 0.6;
+}
+
+/* ── 响应式 ── */
+@media (max-width: 1279px) {
+    .navbar-tool .brand { margin-right: 24px; }
+    #navAccountSlot { margin-right: 16px; }
+    .nav-dropdown-btn { padding: 0 6px; gap: 4px; }
+    .nav-dd-text { font-size: 12px; }
+    .header-divider { margin: 0 4px; height: 22px; }
+    .header-actions { gap: 3px; }
+}
+
+@media (max-width: 1023px) {
+    .nav-dd-text { display: none; }
+    .nav-dropdown-btn { padding: 0 8px; }
+    .nav-dropdown-btn .nav-dd-arrow { display: none; }
+}

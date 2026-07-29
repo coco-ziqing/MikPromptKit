@@ -153,7 +153,7 @@ var App = window.App || {
                 var v = d.version;
                 // 美化显示
                 var displayVersion = v.replace(/^v+/i, '').replace('-phase', '.');
-                document.title = App._t('auto.str_c5da0d84', '咪卡Mik词库');
+                document.title = App._t('auto.str_c5da0d84', '咪卡词库·个人版');
                 var bv = document.getElementById('brandVersion');
                 if (bv) bv.textContent = v.replace(/^v+/i, '');  // 去除所有前导v前缀，只显示数字
                 // 同时更新 headerStats

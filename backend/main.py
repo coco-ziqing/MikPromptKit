@@ -654,6 +654,17 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+@app.get("/api/ping")
+def ping():
+    """极轻量心跳 — 零数据库调用，仅返回服务存活信号"""
+    from datetime import datetime, timezone
+    return {
+        "ok": True,
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "version": APP_VERSION
+    }
+
+
 @app.get("/api/status")
 def get_status():
     try:
@@ -679,6 +690,19 @@ FRONTEND_DIR = get_frontend_dir()
 STATIC_DIR = os.path.join(FRONTEND_DIR, "static")
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+
+# 确保静态 JS/CSS 文件以 UTF-8 编码提供（修复中文乱码）
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+class _UTF8StaticMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        ct = response.headers.get("content-type", "")
+        if "text/" in ct or "javascript" in ct or "css" in ct:
+            if "charset" not in ct:
+                response.headers["content-type"] = ct + "; charset=utf-8"
+        return response
+app.add_middleware(_UTF8StaticMiddleware)
 
 
 @app.get("/")

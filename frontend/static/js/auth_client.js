@@ -351,10 +351,54 @@
       // 下拉菜单（按需创建，点击时生成到 body）
       wrap._userMenuHandler = function(e) { self._showUserMenu(e); };
 
-      // 插入到 🩺 诊断按钮左边
-      var ref = document.getElementById('btnDiagConsole');
-      if (ref) ref.parentNode.insertBefore(wrap, ref);
-      else actions.appendChild(wrap);
+      // 用户信息展示：头像 + 名称 + 在线状态
+      var info = document.createElement('span');
+      info.id = 'navOnlineStatus';
+      info.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text-main);white-space:nowrap;margin-left:6px;';
+      var avSrc = user.avatar_url || '';
+      info.innerHTML = (avSrc ? '<img src="'+avSrc+'" crossorigin="anonymous" style="width:20px;height:20px;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\'">' : '')
+        + '<span style="font-weight:600;">'+(user.display_name||user.username||'')+'</span>'
+        + '<span id="navStatusDot" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--text-muted);"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;flex-shrink:0;"></span>在线</span>';
+
+      // ── 主理人专属：在线人数徽章 + 在线用户列表弹窗 ──
+      var presenceBadge = null;
+      if (isAdmin) {
+        presenceBadge = document.createElement('span');
+        presenceBadge.id = 'navPresenceBadge';
+        presenceBadge.style.cssText = 'display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--text-muted);cursor:pointer;white-space:nowrap;padding:2px 6px;border-radius:6px;border:1px solid var(--border-color);transition:all .15s;margin-left:4px;';
+        presenceBadge.title = '点击查看在线用户';
+        presenceBadge.innerHTML = '<span style="font-size:12px;">👥</span><span id="navPresenceCount" style="font-weight:600;">…</span>人在线';
+        presenceBadge.onmouseenter = function(){ this.style.borderColor='var(--primary)'; this.style.background='var(--hover-bg)'; };
+        presenceBadge.onmouseleave = function(){ this.style.borderColor='var(--border-color)'; this.style.background='transparent'; };
+        presenceBadge.onclick = function(e){ e.stopPropagation(); self._togglePresencePopover(e, presenceBadge); };
+
+        // 订阅实时在线状态
+        var updatePresence = function() {
+          if (!window.PK_PRESENCE) return;
+          var users = PK_PRESENCE.list() || [];
+          var countEl = document.getElementById('navPresenceCount');
+          if (countEl) countEl.textContent = users.length;
+          // 更新自己的状态指示
+          var dotEl = document.getElementById('navStatusDot');
+          if (dotEl && PK_PRESENCE._selfId) {
+            var selfStatus = PK_PRESENCE.statusOf(PK_PRESENCE._selfId) || 'online';
+            var meta = PK_PRESENCE.META[selfStatus] || PK_PRESENCE.META.online;
+            dotEl.innerHTML = '<span style="width:6px;height:6px;border-radius:50%;background:'+meta.color+';display:inline-block;flex-shrink:0;"></span>'+meta.label;
+          }
+        };
+        // 尝试立即更新
+        setTimeout(function(){
+          if (window.PK_PRESENCE) {
+            updatePresence();
+            PK_PRESENCE.on(updatePresence);
+          }
+        }, 1500);
+      }
+
+      // 插入到账户占位容器
+      var ref = document.getElementById('navAccountSlot');
+      if (ref) { ref.appendChild(wrap); ref.appendChild(info); if (presenceBadge) ref.appendChild(presenceBadge); }
+      else { actions.appendChild(wrap); actions.appendChild(info); }
     },
 
     _showUserMenu: function(e) {
@@ -415,6 +459,42 @@
       document.body.appendChild(menu);
       var cls = function(ev){if(!menu.contains(ev.target)){menu.remove();document.removeEventListener('click',cls);}};
       setTimeout(function(){document.addEventListener('click',cls);},10);
+    },
+
+    // ── 主理人：在线用户列表弹窗 ──
+    _togglePresencePopover: function(e, badge) {
+      var existing = document.getElementById('pkPresencePopover');
+      if (existing) { existing.remove(); return; }
+      if (!window.PK_PRESENCE) return;
+      var users = PK_PRESENCE.list() || [];
+      var self = this;
+      var pop = document.createElement('div');
+      pop.id = 'pkPresencePopover';
+      pop.style.cssText = 'position:fixed;z-index:9999;background:var(--bg-card,#fff);border:1px solid var(--border-color);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.15);min-width:220px;max-height:320px;overflow-y:auto;padding:6px 0;';
+      var rect = badge.getBoundingClientRect();
+      pop.style.top = (rect.bottom + 6) + 'px';
+      pop.style.right = (window.innerWidth - rect.right) + 'px';
+
+      var h = '<div style="padding:8px 14px;font-size:12px;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border-color);">在线用户 ('+users.length+')</div>';
+      var roleMap = {admin:'主理人',editor:'共创者',viewer:'鉴赏者'};
+      users.forEach(function(u){
+        var status = PK_PRESENCE.statusOf(u.user_id) || 'online';
+        var meta = PK_PRESENCE.META[status] || {};
+        var av = u.avatar_url || '';
+        h += '<div style="padding:8px 14px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-main);">';
+        h += (av ? '<img src="'+av+'" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\'">' : '<span style="width:24px;height:24px;border-radius:50%;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">'+(u.display_name||u.username||'?').charAt(0).toUpperCase()+'</span>');
+        h += '<span style="flex:1;font-weight:500;">'+(u.display_name||u.username||'?')+'</span>';
+        h += '<span style="font-size:10px;color:var(--text-muted);">'+(roleMap[u.role]||u.role||'')+'</span>';
+        h += '<span style="font-size:10px;display:inline-flex;align-items:center;gap:3px;color:'+(meta.color||'#10b981')+';"><span style="width:5px;height:5px;border-radius:50%;background:'+(meta.color||'#10b981')+';display:inline-block;"></span>'+(meta.label||'在线')+'</span>';
+        h += '</div>';
+      });
+      if (users.length === 0) {
+        h += '<div style="padding:20px;text-align:center;font-size:12px;color:var(--text-muted);">暂无其他在线用户</div>';
+      }
+      pop.innerHTML = h;
+      document.body.appendChild(pop);
+      var cls = function(ev){ if(!pop.contains(ev.target) && ev.target !== badge) { pop.remove(); document.removeEventListener('click',cls); } };
+      setTimeout(function(){ document.addEventListener('click',cls); }, 10);
     },
 
     // 个人详情弹窗（可编辑版）
@@ -675,6 +755,9 @@
       try { localStorage.removeItem('promptkit_group_id'); localStorage.removeItem('promptkit_view'); localStorage.removeItem('promptkit_module'); } catch(e) {}
       this._token = null; this._user = null; this._loggedIn = false;
       var w = document.getElementById('navDropdownUser'); if (w) w.remove();
+      var s = document.getElementById('navOnlineStatus'); if (s) s.remove();
+      var pb = document.getElementById('navPresenceBadge'); if (pb) pb.remove();
+      var pp = document.getElementById('pkPresencePopover'); if (pp) pp.remove();
       document.querySelectorAll('.nav-dropdown-item.admin-only').forEach(function(el){ el.classList.add('admin-only'); });
       this._showCover();
     },
