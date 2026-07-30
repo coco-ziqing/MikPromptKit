@@ -19,6 +19,7 @@ Object.assign(App, {
         if (!filename) { App.showToast('暂无原图', 'warning'); return; }
 
         modal.style.display = 'flex';
+        modal.setAttribute('data-filename', filename);
 
         // 加载新图片
         img.src = '/api/media/original/' + filename + '?t=' + Date.now();
@@ -133,34 +134,59 @@ Object.assign(App, {
         var modal = document.getElementById('modalVideoViewer');
         if (!filename) { App.showToast('暂无视频', 'warning'); return; }
 
-        var container = document.getElementById('videoViewerContainer');
-        var video = document.getElementById('videoViewerVideo');
+        var video = document.getElementById('vidViewerPlayer');
         if (!video) return;
 
         modal.style.display = 'flex';
-        modal.onclick = function(e) { if (e.target === modal) modal.style.display = 'none'; };
+        modal.setAttribute('data-filename', filename);
 
-        video.src = '/api/media/video/' + filename + '?t=' + Date.now();
+        video.src = '/api/thumbnails/video/' + filename + '?t=' + Date.now();
         video.load();
 
-        // 初始化帧控制
-        var frameInfo = document.getElementById('videoFrameInfo');
-        var frameSlider = document.getElementById('videoFrameSlider');
-        if (frameSlider) {
-            frameSlider.value = 0;
-            frameSlider.oninput = function() {
-                if (video.duration) {
-                    var t = parseFloat(this.value) / 100 * video.duration;
-                    video.currentTime = t;
-                    if (frameInfo) frameInfo.textContent = '帧 ' + Math.round(t * video.duration) + '/' + Math.round(video.duration);
-                }
+        // 加载右侧提示词详情
+        if (promptId && App._renderViewerRight) {
+            App._renderViewerRight('vidViewer', promptId);
+        }
+
+        // 初始化进度条
+        var seek = document.getElementById('vidViewerSeek');
+        var timeLabel = document.getElementById('vidViewerTime');
+        var durLabel = document.getElementById('vidViewerDuration');
+        var playBtn = document.getElementById('vidPlayBtn');
+        if (seek) seek.value = 0;
+
+        function fmt(sec) {
+            if (!sec || sec <= 0) return '00:00.0';
+            var m = Math.floor(sec / 60);
+            var s = (sec % 60).toFixed(1);
+            return String(m).padStart(2, '0') + ':' + String(s).padStart(4, '0');
+        }
+
+        video.ontimeupdate = function() {
+            if (video.duration && seek) seek.value = (video.currentTime / video.duration * 1000) || 0;
+            if (timeLabel) timeLabel.textContent = fmt(video.currentTime);
+        };
+        video.onloadedmetadata = function() {
+            if (durLabel) durLabel.textContent = fmt(video.duration);
+        };
+
+        if (seek) {
+            seek.oninput = function() {
+                if (video.duration) video.currentTime = parseFloat(this.value) / 1000 * video.duration;
             };
         }
 
-        // 键盘：空格切换播放，左右方向逐帧
+        // 播放按钮
+        var _togglePlay = function() {
+            if (video.paused) { video.play(); if (playBtn) playBtn.innerHTML = '⏸'; }
+            else { video.pause(); if (playBtn) playBtn.innerHTML = '▶'; }
+        };
+        if (playBtn) { playBtn.onclick = _togglePlay; playBtn.innerHTML = '▶'; }
+
+        // 键盘：ESC关闭，空格切换播放，左右逐帧
         var kHandler = function(e) {
-            if (e.key === 'Escape') { modal.style.display = 'none'; document.removeEventListener('keydown', kHandler); }
-            if (e.key === ' ') { e.preventDefault(); if (video.paused) video.play(); else video.pause(); }
+            if (e.key === 'Escape') { modal.style.display = 'none'; video.pause(); document.removeEventListener('keydown', kHandler); }
+            if (e.key === ' ') { e.preventDefault(); _togglePlay(); }
             if (e.key === 'ArrowRight' && video.duration) {
                 video.currentTime = Math.min(video.duration, video.currentTime + 1/24);
             }
@@ -169,6 +195,68 @@ Object.assign(App, {
             }
         };
         document.addEventListener('keydown', kHandler);
+
+        // 点击遮罩关闭
+        modal.onclick = function(e) { if (e.target === modal) { modal.style.display = 'none'; video.pause(); } };
+    },
+
+    // ============ 查看器下载按钮 ============
+    _downloadViewerFile: function(type) {
+        var url, downloadName;
+        var ext = '';
+        if (type === 'video') {
+            var videoEl = document.getElementById('vidViewerPlayer');
+            if (!videoEl || !videoEl.src) { App.showToast('暂无视频可下载', 'warning'); return; }
+            url = videoEl.src.replace(/\?.*$/, '');
+            downloadName = url.split('/').pop() || 'video.mp4';
+            var vp = downloadName.split('.');
+            ext = vp.length > 1 ? '.' + vp.pop() : '.mp4';
+        } else {
+            // Fallback: 先尝试 modal data-filename, 再读 img src
+            var modal = document.getElementById('modalImageViewer');
+            var filename = modal ? modal.getAttribute('data-filename') : '';
+            if (filename) {
+                url = '/api/media/original/' + filename;
+                downloadName = filename;
+                var ip = downloadName.split('.');
+                ext = ip.length > 1 ? '.' + ip.pop() : '.jpg';
+            } else {
+                var imgEl = document.getElementById('imageViewerImg');
+                if (!imgEl || !imgEl.src) { App.showToast('暂无图片可下载', 'warning'); return; }
+                url = imgEl.src.replace(/\?.*$/, '');
+                downloadName = url.split('/').pop() || 'image.jpg';
+                var ip2 = downloadName.split('.');
+                ext = ip2.length > 1 ? '.' + ip2.pop() : '.jpg';
+            }
+        }
+        // 以词卡名称前12字 + 扩展名作为文件名
+        var contentEl = document.getElementById(type === 'video' ? 'vidViewerContent' : 'imgViewerContent');
+        var cardName = contentEl ? (contentEl.textContent || '').trim() : '';
+        var finalName;
+        if (cardName) {
+            var safeName = cardName.replace(/[\/\\:*?"<>|\r\n\t]/g, '').trim();
+            safeName = safeName.substring(0, 12);
+            finalName = safeName ? safeName + ext : downloadName.split('/').pop();
+        } else {
+            finalName = downloadName.split('/').pop();
+        }
+        fetch(url)
+            .then(function(r) {
+                if (!r.ok) throw new Error('下载未完成: ' + r.status);
+                return r.blob();
+            })
+            .then(function(blob) {
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = finalName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+            })
+            .catch(function(e) {
+                App.showToast(e.message, 'danger');
+            });
     },
 
     // ============ 缩略图关联（从查看器中勾选收藏/关联）============

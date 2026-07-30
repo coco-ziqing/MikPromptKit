@@ -12,6 +12,53 @@ function _escapeHtml(str) {
     return div.innerHTML;
 }
 
+// 下载预览原图/视频到本地（全局挂在 App，供各视图调用）
+function _downloadPreview(type, originalFilename, videoFilename, cardName) {
+    var url;
+    var downloadName;
+    var ext = '';
+    if (type === 'video' && videoFilename) {
+        url = '/api/thumbnails/video/' + videoFilename;
+        downloadName = videoFilename;
+        var vp = videoFilename.split('.');
+        ext = vp.length > 1 ? '.' + vp.pop().split('?')[0] : '.mp4';
+    } else if (originalFilename) {
+        url = '/api/thumbnails/original/' + originalFilename;
+        downloadName = originalFilename;
+        var op = originalFilename.split('.');
+        ext = op.length > 1 ? '.' + op.pop() : '.jpg';
+    } else {
+        if (App.showToast) App.showToast('无可下载的预览文件', 'warning');
+        return;
+    }
+    // 以词卡名称前12字 + 扩展名作为下载文件名
+    var finalName;
+    if (cardName && cardName.trim()) {
+        var safeName = cardName.replace(/[\/\\:*?"<>|\r\n\t]/g, '').trim();
+        safeName = safeName.substring(0, 12);
+        finalName = safeName ? safeName + ext : downloadName.split('/').pop();
+    } else {
+        finalName = downloadName.split('/').pop();
+    }
+    fetch(url)
+        .then(function(r) {
+            if (!r.ok) throw new Error('下载未完成: ' + r.status);
+            return r.blob();
+        })
+        .then(function(blob) {
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = finalName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+        })
+        .catch(function(e) {
+            if (App.showToast) App.showToast(e.message, 'danger');
+        });
+}
+
 // var 而非 const — 必须设置 window.App 供其他 script 标签通过 window.App 访问
 var App = window.App || {
 
@@ -382,7 +429,7 @@ var App = window.App || {
         try { localStorage.setItem('promptkit_view', view); } catch(e) {}
         // PhaseB: 上报所在页面
         if (window.PK_PRESENCE) {
-            var pageMap = {'home':'词库','collections':'词卡收藏','seedance':'分镜','v4media':'媒体资产','composer':'组装器'};
+            var pageMap = {'home':'提示词库','collections':'词卡收藏','seedance':'分镜','v4media':'媒体资产','composer':'组装器'};
             PK_PRESENCE.reportLocation(pageMap[view] || view, '', 0);
         }
 
@@ -1353,6 +1400,9 @@ var App = window.App || {
             this.showToast('网络错误', 'error');
         }
     },
+
+    // 下载预览原图/视频到本地
+    _downloadPreview: _downloadPreview,
 
 };
 

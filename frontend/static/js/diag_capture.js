@@ -270,7 +270,7 @@
 
         // --- Nav ---
         if (A.switchGroup) A.switchGroup = _wrapAsync(A.switchGroup, 'switch_group', 'nav', function(gid) { return '分组#' + gid; });
-        if (A.switchAllGroups) A.switchAllGroups = _wrap(A.switchAllGroups, 'switch_all', 'nav', function() { return '词库'; });
+        if (A.switchAllGroups) A.switchAllGroups = _wrap(A.switchAllGroups, 'switch_all', 'nav', function() { return '提示词库'; });
 
         // --- Card ops ---
         if (A.toggleSelect) A.toggleSelect = _wrap(A.toggleSelect, 'toggle_card', 'click', function(cid) { return '词卡#' + cid; });

@@ -137,6 +137,10 @@ App._showShowcase = function() {
     var container = document.getElementById('promptList');
     if (!container) return;
 
+    // 显示全部折叠按钮
+    var btnCollapse = document.getElementById('btnCollapseAllGroups');
+    if (btnCollapse) { btnCollapse.style.display = 'inline-block'; App._updateCollapseBtnLabel(); }
+
     // 陈列架视图无批量操作，隐藏批量栏
     this._hideBatchBar();
     // 陈列架/查找词组页面：隐藏 AI 工具栏、面包屑、编辑工具栏
@@ -380,6 +384,8 @@ App._showSubGroupBrowser = function(rootId, rootKey) {
     // 避免 async _wcLoadPrompts 在浏览器 HTML 写入后再覆盖 promptList
     this.state.currentGroupId = null;
     this.state.currentGroupName = '';
+    var btnCol = document.getElementById('btnCollapseAllGroups');
+    if (btnCol) btnCol.style.display = 'none';
     var vh = document.getElementById('viewHome');
     if (vh) vh.classList.add('active-view');
     
@@ -467,9 +473,9 @@ App._showSubGroupBrowser = function(rootId, rootKey) {
     
     container.innerHTML = html;
     
-    // 更新面包屑
+    // 更新面包屑 — 统一标题为"词卡分组"（而非根节点原始名称如"角色设定"）
     var pt = document.getElementById('pageTitle');
-    if (pt) pt.textContent = root.name || root.group_key || '';
+    if (pt) pt.textContent = '词卡分组';
 };
 
 // 展开侧边栏中的指定节点（子分组浏览器内部用）
@@ -556,12 +562,12 @@ App.renderSidebar = function() {
         return;
     }
     
-    var html = '<div style="padding:10px 14px 6px;color:var(--text-muted);font-size:12px;letter-spacing:1px;font-weight:600;">查找词组</div>';
+    var html = '<div style="padding:10px 14px 6px;display:flex;justify-content:space-between;align-items:center;color:var(--text-muted);font-size:12px;letter-spacing:1px;font-weight:600;"><span>查找词组</span><button onclick="event.stopPropagation();App._toggleAllTreeNodes()" title="一键全部折叠/展开" style="font-size:10px;padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;line-height:1.4;">📂 全部折叠</button></div>';
     
     // 统一入口：全部词组
     var allActive = this.state.currentGroupId === null ? 'active' : '';
     html += '<div class="module-item ' + allActive + '" onclick="App.switchAllGroups()" style="margin:0 8px 4px;font-size:14px;">' +
-        '<span class="icon">🏠</span><span>词库</span>' +
+        '<span class="icon">🏠</span><span>提示词库</span>' +
         '</div>';
     
     // 渲染树
@@ -584,9 +590,76 @@ App.renderSidebar = function() {
     App._injectSidebarToggle(sidebar);
     } catch(e) {
         console.error('[wc-bridge] renderSidebar 崩溃:', e.message, e.stack);
-        var sidebar = document.getElementById('sidebar');
-        if (sidebar) sidebar.innerHTML = '<div style="padding:20px;color:#ef4444;font-size:13px;">侧边栏渲染未完成: ' + e.message + '</div>';
+        var sidebar2 = document.getElementById('sidebar');
+        if (sidebar2) sidebar2.innerHTML = '<div style="padding:20px;color:#ef4444;font-size:13px;">侧边栏渲染未完成: ' + e.message + '</div>';
     }
+};
+
+// Phase44: 一键全部折叠/展开侧边栏树节点
+App._toggleAllTreeNodes = function() {
+    var tree = this.state.groupTree;
+    if (!tree || tree.length === 0) return;
+    // 判断当前是否全部折叠：检查第一个有子节点的 root 是否展开
+    var allCollapsed = true;
+    for (var ti = 0; ti < tree.length; ti++) {
+        if (tree[ti].children && tree[ti].children.length > 0 && tree[ti]._expanded !== false) {
+            allCollapsed = false;
+            break;
+        }
+    }
+    // 切换状态：如果全部折叠则全部展开，否则全部折叠
+    var newState = allCollapsed;
+    function setAll(nodes) {
+        for (var i = 0; i < nodes.length; i++) {
+            if (nodes[i].children && nodes[i].children.length > 0) {
+                nodes[i]._expanded = newState;
+                setAll(nodes[i].children);
+            }
+        }
+    }
+    setAll(tree);
+    // 重新渲染侧边栏
+    this.renderSidebar();
+};
+
+// Phase44: 一键全部折叠/展开陈列架中所有根节点分组
+App._toggleAllShowcaseGroups = function() {
+    var tree = this.state.groupTree;
+    if (!tree || tree.length === 0) return;
+    // 判断当前是否全部折叠
+    var allCollapsed = true;
+    for (var i = 0; i < tree.length; i++) {
+        var el = document.getElementById('showcase_root_' + i);
+        if (el && el.style.display !== 'none') { allCollapsed = false; break; }
+    }
+    var newDisplay = allCollapsed ? 'block' : 'none';
+    var newArrow = allCollapsed ? '▼' : '▶';
+    for (var j = 0; j < tree.length; j++) {
+        var el2 = document.getElementById('showcase_root_' + j);
+        if (el2) { el2.style.display = newDisplay; }
+    }
+    // 更新所有箭头
+    var container = document.getElementById('promptList');
+    if (container) {
+        var arrows = container.querySelectorAll('.toggle-arrow');
+        for (var k = 0; k < arrows.length; k++) {
+            arrows[k].textContent = newArrow;
+        }
+    }
+    App._updateCollapseBtnLabel();
+};
+
+// 更新折叠按钮文案
+App._updateCollapseBtnLabel = function() {
+    var btn = document.getElementById('btnCollapseAllGroups');
+    if (!btn) return;
+    var allCollapsed = true;
+    var tree = this.state.groupTree;
+    for (var i = 0; i < tree.length; i++) {
+        var el = document.getElementById('showcase_root_' + i);
+        if (el && el.style.display !== 'none') { allCollapsed = false; break; }
+    }
+    btn.textContent = allCollapsed ? '📂 全部展开' : '📂 全部折叠';
 };
 
 // Phase15: 渲染单个树节点（递归）— 只有 root 可折叠，sub 永远展开
@@ -1080,6 +1153,9 @@ App._wcLoadPrompts = async function() {
         this._showShowcase();
         return;
     }
+    // 进入具体分组 → 隐藏全部折叠按钮
+    var btnCollapse = document.getElementById('btnCollapseAllGroups');
+    if (btnCollapse) btnCollapse.style.display = 'none';
     // 防御：渲染器未就绪或分组ID无效时直接降级到陈列架
     if (typeof this.renderPrompts !== 'function') {
         if (!this.state.groupTree || this.state.groupTree.length === 0) {
@@ -1166,7 +1242,7 @@ App._wcLoadPrompts = async function() {
         this.renderPagination();
         this.updateBatchCount();  // 切换分组后：根据当前分组数据更新按钮状态
         document.getElementById('countInfo').textContent = '共 ' + d.total + ' 条词卡';
-        document.getElementById('pageTitle').textContent = s.currentGroupName || '全部分组列表';
+        document.getElementById('pageTitle').textContent = s.currentGroupName || '词卡分组';
         // 侧边栏滚动到当前分组（首次加载/刷新时也触发）
         var self = this;
         setTimeout(function() { self._scrollSidebarToGroup(s.currentGroupId); }, 200);
@@ -1422,9 +1498,9 @@ App.gmBatchMove = function(fromGroupId) {
 var _origUpdateTitle = App._updatePageTitle;
 App._updatePageTitle = function() {
     if (this.state.currentGroupId !== null && this.state.currentView === 'home') {
-        document.getElementById('pageTitle').textContent = this.state.currentGroupName || '全部分组列表';
+        document.getElementById('pageTitle').textContent = this.state.currentGroupName || '词卡分组';
     } else if (this.state.currentView === 'home') {
-        document.getElementById('pageTitle').textContent = '词库';
+        document.getElementById('pageTitle').textContent = '提示词库';
     } else {
         if (_origUpdateTitle) _origUpdateTitle.call(this);
     }

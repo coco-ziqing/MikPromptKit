@@ -180,7 +180,8 @@
                 <div class="page-header" id="pageHeaderRow">
                     <div id="pageHeaderLeft" style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
                         <button id="btnBackToShowcase" onclick="App._wcGoBack()" style="display:none;align-items:center;gap:4px;padding:4px 14px;background:var(--primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;flex-shrink:0;" onmouseenter="this.style.filter='brightness(1.12)'" onmouseleave="this.style.filter='none'"><i class="bi bi-arrow-left"></i> 返回</button>
-                        <h3 id="pageTitle" style="white-space:nowrap;">提示词列表</h3>
+                        <h3 id="pageTitle" style="white-space:nowrap;">提示词分组列表</h3>
+                        <button id="btnCollapseAllGroups" onclick="App._toggleAllShowcaseGroups()" title="一键折叠/展开全部分组" style="display:none;font-size:11px;padding:3px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;white-space:nowrap;">📂 全部折叠</button>
                         <span class="count-info" id="countInfo" style="white-space:nowrap;">加载中...</span>
                         <!-- 搜索框+切换按钮紧凑同行 -->
                         <form autocomplete="off" onsubmit="return false" style="margin:0;"><div id="inlineSearchBox" style="display:none;flex:0 1 300px;min-width:200px;margin-left:8px;border:1px solid var(--border-color);border-radius:8px;overflow:hidden;"><input type="text" id="inlineSearchInput" placeholder="🔍 搜索词卡..." autocomplete="off" name="search-term" style="flex:1;min-width:0;padding:6px 10px;border:none;border-radius:0;background:var(--bg);color:var(--text);font-size:13px;outline:none;appearance:none;-webkit-appearance:none;" oninput="var h=document.getElementById('searchInput');if(h){h.value=this.value;h.dispatchEvent(new Event('input',{bubbles:true}));}" onfocus="this.parentElement.style.borderColor='var(--primary)';var nb=document.getElementById('inlineSearchModeBtn');if(nb)nb.style.borderColor='var(--primary)'" onblur="this.parentElement.style.borderColor='';var nb=document.getElementById('inlineSearchModeBtn');if(nb)nb.style.borderColor=''"><button id="inlineSearchModeBtn" onclick="(function(){var s=App.state;var m=s._searchMode;s._searchMode=m==='semantic'?'keyword':'semantic';var el=document.getElementById('inlineSearchModeBtn');var el2=document.getElementById('searchModeBtn');var u=function(e){if(!e)return;if(s._searchMode==='semantic'){e.innerHTML='🧠';e.title='语义搜索|点击切换';e.style.color='#818cf8'}else{e.innerHTML='🔤';e.title='关键词搜索|点击切换';e.style.color='#94a3b8'}};u(el);u(el2);if(s.searchQuery){s.page=1;if(s._searchMode==='semantic'){App._semanticSearch(s.searchQuery)}else{App.loadPrompts()}}App.showToast('已切换到 '+(s._searchMode==='semantic'?'🧠 语义搜索':'🔤 关键词搜索'),'info')})()" title="关键词/语义搜索" style="padding:6px 10px;border:none;border-radius:0;background:var(--bg);color:var(--text);font-size:15px;cursor:pointer;flex-shrink:0;line-height:1;appearance:none;-webkit-appearance:none;">🔤</button></div></form>
@@ -399,6 +400,7 @@
                     <div class="viewer-actions">
                         <button class="viewer-btn viewer-btn-copy" onclick="App.copyVidViewerContent()"><i class="bi bi-clipboard"></i> 复制提示词</button>
                         <button class="viewer-btn viewer-btn-collect" id="vidViewerCollectBtn" onclick="event.stopPropagation();App.collectVidViewerPrompt()"><i class="bi bi-bookmark"></i> 收藏</button>
+                        <button class="viewer-btn viewer-btn-download" onclick="App._downloadViewerFile('video')" style="background:rgba(34,197,94,0.1);border-color:#22c55e;color:#22c55e;"><i class="bi bi-download"></i> 下载视频</button>
                     </div>
                 </div>
             </div>
@@ -433,6 +435,7 @@
                     <div class="viewer-actions">
                         <button class="viewer-btn viewer-btn-copy" onclick="App.copyImgViewerContent()"><i class="bi bi-clipboard"></i> 复制提示词</button>
                         <button class="viewer-btn viewer-btn-collect" id="imgViewerCollectBtn" onclick="event.stopPropagation();App.collectImgViewerPrompt()"><i class="bi bi-bookmark"></i> 收藏</button>
+                        <button class="viewer-btn viewer-btn-download" onclick="App._downloadViewerFile('image')" style="background:rgba(34,197,94,0.1);border-color:#22c55e;color:#22c55e;"><i class="bi bi-download"></i> 下载原图</button>
                     </div>
                 </div>
             </div>
@@ -1032,14 +1035,14 @@
     <!-- #6 预加载大模块，提前发起请求 -->
     <link rel="preload" href="/static/js/seedance_v2_composer.js?v=100" as="script">
     <link rel="preload" href="/static/js/app_tools.js?v=9.5" as="script">
-    <link rel="preload" href="/static/js/app_collections.js?v=10.15" as="script">
+    <link rel="preload" href="/static/js/app_collections.js?v=10.17" as="script">
     <link rel="preload" href="/static/js/app_media.js?v=14" as="script">
     <link rel="preload" href="/static/js/word_editor.js?v=12.4" as="script">
     <!-- Phase15: wc_bridge 必须在 app_core 之前加载，分组导航交互重构 -->
-                            <script src="/static/js/wc_bridge.js?v=14.36"></script>
+                            <script src="/static/js/wc_bridge.js?v=14.38"></script>
 <script src="/static/js/signal_lights.js?v=5"></script>
     <script src="/static/js/svc_health.js?v=1"></script>
-    <script src="/static/js/app_core.js?v=95"></script>
+    <script src="/static/js/app_core.js?v=98"></script>
     <script defer src="/static/js/auth_client.js?v=28"></script>
 <script defer src="/static/js/pk_terms.js?v=2"></script>
 <script defer src="/static/js/pk_common.js?v=1"></script>
@@ -1058,12 +1061,12 @@
     <script defer src="/static/js/monitor_dashboard.js?v=6"></script>
     <script defer src="/static/js/health_check.js?v=5"></script>
     <script defer src="/static/js/app_sync.js?v=9.3"></script>
-    <script defer src="/static/js/app_editor.js?v=11.15"></script>
-    <script defer src="/static/js/app_collections.js?v=10.15"></script>
+    <script defer src="/static/js/app_editor.js?v=11.17"></script>
+    <script defer src="/static/js/app_collections.js?v=10.17"></script>
     <script defer src="/static/js/app_tools.js?v=9.5"></script>
 <script defer src="/static/js/app_import_export.js?v=1"></script>
     <script defer src="/static/js/app_media.js?v=14"></script>
-<script defer src="/static/js/app_media_viewer.js?v=9"></script>
+<script defer src="/static/js/app_media_viewer.js?v=12"></script>
     <script defer src="/static/js/ai_tools.js?v=9"></script>
     <script defer src="/static/js/word_picker.js?v=5"></script>
     <script defer src="/static/js/word_editor.js?v=12.4"

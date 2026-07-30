@@ -310,6 +310,7 @@ Object.assign(App, {
                         </div>
                         <div class="card-add-row">
                             <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>
+                            ${(p.thumbnail || videoFile) ? '<span class="coll-add-btn" onclick="event.stopPropagation();App._downloadPreview(\'' + (videoFile ? 'video' : 'image') + '\', \'' + (origFile || p.thumbnail || '') + '\', \'' + (videoFile || '') + '\', \'' + (p.content || '').replace(/'/g,"\\'").substring(0,12) + '\')" title="下载' + (videoFile ? '视频' : '原图') + '到本地" style="background:rgba(34,197,94,0.1);color:#22c55e;">⬇</span>' : ''}
                             ${App.state.editMode ? '' : ''}
                             <div class="card-collections">
                                 <div class="card-checkbox">
