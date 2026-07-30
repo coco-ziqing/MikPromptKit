@@ -140,8 +140,16 @@ var PMU = { users:[], filter:'', query:'', sel:new Set(), _colors: ['#7c3aed','#
     for (var uid of PMU.sel) { try { await fetch('/api/auth/users/'+uid,{method:'DELETE',headers:{'Authorization':'***'+localStorage.getItem('pk_token')}}); } catch(e) {} }
     toast('已删除 '+PMU.sel.size+' 个用户'); PMU.sel.clear(); PMU.render(); PMU.updateBatchBar(); }
 
-  function showForm(uid) {
-    var isNew = !uid, u = uid ? PMU.users.find(function(x){return x.id===uid;})||{}:{};
+  async function showForm(uid) {
+    var isNew = !uid;
+    var u = {};
+    if (uid) {
+      u = PMU.users.find(function(x){return x.id===uid;}) || null;
+      if (!u) {
+        try { var r = await fetch('/api/auth/users/'+uid,{headers:{'Authorization':'***'+localStorage.getItem('pk_token')}}); var d = await r.json(); if (d.ok && d.user) u = d.user; } catch(e) {}
+      }
+      if (!u) u = {};
+    }
     var ov = document.createElement('div'); ov.className = 'modal-overlay'; ov.onclick = function(e) { if (e.target===ov) ov.remove(); };
     ov.innerHTML = '<div class="modal-box" onclick="event.stopPropagation()"><h4>'+(isNew?'➕ 添加用户':'✏ 编辑 '+esc(u.display_name||u.username))+'</h4>'
       + (!isNew ? '<div style="display:flex;gap:12px;margin-bottom:12px;align-items:center;"><div class="user-avatar" style="background:'+(u.avatar_color||PMU._colors[0])+';width:52px;height:52px;border-radius:14px;font-size:24px;" id="uf_avatar_preview">'+(u.display_name||u.username).charAt(0).toUpperCase()+'</div><div><div class="avatar-grid">'+PMU._emojis.map(function(e){return '<span onclick="PMU._pickAvatar(event,\''+e+'\')">'+e+'</span>';}).join('')+'</div><div class="color-grid">'+PMU._colors.map(function(c){return '<span style="background:'+c+';" onclick="PMU._pickColor(event,\''+c+'\')"></span>';}).join('')+'</div></div></div>' : '')

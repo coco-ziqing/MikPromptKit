@@ -73,13 +73,16 @@ _JWT_ALGORITHM = "HS256"
 _ENFORCE_AUTH = os.environ.get("PK_ENFORCE_AUTH", "0") == "1"
 
 # 公开路径白名单（无需认证）
-_PUBLIC_PATHS = {
-    "/", "/index.html", "/favicon.ico", "/login.html", "/admin_users.html", "/join",
-    "/static", "/api/health", "/api/plugin-system/manifest",
+# 注意: 路径匹配使用 startswith，目录类路径需加尾部斜杠避免前级歧义
+_PUBLIC_PATHS = [
+    "/index.html", "/favicon.ico", "/login.html", "/admin_users.html", "/join",
+    "/static/", "/api/health", "/api/plugin-system/manifest",
     "/api/auth/login", "/api/auth/register",
     "/api/plugins",  # License 激活不需要登录
     "/api/status",   # 公开状态端点
-}
+]
+# 精确匹配路径（避免 startswith 误匹配，如 / 会匹配一切）
+_PUBLIC_EXACT = {"/"}
 
 
 def _base64url_encode(data: bytes) -> str:
@@ -168,7 +171,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         
         # 检查是否为公开路径
-        is_public = any(path.startswith(p) for p in _PUBLIC_PATHS)
+        is_public = path in _PUBLIC_EXACT or any(path.startswith(p) for p in _PUBLIC_PATHS)
         
         # 初始化 user 状态
         user = {
@@ -216,8 +219,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
 # FastAPI 依赖注入
 # ============================================================
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, HTTPException
 
 def require_role(*roles: str):
     """
@@ -260,23 +262,28 @@ def get_current_user(request: Request) -> dict:
 
 def login_user(db, username: str, password: str) -> Optional[str]:
     """
-    用户登录验证（Phase21 实现完整逻辑）。
-    Phase18: 仅 admin/admin 登录。
-    返回 JWT token 或 None。
+    用户登录验证 — 通过 users 表校验密码，返回 JWT token 或 None。
+    db: sqlite3 连接（需已设置 row_factory）
     """
-    # Phase18 简化：admin 无密码登录
-    if username == "admin" and password in ("admin", ""):
-        payload = {
-            "user_id": 1,
-            "username": "admin",
-            "role": "admin",
-            "iat": int(time.time()),
-            "exp": int(time.time()) + 86400 * 7,  # 7天
-        }
-        return create_jwt(payload)
-    
-    # Phase21: 查 users 表验证 bcrypt 密码
-    return None
+    try:
+        from password import check_pw
+    except ImportError:
+        return None
+    row = db.execute(
+        "SELECT id, username, password_hash, role, is_active FROM users WHERE username=?",
+        [username]
+    ).fetchone()
+    if not row or not row["is_active"]:
+        return None
+    if not check_pw(password, row["password_hash"]):
+        return None
+    return create_jwt({
+        "user_id": row["id"],
+        "username": row["username"],
+        "role": row["role"],
+        "iat": int(time.time()),
+        "exp": int(time.time()) + 86400 * 7,
+    })
 
 
 # ============================================================
@@ -284,7 +291,9 @@ def login_user(db, username: str, password: str) -> Optional[str]:
 # ============================================================
 
 def generate_test_token(user_id=1, username="admin", role="admin"):
-    """生成测试 JWT token"""
+    """⚠ 仅开发环境使用，生成测试 JWT token"""
+    if os.environ.get("PK_ENV", "dev") != "dev":
+        raise RuntimeError("generate_test_token 仅在开发环境可用")
     payload = {
         "user_id": user_id,
         "username": username,

@@ -10,15 +10,6 @@
   window._togglePw = function(inputId, btn) {
     var inp = document.getElementById(inputId);
     if (!inp) return;
-    if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈'; /* 🙈 */ }
-    else { inp.type = 'password'; btn.textContent = '👁'; /* 👁 */ }
-  };
-
-
-  // 密码眼睛开关（全局工具）
-  window._togglePw = function(inputId, btn) {
-    var inp = document.getElementById(inputId);
-    if (!inp) return;
     if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈'; }
     else { inp.type = 'password'; btn.textContent = '👁'; }
   };
@@ -59,7 +50,7 @@
 
       // 登录后延迟注入导航按钮，确保 DOM 已渲染
       if (this._loggedIn) {
-        this._injectNavButton(0);
+        this._injectNavButton();
       }
     },
 
@@ -245,7 +236,7 @@
     },
 
     _setAuthError: function(id, msg) {
-      var el = document.getElementById(id); if (el) el.textContent = msg;
+      var el = document.getElementById(id); if (el) { el.style.color = ''; el.textContent = msg; }
     },
 
     _doLogin: async function() {
@@ -292,6 +283,14 @@
           this._setAuthError('al_error','');
           // 绿色提示
           var err = document.getElementById('al_error'); err.style.color='#10b981'; err.textContent='注册成功! 请登录';
+          // 下次显示错误时恢复红色（重写 _setAuthError 以保持绿色直到新的错误出现）
+          var origShow = this._setAuthError.bind(this);
+          var self = this;
+          this._setAuthError = function(id2, msg2) {
+            if (id2 === 'al_error' && msg2) { err.style.color = ''; }
+            origShow(id2, msg2);
+            self._setAuthError = origShow;
+          };
         } else {
           this._setAuthError('ar_error', rd.detail||'注册失败');
         }
@@ -303,17 +302,32 @@
     _esc: function(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML;},
 
     // ---- 导航栏用户按钮（风格匹配词库/组装/工具） ----
-    _injectNavButton: function(attempt) {
+    _injectNavButton: function() {
       if (!this._loggedIn) return;
-      attempt = attempt || 0;
 
-      // 直接找 header-actions 作为插入锚点
-      var actions = document.querySelector('.header-actions');
+      // 已注入过则跳过
+      if (document.getElementById('navDropdownUser')) return;
+
+      var self = this;
+      var tryInject = function() {
+        var actions = document.querySelector('.header-actions');
+        if (!actions) return false;
+        self._doInjectNav(actions);
+        return true;
+      };
+
+      if (tryInject()) return;
+
+      // DOM 尚未渲染，用 MutationObserver 等待（最多 10 秒）
+      var obs = new MutationObserver(function() {
+        if (tryInject()) obs.disconnect();
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      setTimeout(function() { obs.disconnect(); }, 10000);
+    },
+
+    _doInjectNav: function(actions) {
       var existing = document.getElementById('navDropdownUser');
-      if (!actions) {
-        if (attempt < 30) setTimeout(this._injectNavButton.bind(this, attempt + 1), 200);
-        return;
-      }
       if (existing) return;
 
       var self = this;
@@ -356,40 +370,36 @@
         + '<span style="font-weight:600;">'+(user.display_name||user.username||'')+'</span>'
         + '<span id="navStatusDot" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--text-muted);"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;flex-shrink:0;"></span>在线</span>';
 
-      // ── 主理人专属：在线人数徽章 + 在线用户列表弹窗 ──
-      var presenceBadge = null;
-      if (isAdmin) {
-        presenceBadge = document.createElement('span');
-        presenceBadge.id = 'navPresenceBadge';
-        presenceBadge.style.cssText = 'display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--text-muted);cursor:pointer;white-space:nowrap;padding:2px 6px;border-radius:6px;border:1px solid var(--border-color);transition:all .15s;margin-left:4px;';
-        presenceBadge.title = '点击查看在线用户';
-        presenceBadge.innerHTML = '<span style="font-size:12px;">👥</span><span id="navPresenceCount" style="font-weight:600;">…</span>人在线';
-        presenceBadge.onmouseenter = function(){ this.style.borderColor='var(--primary)'; this.style.background='var(--hover-bg)'; };
-        presenceBadge.onmouseleave = function(){ this.style.borderColor='var(--border-color)'; this.style.background='transparent'; };
-        presenceBadge.onclick = function(e){ e.stopPropagation(); self._togglePresencePopover(e, presenceBadge); };
+      // ── 在线人数徽章 + 在线用户列表弹窗（所有已登录用户可见）──
+      var presenceBadge = document.createElement('span');
+      presenceBadge.id = 'navPresenceBadge';
+      presenceBadge.style.cssText = 'display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--text-muted);cursor:pointer;white-space:nowrap;padding:2px 6px;border-radius:6px;border:1px solid var(--border-color);transition:all .15s;margin-left:4px;';
+      presenceBadge.title = '点击查看在线用户';
+      presenceBadge.innerHTML = '<span style="font-size:12px;">👥</span><span id="navPresenceCount" style="font-weight:600;">…</span>人在线';
+      presenceBadge.onmouseenter = function(){ this.style.borderColor='var(--primary)'; this.style.background='var(--hover-bg)'; };
+      presenceBadge.onmouseleave = function(){ this.style.borderColor='var(--border-color)'; this.style.background='transparent'; };
+      presenceBadge.onclick = function(e){ e.stopPropagation(); self._togglePresencePopover(e, presenceBadge); };
 
-        // 订阅实时在线状态
-        var updatePresence = function() {
-          if (!window.PK_PRESENCE) return;
-          var users = PK_PRESENCE.list() || [];
-          var countEl = document.getElementById('navPresenceCount');
-          if (countEl) countEl.textContent = users.length;
-          // 更新自己的状态指示
-          var dotEl = document.getElementById('navStatusDot');
-          if (dotEl && PK_PRESENCE._selfId) {
-            var selfStatus = PK_PRESENCE.statusOf(PK_PRESENCE._selfId) || 'online';
-            var meta = PK_PRESENCE.META[selfStatus] || PK_PRESENCE.META.online;
-            dotEl.innerHTML = '<span style="width:6px;height:6px;border-radius:50%;background:'+meta.color+';display:inline-block;flex-shrink:0;"></span>'+meta.label;
-          }
-        };
-        // 尝试立即更新
-        setTimeout(function(){
-          if (window.PK_PRESENCE) {
-            updatePresence();
-            PK_PRESENCE.on(updatePresence);
-          }
-        }, 1500);
-      }
+      // 订阅实时在线状态
+      var self2 = this;
+      var updatePresence = function() {
+        if (!window.PK_PRESENCE) return;
+        var users = PK_PRESENCE.list() || [];
+        var countEl = document.getElementById('navPresenceCount');
+        if (countEl) countEl.textContent = users.length;
+        var dotEl = document.getElementById('navStatusDot');
+        if (dotEl && PK_PRESENCE._selfId) {
+          var selfStatus = PK_PRESENCE.statusOf(PK_PRESENCE._selfId) || 'online';
+          var meta = PK_PRESENCE.META[selfStatus] || PK_PRESENCE.META.online;
+          dotEl.innerHTML = '<span style="width:6px;height:6px;border-radius:50%;background:'+meta.color+';display:inline-block;flex-shrink:0;"></span>'+meta.label;
+        }
+      };
+      setTimeout(function(){
+        if (window.PK_PRESENCE) {
+          updatePresence();
+          PK_PRESENCE.on(updatePresence);
+        }
+      }, 1500);
 
       // 插入到账户占位容器
       var ref = document.getElementById('navAccountSlot');
@@ -413,18 +423,13 @@
       menu = document.createElement('div');
       menu.id = 'pkUserMenu';
       menu.style.cssText = 'position:fixed;z-index:9999;background:var(--bg-card,#1e293b);border:1px solid var(--border-color,#334155);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.24);min-width:220px;padding:6px 0;overflow:hidden;';
-      menu.style.top = (e.target.getBoundingClientRect().bottom+6)+'px';
-      menu.style.right = (window.innerWidth-e.target.getBoundingClientRect().right)+'px';
+      // 定位菜单：向上查找实际按钮元素（e.target 可能是子元素如 <i>）
+      var anchor = e.target.closest('.nav-dropdown-btn') || e.target;
+      var anchorRect = anchor.getBoundingClientRect();
+      menu.style.top = (anchorRect.bottom+6)+'px';
+      menu.style.right = (window.innerWidth-anchorRect.right)+'px';
 
-      // 用户信息顶部 + 激活状态指示
-      var statusLabel = '';
-      if (teamActive) {
-        statusLabel = '<span style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:rgba(139,92,246,.15);color:#8b5cf6;"><span style="width:6px;height:6px;border-radius:50%;background:#8b5cf6;display:inline-block;"></span>团队项目版</span>';
-      } else if (personalActive) {
-        statusLabel = '<span style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:rgba(16,185,129,.15);color:#10b981;"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span>个人项目版</span>';
-      } else {
-        statusLabel = '<span style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:rgba(148,163,184,.12);color:#94a3b8;"><span style="width:6px;height:6px;border-radius:50%;background:#94a3b8;display:inline-block;"></span>个人工具版</span>';
-      }
+      // 用户信息顶部
       var h = '<div style="padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border-color);">';
       // 头像：有上传头像则显示图片，否则显示首字母
       var avUrl = user.avatar_url || '';
@@ -435,7 +440,7 @@
         h += '<div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:12px;background:var(--primary-light,#1e3a5f);color:var(--primary,#3b82f6);font-size:20px;font-weight:700;flex-shrink:0;">'+(user.display_name||user.username||'?').charAt(0).toUpperCase()+'</div>';
       }
       h += '<div style="min-width:0;"><div style="font-size:14px;font-weight:700;color:var(--text-main,#f1f5f9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(user.display_name||user.username||'User')+'</div>';
-      h += '<div style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-top:2px;"><span>'+(isAdmin?'🔷':'🟢')+' '+roleName+'</span><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span> 在线</div>'+statusLabel+'</div></div>';
+      h += '<div style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-top:2px;"><span>'+(isAdmin?'🔷':'🟢')+' '+roleName+'</span><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span> 在线</div></div></div>';
 
       // 菜单项
       var currentMode = App.state._currentMode || 'library';
@@ -529,7 +534,7 @@
         var ov = document.createElement('div');
         ov.className = 'pk-auth-modal-overlay';
         ov.id = 'pkProfileOverlay';
-        ov.onclick = function(e){if(e.target===ov)ov.remove();};
+        // 屏蔽背景点击关闭：仅 ESC / ✕按钮 / 保存按钮 可关闭
         var avH = av
           ? '<img src="'+av+'" crossorigin="anonymous" style="width:80px;height:80px;border-radius:12px;object-fit:cover;" onerror="var f=this.nextElementSibling;this.style.display=\'none\';if(f)f.style.display=\'flex\';">'
             +'<div style="display:none;align-items:center;justify-content:center;width:80px;height:80px;border-radius:12px;background:linear-gradient(135deg,'+(u.avatar_color||'#6366f1')+',var(--primary,#3b82f6));color:#fff;font-size:32px;font-weight:700;">'+(u.display_name||u.username||'?').charAt(0).toUpperCase()+'</div>'
@@ -596,7 +601,7 @@
           // 更新缓存的用户数据
           if (self._user) self._user.avatar_url = '';
           // 刷新头像显示
-          self._injectNavButton(0);
+          self._injectNavButton();
           // 重新打开个人详情
           setTimeout(function() { self._showProfile(); }, 200);
         } else {
@@ -747,8 +752,26 @@
       var SIZE = 200, canvas = document.createElement('canvas');
       canvas.width = SIZE; canvas.height = SIZE;
       var ctx = canvas.getContext('2d');
-      ctx.beginPath(); ctx.arc(SIZE/2, SIZE/2, SIZE/2, 0, Math.PI*2); ctx.clip();
-      ctx.drawImage(d.img, d.offsetX * (SIZE/280), d.offsetY * (SIZE/280), d.img.width * d.scale * (SIZE/280), d.img.height * d.scale * (SIZE/280));
+
+      // 计算绘制矩形：确保填满 200x200 画布（无透明边）
+      var drawW = d.img.width * d.scale * (SIZE / 280);
+      var drawH = d.img.height * d.scale * (SIZE / 280);
+      var drawX = d.offsetX * (SIZE / 280);
+      var drawY = d.offsetY * (SIZE / 280);
+
+      // 最小缩放限制：绘制区域至少覆盖画布 90%，避免留白边
+      var minCover = SIZE * 0.9;
+      if (drawW < minCover || drawH < minCover) {
+        if (typeof PK !== 'undefined' && PK.toast) PK.toast('请放大头像以填满画框', 'error');
+        else alert('请放大头像以填满画框');
+        return;
+      }
+
+      // 方形输出（非圆形），圆角由 CSS border-radius 控制
+      // 白色底色填满画布，防止透明边
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, SIZE, SIZE);
+      ctx.drawImage(d.img, drawX, drawY, drawW, drawH);
       canvas.toBlob(function(blob) {
         var fd = new FormData(); fd.append('file', blob, 'avatar_square.png');
         var wrap = document.getElementById('pkProfAvatarImg');
@@ -805,6 +828,17 @@
       var oldpw = (document.getElementById('pf_oldpw')||{}).value||'';
       var newpw = (document.getElementById('pf_newpw')||{}).value||'';
       var avatar_color = this._user.avatar_color || '#6366f1';
+      // 前端格式校验
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (typeof PK!=='undefined'&&PK.toast) PK.toast('邮箱格式不正确', 'error');
+        else alert('邮箱格式不正确');
+        return;
+      }
+      if (website && !/^https?:\/\/.+/.test(website)) {
+        if (typeof PK!=='undefined'&&PK.toast) PK.toast('网址需以 http:// 或 https:// 开头', 'error');
+        else alert('网址需以 http:// 或 https:// 开头');
+        return;
+      }
       var body = {display_name:name, bio:bio, website:website, phone:phone, email:email, wechat:wechat, avatar_color:avatar_color};
       if (oldpw && newpw) { body.old_password = oldpw; body.new_password = newpw; }
       else if (oldpw && !newpw) { if (typeof PK!=='undefined'&&PK.toast) PK.toast('新密码不能为空', 'error'); return; }
@@ -862,7 +896,7 @@
       var s = document.getElementById('navOnlineStatus'); if (s) s.remove();
       var pb = document.getElementById('navPresenceBadge'); if (pb) pb.remove();
       var pp = document.getElementById('pkPresencePopover'); if (pp) pp.remove();
-      document.querySelectorAll('.nav-dropdown-item.admin-only').forEach(function(el){ el.classList.add('admin-only'); });
+      document.querySelectorAll('.admin-shown').forEach(function(el){ el.classList.remove('admin-shown'); el.classList.add('admin-only'); });
       this._showCover();
     },
 

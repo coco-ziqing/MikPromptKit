@@ -59,7 +59,19 @@
     async load() {
       var q = (document.getElementById('aum_search')||{}).value || '';
       var url = '/api/auth/users' + (this._filter?'?role='+this._filter:'') + (q?(this._filter?'&':'?')+'q='+encodeURIComponent(q):'');
-      try { var r = await fetch(url); var d = await r.json(); this._users = d.users||[]; } catch(e) { this._users = []; }
+      // 并行拉取用户列表 + 在线状态快照
+      var self = this;
+      try {
+        var [ur, pr] = await Promise.all([
+          fetch(url).then(function(r){return r.json();}),
+          fetch('/api/presence').then(function(r){return r.json();}).catch(function(){return {users:[]};})
+        ]);
+        this._users = ur.users||[];
+        // 缓存 REST 在线快照作为降级数据源
+        var presenceMap = {};
+        (pr.users||[]).forEach(function(pu){ presenceMap[pu.user_id] = pu; });
+        this._presenceMap = presenceMap;
+      } catch(e) { this._users = []; this._presenceMap = {}; }
       
       var stats = {admin:0, editor:0, viewer:0, active:0};
       this._users.forEach(function(u){stats[u.role]=(stats[u.role]||0)+1;if(u.is_active)stats.active++;});
@@ -94,13 +106,64 @@
           '<span class="aum-live-badge" data-uid="'+u.id+'" style="font-weight:600;color:#64748b;">⚫ 离线</span>'+
           '<span><span class="status-dot '+(u.is_active?'status-active':'status-inactive')+'"></span>'+(u.is_active?'可协作':'已暂停')+'</span></div>'+
           '<div class="user-footer">'+(u.last_login_at?'最后活跃: '+u.last_login_at.substring(0,10):'从未登录')+'</div>'+
-          '<div class="user-card-actions"><button class="btn-outline" onclick="event.stopPropagation();AUM.showForm('+u.id+')">✏ 编辑</button>'+
+          '<div class="user-card-actions"><button class="btn-outline" onclick="event.stopPropagation();AUM.copyCreds('+u.id+',\''+_e(u.username)+'\')">📋 一键复制</button><button class="btn-outline" onclick="event.stopPropagation();AUM.showForm('+u.id+')">✏ 编辑</button>'+
           '<button class="btn-outline" onclick="event.stopPropagation();AUM.openLog('+u.id+',\''+_e(u.display_name||u.username)+'\')">📜 足迹回放</button>'+
           '<button class="btn-outline" onclick="event.stopPropagation();AUM.toggle('+u.id+','+(u.is_active?0:1)+')" style="color:'+(u.is_active?'var(--danger)':'var(--success)')+';">'+(u.is_active?'⏸ 暂停协作':'▶ 恢复协作')+'</button>'+
           '<button class="btn-outline btn-outline-danger" onclick="event.stopPropagation();AUM.deleteUser('+u.id+',\''+_e(u.display_name||u.username)+'\')">🗑</button></div></div>';
       }).join('');
       this._updateLive();
     },
+
+    // 一键复制账号密码
+    copyCreds: function(uid, username) {
+      var u = this._users.find(function(x){return x.id===uid;}) || null;
+      var dispName = (u && u.display_name) || username;
+      var pw = (this._pwCache && this._pwCache[uid]) || '';
+      console.log('[copyCreds] uid=' + uid + ' name=' + dispName + ' cacheKeys=' + JSON.stringify(Object.keys(this._pwCache||{})) + ' pw=' + (pw ? '***' : '(none)'));
+
+      var text = '名称：' + dispName + '\n账户：' + username;
+      if (pw) text += '\n密码：' + pw;
+
+      try {
+        navigator.clipboard.writeText(text).then(function() {
+          console.log('[copyCreds] clipboard API success');
+          var msg = '已复制: @' + username + (pw ? ' + 密码' : '');
+          if (typeof App !== 'undefined' && App.showToast) App.showToast(msg, 'success');
+          else if (typeof PK !== 'undefined' && PK.toast) PK.toast(msg, 'success');
+          if (pw) clearPw();
+        }).catch(function(e) {
+          console.log('[copyCreds] clipboard API failed: ' + e);
+          fallback();
+        });
+      } catch(e) {
+        console.log('[copyCreds] clipboard threw: ' + e);
+        fallback();
+      }
+
+      function fallback() {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select(); ta.setSelectionRange(0, 99999);
+        try { document.execCommand('copy'); console.log('[copyCreds] execCommand copied: ' + text.substring(0, 50)); }
+        catch(e2) { console.log('[copyCreds] execCommand failed: ' + e2); }
+        document.body.removeChild(ta);
+        if (typeof App !== 'undefined' && App.showToast) App.showToast('已复制' + (pw ? '（含密码）' : ''), 'success');
+        else if (typeof PK !== 'undefined' && PK.toast) PK.toast('已复制' + (pw ? '（含密码）' : ''), 'success');
+        if (pw) clearPw();
+      }
+
+      function clearPw() {
+        clearTimeout(that._pwTimer);
+        var cacheUid = uid;
+        that._pwTimer = setTimeout(function() { if (that._pwCache) delete that._pwCache[cacheUid]; }, 15000);
+      }
+
+      var that = this;
+    },
+
+    _pwCache: {},
+    _pwTimer: null,
 
     setFilter: function(f, el) {
       this._filter = f;
@@ -109,30 +172,58 @@
     },
 
     // Phase34: 依据 PK_PRESENCE 实时刷新各用户卡片在线状态（无需重拉列表）
+    // Phase34: 依据 PK_PRESENCE + REST 快照降级 实时刷新在线状态
     _updateLive: function() {
-      if (!window.PK_PRESENCE) return;
-      var META = PK_PRESENCE.META || {};
+      var META = (window.PK_PRESENCE && PK_PRESENCE.META) || {};
+      var restMap = this._presenceMap || {};
+      var onlineCount = 0;
+      var self = this;
       document.querySelectorAll('#viewAdminUsers .aum-live-dot').forEach(function(dot){
         var uid = parseInt(dot.getAttribute('data-uid'), 10);
-        var st = PK_PRESENCE.statusOf(uid);
+        // 优先 WebSocket 实时数据，降级到 REST 快照
+        var st = 'offline';
+        var snap = null;
+        if (window.PK_PRESENCE) {
+          st = PK_PRESENCE.statusOf(uid);
+          if (st === 'offline' && restMap[uid]) { st = restMap[uid].status || 'offline'; snap = restMap[uid]; }
+          else snap = PK_PRESENCE.get(uid);
+        } else if (restMap[uid]) {
+          st = restMap[uid].status || 'offline';
+          snap = restMap[uid];
+        }
         var m = META[st] || META.offline || {color:'#64748b', label:'离线'};
+        if (st !== 'offline') onlineCount++;
         dot.style.background = m.color;
         var badge = document.querySelector('#viewAdminUsers .aum-live-badge[data-uid="'+uid+'"]');
         if (badge) {
           badge.style.color = m.color;
-          var snap = PK_PRESENCE.get(uid);
           var dev = (snap && snap.devices && snap.devices[0]) ? (' · '+snap.devices[0].device) : '';
           badge.textContent = (m.dot||'⚫') + ' ' + (m.label||'离线') + (st!=='offline' ? dev : '');
         }
       });
       var n = document.getElementById('aum_online_n');
-      if (n) n.textContent = PK_PRESENCE.onlineCount();
+      if (n) n.textContent = onlineCount || (window.PK_PRESENCE ? PK_PRESENCE.onlineCount() : Object.keys(restMap).length);
     },
 
-    showForm: function(uid) {
-      var isNew = !uid, u = uid ? this._users.find(function(x){return x.id===uid;})||{}:{};
+    showForm: async function(uid) {
+      var isNew = !uid;
+      var u = {};
+      if (uid) {
+        u = this._users.find(function(x){return x.id===uid;}) || null;
+        // 防御：内存中没有该用户时，从 API 补拉
+        if (!u) {
+          try {
+            var r = await fetch('/api/auth/users/'+uid);
+            var d = await r.json();
+            if (d.ok && d.user) u = d.user;
+          } catch(e) { /* 静默降级 */ }
+        }
+        if (!u) u = {};
+      }
       var ov = document.createElement('div'); ov.className = 'pk-auth-modal-overlay';
-      ov.onclick = function(e) { if (e.target===ov) ov.remove(); };
+      // 仅 ESC / 取消 / 保存 可关闭，防止误触
+      var escH = function(ev) { if (ev.key === 'Escape') { ov.remove(); document.removeEventListener('keydown', escH); } };
+      document.addEventListener('keydown', escH);
       // 编辑现有用户时：双区布局（管理员操作 + 个人资料只读）
       var profileHTML = '';
       if (!isNew) {
@@ -180,9 +271,19 @@
             data.password = document.getElementById('uf_password').value;
             if (!data.username||data.username.length<2){App.showToast('用户名至少2个字符','error');return;}
             if (!data.password||data.password.length<4){App.showToast('密码至少4个字符','error');return;}
-            await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+            var r = await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+            var rd = await r.json();
+            // 缓存密码供一键复制（15秒后自动清除）
+            if (rd.ok && rd.id) { self._pwCache = self._pwCache || {}; self._pwCache[rd.id] = data.password; console.log('[save] cached pw for uid=' + rd.id); }
           } else {
-            var pw = document.getElementById('uf_pw_reset').value; if (pw) data.new_password = pw;
+            var pw = document.getElementById('uf_pw_reset').value;
+            if (pw) {
+              data.new_password = pw;
+              // 缓存新密码供一键复制
+              self._pwCache = self._pwCache || {};
+              self._pwCache[uid] = pw;
+              console.log('[save] cached new pw for uid=' + uid);
+            }
             await fetch('/api/auth/users/'+uid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
           }
           ov.remove(); self.load();
@@ -215,7 +316,9 @@
       this._log = { uid: uid, name: name, tab: 'audit', cat: '', q: '', offset: 0, limit: 50, total: 0 };
       var ov = document.createElement('div');
       ov.className = 'pk-auth-modal-overlay'; ov.id = 'aumLogOverlay';
-      ov.onclick = function(e){ if(e.target===ov) ov.remove(); };
+      // 仅 ESC / 关闭按钮 可关闭，防止误触
+      var escLogH = function(ev) { if (ev.key === 'Escape') { ov.remove(); document.removeEventListener('keydown', escLogH); } };
+      document.addEventListener('keydown', escLogH);
       var tabBtn = function(k,label){ return '<button class="aum-log-tab" data-tab="'+k+'" onclick="AUM._switchLogTab(\''+k+'\')" style="flex:1;padding:8px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-muted);border-bottom:2px solid transparent;">'+label+'</button>'; };
       ov.innerHTML = '<div class="pk-auth-modal" style="max-width:780px;width:94vw;" onclick="event.stopPropagation()">'+
         '<h4 style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><span>📜 '+_e(name)+' · 活动日志</span>'+

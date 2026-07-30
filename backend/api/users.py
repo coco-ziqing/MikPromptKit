@@ -83,12 +83,19 @@ def update_user(user_id: int, data: dict = Body(...), request: Request = None):
         user = db.execute("SELECT id FROM users WHERE id=?", [user_id]).fetchone()
         if not user: raise HTTPException(404, "用户不存在")
 
-        for k in ["display_name", "role", "avatar_color", "avatar_url", "bio", "website", "cover_url", "is_active", "settings_json"]:
+        allowed_fields = ["display_name", "role", "avatar_color", "avatar_url", "bio", "website", "cover_url", "is_active", "settings_json"]
+        set_clauses = []
+        params = []
+        for k in allowed_fields:
             if k in data:
                 val = data[k]
                 if k == "settings_json":
                     val = json.dumps(val, ensure_ascii=False)
-                db.execute(f"UPDATE users SET {k}=? WHERE id=?", [val, user_id])
+                set_clauses.append(f"{k}=?")
+                params.append(val)
+        if set_clauses:
+            params.append(user_id)
+            db.execute(f"UPDATE users SET {','.join(set_clauses)} WHERE id=?", params)
 
         # 重置密码（可选）
         pw_reset = False

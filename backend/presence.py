@@ -90,12 +90,12 @@ def _parse_device(ua: str) -> str:
 
 
 def _load_user_profile(uid: int) -> dict:
-    """从 DB 读取用户展示信息（display_name/role/avatar_color）。"""
+    """从 DB 读取用户展示信息（display_name/role/avatar_color/avatar_url）。"""
     try:
         conn = sqlite3.connect(DB, timeout=2)
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT username, display_name, role, avatar_color FROM users WHERE id=?",
+            "SELECT username, display_name, role, avatar_color, avatar_url FROM users WHERE id=?",
             [uid]).fetchone()
         conn.close()
         if row:
@@ -148,6 +148,7 @@ def _user_snapshot(uid: int) -> dict:
         "display_name": meta.get("display_name") or meta.get("username", "?"),
         "role": meta.get("role", "editor"),
         "avatar_color": meta.get("avatar_color"),
+        "avatar_url": meta.get("avatar_url") or "",
         "status": _derive_status(uid),
         "connection_count": len(conns),
         "connected_since": connected_since,
@@ -241,6 +242,7 @@ async def ws_presence(websocket: WebSocket):
         "display_name": prof.get("display_name") or payload.get("username", "?"),
         "role": prof.get("role") or payload.get("role", "editor"),
         "avatar_color": prof.get("avatar_color"),
+        "avatar_url": prof.get("avatar_url") or "",
         "manual_status": _user_meta.get(uid, {}).get("manual_status"),
         "current_page": "",      # PhaseB: 所在页面
         "current_project": "",   # PhaseB: 所在项目

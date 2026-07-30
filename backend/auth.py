@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File, F
 from typing import Optional
 
 from password import hash_pw, check_pw
-from jwt_auth import create_jwt, verify_jwt, get_current_user
+from jwt_auth import create_jwt, verify_jwt, get_current_user, require_role
 try:
     from audit import record_audit
 except Exception:
@@ -35,6 +35,8 @@ def _ro():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=2000")
     return conn
+
+_require_admin = require_role("admin")
 
 # ============================================================
 # 登录限流（含持久化兜底验证）
@@ -66,6 +68,7 @@ _AVATAR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "da
 
 @router.post("/register")
 def register(data: dict = Body(...), request: Request = None):
+    _require_admin(request)
     username = (data.get("username", "")).strip().lower()
     password = data.get("password", "")
     display_name = data.get("display_name", "").strip() or username
@@ -143,22 +146,19 @@ def login(data: dict = Body(...), request: Request = None):
         "exp": int(time.time()) + 86400 * 7,
     })
 
+    # 存储 token 哈希（非明文）
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+
     ua = request.headers.get("user-agent", "") if request else ""
     db2 = _rw()
     try:
         db2.execute(
             "INSERT INTO user_sessions (user_id, token, client_ip, user_agent, created_at, expires_at, is_active) VALUES (?,?,?,?,datetime('now','localtime'),datetime('now','+7 days','localtime'),1)",
-            [user["id"], token, client_ip, ua])
+            [user["id"], token_hash, client_ip, ua])
+        db2.execute("UPDATE users SET last_login_at=datetime('now','localtime') WHERE id=?", [user["id"]])
         db2.commit()
     finally:
         db2.close()
-
-    db3 = _rw()
-    try:
-        db3.execute("UPDATE users SET last_login_at=datetime('now','localtime') WHERE id=?", [user["id"]])
-        db3.commit()
-    finally:
-        db3.close()
 
     try:
         record_audit("login", request=request, user_id=user["id"], username=user["username"],
@@ -216,19 +216,11 @@ def whoami(request: Request):
     uid = 1
     authenticated = False
 
-    if token and "." in token:
-        try:
-            parts = token.split(".")
-            if len(parts) == 3:
-                payload_b64 = parts[1]
-                payload_b64 = payload_b64 + "=" * (-len(payload_b64) % 4)
-                payload_json = base64.urlsafe_b64decode(payload_b64)
-                payload = json.loads(payload_json)
-                if payload.get("exp", 0) > time.time():
-                    uid = payload.get("user_id", 1)
-                    authenticated = True
-        except Exception:
-            pass
+    if token:
+        payload = verify_jwt(token)
+        if payload:
+            uid = payload.get("user_id", 1)
+            authenticated = True
 
     db = _ro()
     try:
@@ -278,8 +270,10 @@ def update_my_profile(data: dict = Body(...), request: Request = None):
     
     db = _rw()
     try:
-        for k, v in updates.items():
-            db.execute(f"UPDATE users SET {k}=? WHERE id=?", [v, uid])
+        if updates:
+            set_clauses = [f"{k}=?" for k in updates]
+            params = list(updates.values()) + [uid]
+            db.execute(f"UPDATE users SET {','.join(set_clauses)} WHERE id=?", params)
         if has_pw:
             db.execute("UPDATE users SET password_hash=? WHERE id=?", [hash_pw(data["new_password"]), uid])
         db.commit()
@@ -329,7 +323,7 @@ async def upload_avatar(request: Request, file: UploadFile = File(...)):
     with open(raw_path, "wb") as f:
         f.write(content)
     
-    # 生成 80x80 缩略图
+    # 生成 200x200 正方形缩略图
     thumb_ok = False
     try:
         from PIL import Image
@@ -337,7 +331,13 @@ async def upload_avatar(request: Request, file: UploadFile = File(...)):
         # 保留透明度，RGBA 模式确保圆角/裁剪区域不留黑边
         if img.mode != "RGBA":
             img = img.convert("RGBA")
-        img.thumbnail((200, 200), Image.LANCZOS)
+        # 居中裁剪为正方形（取短边），再缩放到 200x200
+        w, h = img.size
+        side = min(w, h)
+        left = (w - side) // 2
+        top = (h - side) // 2
+        img = img.crop((left, top, left + side, top + side))
+        img = img.resize((200, 200), Image.LANCZOS)
         # 保存为 PNG 以保留透明度
         out_path = os.path.splitext(thumb_path)[0] + ".png"
         img.save(out_path, "PNG", quality=95)

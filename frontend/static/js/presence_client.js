@@ -36,14 +36,11 @@
 
     // ---------- 连接 ----------
     connect: function () {
-      // 兼容两种 token 存储键名：pk_token_v1（混淆版）/ pk_token（明文版）
       var token = '';
       try {
-        // 优先从 PK_AUTH_CLIENT 获取明文 token
         if (window.PK_AUTH_CLIENT && PK_AUTH_CLIENT._token) {
           token = PK_AUTH_CLIENT._token;
         } else {
-          // 尝试从 localStorage 获取（兼容旧版和新版混淆存储）
           var t1 = localStorage.getItem('pk_token_v1');
           if (t1) {
             var obf = atob(t1);
@@ -54,8 +51,9 @@
           }
         }
       } catch(e) { token = ''; }
-      if (!token) return;
-      if (this._ws && this._ws.readyState <= 1) return;
+      console.log('[Presence] connect: token=' + (token ? token.substring(0,10)+'...' : '(none)'));
+      if (!token) { console.warn('[Presence] no token, aborting connect'); return; }
+      if (this._ws && this._ws.readyState <= 1) { console.log('[Presence] already connecting/connected'); return; }
       var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       var url = proto + '//' + location.host + '/ws/presence?token=' + token;
       var self = this;
@@ -64,6 +62,7 @@
       } catch (e) { this._scheduleReconnect(); return; }
 
       this._ws.onopen = function () {
+        console.log('[Presence] WebSocket connected OK');
         self._reAttempt = 0;
         // 心跳保活
         clearInterval(self._hb);
@@ -108,6 +107,7 @@
       };
 
       this._ws.onclose = function (ev) {
+        console.log('[Presence] WebSocket closed, code=' + (ev?ev.code:'?') + ' reason=' + (ev?ev.reason:''));
         clearInterval(self._hb);
         self._ws = null;
         if (ev && ev.code === 4001) return; // 鉴权失败不重连
@@ -119,7 +119,8 @@
     _scheduleReconnect: function () {
       var self = this;
       if (this._reTimer) return;
-      if (!localStorage.getItem('pk_token')) return;
+      // 兼容 pk_token_v1（XOR混淆）和 pk_token（明文）两种键名
+      if (!localStorage.getItem('pk_token') && !localStorage.getItem('pk_token_v1') && !(window.PK_AUTH_CLIENT && PK_AUTH_CLIENT._token)) return;
       this._reAttempt++;
       var delay = Math.min(3000 * this._reAttempt, 20000);
       this._reTimer = setTimeout(function () {
@@ -294,7 +295,12 @@
         users.forEach(function (u) {
           var m = META[u.status] || META.offline;
           var ac = u.avatar_color || '#7c3aed';
-          var av = (u.display_name || u.username || '?').charAt(0).toUpperCase();
+          var avInitial = (u.display_name || u.username || '?').charAt(0).toUpperCase();
+          var avUrl = u.avatar_url || '';
+          // 头像：有上传头像则显示图片，否则显示首字母
+          var avHTML = avUrl
+            ? '<img src="'+_esc(avUrl)+'" style="width:34px;height:34px;border-radius:10px;object-fit:cover;flex-shrink:0;">'
+            : '<div style="width:34px;height:34px;border-radius:10px;background:'+ac+';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">'+avInitial+'</div>';
           var isSelf = u.user_id === self._selfId;
           var roleName = { admin: '主理人', editor: '共创者', viewer: '鉴赏者' }[u.role] || u.role || '';
           var dev = (u.devices && u.devices[0]) ? u.devices[0].device : '';
@@ -305,7 +311,7 @@
           if (u.current_project) { loc += (loc ? ' · ' : '') + '🎬 ' + _esc(u.current_project); }
           var isAdmin = (self._users[self._selfId] || {}).role === 'admin';
           h += '<div style="padding:8px 14px;display:flex;align-items:center;gap:10px;">'
-            + '<div style="position:relative;flex-shrink:0;"><div style="width:34px;height:34px;border-radius:10px;background:' + ac + ';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">' + av + '</div>'
+            + '<div style="position:relative;flex-shrink:0;">' + avHTML
             + '<span style="position:absolute;right:-2px;bottom:-2px;width:11px;height:11px;border-radius:50%;background:' + m.color + ';border:2px solid var(--bg-card,#1e293b);"></span></div>'
             + '<div style="min-width:0;flex:1;">'
             + '<div style="font-size:13px;font-weight:600;color:var(--text-main,#f1f5f9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + _esc(u.display_name || u.username) + (isSelf ? ' <span style="font-size:10px;color:var(--text-muted);">(我)</span>' : '') + '</div>'
@@ -355,9 +361,12 @@
 
   window.PK_PRESENCE = PK_PRESENCE;
 
-  // 登录态就绪后启动
+  // 登录态就绪后启动（兼容 pk_token / pk_token_v1 两种键名）
   function boot() {
-    if (localStorage.getItem('pk_token')) PK_PRESENCE.init();
+    var hasToken = localStorage.getItem('pk_token') || localStorage.getItem('pk_token_v1');
+    // 也检查 auth_client 是否已就绪
+    if (!hasToken && window.PK_AUTH_CLIENT && PK_AUTH_CLIENT._token) hasToken = true;
+    if (hasToken) PK_PRESENCE.init();
     else setTimeout(boot, 1500); // 未登录：等待登录后重试
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
