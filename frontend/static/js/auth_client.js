@@ -325,16 +325,12 @@
       wrap.id = 'navDropdownUser';
       wrap.className = 'nav-dropdown';
 
-      // 按钮 — 固定显示「账户」
+      // 按钮 — 使用图标，与其他菜单保持一致
       var btn = document.createElement('button');
       btn.id = 'btnAuthUser';
       btn.className = 'header-btn nav-dropdown-btn nav-dd-label';
       btn.title = (user.display_name||user.username||'账户');
-      var av = user.avatar_url || '';
-      var btnIcon = av
-        ? '<img src="'+av+'" crossorigin="anonymous" class="pk-nav-avatar" style="width:18px;height:18px;border-radius:6px;object-fit:cover;vertical-align:middle;" onerror="this.style.display=\'none\'">'
-        : '';
-      btn.innerHTML = btnIcon + '<span class="nav-dd-text pk-no-i18n">账户</span><i class="bi bi-chevron-down nav-dd-arrow"></i>';
+      btn.innerHTML = '<i class="bi bi-person-circle"></i><span class="nav-dd-text pk-no-i18n">账户</span><i class="bi bi-chevron-down nav-dd-arrow"></i>';
       btn.onclick = function(e) { e.stopPropagation(); self._showUserMenu(e); };
       wrap.appendChild(btn);
 
@@ -420,14 +416,34 @@
       menu.style.top = (e.target.getBoundingClientRect().bottom+6)+'px';
       menu.style.right = (window.innerWidth-e.target.getBoundingClientRect().right)+'px';
 
-      // 用户信息顶部
+      // 用户信息顶部 + 激活状态指示
+      var statusLabel = '';
+      if (teamActive) {
+        statusLabel = '<span style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:rgba(139,92,246,.15);color:#8b5cf6;"><span style="width:6px;height:6px;border-radius:50%;background:#8b5cf6;display:inline-block;"></span>团队项目版</span>';
+      } else if (personalActive) {
+        statusLabel = '<span style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:rgba(16,185,129,.15);color:#10b981;"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span>个人项目版</span>';
+      } else {
+        statusLabel = '<span style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:rgba(148,163,184,.12);color:#94a3b8;"><span style="width:6px;height:6px;border-radius:50%;background:#94a3b8;display:inline-block;"></span>个人工具版</span>';
+      }
       var h = '<div style="padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border-color);">';
-      h += '<div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:12px;background:var(--primary-light,#1e3a5f);color:var(--primary,#3b82f6);font-size:20px;font-weight:700;flex-shrink:0;">'+(user.display_name||user.username||'?').charAt(0).toUpperCase()+'</div>';
+      // 头像：有上传头像则显示图片，否则显示首字母
+      var avUrl = user.avatar_url || '';
+      if (avUrl) {
+        h += '<img src="'+avUrl+'" crossorigin="anonymous" style="width:40px;height:40px;border-radius:12px;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';">';
+        h += '<div style="display:none;align-items:center;justify-content:center;width:40px;height:40px;border-radius:12px;background:var(--primary-light,#1e3a5f);color:var(--primary,#3b82f6);font-size:20px;font-weight:700;flex-shrink:0;">'+(user.display_name||user.username||'?').charAt(0).toUpperCase()+'</div>';
+      } else {
+        h += '<div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:12px;background:var(--primary-light,#1e3a5f);color:var(--primary,#3b82f6);font-size:20px;font-weight:700;flex-shrink:0;">'+(user.display_name||user.username||'?').charAt(0).toUpperCase()+'</div>';
+      }
       h += '<div style="min-width:0;"><div style="font-size:14px;font-weight:700;color:var(--text-main,#f1f5f9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(user.display_name||user.username||'User')+'</div>';
-      h += '<div style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-top:2px;"><span>'+(isAdmin?'🔷':'🟢')+' '+roleName+'</span><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span> 在线</div></div></div>';
+      h += '<div style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-top:2px;"><span>'+(isAdmin?'🔷':'🟢')+' '+roleName+'</span><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span> 在线</div>'+statusLabel+'</div></div>';
 
       // 菜单项
       var currentMode = App.state._currentMode || 'library';
+
+      // 智能退出激活按钮：统一名称，版本区分在二次确认中体现
+      var deactLabel = '退出激活';
+      var deactIcon = teamActive ? '🔴' : '🟠';
+      var deactClass = teamActive ? 'pk-menu-deact-team' : 'pk-menu-deact-pro';
 
       var items = [
         {id:'menuTeamSpace', icon:'👥', label:'团队空间', action:function(){if(window.AUM)AUM.open()}, show:isAdmin},
@@ -435,7 +451,7 @@
         {id:'menuProfile', icon:'👤', label:'个人详情', action:function(){PK_AUTH_CLIENT._showProfile()}, show:true},
         {id:'menuSwitchAcct', icon:'🔄', label:'切换账户', action:function(){PK_AUTH_CLIENT._switchAccount()}, show:true},
         {divider:true, show:personalActive || teamActive},
-        {id:'menuDeact', icon:'🔒', label:'退出激活', action:function(){PK_AUTH_CLIENT._deactivateMode()}, show:personalActive || teamActive},
+        {id:'menuDeact', icon:deactIcon, label:deactLabel, action:function(){PK_AUTH_CLIENT._deactivateMode()}, show:personalActive || teamActive, cls:deactClass},
         {divider:true, show:personalActive || teamActive},
         {id:'menuLogout', icon:'🔓', label:'退出登录', action:function(){PK_AUTH_CLIENT._doLogout()}, show:true, danger:true},
       ];
@@ -443,7 +459,8 @@
       items.forEach(function(item){
         if (!item.show) return;
         if (item.divider) { h += '<div style="height:1px;background:var(--border-color);margin:4px 0;"></div>'; return; }
-        h += '<button class="pk-menu-item'+(item.danger?' pk-menu-danger':'')+'" data-action-id="'+item.id+'">'+item.icon+' '+item.label+'</button>';
+        var extraClass = (item.danger?' pk-menu-danger':'') + (item.cls?' '+item.cls:'');
+        h += '<button class="pk-menu-item'+extraClass+'" data-action-id="'+item.id+'">'+item.icon+' '+item.label+'</button>';
       });
 
       menu.innerHTML = h;
@@ -526,7 +543,7 @@
           {icon:'🏞',label:'场景',v:stats.scenes||0}
         ].map(function(s){return '<div style="flex:1;min-width:70px;padding:8px 4px;background:var(--bg-main,#0f172a);border-radius:8px;text-align:center;"><div style="font-size:16px;">'+s.icon+'</div><div style="font-size:16px;font-weight:700;color:var(--text-main);">'+s.v+'</div><div style="font-size:10px;color:var(--text-muted);">'+s.label+'</div></div>';}).join('');
         ov.innerHTML = '<div class="pk-auth-modal" style="max-width:540px;width:94vw;max-height:92vh;overflow-y:auto;" onclick="event.stopPropagation()">'
-          +'<div style="display:flex;justify-content:flex-end;margin-bottom:6px;"><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'pkProfileOverlay\').remove()" style="font-size:18px;line-height:1;padding:2px 8px;">✕</button></div>'
+          +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h4 style="margin:0;font-size:16px;">👤 个人详情</h4><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'pkProfileOverlay\').remove()" style="font-size:18px;line-height:1;padding:2px 8px;">✕</button></div>'
           +'<div style="text-align:center;margin-bottom:12px;">'
             +'<div id="pkProfAvatarWrap" style="display:inline-block;position:relative;">'
               +'<div id="pkProfAvatarImg">'+avH+'</div>'
@@ -544,6 +561,8 @@
             +'<div class="form-group" style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">显示名称</label><input type="text" id="pf_name" value="'+self._esc(u.display_name||'')+'" placeholder="给伙伴们看的名字" style="width:100%;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;"></div>'
             +'<div class="form-group" style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">一句话简介</label><textarea id="pf_bio" placeholder="介绍一下你自己..." style="width:100%;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;resize:vertical;min-height:56px;">'+self._esc(u.bio||'')+'</textarea></div>'
             +'<div class="form-group" style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">个人站点 / 社交媒体</label><input type="text" id="pf_website" value="'+self._esc(u.website||'')+'" placeholder="如 https://your.portfolio" style="width:100%;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;"></div>'
+            +'<div style="display:flex;gap:10px;"><div class="form-group" style="flex:1;margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">📧 邮箱</label><input type="email" id="pf_email" value="'+self._esc(u.email||'')+'" placeholder="your@email.com" style="width:100%;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;"></div><div class="form-group" style="flex:1;margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">📱 电话</label><input type="text" id="pf_phone" value="'+self._esc(u.phone||'')+'" placeholder="手机号码" style="width:100%;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;"></div></div>'
+            +'<div class="form-group" style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">💬 微信</label><input type="text" id="pf_wechat" value="'+self._esc(u.wechat||'')+'" placeholder="微信号" style="width:100%;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;"></div>'
             +'<details style="margin-bottom:10px;"><summary style="font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer;padding:4px 0;">🔒 修改密码（选填）</summary>'
               +'<div class="form-group" style="margin-top:6px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">当前密码</label><div style="position:relative;"><input type="password" id="pf_oldpw" placeholder="确认当前密码" style="width:100%;padding:8px 36px 8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;"><button type="button" onclick="window._togglePw(\'pf_oldpw\',this)" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:4px 6px;line-height:1;" tabindex="-1" title="显示/隐藏密码">👁</button></div></div>'
               +'<div class="form-group" style="margin-top:6px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);">新密码</label><div style="position:relative;"><input type="password" id="pf_newpw" placeholder="至少4个字符" style="width:100%;padding:8px 36px 8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input,transparent);color:var(--text-main);font-size:13px;"><button type="button" onclick="window._togglePw(\'pf_newpw\',this)" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:4px 6px;line-height:1;" tabindex="-1" title="显示/隐藏密码">👁</button></div></div>'
@@ -612,8 +631,20 @@
       var self = this, SIZE = 280;
       var ov = document.createElement('div');
       ov.className = 'pk-auth-modal-overlay'; ov.id = 'pkCropOverlay';
-      ov.innerHTML = '<div class="pk-auth-modal" style="max-width:440px;width:96vw;" onclick="event.stopPropagation()"><h4 style="margin:0 0 4px;font-size:15px;">✂ 调整头像</h4><div style="color:var(--text-muted);font-size:11px;margin-bottom:10px;">拖拽移动 · 滚轮缩放</div><div style="position:relative;width:'+SIZE+'px;height:'+SIZE+'px;margin:0 auto;overflow:hidden;border-radius:50%;cursor:grab;" id="pkCropStage"><img id="pkCropImg" style="position:absolute;transform-origin:0 0;" draggable="false"></div><div style="display:flex;gap:10px;margin-top:14px;justify-content:center;"><button class="btn btn-outline-secondary" onclick="PK_AUTH_CLIENT._cancelCrop()" style="flex:1;padding:10px;">取消</button><button class="btn btn-primary" onclick="PK_AUTH_CLIENT._confirmCrop()" style="flex:1;padding:10px;">✓ 确认</button></div></div>';
+      ov.style.zIndex = '99999';
+      ov.innerHTML = '<div class="pk-auth-modal" style="max-width:440px;width:96vw;" onclick="event.stopPropagation()">' +
+        '<h4 style="margin:0 0 2px;font-size:15px;">✂ 调整头像</h4>' +
+        '<div style="color:var(--text-muted);font-size:11px;margin-bottom:10px;">拖拽移动 · 滚轮缩放 · 确认裁剪</div>' +
+        '<div style="position:relative;width:'+SIZE+'px;height:'+SIZE+'px;margin:0 auto;overflow:hidden;border-radius:50%;cursor:grab;border:2px solid var(--border-color);" id="pkCropStage">' +
+          '<img id="pkCropImg" style="position:absolute;transform-origin:0 0;pointer-events:none;" draggable="false">' +
+          '<div style="position:absolute;inset:0;border-radius:50%;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,.45);"></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:10px;margin-top:14px;justify-content:center;">' +
+          '<button class="btn btn-outline-secondary" onclick="PK_AUTH_CLIENT._cancelCrop()" style="flex:1;padding:10px;">取消</button>' +
+          '<button class="btn btn-primary" onclick="PK_AUTH_CLIENT._confirmCrop()" style="flex:1;padding:10px;">✓ 确认</button>' +
+        '</div></div>';
       document.body.appendChild(ov);
+      ov.addEventListener('click', function(e) { if (e.target === ov) self._cancelCrop(); });
       var d = this._cropData;
       var imgEl = document.getElementById('pkCropImg');
       imgEl.src = d.img.src;
@@ -623,10 +654,76 @@
       d.offsetY = (SIZE - d.img.height * initScale) / 2;
       this._renderCropImg(SIZE);
       var stage = document.getElementById('pkCropStage');
-      stage.addEventListener('wheel', function(e) { e.preventDefault(); d.scale = Math.max(0.1, Math.min(5, d.scale + (e.deltaY < 0 ? 0.1 : -0.1))); self._renderCropImg(SIZE); });
-      stage.addEventListener('mousedown', function(e) { d.dragging = true; d.lastX = e.clientX; d.lastY = e.clientY; });
-      document.addEventListener('mousemove', function(e) { if (!d.dragging) return; d.offsetX += e.clientX - d.lastX; d.offsetY += e.clientY - d.lastY; d.lastX = e.clientX; d.lastY = e.clientY; self._renderCropImg(SIZE); });
-      document.addEventListener('mouseup', function() { d.dragging = false; });
+      // 滚轮缩放：以裁剪区域中心为轴心等比缩放
+      stage.addEventListener('wheel', function(e) {
+        e.preventDefault();
+        var oldScale = d.scale;
+        var delta = e.deltaY < 0 ? 0.08 : -0.08;
+        var newScale = Math.max(0.15, Math.min(5, oldScale + delta * oldScale));
+        // 以 stage 中心为轴心：保持中心图像点不变
+        var cx = SIZE / 2, cy = SIZE / 2;
+        d.offsetX = cx - (cx - d.offsetX) / oldScale * newScale;
+        d.offsetY = cy - (cy - d.offsetY) / oldScale * newScale;
+        d.scale = newScale;
+        self._renderCropImg(SIZE);
+      }, { passive: false });
+      // 拖拽移动
+      stage.addEventListener('mousedown', function(e) {
+        stage.style.cursor = 'grabbing';
+        d.dragging = true;
+        d.lastX = e.clientX;
+        d.lastY = e.clientY;
+      });
+      document.addEventListener('mousemove', function(e) {
+        if (!d.dragging) return;
+        d.offsetX += e.clientX - d.lastX;
+        d.offsetY += e.clientY - d.lastY;
+        d.lastX = e.clientX;
+        d.lastY = e.clientY;
+        self._renderCropImg(SIZE);
+      });
+      document.addEventListener('mouseup', function() {
+        d.dragging = false;
+        var s = document.getElementById('pkCropStage');
+        if (s) s.style.cursor = 'grab';
+      });
+      // 触摸支持
+      var touchDist = null;
+      stage.addEventListener('touchstart', function(e) {
+        if (e.touches.length === 1) {
+          d.dragging = true;
+          d.lastX = e.touches[0].clientX;
+          d.lastY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+          d.dragging = false;
+          touchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        }
+        e.preventDefault();
+      }, { passive: false });
+      stage.addEventListener('touchmove', function(e) {
+        if (e.touches.length === 1 && d.dragging) {
+          d.offsetX += e.touches[0].clientX - d.lastX;
+          d.offsetY += e.touches[0].clientY - d.lastY;
+          d.lastX = e.touches[0].clientX;
+          d.lastY = e.touches[0].clientY;
+          self._renderCropImg(SIZE);
+        } else if (e.touches.length === 2) {
+          var newDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+          if (touchDist) {
+            var rect = stage.getBoundingClientRect();
+            var cx = SIZE / 2, cy = SIZE / 2;
+            var oldScale = d.scale;
+            var newScale = Math.max(0.15, Math.min(5, oldScale * (newDist / touchDist)));
+            d.offsetX = cx - (cx - d.offsetX) / oldScale * newScale;
+            d.offsetY = cy - (cy - d.offsetY) / oldScale * newScale;
+            d.scale = newScale;
+            self._renderCropImg(SIZE);
+          }
+          touchDist = newDist;
+        }
+        e.preventDefault();
+      }, { passive: false });
+      stage.addEventListener('touchend', function() { d.dragging = false; touchDist = null; });
       var escH = function(ev){ if(ev.key==='Escape'){ self._cancelCrop(); document.removeEventListener('keydown',escH); } };
       document.addEventListener('keydown', escH);
     },
@@ -666,18 +763,29 @@
     _onAvatarUpdated: function(url) {
       var u = this._user; if (!u) return;
       u.avatar_url = url;
-      var btn = document.getElementById('btnAuthUser');
-      if (btn) {
-        var existingImg = btn.querySelector('img'); if (existingImg) existingImg.remove();
-        var icon = btn.querySelector('.bi-person-circle');
-        var img = document.createElement('img');
-        img.src = url + '?t=' + Date.now();
-        img.style.cssText = 'width:20px;height:20px;border-radius:6px;object-fit:cover;vertical-align:middle;';
-        img.onerror = function(){ this.remove(); if (icon) icon.style.display = ''; };
-        if (icon) icon.style.display = 'none';
-        btn.insertBefore(img, btn.firstChild);
+      try { localStorage.setItem('pk_user', JSON.stringify(u)); } catch(e) {}
+      // 更新导航栏名称前的头像
+      var navInfo = document.getElementById('navOnlineStatus');
+      if (navInfo) {
+        var navImg = navInfo.querySelector('img');
+        if (navImg) {
+          navImg.src = url + '?t=' + Date.now();
+        } else {
+          var newImg = document.createElement('img');
+          newImg.src = url + '?t=' + Date.now();
+          newImg.style.cssText = 'width:20px;height:20px;border-radius:50%;object-fit:cover;flex-shrink:0;';
+          newImg.onerror = function(){ this.remove(); };
+          navInfo.insertBefore(newImg, navInfo.firstChild);
+        }
       }
-      localStorage.setItem('pk_user', JSON.stringify(u));
+      // 更新个人详情弹窗中的大头像
+      var profWrap = document.getElementById('pkProfAvatarImg');
+      if (profWrap) {
+        profWrap.innerHTML = '<img src="'+url+'?t='+Date.now()+'" crossorigin="anonymous" style="width:80px;height:80px;border-radius:12px;object-fit:cover;">';
+      }
+      // 关闭菜单（下次打开刷新头像）
+      var menu = document.getElementById('pkUserMenu');
+      if (menu) menu.remove();
     },
 
     _setAvatarColor: function(color) {
@@ -691,10 +799,13 @@
       var name = (document.getElementById('pf_name')||{}).value||'';
       var bio = (document.getElementById('pf_bio')||{}).value||'';
       var website = (document.getElementById('pf_website')||{}).value||'';
+      var phone = (document.getElementById('pf_phone')||{}).value||'';
+      var email = (document.getElementById('pf_email')||{}).value||'';
+      var wechat = (document.getElementById('pf_wechat')||{}).value||'';
       var oldpw = (document.getElementById('pf_oldpw')||{}).value||'';
       var newpw = (document.getElementById('pf_newpw')||{}).value||'';
       var avatar_color = this._user.avatar_color || '#6366f1';
-      var body = {display_name:name, bio:bio, website:website, avatar_color:avatar_color};
+      var body = {display_name:name, bio:bio, website:website, phone:phone, email:email, wechat:wechat, avatar_color:avatar_color};
       if (oldpw && newpw) { body.old_password = oldpw; body.new_password = newpw; }
       else if (oldpw && !newpw) { if (typeof PK!=='undefined'&&PK.toast) PK.toast('新密码不能为空', 'error'); return; }
       var self = this;
@@ -707,14 +818,7 @@
           var btn = document.getElementById('btnAuthUser');
           if (btn) {
             // 更新显示名
-            var t = btn.querySelector('.nav-dd-text'); if (t) t.textContent = (d.user.display_name || d.user.username || '?').substring(0, 4);
-            // 更新头像
-            var av = d.user.avatar_url || '';
-            var oldImg = btn.querySelector('.pk-nav-avatar');
-            if (av) {
-              if (oldImg) oldImg.src = av + '?t=' + Date.now();
-              else { var img = document.createElement('img'); img.className = 'pk-nav-avatar'; img.src = av + '?t=' + Date.now(); img.style.cssText = 'width:18px;height:18px;border-radius:6px;object-fit:cover;vertical-align:middle;'; img.onerror = function(){ this.remove(); }; btn.insertBefore(img, btn.firstChild); }
-            }
+            var t = btn.querySelector('.nav-dd-text'); if (t) t.textContent = '账户';
           }
           if (typeof PK!=='undefined'&&PK.toast) PK.toast('资料已保存 ✨', 'success');
           document.getElementById('pkProfileOverlay').remove();
@@ -767,8 +871,11 @@
       // 自动判定退出哪个版本：团队优先
       var ct = this._cachedTiers || {};
       tier = tier || (ct.team ? 'team' : 'personal');
-      var label = tier === 'team' ? '团队项目版' : '个人项目版';
-      if (!confirm('确认退出 ' + label + ' 激活？\n退出后对应功能将被锁定。')) return;
+      var label = tier === 'team' ? '团队项目版本' : '个人项目版本';
+      var confirmMsg = tier === 'team'
+        ? '⚠️ 当前处于【团队项目版本】激活状态\n\n退出后将回退到个人项目版本：\n• 组装器 + 生成功能保持可用\n• 项目管理（看板/资产/设定/管家）将被锁定\n\n确认退出团队项目版本？'
+        : '⚠️ 当前处于【个人项目版本】激活状态\n\n退出后将恢复为个人工具版：\n• 组装器功能将被锁定\n• AI 生成功能将被锁定\n• 分镜模板将被锁定\n\n确认退出个人项目版本？';
+      if (!confirm(confirmMsg)) return;
       try {
         var r = await fetch('/api/license/deactivate', {
           method: 'DELETE',

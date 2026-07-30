@@ -27,6 +27,10 @@ router = APIRouter(tags=["许可管理"], prefix="/api/license")
 
 # 路径
 HERE = os.path.dirname(os.path.abspath(__file__))
+# 将 tools/keygen 加入路径以导入独立封装的 keygen 模块
+_TOOLS_KEYGEN = os.path.abspath(os.path.join(HERE, "..", "..", "tools", "keygen"))
+if _TOOLS_KEYGEN not in sys.path:
+    sys.path.insert(0, _TOOLS_KEYGEN)
 try:
     from paths import get_data_dir
     DATA_DIR = get_data_dir()
@@ -203,3 +207,32 @@ def generate_activation_code(data: dict = Body(...)):
         return {"ok": True, "code": code, "tier": tier, "days": days, "fingerprint": fingerprint[:8] + "..."}
     except Exception as e:
         raise HTTPException(500, f"生成失败: {str(e)}")
+
+
+@router.get("/seed")
+def get_license_seed():
+    """返回种子密钥的 hex，供激活码生成器自动加载"""
+    try:
+        from keygen import _load_or_create_seed
+        seed = _load_or_create_seed()
+        return {"ok": True, "seed_hex": seed.hex(), "length": len(seed)}
+    except Exception as e:
+        raise HTTPException(500, f"读取种子失败: {str(e)}")
+
+
+@router.get("/export-package")
+def export_activation_package():
+    """导出激活数据包（seed + 指纹），供离线环境生成激活码"""
+    try:
+        from keygen import _load_or_create_seed
+        seed = _load_or_create_seed()
+        fp = _machine_fingerprint()
+        return {
+            "ok": True,
+            "type": "mikpromptkit-activation-package",
+            "version": 1,
+            "fingerprint": fp,
+            "seed_hex": seed.hex()
+        }
+    except Exception as e:
+        raise HTTPException(500, f"导出失败: {str(e)}")

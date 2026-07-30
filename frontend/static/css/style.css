@@ -3725,6 +3725,9 @@ body.pk-auth-active{overflow:hidden}
 .pk-mode-btn.active{background:var(--primary,#3b82f6);color:#fff;box-shadow:0 1px 3px rgba(59,130,246,.3)}
 .pk-mode-btn.pk-mode-locked{opacity:.45;cursor:not-allowed;position:relative}
 .pk-mode-btn.pk-mode-locked::after{content:"🔒";position:absolute;top:-2px;right:-2px;font-size:9px;line-height:1}
+/* 已被上级版本包含（半锁定，可升级不可降级） */
+.pk-mode-btn.pk-mode-included{opacity:.35;cursor:not-allowed;position:relative}
+.pk-mode-btn.pk-mode-included::after{content:"↓";position:absolute;top:-2px;right:-2px;font-size:9px;line-height:1;color:var(--text-muted)}
 
 /* 模型管理面板 */
 .mm-card{background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:16px;margin-bottom:12px}
@@ -3740,9 +3743,20 @@ body.pk-auth-active{overflow:hidden}
 .mm-ollama-model{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;color:var(--text-main)}
 .mm-ollama-model .mm-badge{font-size:10px;padding:1px 6px;border-radius:10px;background:var(--tag-bg);color:var(--text-muted)}
 
-/* 导航锁态 — 项目相关功能需激活方可使用 */
+/* 导航锁态 — 需激活方可使用的功能 */
+.pk-need-pro,.pk-need-team{position:relative}
 .pk-nav-locked{opacity:.45;cursor:not-allowed !important}
 .pk-nav-locked:hover{background:transparent !important;color:var(--text-muted) !important}
+/* 激活状态指示：已解锁项显示绿色小圆点 */
+.pk-need-pro:not(.pk-nav-locked)::before,
+.pk-need-team:not(.pk-nav-locked)::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;flex-shrink:0}
+.pk-need-pro:not(.pk-nav-locked)::before{background:#10b981}
+.pk-need-team:not(.pk-nav-locked)::before{background:#8b5cf6}
+/* 菜单退出激活按钮状态颜色 */
+.pk-menu-deact-team{color:#ef4444 !important}
+.pk-menu-deact-team:hover{background:rgba(239,68,68,.12) !important;color:#ef4444 !important}
+.pk-menu-deact-pro{color:#f59e0b !important}
+.pk-menu-deact-pro:hover{background:rgba(245,158,11,.12) !important;color:#f59e0b !important}
 
 /* Phase35.3-DAM — 资产管家样式 */
 .fs-header h4 { color: var(--text-primary, #1e293b); }

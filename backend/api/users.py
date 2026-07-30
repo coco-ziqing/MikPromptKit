@@ -45,7 +45,7 @@ def list_users(request: Request, q: Optional[str] = Query(None), role: Optional[
     _require_admin(request)
     db = _ro()
     try:
-        sql = "SELECT id, username, display_name, role, avatar_color, avatar_url, bio, website, is_active, created_at, last_login_at FROM users WHERE 1=1"
+        sql = "SELECT id, username, display_name, role, avatar_color, avatar_url, bio, website, phone, email, wechat, is_active, created_at, last_login_at FROM users WHERE 1=1"
         params = []
         if q:
             sql += " AND (username LIKE ? OR display_name LIKE ?)"
@@ -65,7 +65,7 @@ def get_user(user_id: int, request: Request):
     _require_admin(request)
     db = _ro()
     try:
-        user = db.execute("SELECT id, username, display_name, role, avatar_color, is_active, created_at, last_login_at, settings_json FROM users WHERE id=?", [user_id]).fetchone()
+        user = db.execute("SELECT id, username, display_name, role, avatar_color, avatar_url, bio, website, phone, email, wechat, is_active, created_at, last_login_at, settings_json FROM users WHERE id=?", [user_id]).fetchone()
         if not user: raise HTTPException(404, "用户不存在")
         return {"ok": True, "user": dict(user)}
     finally: db.close()

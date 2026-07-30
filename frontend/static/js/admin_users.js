@@ -26,6 +26,8 @@
       var self = this;
       if (window.PK_PRESENCE && !this._presenceUnsub) {
         this._presenceUnsub = PK_PRESENCE.on(function(){ self._updateLive(); });
+        // 立即应用当前已知状态
+        self._updateLive();
       }
     },
 
@@ -131,14 +133,42 @@
       var isNew = !uid, u = uid ? this._users.find(function(x){return x.id===uid;})||{}:{};
       var ov = document.createElement('div'); ov.className = 'pk-auth-modal-overlay';
       ov.onclick = function(e) { if (e.target===ov) ov.remove(); };
-      ov.innerHTML = '<div class="pk-auth-modal" style="max-width:480px;" onclick="event.stopPropagation()"><h4>'+
-        (isNew?'➕ 邀请伙伴':'✏ 编辑信息 · '+_e(u.display_name||u.username))+'</h4>'+
+      // 编辑现有用户时：双区布局（管理员操作 + 个人资料只读）
+      var profileHTML = '';
+      if (!isNew) {
+        var av = u.avatar_url || '';
+        var bio = u.bio || '';
+        var website = u.website || '';
+        var phone = u.phone || '';
+        var email = u.email || '';
+        var wechat = u.wechat || '';
+        var hasProfile = av || bio || phone || email || wechat || website;
+        profileHTML = '<div style="margin-top:14px;padding:12px;background:var(--bg-main,#0f172a);border-radius:10px;border-left:3px solid var(--border-color);">' +
+          '<div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:10px;">📋 个人资料（伙伴自维护）</div>';
+        if (hasProfile) {
+          if (av) profileHTML += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><img src="'+_e(av)+'" style="width:36px;height:36px;border-radius:8px;object-fit:cover;" onerror="this.style.display=\'none\'"><span style="font-size:11px;color:var(--text-muted);">头像</span></div>';
+          if (bio) profileHTML += '<div style="font-size:12px;color:var(--text-main);margin-bottom:6px;">'+_e(bio)+'</div>';
+          var contacts = [];
+          if (email) contacts.push('📧 '+_e(email));
+          if (phone) contacts.push('📱 '+_e(phone));
+          if (wechat) contacts.push('💬 '+_e(wechat));
+          if (contacts.length) profileHTML += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;">'+contacts.map(function(c){return '<span style="font-size:11px;color:var(--text-muted);background:var(--bg);padding:3px 8px;border-radius:4px;">'+c+'</span>';}).join('')+'</div>';
+          if (website) profileHTML += '<div style="font-size:11px;color:var(--primary);word-break:break-all;">🔗 '+_e(website)+'</div>';
+        } else {
+          profileHTML += '<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:8px;">伙伴尚未填写个人资料</div>';
+        }
+        profileHTML += '</div>';
+      }
+      ov.innerHTML = '<div class="pk-auth-modal" style="max-width:480px;" onclick="event.stopPropagation()">' +
+        '<h4 style="margin-bottom:12px;">'+ (isNew?'➕ 邀请伙伴':'✏ 编辑信息 · '+_e(u.display_name||u.username)) +'</h4>'+
         (isNew?'<div class="form-group"><label>用户名</label><input type="text" id="uf_username" placeholder="字母/数字/下划线" autofocus></div>'+
         '<div class="form-group"><label>密码</label><input type="password" id="uf_password" placeholder="至少4个字符"></div>':'')+
+        '<div style="padding:10px 12px;background:var(--bg-main,#0f172a);border-radius:8px;margin-bottom:10px;"><div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">🔧 管理员操作</div>'+
         '<div class="form-group"><label>显示名称</label><input type="text" id="uf_display" value="'+_e(u.display_name||'')+'"></div>'+
         '<div class="form-group"><label>角色</label><select id="uf_role"><option value="admin"'+(u.role==='admin'?' selected':'')+'>主理人</option><option value="editor"'+(u.role==='editor'?' selected':'')+'>共创者</option><option value="viewer"'+(u.role==='viewer'?' selected':'')+'>鉴赏者</option></select></div>'+
-        (!isNew?'<div class="form-group"><label>密码重置（留空不修改）</label><input type="password" id="uf_pw_reset" placeholder="至少4个字符"></div>':'')+
-        '<div class="pk-modal-actions"><button class="btn btn-secondary" onclick="this.closest(\'.pk-auth-modal-overlay\').remove()">取消</button>'+
+        (!isNew?'<div class="form-group"><label>密码重置（留空不修改）</label><input type="password" id="uf_pw_reset" placeholder="至少4个字符"></div>':'')+'</div>'+
+        profileHTML +
+        '<div class="pk-modal-actions" style="margin-top:14px;"><button class="btn btn-secondary" onclick="this.closest(\'.pk-auth-modal-overlay\').remove()">取消</button>'+
         '<button class="btn btn-primary" id="uf_save">保存</button></div></div>';
       document.body.appendChild(ov);
       var self = this;

@@ -233,7 +233,7 @@ def whoami(request: Request):
     db = _ro()
     try:
         row = db.execute(
-            "SELECT id, username, display_name, role, avatar_color, avatar_url, bio, website, cover_url, is_active, created_at, last_login_at, settings_json FROM users WHERE id=?",
+            "SELECT id, username, display_name, role, avatar_color, avatar_url, bio, website, phone, email, wechat, cover_url, is_active, created_at, last_login_at, settings_json FROM users WHERE id=?",
             [uid]).fetchone()
         if row:
             return {"ok": True, "authenticated": authenticated, "user": dict(row)}
@@ -270,7 +270,7 @@ def update_my_profile(data: dict = Body(...), request: Request = None):
         if not current or not check_pw(data["old_password"], current["password_hash"]):
             raise HTTPException(400, "旧密码不正确")
     
-    allowed = ["display_name", "bio", "website", "avatar_color"]
+    allowed = ["display_name", "bio", "website", "avatar_color", "phone", "email", "wechat"]
     updates = {k: data[k] for k in allowed if k in data}
     has_pw = "old_password" in data and "new_password" in data
     if not updates and not has_pw:
@@ -285,7 +285,7 @@ def update_my_profile(data: dict = Body(...), request: Request = None):
         db.commit()
         # 返回更新后的完整用户信息
         row = db.execute(
-            "SELECT id, username, display_name, role, avatar_color, avatar_url, bio, website, cover_url, is_active, created_at, last_login_at, settings_json FROM users WHERE id=?",
+            "SELECT id, username, display_name, role, avatar_color, avatar_url, bio, website, phone, email, wechat, cover_url, is_active, created_at, last_login_at, settings_json FROM users WHERE id=?",
             [uid]).fetchone()
         return {"ok": True, "user": dict(row) if row else None}
     finally:

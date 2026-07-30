@@ -688,8 +688,11 @@ def get_status():
 
 FRONTEND_DIR = get_frontend_dir()
 STATIC_DIR = os.path.join(FRONTEND_DIR, "static")
+TOOLS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools")
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+if os.path.exists(TOOLS_DIR):
+    app.mount("/tools", StaticFiles(directory=TOOLS_DIR, html=True), name="tools")
 
 # 确保静态 JS/CSS 文件以 UTF-8 编码提供（修复中文乱码）
 from starlette.middleware.base import BaseHTTPMiddleware

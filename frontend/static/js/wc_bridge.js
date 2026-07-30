@@ -1560,6 +1560,73 @@ window._licCopyFp = function() {
     }
 };
 
+// 全局辅助：复制服务器地址+指纹（激活弹窗内按钮调用，发给管理员生成激活码）
+window._licCopyInfo = function() {
+    var fpEl = document.getElementById('licFpDisplay');
+    var fp = (fpEl && fpEl.textContent !== '⏳ 获取中...') ? fpEl.textContent : (App._licenseFingerprint || '');
+    var serverUrl = window.location.origin;
+    var info = '服务器: ' + serverUrl + '\n指纹: ' + fp + '\n\n请在激活码生成器中输入服务器地址连接后生成激活码。';
+    var btn = document.getElementById('licCopyInfo');
+    var done = function() {
+        if (btn) { btn.textContent = '✅ 已复制'; btn.style.background = '#059669'; btn.style.color = '#fff'; btn.style.borderColor = '#059669'; }
+        setTimeout(function() {
+            if (btn) { btn.textContent = '📋 复制服务器地址 + 指纹'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
+        }, 1800);
+    };
+    if (!fp) return;
+    try {
+        navigator.clipboard.writeText(info).then(done).catch(function() {
+            var ta = document.createElement('textarea');
+            ta.value = info; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+            document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); } catch(e) {}
+            document.body.removeChild(ta);
+            done();
+        });
+    } catch(e) {
+        var ta = document.createElement('textarea');
+        ta.value = info; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch(e2) {}
+        document.body.removeChild(ta);
+        done();
+    }
+};
+
+// 全局辅助：下载激活数据包（异地离线场景用）
+window._licDownloadPkg = async function() {
+    var btn = document.getElementById('licDownloadPkg');
+    if (!btn) return;
+    btn.textContent = '⏳ 打包中...';
+    btn.disabled = true;
+    try {
+        var r = await fetch('/api/license/export-package');
+        var d = await r.json();
+        if (!d.ok) throw new Error(d.detail || '导出失败');
+        var blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'mik-activation-package.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        btn.textContent = '✅ 已下载';
+        btn.style.background = '#059669'; btn.style.color = '#fff'; btn.style.borderColor = '#059669';
+        setTimeout(function() {
+            btn.textContent = '📥 下载激活数据包（异地离线用）';
+            btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = '';
+        }, 2000);
+    } catch(e) {
+        btn.textContent = '❌ 失败';
+        setTimeout(function() {
+            btn.textContent = '📥 下载激活数据包（异地离线用）';
+        }, 2000);
+    }
+    btn.disabled = false;
+};
+
 // 确认解除激活弹窗
 App._confirmDeactivate = function(mode) {
     var tier = mode === 'project' ? 'personal' : 'team';
@@ -1591,6 +1658,28 @@ App._confirmDeactivate = function(mode) {
 App._switchMode = async function(mode, btn) {
     // 已激活模式再次点击 → 不重复
     if (App.state._currentMode === mode) return;
+
+    // ── 版本切换状态限制 ──
+    var tiers = App._activeTiers || {};
+    // 团队版激活时：锁定在团队模式，不允许降级切换
+    if (tiers.team && mode !== 'team') {
+        if (typeof PK !== 'undefined' && PK.toast) {
+            PK.toast('当前为团队项目版，已包含全部功能。\n如需切换请先在账户菜单中退出团队版激活', 'info');
+        }
+        return;
+    }
+    // 仅个人版激活时：不允许降到个人工具版（功能已解锁，切换无意义）
+    if (tiers.personal && !tiers.team && mode === 'library') {
+        if (typeof PK !== 'undefined' && PK.toast) {
+            PK.toast('当前为个人项目版，组装器和生成功能已激活。\n如需限制功能请先在账户菜单中退出个人版激活', 'info');
+        }
+        return;
+    }
+    // 仅个人版激活时点击团队版 → 引导升级
+    if (tiers.personal && !tiers.team && mode === 'team') {
+        App._showActivationDialog('team', 'team');
+        return;
+    }
 
     // 目标版本非词库时，检查许可状态
     if (mode !== 'library') {
@@ -1648,6 +1737,10 @@ App._enterTeamMode = function() {
 
 // 加载时预检许可状态，设置按钮锁态
 App._initLicenseLocks = async function() {
+    // 保存按钮原始 title
+    document.querySelectorAll('.pk-mode-btn').forEach(function(b) {
+        if (!b.dataset.originalTitle) b.dataset.originalTitle = b.title;
+    });
     try {
         var r = await fetch('/api/license/info');
         var d = await r.json();
@@ -1657,7 +1750,16 @@ App._initLicenseLocks = async function() {
             App._activeTiers = {personal: personalActive || teamActive, team: teamActive};
         }
     } catch(e) {}
+    var tiers = App._activeTiers || {};
+    // 强制当前模式对齐最高激活版本
+    var targetMode = tiers.team ? 'team' : (tiers.personal ? 'project' : 'library');
+    App.state._currentMode = targetMode;
+    try { localStorage.setItem('promptkit_mode', targetMode); } catch(e) {}
     App._refreshModeBtnLocks();
+    // 更新品牌标题
+    var brand = document.querySelector('.brand span');
+    var names = {library:'Mik词库·个人工具版', project:'Mik词库·个人项目版', team:'Mik词库·团队项目版'};
+    if (brand) brand.textContent = names[targetMode] || 'Mik词库·个人工具版';
     App._installProjectGate();
 };
 
@@ -1665,40 +1767,74 @@ App._initLicenseLocks = async function() {
 App._refreshModeBtnLocks = function() {
     var tiers = App._activeTiers || {};
     var btns = document.querySelectorAll('.pk-mode-btn');
+    // 确定当前应高亮的按钮
+    var activeMode = tiers.team ? 'team' : (tiers.personal ? 'project' : 'library');
     btns.forEach(function(b) {
         var mode = b.dataset.mode;
-        if (mode === 'library') { b.classList.remove('pk-mode-locked'); return; }
+        // 清除所有状态类
+        b.classList.remove('pk-mode-locked', 'pk-mode-included', 'active');
+        b.title = b.dataset.originalTitle || b.title;
+
+        // 最高激活版本高亮
+        if (mode === activeMode) {
+            b.classList.add('active');
+        }
+
+        if (mode === 'library') {
+            if (tiers.team) {
+                b.classList.add('pk-mode-included');
+                b.title = '个人工具版（已被团队版包含）';
+            } else if (tiers.personal) {
+                b.classList.add('pk-mode-included');
+                b.title = '个人工具版（已被个人版包含）';
+            }
+            return;
+        }
         if (mode === 'project') {
-            if (tiers.personal) b.classList.remove('pk-mode-locked');
-            else b.classList.add('pk-mode-locked');
+            if (tiers.team) {
+                b.classList.add('pk-mode-included');
+                b.title = '个人项目版（已被团队版包含）';
+            } else if (!tiers.personal) {
+                b.classList.add('pk-mode-locked');
+                b.title = '个人项目版（需激活）';
+            }
+            return;
         }
         if (mode === 'team') {
-            if (tiers.team) b.classList.remove('pk-mode-locked');
-            else b.classList.add('pk-mode-locked');
+            if (!tiers.team) {
+                b.classList.add('pk-mode-locked');
+                b.title = tiers.personal ? '团队项目版（点击升级）' : '团队项目版（需先激活个人版）';
+            }
+            return;
         }
     });
     // 同步刷新导航锁态
     App._refreshNavLocks();
 };
 
-// 刷新所有需项目许可的导航项锁态
+// 刷新所有需许可的导航项锁态
 App._refreshNavLocks = function() {
     var tiers = App._activeTiers || {};
     var projUnlocked = !!(tiers.personal || tiers.team);
     var teamUnlocked = !!tiers.team;
-    // 项目相关：个人项目版及以上解锁
+    // pk-need-pro：个人项目版及以上解锁（组装器 + 生成 + 分镜模板）
+    document.querySelectorAll('.pk-need-pro').forEach(function(el) {
+        if (projUnlocked) { el.classList.remove('pk-nav-locked'); }
+        else { el.classList.add('pk-nav-locked'); }
+    });
+    // pk-need-project：兼容旧类名（个人项目版及以上解锁）
     document.querySelectorAll('.pk-need-project').forEach(function(el) {
         if (projUnlocked) { el.classList.remove('pk-nav-locked'); }
         else { el.classList.add('pk-nav-locked'); }
     });
-    // 团队专属：仅团队版解锁
+    // pk-need-team：仅团队版解锁（项目管理）
     document.querySelectorAll('.pk-need-team').forEach(function(el) {
         if (teamUnlocked) { el.classList.remove('pk-nav-locked'); }
         else { el.classList.add('pk-nav-locked'); }
     });
 };
 
-// 全局拦截：点击锁定的项目功能时弹出激活窗口（捕获阶段，早于 onclick）
+// 全局拦截：点击锁定的功能时弹出对应激活窗口（捕获阶段，早于 onclick）
 App._installProjectGate = function() {
     if (App._projectGateInstalled) return;
     App._projectGateInstalled = true;
@@ -1707,7 +1843,18 @@ App._installProjectGate = function() {
         if (!locked) return;
         e.stopPropagation();
         e.preventDefault();
-        App._showActivationDialog('project', 'personal');
+        // 团队锁定项：如果个人版已激活则弹团队激活，否则先引导激活个人版
+        if (locked.classList.contains('pk-need-team')) {
+            var tiers = App._activeTiers || {};
+            if (tiers.personal) {
+                App._showActivationDialog('team', 'team');
+            } else {
+                App._showActivationDialog('project', 'personal');
+            }
+        } else {
+            // pk-need-pro / pk-need-project 锁定项 → 引导激活个人项目版
+            App._showActivationDialog('project', 'personal');
+        }
     }, true);
 };
 
@@ -1721,14 +1868,20 @@ App._checkProjectGate = function(reason) {
     return false;
 };
 
-// 团队版守卫：未激活时弹提醒，返回 false；已激活返回 true
-// 所有需团队许可的功能入口前调用此方法
+// 团队版守卫：未激活时弹提醒并引导激活；已激活返回 true
 App._checkTeamGate = function(reason) {
     var tiers = App._activeTiers || {};
     if (tiers.team) return true;  // 已激活，放行
-    // 未激活 → 弹提醒
-    var msg = reason || '此功能需要团队项目版许可';
-    alert(msg + '\n\n点击「👥」按钮激活团队项目版后即可使用。');
+    // 未激活 → 检查是否已激活个人版
+    if (tiers.personal) {
+        // 有个人版，引导升级团队版
+        App._showActivationDialog('team', 'team');
+    } else {
+        // 先引导激活个人项目版
+        var msg = reason || '此功能需要先激活个人项目版，再升级团队项目版';
+        alert(msg + '\n\n将引导您先激活个人项目版。');
+        App._showActivationDialog('project', 'personal');
+    }
     return false;
 };
 
@@ -1750,7 +1903,17 @@ App._showActivationDialog = function(mode, tier) {
         '<div id="licFpMsg" style="font-size:11px;margin-top:6px;padding:6px 10px;border-radius:4px;display:none;"></div>' +
         '</div>' +
         '<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">' +
-        '<a href="/static/keygen.html?tier=' + tier + '" target="_blank" style="color:var(--primary);">🔌 打开激活码生成器 →</a></div>' +
+        '<a href="/tools/keygen/keygen.html?tier=' + tier + '" target="_blank" style="color:var(--primary);">🔌 打开激活码生成器 →</a></div>' +
+        '<div style="margin-top:14px;padding:12px;background:var(--bg);border:1px solid var(--border-color);border-radius:8px;">' +
+        '<div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">📤 如何获取激活码</div>' +
+        '<ol style="font-size:11px;color:var(--text-muted);margin:0;padding-left:18px;line-height:1.8;">' +
+        '<li>点击下方按钮复制服务器信息</li>' +
+        '<li>发送给持有本服务器 <code style="font-size:10px;">.license_seed</code> 的管理员</li>' +
+        '<li>管理员在 <b>激活码生成器</b> 中连接服务器即可生成激活码</li>' +
+        '</ol>' +
+        '<button id="licCopyInfo" onclick="window._licCopyInfo()" style="margin-top:10px;width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;" onmouseenter="this.style.borderColor=var(--primary);this.style.color=var(--primary)" onmouseleave="this.style.borderColor=var(--border-color);this.style.color=var(--text)">📋 复制服务器地址 + 指纹</button>' +
+        '<button id="licDownloadPkg" onclick="window._licDownloadPkg()" style="margin-top:6px;width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;" onmouseenter="this.style.borderColor=var(--primary);this.style.color=var(--primary)" onmouseleave="this.style.borderColor=var(--border-color);this.style.color=var(--text)">📥 下载激活数据包（异地离线用）</button>' +
+        '</div>' +
         '<div id="licMsg" style="font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;display:none;"></div>' +
         '<div class="form-group"><label style="font-size:12px;">激活码</label>' +
         '<input type="text" id="licCode" placeholder="' + fmt + '-XXXX-XXXX-XXXX" style="width:100%;padding:10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-input);color:var(--text-main);font-size:14px;text-transform:uppercase;letter-spacing:1px;" maxlength="19" autofocus>' +
@@ -1759,7 +1922,6 @@ App._showActivationDialog = function(mode, tier) {
         '<button class="btn btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()" style="flex:1;">取消</button>' +
         '<button class="btn btn-primary" id="licActivate" style="flex:1;">🔓 激活</button>' +
         '</div>' +
-        '<div style="margin-top:12px;font-size:11px;color:var(--text-muted);text-align:center;">获取激活码请联系 PromptKit Team</div>' +
         '</div>';
     document.body.appendChild(ov);
 

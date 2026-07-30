@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>MikPromptKit 激活码生成器</title>
+<style>
+:root {
+  --bg: #0f172a;
+  --card: #1e293b;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --border: #334155;
+  --primary: #6366f1;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --purple: #8b5cf6;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px;
+  max-width: 540px;
+  width: 100%;
+  box-shadow: 0 4px 24px rgba(0,0,0,.3);
+}
+h2 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+h2 .badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(99,102,241,.15);
+  color: var(--primary);
+}
+.sub {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: var(--muted);
+}
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+input, select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  margin-bottom: 14px;
+  outline: none;
+  transition: border-color .15s;
+  font-family: inherit;
+}
+input:focus, select:focus { border-color: var(--primary); }
+.row { display: flex; gap: 10px; }
+.row > div { flex: 1; }
+button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  font-family: inherit;
+}
+.btn-connect {
+  width: 100%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 14px;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+.btn-connect:hover:not(:disabled) { opacity: .9; }
+.btn-connect:disabled { opacity: .5; cursor: not-allowed; }
+.btn-gen {
+  width: 100%;
+  background: var(--success);
+  color: #fff;
+  font-size: 16px;
+  padding: 14px;
+}
+.btn-gen:hover:not(:disabled) { opacity: .9; }
+.btn-gen:disabled { opacity: .5; cursor: not-allowed; }
+.connected {
+  display: none;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  background: rgba(16,185,129,.1);
+  border: 1px solid rgba(16,185,129,.3);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--success);
+  line-height: 1.6;
+}
+.connected strong { color: #fff; }
+.result {
+  display: none;
+  margin-top: 20px;
+  padding: 16px;
+  background: rgba(16,185,129,.1);
+  border: 1px solid rgba(16,185,129,.3);
+  border-radius: 10px;
+}
+.result .code {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--success);
+  text-align: center;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  margin: 8px 0;
+  user-select: all;
+}
+.result .meta {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+.copy-btn {
+  margin-top: 10px;
+  width: 100%;
+  background: var(--success);
+  color: #fff;
+}
+.copy-btn:hover { background: #059669; }
+.error {
+  display: none;
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(239,68,68,.1);
+  border: 1px solid rgba(239,68,68,.3);
+  border-radius: 8px;
+  color: var(--danger);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+.footnote {
+  margin-top: 20px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.6;
+}
+.footnote code {
+  background: rgba(148,163,184,.1);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+#toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--success);
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 13px;
+  z-index: 99999;
+  transition: opacity .3s;
+  opacity: 0;
+  pointer-events: none;
+}
+.divider-text {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.divider-text::before, .divider-text::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>🔐 <span>激活码生成器</span> <span class="badge">独立版</span></h2>
+  <p class="sub">为远程 MikPromptKit 服务器生成主机绑定的激活码</p>
+
+  <!-- Step 1: 连接服务器 -->
+  <label>🌐 目标服务器地址（在线模式）</label>
+  <div class="row">
+    <div style="flex:3">
+      <input type="text" id="serverUrl" placeholder="http://192.168.0.102:8080" value="http://127.0.0.1:8080" autocomplete="off" spellcheck="false">
+    </div>
+    <div style="flex:1">
+      <button class="btn-connect" id="btnConnect" onclick="connect()">🔗 连接</button>
+    </div>
+  </div>
+  <input type="file" id="pkgFile" accept=".json" style="display:none;" onchange="if(this.files[0])loadPackageFile(this.files[0])">
+  <button class="btn-seed" onclick="document.getElementById('pkgFile').click()" style="background:transparent;border:1px dashed var(--border);color:var(--muted);font-size:12px;padding:8px 14px;width:100%;margin-bottom:14px;cursor:pointer;">📂 或加载激活数据包（异地离线模式）</button>
+  <div class="connected" id="connectedInfo"></div>
+
+  <!-- Step 2: 参数（连接成功后显示） -->
+  <div id="paramsSection" style="display:none;">
+    <label>📦 版本</label>
+    <select id="tier" onchange="updateSubtitle()">
+      <option value="personal">🟠 个人项目版 (PKP-)</option>
+      <option value="team">🟣 团队项目版 (PKT-)</option>
+    </select>
+
+    <div class="row">
+      <div>
+        <label>⏱ 有效期</label>
+        <select id="days">
+          <option value="30">30 天</option>
+          <option value="90">90 天（季度）</option>
+          <option value="180">180 天</option>
+          <option value="365" selected>365 天（年度）</option>
+          <option value="730">730 天（两年）</option>
+          <option value="0">♾ 永久</option>
+        </select>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button class="btn-gen" id="btnGen" onclick="generate()">⚡ 生成激活码</button>
+      </div>
+    </div>
+
+    <div class="result" id="result">
+      <div class="meta" id="meta"></div>
+      <div class="code" id="code"></div>
+      <button class="copy-btn" id="btnCopy" onclick="copyCode()">📋 复制激活码</button>
+    </div>
+  </div>
+
+  <div class="error" id="error"></div>
+
+  <p class="footnote">
+    输入 MikPromptKit 服务器地址后点击连接，将自动获取种子密钥和主机指纹。<br>
+    CLI: <code>python tools/keygen/keygen.py --tier personal --fingerprint &lt;指纹&gt;</code>
+  </p>
+</div>
+
+<script>
+// ── 全局状态 ──
+var SEED_BYTES = null;
+var FINGERPRINT = '';
+var SERVER_URL = '';
+
+// ── URL 参数 ──
+(function() {
+  var p = new URLSearchParams(window.location.search);
+  var tier = p.get('tier');
+  if (tier === 'personal' || tier === 'team') {
+    document.getElementById('tier').value = tier;
+    updateSubtitle();
+  }
+})();
+
+function updateSubtitle() {
+  var tier = document.getElementById('tier').value;
+  var labels = { personal: '个人项目版', team: '团队项目版' };
+  var el = document.querySelector('.sub');
+  if (el) el.textContent = '为「' + labels[tier] + '」生成绑定主机的激活码';
+}
+
+// ── 连接服务器：自动获取 seed + 指纹 ──
+async function connect() {
+  var url = document.getElementById('serverUrl').value.trim().replace(/\/+$/, '');
+  if (!url) { showError('请输入服务器地址'); return; }
+
+  var btn = document.getElementById('btnConnect');
+  var errEl = document.getElementById('error');
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = '⏳';
+
+  try {
+    // 并行获取 seed 和 license info
+    var [seedRes, infoRes] = await Promise.all([
+      fetch(url + '/api/license/seed'),
+      fetch(url + '/api/license/info')
+    ]);
+
+    if (!seedRes.ok) throw new Error('无法获取种子密钥 (HTTP ' + seedRes.status + ')');
+    if (!infoRes.ok) throw new Error('无法获取主机信息 (HTTP ' + infoRes.status + ')');
+
+    var seedData = await seedRes.json();
+    var infoData = await infoRes.json();
+
+    if (!seedData.ok || !seedData.seed_hex) throw new Error('种子数据无效');
+    if (!infoData.ok || !infoData.fingerprint) throw new Error('主机指纹数据无效');
+
+    // 保存
+    var hex = seedData.seed_hex;
+    SEED_BYTES = new Uint8Array(hex.match(/.{2}/g).map(function(b) { return parseInt(b, 16); }));
+    FINGERPRINT = infoData.fingerprint;
+    SERVER_URL = url;
+
+    // 检查已激活状态
+    var tiers = infoData.tiers || {};
+    var teamActive = tiers.team && tiers.team.active;
+    var personalActive = tiers.personal && tiers.personal.active;
+
+    var statusLines = [
+      '✅ 已连接到 <strong>' + url + '</strong>',
+      '指纹: <code style="font-size:11px;word-break:break-all;">' + FINGERPRINT + '</code>'
+    ];
+    if (teamActive) statusLines.push('当前激活: 🟣 团队项目版（有效期至 ' + (tiers.team.expires || '?') + '）');
+    else if (personalActive) statusLines.push('当前激活: 🟠 个人项目版（有效期至 ' + (tiers.personal.expires || '?') + '）');
+    else statusLines.push('当前未激活任何版本');
+
+    document.getElementById('connectedInfo').innerHTML = statusLines.join('<br>');
+    document.getElementById('connectedInfo').style.display = 'block';
+    document.getElementById('paramsSection').style.display = 'block';
+    document.getElementById('result').style.display = 'none';
+
+    btn.textContent = '✅ 已连接';
+    btn.style.background = 'var(--success)';
+  } catch (e) {
+    showError('连接失败: ' + e.message + '\n\n请确认：\n1. 服务器地址正确\n2. MikPromptKit 服务正在目标主机运行\n3. 网络可访问目标主机');
+    btn.disabled = false;
+    btn.textContent = '🔗 连接';
+  }
+}
+
+// ── HMAC 签名 ──
+async function hmacSign(seedBytes, payload) {
+  var key = await crypto.subtle.importKey(
+    'raw', seedBytes,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false, ['sign']
+  );
+  var enc = new TextEncoder();
+  var sig = await crypto.subtle.sign('HMAC', key, enc.encode(payload));
+  return Array.from(new Uint8Array(sig)).map(function(b) {
+    return b.toString(16).padStart(2, '0');
+  }).join('');
+}
+
+// ── 生成激活码 ──
+async function generate() {
+  var errEl = document.getElementById('error');
+  var resEl = document.getElementById('result');
+  var btn = document.getElementById('btnGen');
+
+  if (!SEED_BYTES || !FINGERPRINT) {
+    showError('请先连接目标服务器或加载数据包');
+    return;
+  }
+
+  var tier = document.getElementById('tier').value;
+  var days = parseInt(document.getElementById('days').value);
+
+  errEl.style.display = 'none';
+  resEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = '⏳ 生成中...';
+
+  try {
+    var code;
+    // 优先客户端 HMAC（离线可用），不可用时回退到服务端 API
+    if (typeof crypto !== 'undefined' && crypto.subtle) {
+      var payload = tier.slice(0, 8).padEnd(8, ' ') + String(days).padStart(4, '0') + FINGERPRINT.slice(0, 32);
+      var fullSig = await hmacSign(SEED_BYTES, payload);
+      var sig = fullSig.slice(0, 12);
+      var prefix = tier === 'personal' ? 'PKP' : 'PKT';
+      code = prefix + '-' + sig.slice(0, 4) + '-' + sig.slice(4, 8) + '-' + sig.slice(8, 12);
+    } else if (SERVER_URL) {
+      // 浏览器不支持 Web Crypto（HTTP 环境），回退到服务端生成
+      var r = await fetch(SERVER_URL + '/api/license/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: tier, fingerprint: FINGERPRINT, days: days })
+      });
+      var d = await r.json();
+      if (!d.ok || !d.code) throw new Error(d.detail || '服务端生成失败');
+      code = d.code;
+    } else {
+      throw new Error('当前浏览器不支持离线签名（需 HTTPS 或 localhost），且未连接服务器。\n请通过 http://127.0.0.1:8080 访问。');
+    }
+
+    document.getElementById('code').textContent = code.toUpperCase();
+    var label = tier === 'personal' ? '个人版' : '团队版';
+    var daysLabel = days === 0 ? '永久' : days + '天';
+    document.getElementById('meta').textContent = label + ' · ' + daysLabel + ' · 指纹 ' + FINGERPRINT.slice(0, 8) + '…';
+    resEl.style.display = 'block';
+  } catch (e) {
+    showError('生成失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚡ 生成激活码';
+  }
+}
+
+// ── 复制 ──
+function copyCode() {
+  var code = document.getElementById('code').textContent;
+  var btn = document.getElementById('btnCopy');
+
+  var fallback = function() {
+    var ta = document.createElement('textarea');
+    ta.value = code;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  };
+
+  var done = function() {
+    btn.textContent = '✅ 已复制!';
+    btn.style.background = '#059669';
+    toast('激活码已复制到剪贴板');
+    setTimeout(function() {
+      btn.textContent = '📋 复制激活码';
+      btn.style.background = '';
+    }, 2000);
+  };
+
+  try {
+    navigator.clipboard.writeText(code).then(done).catch(function() { fallback(); done(); });
+  } catch (e) { fallback(); done(); }
+}
+
+// ── 提示 ──
+function toast(msg) {
+  var t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._tid);
+  t._tid = setTimeout(function() { t.style.opacity = '0'; }, 1800);
+}
+
+function showError(msg) {
+  var el = document.getElementById('error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ── 自动连接（在线模式下） ──
+(function() {
+  if (window.location.protocol !== 'file:') {
+    connect();
+  }
+})();
+
+// ── 拖入/加载数据包（异地离线模式） ──
+document.addEventListener('dragover', function(e) { e.preventDefault(); });
+document.addEventListener('drop', function(e) {
+  e.preventDefault();
+  var file = e.dataTransfer.files[0];
+  if (file) loadPackageFile(file);
+});
+
+function loadPackageFile(file) {
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var pkg = JSON.parse(e.target.result);
+      if (pkg.type !== 'mikpromptkit-activation-package') throw new Error('不是有效的激活数据包');
+      if (!pkg.seed_hex || !pkg.fingerprint) throw new Error('数据包内容不完整');
+
+      var hex = pkg.seed_hex;
+      SEED_BYTES = new Uint8Array(hex.match(/.{2}/g).map(function(b) { return parseInt(b, 16); }));
+      FINGERPRINT = pkg.fingerprint;
+      SERVER_URL = '';
+
+      document.getElementById('connectedInfo').innerHTML = '✅ 已加载离线数据包<br>指纹: <code style="font-size:11px;word-break:break-all;">' + FINGERPRINT + '</code>';
+      document.getElementById('connectedInfo').style.display = 'block';
+      document.getElementById('paramsSection').style.display = 'block';
+      document.getElementById('result').style.display = 'none';
+      document.getElementById('error').style.display = 'none';
+
+      var btn = document.getElementById('btnConnect');
+      btn.textContent = '📦 已加载';
+      btn.style.background = 'var(--success)';
+      btn.disabled = true;
+
+      toast('数据包已加载，可直接生成激活码');
+    } catch(err) {
+      showError('数据包解析失败: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+</script>
+</body>
+</html>

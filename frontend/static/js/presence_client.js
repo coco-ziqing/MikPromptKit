@@ -36,7 +36,24 @@
 
     // ---------- 连接 ----------
     connect: function () {
-      var token = localStorage.getItem('pk_token') || '';
+      // 兼容两种 token 存储键名：pk_token_v1（混淆版）/ pk_token（明文版）
+      var token = '';
+      try {
+        // 优先从 PK_AUTH_CLIENT 获取明文 token
+        if (window.PK_AUTH_CLIENT && PK_AUTH_CLIENT._token) {
+          token = PK_AUTH_CLIENT._token;
+        } else {
+          // 尝试从 localStorage 获取（兼容旧版和新版混淆存储）
+          var t1 = localStorage.getItem('pk_token_v1');
+          if (t1) {
+            var obf = atob(t1);
+            token = '';
+            for (var i = 0; i < obf.length; i++) token += String.fromCharCode(obf.charCodeAt(i) ^ 0x5A);
+          } else {
+            token = localStorage.getItem('pk_token') || '';
+          }
+        }
+      } catch(e) { token = ''; }
       if (!token) return;
       if (this._ws && this._ws.readyState <= 1) return;
       var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
