@@ -174,7 +174,7 @@
             h += '<div style="padding:6px 10px;font-size:11px;color:#94a3b8;font-weight:600;border-bottom:1px solid var(--border-color);">📝 提示词卡 (' + data.cards.length + ')</div>';
             for (var i = 0; i < data.cards.length; i++) {
                 var c = data.cards[i];
-                h += '<div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--hover-bg);" onmouseover="this.style.background=\'var(--hover-bg,#f1f5f9)\'" onmouseout="this.style.background=\'transparent\'" onclick="document.getElementById(\'v4SearchResults\').remove();App.showCardDetail(' + c.id + ')">';
+                h += '<div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--hover-bg);" onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'transparent\'" onclick="document.getElementById(\'v4SearchResults\').remove();App.showCardDetail(' + c.id + ')">';
                 h += '  <div style="font-weight:600;font-size:12px;">' + App._escape(c.name || c.content.substring(0, 30)) + '</div>';
                 h += '  <div style="font-size:11px;color:#94a3b8;">' + App._escape((c.content || '').substring(0, 60)) + '</div>';
                 h += '</div>';
@@ -184,7 +184,7 @@
             h += '<div style="padding:6px 10px;font-size:11px;color:#94a3b8;font-weight:600;border-bottom:1px solid var(--border-color);">📚 词库 (' + data.library.length + ')</div>';
             for (var i = 0; i < data.library.length; i++) {
                 var l = data.library[i];
-                h += '<div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--hover-bg);" onmouseover="this.style.background=\'var(--hover-bg,#f1f5f9)\'" onmouseout="this.style.background=\'transparent\'" onclick="document.getElementById(\'v4SearchResults\').remove();App.switchView(\'v4library\')">';
+                h += '<div style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--hover-bg);" onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'transparent\'" onclick="document.getElementById(\'v4SearchResults\').remove();App.switchView(\'v4library\')">';
                 h += '  <div><strong>' + App._escape(l.name) + '</strong> <span style="font-size:11px;color:#94a3b8;">(' + l.lib_type + ')</span></div>';
                 h += '</div>';
             }
@@ -193,7 +193,7 @@
             h += '<div style="padding:6px 10px;font-size:11px;color:#94a3b8;font-weight:600;border-bottom:1px solid var(--border-color);">🖼️ 媒体 (' + data.media.length + ')</div>';
             for (var i = 0; i < data.media.length; i++) {
                 var m = data.media[i];
-                h += '<div style="padding:8px 10px;cursor:pointer;" onmouseover="this.style.background=\'var(--hover-bg,#f1f5f9)\'" onmouseout="this.style.background=\'transparent\'" onclick="document.getElementById(\'v4SearchResults\').remove();App.switchView(\'v4media\')">';
+                h += '<div style="padding:8px 10px;cursor:pointer;" onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'transparent\'" onclick="document.getElementById(\'v4SearchResults\').remove();App.switchView(\'v4media\')">';
                 h += '  <div>' + App._escape(m.original_filename || m.filename) + '</div>';
                 h += '</div>';
             }

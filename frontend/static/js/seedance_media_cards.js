@@ -198,7 +198,7 @@ if (!App.seedanceV2 || App.seedanceV2._uploadWordCardThumb) return;
             var h='';
             for(var i=0;i<d.items.length;i++){
                 var item=d.items[i];
-                h+='<div style="border:1px solid var(--border-color);border-radius:6px;overflow:hidden;cursor:pointer;transition:0.12s;" onclick="App.seedanceV2._pickFromMediaLib(\''+(item.filename||'')+'\')" onmouseover="this.style.borderColor=\''+('var(--primary,#6366f1)')+'\'" onmouseout="this.style.borderColor=\''+('var(--border-color)')+'\'">';
+                h+='<div style="border:1px solid var(--border-color);border-radius:6px;overflow:hidden;cursor:pointer;transition:0.12s;" onclick="App.seedanceV2._pickFromMediaLib(\''+(item.filename||'')+'\')" onmouseover="this.style.borderColor=\''+('#6366f1')+'\'" onmouseout="this.style.borderColor=\''+('#cbd5e1')+'\'">';
                 h+='<div style="width:100%;height:100px;background:var(--bg-muted,#f1f5f9);display:flex;align-items:center;justify-content:center;">';
                 if(item.url){h+='<img src="'+item.url+'" style="width:100%;height:100%;object-fit:cover;" loading="lazy">';}
                 else{h+='<span style="font-size:10px;color:var(--text-muted);">无预览</span>';}
@@ -220,7 +220,7 @@ if (!App.seedanceV2 || App.seedanceV2._uploadWordCardThumb) return;
                 var item=d.items[i];
                 var cover=item.cover_url||'';
                 var dur=item.duration?Math.round(item.duration)+'s':'';
-                h+='<div style="border:1px solid var(--border-color);border-radius:6px;overflow:hidden;cursor:pointer;transition:0.12s;position:relative;" onclick="App.seedanceV2._pickFromVideoLib(this,\''+(item.filename||'')+'\')" onmouseover="this.style.borderColor=\''+('var(--primary,#6366f1)')+'\'" onmouseout="this.style.borderColor=\''+('var(--border-color)')+'\'">';
+                h+='<div style="border:1px solid var(--border-color);border-radius:6px;overflow:hidden;cursor:pointer;transition:0.12s;position:relative;" onclick="App.seedanceV2._pickFromVideoLib(this,\''+(item.filename||'')+'\')" onmouseover="this.style.borderColor=\''+('#6366f1')+'\'" onmouseout="this.style.borderColor=\''+('#cbd5e1')+'\'">';
                 h+='<div style="width:100%;height:100px;background:var(--bg-muted,#1e1e1e);display:flex;align-items:center;justify-content:center;position:relative;">';
                 if(cover){h+='<img src="'+cover+'" style="width:100%;height:100%;object-fit:cover;" loading="lazy">';}
                 h+='<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:28px;color:rgba(255,255,255,0.7);pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,0.5);">▶</span>';

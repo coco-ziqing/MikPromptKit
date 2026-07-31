@@ -246,8 +246,8 @@ App.wordPicker._renderCards = function(group) {
             + 'style="display:flex;align-items:center;gap:8px;padding:7px 8px;margin-bottom:4px;'
             + 'border:1px solid var(--border-color);border-radius:8px;cursor:pointer;transition:0.12s;'
             + 'background:var(--bg-card);"'
-            + 'onmouseenter="this.style.borderColor=\'var(--primary)\'" '
-            + 'onmouseleave="this.style.borderColor=\'var(--border-color)\'">';
+            + 'onmouseenter="this.style.borderColor=\'#3b82f6\'" '
+            + 'onmouseleave="this.style.borderColor=\'#cbd5e1\'">';
 
         // 缩略图/图标
         if (thumb) {

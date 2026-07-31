@@ -867,21 +867,21 @@ Object.assign(App, {
             if (!s) return;
             if (!v) { s.innerHTML = App._t('auto.str_8b8d2b65', '💡 点击输入框选择文件夹，或直接输入完整磁盘路径'); s.style.color = 'var(--text-muted)'; }
             else if (v.includes(":\\") || v.includes(":/")) {
-                s.innerHTML = '\u23f3 验证路径...';
+                s.textContent = '\u23f3 验证路径...';
                 s.style.color = '#f59e0b';
-                clearTimeout(this._pathCheckTimer);
-                this._pathCheckTimer = setTimeout(function() {
+                clearTimeout(self._pathCheckTimer);
+                self._pathCheckTimer = setTimeout(function() {
                     fetch('/api/utils/check-path', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ path: document.getElementById('exportPathInput').value.trim() })
                     }).then(function(r) { return r.json(); }).then(function(d) {
-                        if (d.ok) { s.innerHTML = '\u2705 目录存在: <strong>' + d.path + '</strong>'; s.style.color = '#059669'; localStorage.setItem('promptkit_export_path', d.path); }
-                        else { s.innerHTML = '\u26a0\ufe0f ' + d.error; s.style.color = '#ef4444'; }
-                    }).catch(function() { s.innerHTML = ''; });
+                        if (d.ok) { s.innerHTML = ''; s.appendChild(document.createTextNode('\u2705 目录存在: ')); var strong3 = document.createElement('strong'); strong3.textContent = d.path; s.appendChild(strong3); s.style.color = '#059669'; localStorage.setItem('promptkit_export_path', d.path); self._toggleExportDirBtn(d.path); }
+                        else { s.textContent = '\u26a0\ufe0f ' + d.error; s.style.color = '#ef4444'; self._toggleExportDirBtn(null); }
+                    }).catch(function() { s.textContent = ''; self._toggleExportDirBtn(null); });
                 }, 500);
             } else {
-                s.innerHTML = '';
+                s.textContent = '';
             }
         };
 
@@ -905,6 +905,39 @@ Object.assign(App, {
         document.getElementById('modalExportName').style.display = 'flex';
     },
 
+    _toggleExportDirBtn(path) {
+        var btn = document.getElementById('btnOpenExportDir');
+        if (!btn) return;
+        if (path && (path.includes(":\\") || path.includes(":/"))) {
+            btn.style.display = '';
+            btn.setAttribute('data-path', path);
+        } else {
+            btn.style.display = 'none';
+        }
+    },
+
+    _closeExportNameDialog() {
+        document.getElementById('modalExportName').style.display = 'none';
+        this._exportQueue = null;
+    },
+
+    async _openExportDir() {
+        var btn = document.getElementById('btnOpenExportDir');
+        var path = btn ? btn.getAttribute('data-path') : '';
+        if (!path) { this.showToast('请先设置导出目录', 'warning'); return; }
+        try {
+            var r = await fetch('/api/utils/open-explorer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: path })
+            });
+            var d = await r.json();
+            if (!d.ok) this.showToast(d.error || '打开失败', 'error');
+        } catch (e) {
+            this.showToast('打开目录失败: ' + e.message, 'error');
+        }
+    },
+
     async _confirmBatchExport() {
         if (!this._exportQueue) return;
         var ids = this._exportQueue.ids;
@@ -912,6 +945,15 @@ Object.assign(App, {
         var customName = document.getElementById('exportNameInput').value.trim();
 
         var saveDir = document.getElementById('exportPathInput').value.trim().replace(/^📁\s*/, '');
+        // 2026-08-03 采纳 dev 09daaa1: 文件名校验 — 过滤 Windows 非法字符
+        var illegalChars = /[<>:"/\\|?*]/g;
+        if (illegalChars.test(customName)) {
+            this.showToast('文件名不能包含字符: < > : " / \\ | ? *', 'error');
+            return;
+        }
+        if (!customName) {
+            customName = this._makeExportFilename(ids, fmt).replace('.' + fmt, '');
+        }
         if (saveDir.includes(":\\") || saveDir.includes(":/")) {
             localStorage.setItem('promptkit_export_path', saveDir);
         } else {
@@ -983,8 +1025,9 @@ Object.assign(App, {
                 this._exportPath = d.path;
                 localStorage.setItem('promptkit_export_path', d.path);
                 document.getElementById('exportPathInput').value = d.path;
+                this._toggleExportDirBtn(d.path);
                 var s = document.getElementById('exportPathStatus');
-                if (s) { s.innerHTML = '\u2705 目录: <strong>' + d.path + '</strong>'; s.style.color = '#059669'; }
+                if (s) { s.innerHTML = ''; s.appendChild(document.createTextNode('\u2705 导出目录: ')); var strong = document.createElement('strong'); strong.textContent = d.path; s.appendChild(strong); s.style.color = '#059669'; }
             } else if (d.error && d.error !== '未选择目录') {
                 this.showToast('选择目录未完成: ' + d.error, 'error');
             }
@@ -1617,23 +1660,29 @@ Object.assign(App, {
         document.getElementById('modalAddToTitle').textContent = '添加到收藏';
         let html = '<p style="margin-bottom:12px;font-size:13px;color:var(--text-muted);">选择要添加到的收藏分组:</p>';
         for (const c of list) {
-            html += `<div class="cat-tab" style="display:block;margin-bottom:6px;text-align:left;" onclick="App.doAddToCollection(${c.id}, '${this._escape(c.name)}')">${c.icon || '⭐'} ${this._escape(c.name)} (${c.item_count || 0} 条)</div>`;
+            html += '<div class="cat-tab" style="display:block;margin-bottom:6px;text-align:left;" data-cid="' + c.id + '" data-cname="' + App._escape(c.name) + '" onclick="App._onAddToCollClick(this)">' + (c.icon || '⭐') + ' ' + App._escape(c.name) + ' (' + (c.item_count || 0) + ' 条)</div>';
         }
         document.getElementById('wordpackSelectList').innerHTML = html;
         document.getElementById('modalAddToWordpack').style.display = 'flex';
     },
 
+    _onAddToCollClick(el) {
+        var cid = parseInt(el.getAttribute('data-cid'));
+        var cname = el.getAttribute('data-cname') || '';
+        this.doAddToCollection(cid, cname);
+    },
+
     async doAddToCollection(cid, cname) {
         const ids = [...this.state.batchSelected];
-        const data = await this.fetchJSON(`/api/v2/collections/${cid}/items/batch-add`, {
+        const data = await this.fetchJSON('/api/v2/collections/' + cid + '/items/batch-add', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt_ids: ids })
         });
         document.getElementById('modalAddToWordpack').style.display = 'none';
         if (data) {
-            this.showToast(`已添加 ${data.added} 条到「${cname}」`, 'success');
-            this.toggleEditMode();
+            this.showToast('已添加 ' + data.added + ' 条到「' + cname + '」', 'success');
+            this._afterBatchOp();
             if (this.loadCollections) this.loadCollections();
         }
     },

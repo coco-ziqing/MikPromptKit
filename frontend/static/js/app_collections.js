@@ -199,6 +199,17 @@ Object.assign(App, {
         }
     },
 
+    // Phase17.3: 批量操作后统一清理编辑模式状态
+    _afterBatchOp() {
+        this.state.batchSelected.clear();
+        var eb = document.getElementById('batchBar');
+        if (eb) eb.style.display = 'none';
+        this.state.editMode = false;
+        var btn = document.getElementById('btnEditMode');
+        if (btn) { btn.style.color = '#94a3b8'; btn.classList.remove('active'); }
+        try { localStorage.removeItem('promptkit_editmode'); } catch(e) {}
+    },
+
     async batchTrash() {
         const ids = [...this.state.batchSelected];
         if (ids.length === 0) { this.showToast(App._t('auto.please_选择词条', '请先选择词条'), 'error'); return; }
@@ -211,24 +222,12 @@ Object.assign(App, {
         if (data) {
             this.showToast('已移入回收站 ' + data.trashed + ' 条', 'success');
             var isCollView = this.state.currentView === 'collections' && !!this.state.currentCollection;
-            if (this.state.editMode) {
-                this.state.batchSelected.clear();
-                var eb = document.getElementById('batchBar');
-                if (eb) eb.style.display = 'none';
-                if (isCollView) {
-                    this.loadCollections();
-                    this.loadCollectionItems();
-                } else {
-                    this.loadPrompts();
-                }
+            this._afterBatchOp();
+            if (isCollView) {
+                this.loadCollections();
+                this.loadCollectionItems();
             } else {
-                this.toggleEditMode();
-                if (isCollView) {
-                    this.loadCollections();
-                    this.loadCollectionItems();
-                } else {
-                    this.loadPrompts();
-                }
+                this.loadPrompts();
             }
         }
     },
@@ -288,8 +287,9 @@ Object.assign(App, {
             await this.loadPrompts();
         } catch(e) {
             this.showToast('批量生成异常: ' + e.message, 'error');
+        } finally {
+            if (bar) bar.style.opacity = '';
         }
-        if (bar) bar.style.opacity = '1';
     },
 
     // ============ 收藏夹 ============
@@ -545,13 +545,7 @@ Object.assign(App, {
         });
         if (data && data.ok) {
             this.showToast('已移出 ' + data.removed + ' 条', 'success');
-            this.state.batchSelected.clear();
-            var eb = document.getElementById('batchBar');
-            if (eb) eb.style.display = 'none';
-            this.state.editMode = false;
-            var btn2 = document.getElementById('btnEditMode');
-            if (btn2) { btn2.style.color = '#94a3b8'; btn2.classList.remove('active'); }
-            try { localStorage.removeItem('promptkit_editmode'); } catch(e) {}
+            this._afterBatchOp();
             await this.loadCollections();
             await this.loadCollectionItems();
         } else {

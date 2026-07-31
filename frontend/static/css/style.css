@@ -1625,7 +1625,7 @@ body.dark-theme {
     border-color: var(--primary);
     box-shadow: 0 0 0 2px rgba(79,70,229,0.15);
 }
-.di-module-input, .di-module-select, .di-category-input, .di-content-input {
+.di-module-input, .di-module-select, .di-group-select, .di-category-input, .di-content-input {
     background: var(--bg-card) !important;
     border: 1px solid var(--border-color) !important;
     color: var(--text-main) !important;
@@ -1638,12 +1638,12 @@ body.dark-theme {
     box-sizing: border-box !important;
     transition: border-color 0.15s;
 }
-.di-module-select {
+.di-module-select, .di-group-select {
     cursor: pointer;
     appearance: auto;
     -webkit-appearance: auto;
 }
-.di-module-input:focus, .di-module-select:focus, .di-category-input:focus, .di-content-input:focus {
+.di-module-input:focus, .di-module-select:focus, .di-group-select:focus, .di-category-input:focus, .di-content-input:focus {
     border-color: var(--primary) !important;
     box-shadow: 0 0 0 2px rgba(79,70,229,0.12) !important;
 }
@@ -3934,3 +3934,13 @@ body.dark-theme .header-divider {
 /* 排序完成闪烁动画 */
 @keyframes gmFlash { 0% { background: rgba(99,102,241,0.25); } 100% { background: transparent; } }
 .gm-flash, .sb-flash { animation: gmFlash 0.7s ease-out; }
+
+/* 子分组浏览器 — 按钮 hover 效果（替代 inline JS 中的 CSS var() 语法错误） */
+.subgroup-browser-all:hover {
+    background: var(--primary, #3b82f6) !important;
+    color: #fff !important;
+}
+.subgroup-browser-card:hover {
+    border-color: var(--primary, #3b82f6) !important;
+    box-shadow: var(--card-shadow, 0 2px 12px rgba(0,0,0,.1)) !important;
+}

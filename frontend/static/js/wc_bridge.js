@@ -51,7 +51,7 @@ App.loadGroupTree = async function() {
             this.renderSidebar();
             // 延迟 Hook 搜索框（此时 DOM 已就绪）
             setTimeout(function() { App._wcHookSearchAndRestore(); }, 100);
-            // 修复竞态：树到达后，若主区仍停在“加载分组中”占位且处于首页陈列架(无分组)，补渲染
+            // 修复竞态：树到达后，若主区仍停在"加载分组中"占位且处于首页陈列架(无分组)，补渲染
             try {
                 var pl = document.getElementById('promptList');
                 var vh = document.getElementById('viewHome');
@@ -61,6 +61,13 @@ App.loadGroupTree = async function() {
                     if (typeof App._showShowcase === 'function') App._showShowcase();
                 }
             } catch(e2) {}
+        } else {
+            // 网络/API 异常：置空树 + 渲染错误提示
+            console.warn('[wc-bridge] loadGroupTree: API 返回空数据');
+            this.state.groupTree = [];
+            this.renderSidebar();
+            var pl2 = document.getElementById('promptList');
+            if (pl2) pl2.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-muted);"><p>📡 词库数据加载失败</p><button class="btn btn-sm btn-outline-primary" onclick="App.loadGroupTree()" style="margin-top:12px;">🔄 重试</button></div>';
         }
     } catch(e) { console.warn('[wc-bridge] loadGroupTree error:', e.message); }
 };
@@ -235,7 +242,7 @@ App._showShowcase = function() {
                     if (grp.group_type === 'sub' || grp.group_type === 'root') continue;
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
                     html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
-                    html += ' onmouseenter="this.style.borderColor=var(--primary);this.style.background=var(--hover-bg)" onmouseleave="this.style.borderColor=var(--border-color);this.style.background=var(--bg-card)"';
+                    html += ' onmouseenter="this.style.borderColor=#3b82f6;this.style.background=#f1f5f9" onmouseleave="this.style.borderColor=#cbd5e1;this.style.background=#ffffff"';
                     html += '>';
                     html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
                     html += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
@@ -268,7 +275,7 @@ App._showShowcase = function() {
                     var sub = selfLeafSubs[sl2];
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + sub.id + ',\'' + (sub.name||'').replace(/'/g,"\\'") + '\')" ';
                     html += 'class="showcase-leaf-btn" style="font-size:12px;padding:3px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.6;"';
-                    html += ' onmouseenter="this.style.borderColor=var(--primary);this.style.background=var(--hover-bg)" onmouseleave="this.style.borderColor=var(--border-color);this.style.background=var(--bg-card)"';
+                    html += ' onmouseenter="this.style.borderColor=#3b82f6;this.style.background=#f1f5f9" onmouseleave="this.style.borderColor=#cbd5e1;this.style.background=#ffffff"';
                     html += '>';
                     html += (sub.icon||'📋') + ' ' + App._escape(sub.name.replace(sub.icon||'','').trim());
                     html += '<span style="font-size:10px;color:var(--text-muted);margin-left:3px;">' + (sub.card_count||0) + '</span>';
@@ -293,7 +300,7 @@ App._showShowcase = function() {
                     var grp = atomLeaves[g];
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
                     html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
-                    html += ' onmouseenter="this.style.borderColor=var(--primary);this.style.background=var(--hover-bg)" onmouseleave="this.style.borderColor=var(--border-color);this.style.background=var(--bg-card)"';
+                    html += ' onmouseenter="this.style.borderColor=#3b82f6;this.style.background=#f1f5f9" onmouseleave="this.style.borderColor=#cbd5e1;this.style.background=#ffffff"';
                     html += '>';
                     html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
                     html += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
@@ -322,7 +329,7 @@ App._showShowcase = function() {
                     var grp = uwLeaves[g2];
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
                     html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
-                    html += ' onmouseenter="this.style.borderColor=var(--primary);this.style.background=var(--hover-bg)" onmouseleave="this.style.borderColor=var(--border-color);this.style.background=var(--bg-card)"';
+                    html += ' onmouseenter="this.style.borderColor=#3b82f6;this.style.background=#f1f5f9" onmouseleave="this.style.borderColor=#cbd5e1;this.style.background=#ffffff"';
                     html += '>';
                     html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
                     html += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
@@ -464,7 +471,7 @@ App._showSubGroupBrowser = function(rootId, rootKey) {
     
     // 「全部词卡」大按钮
     html += '<div style="padding:12px 20px;">';
-    html += '<button onclick="App.switchGroup(' + root.id + ',\'' + (root.name||'').replace(/'/g,"\\'") + '\')" onmouseenter="this.style.background=var(--primary,#3b82f6);this.style.color=\x27#fff\x27" onmouseleave="this.style.background=var(--primary-light,rgba(59,130,246,.08));this.style.color=var(--primary,#3b82f6)" class="subgroup-browser-all" style="width:100%;padding:12px 16px;border:2px solid var(--primary,#3b82f6);border-radius:10px;background:var(--primary-light,rgba(59,130,246,.08));color:var(--primary,#3b82f6);font-size:15px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;">';
+    html += '<button onclick="App.switchGroup(' + root.id + ',\'' + (root.name||'').replace(/'/g,"\\'") + '\')" class="subgroup-browser-all" style="width:100%;padding:12px 16px;border:2px solid var(--primary,#3b82f6);border-radius:10px;background:var(--primary-light,rgba(59,130,246,.08));color:var(--primary,#3b82f6);font-size:15px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;">';
     html += '<span style="font-size:20px;">📋</span> 全部词卡 <span style="font-size:13px;opacity:.8;">(' + totalCards + ' 条)</span>';
     html += '</button>';
     html += '</div>';
@@ -476,7 +483,7 @@ App._showSubGroupBrowser = function(rootId, rootKey) {
         var sIcon = sub.icon || '📄';
         var sName = (sub.name || '').replace(/^[🎭🏞🖼🎬\s]+/, '').trim();
         if (sIcon && sName.indexOf(sIcon) === 0) sName = sName.substring(sIcon.length).trim();
-        html += '<button onclick="event.stopPropagation();App.switchGroup(' + sub.id + ',\'' + (sub.name||'').replace(/'/g,"\\'") + '\')" class="subgroup-browser-card" style="padding:14px 16px;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-card);cursor:pointer;text-align:left;transition:all .15s;" onmouseenter="this.style.borderColor=var(\x27--primary\x27);this.style.boxShadow=var(\x27--card-shadow,0 2px 12px rgba(0,0,0,.1)\x27)" onmouseleave="this.style.borderColor=var(\x27--border-color\x27);this.style.boxShadow=\x27none\x27">';
+        html += '<button onclick="event.stopPropagation();App.switchGroup(' + sub.id + ',\'' + (sub.name||'').replace(/'/g,"\\'") + '\')" class="subgroup-browser-card" style="padding:14px 16px;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-card);cursor:pointer;text-align:left;transition:all .15s;">';
         html += '<div style="display:flex;align-items:center;gap:10px;">';
         html += '<span style="font-size:20px;flex-shrink:0;">' + sIcon + '</span>';
         html += '<span style="font-weight:600;font-size:14px;flex:1;color:var(--text-main);">' + App._escape(sName) + '</span>';
@@ -873,10 +880,22 @@ App._treeQuickAdd = function(parentId) {
 };
 
 // 叶子节点点击代理（data属性避免引号注入）
+// v14.50: 防御性修复 — 向上查找 data-gid + try-catch 边界保护
 App._treeLeafClick = function(el) {
-    var gid = parseInt(el.getAttribute('data-gid'));
-    var gname = el.getAttribute('data-gname') || '';
-    if (gid) App.switchGroup(gid, gname);
+    try {
+        // 向上遍历 DOM 直到找到 data-gid（防止点击到子元素 span/icon/count 等）
+        var gid = null, gname = '', node = el;
+        while (node && node !== document.body) {
+            gid = parseInt(node.getAttribute('data-gid'));
+            gname = node.getAttribute('data-gname') || '';
+            if (gid) break;
+            node = node.parentElement;
+        }
+        if (!gid) { console.warn('[wc-bridge] _treeLeafClick: 未找到 data-gid, el=', el); return; }
+        App.switchGroup(gid, gname);
+    } catch(e) {
+        console.error('[wc-bridge] _treeLeafClick error:', e.message, e.stack);
+    }
 };
 
 // 折叠/展开树节点
@@ -970,14 +989,21 @@ App._wcMoveCard = function(cardId, targetGroupId, groupName) {
 };
 
 // Phase15: 批量移动 — 独立弹窗，完整展示分组树（root→sub→leaf 三级）
-App._wcBatchMove = function() {
+// Phase17.3: 统一获取批量选中的词卡 ID（batchSelected Set 优先，DOM 兜底）
+App._getBatchSelectedIds = function() {
     var ids = [];
-    try { ids = Array.from(App.state.batchSelected); } catch(e) { ids = []; }
+    try { ids = Array.from(this.state.batchSelected); } catch(e) {}
     if (ids.length === 0) {
         document.querySelectorAll('#promptList .batch-checkbox:checked').forEach(function(cb) {
-            ids.push(parseInt(cb.getAttribute('data-id')));
+            var id = parseInt(cb.getAttribute('data-id'));
+            if (!isNaN(id)) ids.push(id);
         });
     }
+    return ids;
+};
+
+App._wcBatchMove = function() {
+    var ids = this._getBatchSelectedIds();
     if (ids.length === 0) { this.showToast('请先勾选词卡', 'warning'); return; }
     
     // 存储待移动 ID
@@ -1069,18 +1095,13 @@ App._wcDoBatchMove = function(ids, targetGroupId, groupName) {
         } else {
             self.showToast('移动未完成', 'error');
         }
-    }).catch(function() { self.showToast('出错', 'error'); });
+    }).catch(function() { self.showToast('出错', 'error'); })
+    .finally(function() { self._bmvIds = null; });
 };
 
 // Phase20: 批量清除预览（缩略图 + 视频）
 App._wcBatchClearPreview = function() {
-    var ids = [];
-    try { ids = Array.from(App.state.batchSelected); } catch(e) { ids = []; }
-    if (ids.length === 0) {
-        document.querySelectorAll('#promptList .batch-checkbox:checked').forEach(function(cb) {
-            ids.push(parseInt(cb.getAttribute('data-id')));
-        });
-    }
+    var ids = this._getBatchSelectedIds();
     if (ids.length === 0) { this.showToast('请先勾选词卡', 'warning'); return; }
     if (!confirm('确认清除 ' + ids.length + ' 条词卡的缩略图和视频预览？\n不会删除词卡内容本身。')) return;
     var self = this;
@@ -2497,7 +2518,7 @@ App._showActivationDialog = function(mode, tier) {
         '<div style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">🔍 本机指纹</label>' +
         '<div style="display:flex;gap:8px;align-items:center;">' +
         '<code id="licFpDisplay" style="flex:1;padding:8px 10px;background:var(--bg);border:1px solid var(--border-color);border-radius:6px;font-size:12px;word-break:break-all;color:var(--text);">⏳ 获取中...</code>' +
-        '<button id="licFpCopy" onclick="window._licCopyFp()" style="padding:8px 14px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s;" onmouseenter="this.style.borderColor=var(--primary);this.style.color=var(--primary)" onmouseleave="this.style.borderColor=var(--border-color);this.style.color=var(--text)">📋 复制指纹</button>' +
+        '<button id="licFpCopy" onclick="window._licCopyFp()" style="padding:8px 14px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s;" onmouseenter="this.style.borderColor=#3b82f6;this.style.color=#3b82f6" onmouseleave="this.style.borderColor=#cbd5e1;this.style.color=#1e293b">📋 复制指纹</button>' +
         '</div>' +
         '<div id="licFpMsg" style="font-size:11px;margin-top:6px;padding:6px 10px;border-radius:4px;display:none;"></div>' +
         '</div>' +
@@ -2510,8 +2531,8 @@ App._showActivationDialog = function(mode, tier) {
         '<li>发送给持有本服务器 <code style="font-size:10px;">.license_seed</code> 的管理员</li>' +
         '<li>管理员在 <b>激活码生成器</b> 中连接服务器即可生成激活码</li>' +
         '</ol>' +
-        '<button id="licCopyInfo" onclick="window._licCopyInfo()" style="margin-top:10px;width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;" onmouseenter="this.style.borderColor=var(--primary);this.style.color=var(--primary)" onmouseleave="this.style.borderColor=var(--border-color);this.style.color=var(--text)">📋 复制服务器地址 + 指纹</button>' +
-        '<button id="licDownloadPkg" onclick="window._licDownloadPkg()" style="margin-top:6px;width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;" onmouseenter="this.style.borderColor=var(--primary);this.style.color=var(--primary)" onmouseleave="this.style.borderColor=var(--border-color);this.style.color=var(--text)">📥 下载激活数据包（异地离线用）</button>' +
+        '<button id="licCopyInfo" onclick="window._licCopyInfo()" style="margin-top:10px;width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;" onmouseenter="this.style.borderColor=#3b82f6;this.style.color=#3b82f6" onmouseleave="this.style.borderColor=#cbd5e1;this.style.color=#1e293b">📋 复制服务器地址 + 指纹</button>' +
+        '<button id="licDownloadPkg" onclick="window._licDownloadPkg()" style="margin-top:6px;width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;" onmouseenter="this.style.borderColor=#3b82f6;this.style.color=#3b82f6" onmouseleave="this.style.borderColor=#cbd5e1;this.style.color=#1e293b">📥 下载激活数据包（异地离线用）</button>' +
         '</div>' +
         '<div id="licMsg" style="font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;display:none;"></div>' +
         '<div class="form-group"><label style="font-size:12px;">激活码</label>' +
