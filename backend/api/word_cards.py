@@ -124,6 +124,43 @@ def delete_group(group_id: int):
     safe_commit()
     return {"ok": True, "message": "分组已删除，词卡已移至未分类"}
 
+@router.post("/groups/reorder")
+def reorder_groups(data: dict):
+    """批量重排同级分组顺序（编辑模式手动排序）
+    入参: { "ordered_ids": [3, 1, 5, 2, 4] }
+    约束: 所有ID必须属于同一 parent_group_id 且非内置类型"""
+    ordered_ids = data.get("ordered_ids")
+    if not ordered_ids or not isinstance(ordered_ids, list) or len(ordered_ids) < 2:
+        raise HTTPException(400, "请提供至少2个分组的ID列表")
+    db = get_db()
+    # 校验：所有ID存在、类型非内置、属于同一父级
+    placeholders = ','.join('?' * len(ordered_ids))
+    rows = db.execute(
+        f"SELECT id, group_type, parent_group_id FROM word_card_group WHERE id IN ({placeholders}) AND is_active=1",
+        ordered_ids
+    ).fetchall()
+    if len(rows) != len(ordered_ids):
+        raise HTTPException(400, "部分分组不存在或已失效")
+    row_map = {r["id"]: r for r in rows}
+    for gid in ordered_ids:
+        r = row_map.get(gid)
+        if not r:
+            raise HTTPException(400, f"分组 {gid} 不存在")
+        if r["group_type"] in ("root", "builtin"):
+            raise HTTPException(403, f"内置分组 '{r['group_type']}' 不可排序")
+    # 校验同一父级
+    parent_ids = {row_map[gid]["parent_group_id"] for gid in ordered_ids}
+    if len(parent_ids) > 1:
+        raise HTTPException(400, "只能对同一父级下的同级分组排序")
+    # 批量更新 sort_order
+    for idx, gid in enumerate(ordered_ids):
+        db.execute(
+            "UPDATE word_card_group SET sort_order=?, updated_at=datetime('now','localtime') WHERE id=?",
+            [idx + 1, gid]
+        )
+    safe_commit()
+    return {"ok": True, "message": f"已重排 {len(ordered_ids)} 个分组", "ordered_ids": ordered_ids}
+
 # ==================== 选取器 (静态路径) ====================
 
 @router.get("/suggestions")

@@ -3909,8 +3909,28 @@ body.dark-theme .header-divider {
     .header-actions { gap: 3px; }
 }
 
-@media (max-width: 1023px) {
-    .nav-dd-text { display: none; }
-    .nav-dropdown-btn { padding: 0 8px; }
-    .nav-dropdown-btn .nav-dd-arrow { display: none; }
+@media (max-width: 1023px) { 
+    .nav-dd-text { display: none; } 
+    .nav-dropdown-btn { padding: 0 8px; } 
+    .nav-dropdown-btn .nav-dd-arrow { display: none; } 
 }
+
+/* 分组管理 — 拖拽排序视觉反馈 */
+.gm-sortable-row { transition: opacity 0.15s, background 0.15s; }
+.gm-sortable-row.gm-dragging { opacity: 0.35 !important; }
+.gm-sortable-row.gm-drag-over {
+    border-top: 2px solid var(--primary, #6366f1) !important;
+    background: rgba(99, 102, 241, 0.08) !important;
+}
+
+/* 侧栏节点拖拽排序 */
+.sb-drag-target { transition: opacity 0.15s, background 0.15s, border-top 0.15s; }
+.sb-drag-target.sb-dragging { opacity: 0.35 !important; }
+.sb-drag-target.sb-drag-over { 
+    border-top: 2px solid var(--primary, #6366f1) !important; 
+    background: rgba(99, 102, 241, 0.06) !important; 
+}
+
+/* 排序完成闪烁动画 */
+@keyframes gmFlash { 0% { background: rgba(99,102,241,0.25); } 100% { background: transparent; } }
+.gm-flash, .sb-flash { animation: gmFlash 0.7s ease-out; }
