@@ -118,7 +118,7 @@ App.wordCards.load = async function() {
                 var highlightName = this._search ? App.wordCards._highlight(name, this._search) : App._escape(name);
                 var highlightContent = this._search ? App.wordCards._highlight((c.content||'').substring(0,200), this._search) : App._escape(c.content||'');
                 var highlightMeaning = this._search && c.meaning ? App.wordCards._highlight(c.meaning, this._search) : App._escape(c.meaning||'');
-                h += '<div class="wc-card" style="border:1px solid var(--border-color);border-radius:10px;overflow:hidden;background:var(--bg-card);transition:0.15s;" onmouseenter="this.style.borderColor=\'var(--primary)\';this.style.boxShadow=\'0 4px 16px rgba(0,0,0,0.08)\'" onmouseleave="this.style.borderColor=\'var(--border-color)\';this.style.boxShadow=\'none\'">'
+                h += '<div class="wc-card" style="border:1px solid var(--border-color);border-radius:10px;overflow:hidden;background:var(--bg-card);transition:0.15s;" onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.boxShadow=\'0 4px 16px rgba(0,0,0,0.08)\'" onmouseleave="this.style.borderColor=\'#cbd5e1\';this.style.boxShadow=\'none\'">'
                 + '<div style="padding:10px 12px 6px;display:flex;justify-content:space-between;align-items:start;">'
 + '<div data-card-content="' + (c.content||'').replace(/'/g,'\\') + '" onclick="App.copyText(this.dataset.cardContent,\''+App._t('common.copied', '已复制')+'\')" style="display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer;flex:1;">'
                 + '<span style="font-size:16px;">'+App._escape(c.icon||'📄')+'</span>'
@@ -217,7 +217,7 @@ App.wordCards._fetchSuggestions = async function(q) {
         var h = '<div style="padding:4px 10px;font-size:10px;color:var(--text-muted);border-bottom:1px solid var(--border-color);">💡 搜索建议</div>';
         for (var i = 0; i < d.suggestions.length; i++) {
             var s = d.suggestions[i];
-            h += '<div style="padding:5px 10px;cursor:pointer;border-bottom:1px solid var(--hover-bg);" onmouseover="this.style.background=\'var(--hover-bg)\'" onmouseout="this.style.background=\'transparent\'" onclick="var inp=document.getElementById(\'wcSearch\');if(inp)inp.value=\'' + App._escape(s.name) + '\';App.wordCards.search();var sd=document.getElementById(\'wcSuggestions\');if(sd)sd.remove();">' +
+            h += '<div style="padding:5px 10px;cursor:pointer;border-bottom:1px solid var(--hover-bg);" onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'transparent\'" onclick="var inp=document.getElementById(\'wcSearch\');if(inp)inp.value=\'' + App._escape(s.name) + '\';App.wordCards.search();var sd=document.getElementById(\'wcSuggestions\');if(sd)sd.remove();">' +
                 '<span style="font-weight:600;">' + App._escape(s.name) + '</span>' +
                 (s.usage > 0 ? '<span style="font-size:9px;color:var(--text-muted);margin-left:6px;">×' + s.usage + '</span>' : '') +
                 '<div style="font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App._escape((s.snippet||'').substring(0,60)) + '</div>' +

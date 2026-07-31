@@ -691,7 +691,7 @@ App.cc._loadMediaLib = async function() {
         var h = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">';
         for (var i = 0; i < d.items.length; i++) {
             var item = d.items[i];
-            h += '<div style="border:1px solid var(--border-color);border-radius:6px;overflow:hidden;cursor:pointer;transition:0.12s;" onclick="App.cc._pickFromMediaLib(\''+App._escape(item.filename||'')+'\')" onmouseover="this.style.borderColor=\'var(--primary)\'" onmouseout="this.style.borderColor=\'var(--border-color)\'">';
+            h += '<div style="border:1px solid var(--border-color);border-radius:6px;overflow:hidden;cursor:pointer;transition:0.12s;" onclick="App.cc._pickFromMediaLib(\''+App._escape(item.filename||'')+'\')" onmouseover="this.style.borderColor=\'#3b82f6\'" onmouseout="this.style.borderColor=\'#cbd5e1\'">';
             h += '<img src="/api/thumbnails/file/' + App._escape(item.filename) + '" style="width:100%;height:100px;object-fit:cover;" loading="lazy">';
             h += '</div>';
         }
@@ -714,7 +714,7 @@ App.cc._loadVideoLib = async function() {
             var item = d.items[i];
             var cover = item.cover_url || '';
             var dur = item.duration ? Math.round(item.duration) + 's' : '';
-            h += '<div style="border:1px solid var(--border-color);border-radius:6px;overflow:hidden;cursor:pointer;transition:0.12s;position:relative;" onclick="App.cc._pickFromVideoLib(this,\''+App._escape(item.filename||'')+'\')" onmouseover="this.style.borderColor=\'var(--primary)\'" onmouseout="this.style.borderColor=\'var(--border-color)\'">';
+            h += '<div style="border:1px solid var(--border-color);border-radius:6px;overflow:hidden;cursor:pointer;transition:0.12s;position:relative;" onclick="App.cc._pickFromVideoLib(this,\''+App._escape(item.filename||'')+'\')" onmouseover="this.style.borderColor=\'#3b82f6\'" onmouseout="this.style.borderColor=\'#cbd5e1\'">';
             h += '<div style="width:100%;height:100px;background:var(--bg-muted,#1e1e1e);display:flex;align-items:center;justify-content:center;position:relative;">';
             if (cover) {
                 h += '<img src="'+cover+'" style="width:100%;height:100%;object-fit:cover;" loading="lazy">';

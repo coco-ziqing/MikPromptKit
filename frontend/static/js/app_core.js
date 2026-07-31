@@ -736,6 +736,12 @@ var App = window.App || {
                 } else if (tries > 50) {
                     clearInterval(retry);
                     console.error('[app_core] loadGroupTree 等待超时 (10s), 降级为空白侧边栏');
+                    App.state.groupTree = [];
+                    // 尝试渲染陈列架（即使树为空也显示占位提示）
+                    try {
+                        if (typeof App._showShowcase === 'function') App._showShowcase();
+                        if (typeof App.renderSidebar === 'function') App.renderSidebar();
+                    } catch(e) {}
                     resolve();
                 }
             }, 200);

@@ -239,7 +239,7 @@ App.wordEditor._showGroupPicker = async function() {
     
     // "无分组" 选项
     var noGroupActive = !currentVal ? 'border:2px solid #10b981;background:#ecfdf5;' : 'border:1px solid transparent;';
-    html += '<div onclick="App.wordEditor._selectGroupFromPicker(\'\')" style="padding:8px 10px;border-radius:8px;cursor:pointer;' + noGroupActive + 'transition:0.15s;margin-bottom:4px;font-size:13px;" onmouseenter="this.style.background=var(--hover-bg)" onmouseleave="this.style.background=\'\'">📭 无分组</div>';
+    html += '<div onclick="App.wordEditor._selectGroupFromPicker(\'\')" style="padding:8px 10px;border-radius:8px;cursor:pointer;' + noGroupActive + 'transition:0.15s;margin-bottom:4px;font-size:13px;" onmouseenter="this.style.background=#f1f5f9" onmouseleave="this.style.background=\'\'">📭 无分组</div>';
     html += '<div style="border-top:1px solid var(--border-color);margin:4px 0 8px;"></div>';
     
     // 构建分组树（扁平展示带缩进）
@@ -278,7 +278,7 @@ App.wordEditor._buildGroupPickerTree = function(groups, currentVal) {
             var activeStyle = isActive ? 'border:2px solid #10b981;background:#ecfdf5;font-weight:700;' : 'border:1px solid transparent;';
             var typeBadge = g.group_type === 'builtin' ? '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:var(--tag-bg);color:var(--primary);margin-left:4px;">内置</span>' : '';
             var cardCount = g.card_count ? ' <span style="font-size:10px;color:var(--text-muted);">(' + g.card_count + ')</span>' : '';
-            html += '<div onclick="App.wordEditor._selectGroupFromPicker(\'' + g.id + '\')" data-group="' + g.id + '" style="padding:7px 10px 7px ' + (12 + indent) + 'px;border-radius:8px;cursor:pointer;' + activeStyle + 'transition:0.15s;font-size:13px;display:flex;align-items:center;gap:6px;" onmouseenter="if(!this.style.border.includes(\'#10b981\')){this.style.background=\'var(--hover-bg)\';}" onmouseleave="if(!this.style.border.includes(\'#10b981\')){this.style.background=\'\';}">';
+            html += '<div onclick="App.wordEditor._selectGroupFromPicker(\'' + g.id + '\')" data-group="' + g.id + '" style="padding:7px 10px 7px ' + (12 + indent) + 'px;border-radius:8px;cursor:pointer;' + activeStyle + 'transition:0.15s;font-size:13px;display:flex;align-items:center;gap:6px;" onmouseenter="if(!this.style.border.includes(\'#10b981\')){this.style.background=\'#f1f5f9\';}" onmouseleave="if(!this.style.border.includes(\'#10b981\')){this.style.background=\'\';}">';
             html += '<span>' + (g.icon||'📁') + '</span>';
             html += '<span>' + App._escape(g.name) + '</span>';
             html += typeBadge + cardCount;

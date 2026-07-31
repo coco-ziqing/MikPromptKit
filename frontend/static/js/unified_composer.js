@@ -366,8 +366,8 @@ App.uc._renderAtomSuggestions = function(af) {
             'background:var(--tag-bg);color:var(--text-main);border-radius:10px;' +
             'border:1px solid var(--border-color);white-space:nowrap;' +
             'transition:all .15s;" ' +
-            'onmouseover="this.style.background=\'var(--accent)\';this.style.color=\'#fff\'" ' +
-            'onmouseout="this.style.background=\'var(--tag-bg)\';this.style.color=\'var(--text-main)\'">' +
+            'onmouseover="this.style.background=\'#6366f1\';this.style.color=\'#fff\'" ' +
+            'onmouseout="this.style.background=\'#f1f5f9\';this.style.color=\'#1e293b\'">' +
             App._escape(a.atom_text.substring(0, 20)) + '</span>';
     });
     h += '</div>';

@@ -69,7 +69,7 @@ App.characterLib._renderList = function() {
         var tags = '';
         try { var tl = JSON.parse(c.tags||'[]'); if(tl.length) tags = tl.slice(0,3).map(function(t){return '<span class="s2-chip-label" style="background:rgba(139,92,246,0.1);color:#7c3aed;padding:1px 6px;border-radius:3px;font-size:9px;">'+App._escape(t)+'</span>';}).join(' '); } catch(e){}
 
-        h += '<div class="char-card" style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:12px;cursor:pointer;transition:0.12s;display:flex;gap:10px;align-items:flex-start;" onclick="App.characterLib._viewProfile('+c.id+')" onmouseover="this.style.borderColor=\'#8b5cf6\';this.style.boxShadow=\'0 2px 12px rgba(139,92,246,0.12)\';" onmouseout="this.style.borderColor=\'var(--border-color)\';this.style.boxShadow=\'none\';">';
+        h += '<div class="char-card" style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:12px;cursor:pointer;transition:0.12s;display:flex;gap:10px;align-items:flex-start;" onclick="App.characterLib._viewProfile('+c.id+')" onmouseover="this.style.borderColor=\'#8b5cf6\';this.style.boxShadow=\'0 2px 12px rgba(139,92,246,0.12)\';" onmouseout="this.style.borderColor=\'#cbd5e1\';this.style.boxShadow=\'none\';">';
         h += '<div style="flex-shrink:0;">' + avatarTag + '</div>';
         h += '<div style="flex:1;min-width:0;">';
         h += '<div style="font-weight:700;font-size:14px;color:var(--text-main);">'+App._escape(c.name)+'</div>';
