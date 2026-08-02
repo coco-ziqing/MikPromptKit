@@ -1,7 +1,7 @@
 """
 v4.3.0-phase16: Log API — 日志查询/实时流/清除/统计 + Phase17 用户行为追踪
 """
-from fastapi import APIRouter, Query, Request, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from logger import query, stats, clear_before, stream_generator

@@ -176,6 +176,9 @@ def rebuild_all_embeddings(progress_callback=None):
                 VALUES (?, ?, datetime('now','localtime'))
             """, [row["id"], blob])
             success += 1
+            # 2026-08-02 修复: 分批 commit，避免单一大事务长期持有写锁导致全库 database is locked
+            if success % 50 == 0:
+                db.commit()
             if progress_callback and i % 10 == 0:
                 progress_callback(i, total)
         except Exception as e:
@@ -436,6 +439,9 @@ def rebuild_wc_embeddings(progress_callback=None):
                 VALUES (?, ?, datetime('now','localtime'))
             """, [row["id"], blob])
             success += 1
+            # 2026-08-02 修复: 分批 commit，避免单一大事务长期持有写锁导致全库 database is locked
+            if success % 50 == 0:
+                db.commit()
             if progress_callback and i % 50 == 0:
                 progress_callback(i, total)
         except Exception as e:

@@ -20,7 +20,23 @@ _RETRY_DELAY = 0.05
 
 
 def get_db():
-    """获取当前线程的数据库连接（惰性创建）"""
+    """获取当前线程的数据库连接（惰性创建）
+
+    2026-08-02 加固: 若线程连接已被外部 close（如 sync.restore_package 替换 DB 文件），
+    自动检测并重建，避免 'Cannot operate on a closed database' 连环报错。
+    """
+    conn = getattr(_local, "conn", None)
+    if conn is not None:
+        try:
+            conn.execute("SELECT 1")
+            return conn
+        except (sqlite3.ProgrammingError, sqlite3.OperationalError):
+            # 连接已关闭/失效 → 丢弃重建
+            try:
+                conn.close()
+            except Exception:
+                pass
+            _local.conn = None
     if not hasattr(_local, "conn") or _local.conn is None:
         try:
             os.makedirs(DB_DIR, exist_ok=True)
@@ -45,6 +61,20 @@ def close_db():
         except sqlite3.Error:
             pass
         _local.conn = None
+
+
+def rollback_current():
+    """回滚当前线程未提交的事务（请求异常后调用，防止悬挂持锁）
+
+    2026-08-02 加固: 请求执行中 INSERT/UPDATE 失败会留下未提交事务，
+    连接持续持有写锁导致后续所有写操作 database is locked。
+    """
+    conn = getattr(_local, "conn", None)
+    if conn is not None:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
 
 
 def safe_execute(sql, params=None, commit=False):
@@ -90,9 +120,19 @@ def safe_commit():
                 if attempt < 14:
                     time.sleep(0.5 * (attempt + 1))
                     continue
+            # 2026-08-02 加固: 提交失败必须回滚，释放写锁防止悬挂
+            try:
+                db.rollback()
+            except Exception:
+                pass
             log_error(f"[DB] 提交失败: {e}", source="database")
             return False
         except sqlite3.Error as e:
+            # 2026-08-02 加固: 回滚释放写锁
+            try:
+                db.rollback()
+            except Exception:
+                pass
             log_error(f"[DB] 提交失败: {e}", source="database")
             return False
     return False

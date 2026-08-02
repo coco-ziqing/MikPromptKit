@@ -4,7 +4,7 @@
 import sys, os, socket, traceback, subprocess
 from contextlib import asynccontextmanager
 import uvicorn
-from fastapi import FastAPI, Request, UploadFile, File
+from fastapi import FastAPI, Request, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -450,6 +450,12 @@ async def record_request_middleware(request: Request, call_next):
         from api.monitor import record_request
         record_request(request.method, request.url.path, 500, duration)
         from logger import capture_exception
+        # 2026-08-02 加固: 请求异常后回滚当前线程事务，释放写锁
+        try:
+            from database import rollback_current
+            rollback_current()
+        except Exception:
+            pass
         body = ""
         try:
             if request.method in ("POST", "PUT", "PATCH"):
@@ -628,10 +634,39 @@ async def backup_now():
     return result
 
 
+# ============ HTTPException 业务错误日志 (2026-08-02: detail 入日志，辅助排查) ============
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """业务错误（4xx/5xx 显式抛出）→ 记录详情到日志，保持原响应格式兼容前端"""
+    try:
+        from logger import warn
+        request_id = getattr(request.state, "request_id", "")
+        warn(
+            f"HTTP {exc.status_code}: {exc.detail}",
+            source="api",
+            path=request.url.path,
+            status_code=exc.status_code,
+            request_id=request_id,
+        )
+    except Exception:
+        pass  # 日志失败不影响业务响应
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=exc.headers or None,
+    )
+
+
 # ============ 全局异常处理器 (v16: 接入日志引擎) ============
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     # Phase17: 捕获请求体 + session_id + request_id + 刷面包屑
+    # 2026-08-02 加固: 异常后回滚当前线程事务，释放写锁
+    try:
+        from database import rollback_current
+        rollback_current()
+    except Exception:
+        pass
     body = ""
     request_id = getattr(request.state, "request_id", "unknown")
     session_id = getattr(request.state, "session_id", "")

@@ -305,6 +305,12 @@ def restore_package(pkg_name: str, backup_first: bool = True) -> dict:
                     close_db()
                 except Exception:
                     pass
+                # 2026-08-02 加固: 恢复后提示（旧线程连接已失效，get_db 已支持自愈，但建议重启）
+                try:
+                    from logger import warn
+                    warn("数据库已从备份包恢复，线程连接已重置（get_db 自愈已启用；如遇异常建议重启服务）", source="sync", path="/api/sync/restore")
+                except Exception:
+                    pass
                 tmp_path = DB_PATH + ".restore_tmp"
                 with open(tmp_path, 'wb') as f:
                     f.write(zf.read("prompts.db"))

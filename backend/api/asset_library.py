@@ -15,6 +15,8 @@ from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form, Query, Body
 from fastapi.responses import FileResponse
 from jwt_auth import get_current_user
+# 2026-08-02 诊断升级: 接入日志引擎
+from logger import warn
 try:
     from audit import record_audit
 except Exception:
@@ -170,8 +172,8 @@ def create_project(data: dict = Body(...), request: Request = None):
         # Phase35.2: owner 加为项目成员
         try:
             c.execute("INSERT OR IGNORE INTO project_space_member (project_space_id,user_id,role,added_by) VALUES (?,?, 'owner', ?)", [pid, uid, uid])
-        except Exception:
-            pass
+        except Exception as e:
+            warn(f"项目 #{pid} owner 加入成员失败: {e}", source="asset-library")
         c.commit()
         record_audit("project_create", request=request, detail=f"新建项目「{name}」({visibility}) 模块:{','.join(modules)}",
                      target_type="project", target_id=pid, category="project")
@@ -393,8 +395,8 @@ async def upload_asset(pid: int, request: Request, file: UploadFile = File(...),
                 [cid, fp, fname, size, rel, thumb or "", u.get("id"), u.get("username", "")])
             vid = c.execute("SELECT last_insert_rowid()").fetchone()[0]
             c.execute("UPDATE asset_catalog SET current_version_id=?, version_count=1, review_status='draft' WHERE id=?", [vid, cid])
-        except Exception:
-            pass
+        except Exception as e:
+            warn(f"资产 #{cid} 版本快照创建失败: {e}", source="asset-library")
         c.commit()
         record_audit("asset_upload", request=request,
                      detail=f"上传 {mod['name']} 「{fname}」({size//1024}KB){' [关键·备份]' if is_critical else ''}"

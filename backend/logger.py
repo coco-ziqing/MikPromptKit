@@ -34,9 +34,18 @@ def _init_table():
             path TEXT DEFAULT '',
             status_code INTEGER DEFAULT 0,
             elapsed_ms REAL DEFAULT 0,
+            request_id TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now','localtime'))
         )
     """)
+    # 2026-08-02 加固: 兼容旧库（早期版本建表缺 request_id 列，依赖外部迁移）
+    # 若列缺失则补列，避免干净环境首启时 INSERT 报错导致日志静默丢失
+    try:
+        cols = [r[1] for r in db.execute("PRAGMA table_info(runtime_log)").fetchall()]
+        if "request_id" not in cols:
+            db.execute("ALTER TABLE runtime_log ADD COLUMN request_id TEXT DEFAULT ''")
+    except Exception:
+        pass
     db.execute("CREATE INDEX IF NOT EXISTS idx_log_level ON runtime_log(level)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_log_source ON runtime_log(source)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_log_created ON runtime_log(created_at)")
@@ -44,7 +53,8 @@ def _init_table():
 
 
 def log(level: str, message: str, source: str = "system", detail: str = "",
-        stack: str = "", path: str = "", status_code: int = 0, elapsed_ms: float = 0):
+        stack: str = "", path: str = "", status_code: int = 0, elapsed_ms: float = 0,
+        request_id: str = ""):
     """核心日志写入"""
     global _seq
     level = level.lower()
@@ -64,6 +74,7 @@ def log(level: str, message: str, source: str = "system", detail: str = "",
         "path": path[:500] if path else "",
         "status_code": status_code,
         "elapsed_ms": round(elapsed_ms, 1),
+        "request_id": request_id[:50],
         "created_at": ts,
         "timestamp": ts
     }
@@ -76,7 +87,7 @@ def log(level: str, message: str, source: str = "system", detail: str = "",
         db.execute(
             "INSERT INTO runtime_log (seq,level,source,message,detail,stack,path,status_code,elapsed_ms,request_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
             [entry["seq"], entry["level"], entry["source"], entry["message"],
-             entry["detail"], entry["stack"], entry["path"], entry["status_code"], entry["elapsed_ms"], entry.get("request_id", "")[:50]]
+             entry["detail"], entry["stack"], entry["path"], entry["status_code"], entry["elapsed_ms"], entry["request_id"]]
         )
         safe_commit()
     except Exception as e:
@@ -106,24 +117,23 @@ def fatal(msg, source="system", **kwargs): log("fatal", msg, source, **kwargs)
 
 
 def capture_exception(e: Exception, source: str = "system", path: str = "", status_code: int = 500, request_body: str = "", request_id: str = ""):
-    """捕获异常并记录完整调用栈 + 请求体 + request_id"""
-    msg = f"[{request_id}] {type(e).__name__}: {e}" if request_id else f"{type(e).__name__}: {e}"
+    """捕获异常并记录完整调用栈 + 请求体 + request_id（独立存列，便于按请求追溯）"""
+    msg = f"{type(e).__name__}: {e}"
     stack = traceback.format_exc()
     detail_parts = [str(e)[:1500]]
     if request_body and len(request_body) < 4000:
         detail_parts.append(f"[Body]: {request_body}")
-    error(msg, source=source, detail=" | ".join(detail_parts), stack=stack, path=path, status_code=status_code)
+    error(msg, source=source, detail=" | ".join(detail_parts), stack=stack, path=path, status_code=status_code, request_id=request_id)
 
 
 def api_log(method: str, path: str, status: int, elapsed_ms: float, source: str = "api", request_body: str = "", request_id: str = ""):
-    """记录 API 调用"""
+    """记录 API 调用（request_id 独立存列）"""
     level = "error" if status >= 500 else ("warn" if status >= 400 else "info")
-    prefix = f"[{request_id}] " if request_id else ""
     detail_parts = [f"{method} {path} → {status} ({elapsed_ms:.0f}ms)"]
     if request_body and len(request_body) < 2000:
         detail_parts.append(f"[Body]: {request_body}")
-    log(level, f"{prefix}{method} {path} → {status} ({elapsed_ms:.0f}ms)", source=source,
-        path=path, status_code=status, elapsed_ms=elapsed_ms, detail=" | ".join(detail_parts))
+    log(level, f"{method} {path} → {status} ({elapsed_ms:.0f}ms)", source=source,
+        path=path, status_code=status, elapsed_ms=elapsed_ms, detail=" | ".join(detail_parts), request_id=request_id)
 
 
 def query(level: str = None, source: str = None, search: str = None,
@@ -142,13 +152,14 @@ def query(level: str = None, source: str = None, search: str = None,
             params.extend([f"%{search}%", f"%{search}%"])
         w = "WHERE " + " AND ".join(where) if where else ""
         o = "DESC" if order == "desc" else "ASC"
+        # 2026-08-02 修复: seq 是内存序列（服务重启后重置），排序必须用自增主键 id
         rows = db.execute(
-            f"SELECT * FROM runtime_log {w} ORDER BY seq {o} LIMIT ? OFFSET ?",
+            f"SELECT * FROM runtime_log {w} ORDER BY id {o} LIMIT ? OFFSET ?",
             params + [limit, offset]
         ).fetchall()
         total = db.execute(
             f"SELECT COUNT(*) as c FROM runtime_log {w}", params
-        ).fetchone()["c"] if where else db.execute("SELECT MAX(seq) as c FROM runtime_log").fetchone()["c"]
+        ).fetchone()["c"]
         return [dict(r) for r in rows], total
     except Exception as e:
         print(f"[Logger] query failed: {e}")

@@ -7,6 +7,8 @@ import json, re, hashlib, os, uuid, io
 from fastapi import APIRouter, Query, HTTPException, UploadFile, File
 from fastapi.responses import Response, FileResponse
 from database import get_db, safe_count, safe_count_dict, safe_fetch_one, safe_execute, safe_commit
+# 2026-08-02 诊断升级: 词库域接入统一日志引擎（此前为 0 覆盖）
+from logger import info, warn, error, debug
 
 router = APIRouter(prefix="/api/v4/word-cards", tags=["word-cards"])
 
@@ -413,16 +415,17 @@ async def batch_create_from_text(data: dict):
                 [gid, name, content, meaning, "[]", "custom", "batch", "image", "{}", max_sort + 1]
             )
             cid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-            # 异步更新语义向量（静默失败）
+            # 异步更新语义向量（失败记录日志，不阻塞批量创建）
             try:
                 from semantic import update_wc_embedding
                 update_wc_embedding(cid, content)
-            except Exception:
-                pass
+            except Exception as e:
+                warn(f"词卡 #{cid} embedding 更新失败: {e}", source="word-cards", path="/api/v4/word-cards/batch")
             created.append({"id": cid, "content": content[:60], "name": name[:30], "group_id": gid, "group_name": it.get("group_name", ""), "meaning": meaning[:40]})
         except Exception as e:
             errors.append({"content": it.get("content", "")[:40], "error": str(e)[:100]})
     db.commit()
+    info(f"批量创建词卡完成: 成功={len(created)} 失败={len(errors)} 总数={len(items)}", source="word-cards", path="/api/v4/word-cards/batch-create")
     return {"ok": True, "created": created, "created_count": len(created), "errors": errors, "total_parsed": len(items)}
 
 
@@ -538,8 +541,8 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
         try:
             import shutil
             shutil.copy2(dest, os.path.join(SHARED_THUMB_DIR, filename))
-        except:
-            pass
+        except Exception as e:
+            warn(f"词卡 #{card_id} 缩略图同步到共享媒体库失败: {e}", source="word-cards")
     except ImportError:
         raise HTTPException(500, "Pillow 未安装")
     except Exception as e:
@@ -638,10 +641,10 @@ def copy_video_from_library(card_id: int, data: dict):
                 poster_db = get_db()
                 poster_db.execute("UPDATE word_card SET thumbnail=? WHERE id=?", [poster_name, card_id])
                 safe_commit()
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as e:
+                warn(f"词卡 #{card_id} 海报缩略图 DB 更新失败: {e}", source="word-cards")
+    except Exception as e:
+        warn(f"词卡 #{card_id} ffmpeg 海报提取失败: {e}", source="word-cards")
 
     # 后台线程复制视频文件（可能较大，不阻塞响应）
     import threading
@@ -649,8 +652,8 @@ def copy_video_from_library(card_id: int, data: dict):
         try:
             import shutil
             shutil.copy2(src_path, dest_path)
-        except Exception:
-            pass
+        except Exception as e:
+            warn(f"词卡 #{card_id} 视频复制失败: {e}", source="word-cards")
     threading.Thread(target=_copy_files_thread, daemon=True).start()
 
     return {"ok": True, "filename": dest_name, "poster": poster_name or None, "source": source}
@@ -676,8 +679,8 @@ async def upload_card_video(card_id: int, file: UploadFile = File(...)):
         global_video_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "videos")
         os.makedirs(global_video_dir, exist_ok=True)
         shutil.copy2(dest, os.path.join(global_video_dir, filename))
-    except Exception:
-        pass
+    except Exception as e:
+        warn(f"词卡 #{card_id} 视频同步到全局视频库失败: {e}", source="word-cards")
     # DB 操作放在最后 — 无 async 断点，不会持锁等待
     db = get_db()
     card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])
@@ -702,8 +705,8 @@ async def upload_card_video(card_id: int, file: UploadFile = File(...)):
             capture_output=True, timeout=30
         )
         poster_ok = os.path.exists(poster_dest)
-    except Exception:
-        pass
+    except Exception as e:
+        warn(f"词卡 #{card_id} ffmpeg 封面提取失败: {e}", source="word-cards")
 
     if poster_ok:
         # 更新海报到 DB（同步写入，立即可用）
@@ -711,8 +714,8 @@ async def upload_card_video(card_id: int, file: UploadFile = File(...)):
             poster_db = get_db()
             poster_db.execute("UPDATE word_card SET thumbnail=? WHERE id=?", [poster_dest_name, card_id])
             poster_db.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            warn(f"词卡 #{card_id} 封面 DB 更新失败: {e}", source="word-cards")
 
     return {"ok": True, "filename": filename, "poster": poster_dest_name if poster_ok else None}
 
@@ -870,9 +873,10 @@ def update_card(card_id: int, data: dict):
         fields.append("updated_at=datetime('now','localtime')"); fields.append("version=version+1")
         params.append(card_id)
         db.execute(f"UPDATE word_card SET {', '.join(fields)} WHERE id=?", params); safe_commit()
+        info(f"更新词卡 #{card_id} (更新字段数={len(fields)-2})", source="word-cards", path=f"/api/v4/word-cards/{{card_id}}")
         if data.get("content"):
             try: from semantic import update_wc_embedding; update_wc_embedding(card_id, data["content"])
-            except: pass
+            except Exception as e: warn(f"词卡 #{card_id} embedding 更新失败: {e}", source="word-cards")
     return {"ok":True}
 
 @router.delete("/{card_id}")
@@ -883,6 +887,7 @@ def delete_card(card_id: int):
     # Phase17: 统一软删除 — 非内置词卡也不物理删除，防止数据丢失
     db.execute("UPDATE word_card SET is_deleted=1,deleted_at=datetime('now','localtime') WHERE id=?", [card_id])
     safe_commit()
+    info(f"删除词卡 #{card_id} (软删除)", source="word-cards", path=f"/api/v4/word-cards/{{card_id}}")
     return {"ok":True}
 
 # ==================== 列表 (根路径 — 必须放在最后) ====================
@@ -952,8 +957,9 @@ def create_card(data: dict):
                [gid,(data.get("name") or content)[:60],content,data.get("meaning",""),data.get("scene",""),data.get("module","custom"),data.get("category",""),json.dumps(data.get("tags",[]),ensure_ascii=False),data.get("icon",""),data.get("thumbnail",""),data.get("preview_media",""),data.get("media_type","image"),card_role,gid])
     safe_commit()
     cid = safe_count("SELECT last_insert_rowid()")
+    info(f"创建词卡 #{cid} (gid={gid}, 内容长度={len(content)})", source="word-cards", path="/api/v4/word-cards")
     try: from semantic import update_wc_embedding; update_wc_embedding(cid, content)
-    except: pass
+    except Exception as e: warn(f"词卡 #{cid} embedding 更新失败: {e}", source="word-cards")
     return {"ok":True,"id":cid}
 
 # ==================== 导出/导入 (Phase13.1) ====================
@@ -1103,7 +1109,8 @@ def _fts_search(db, query: str) -> list:
                         results.append((r["rowid"], score))
                     results.sort(key=lambda x: -x[1])
                     if results: return [rid for rid, _ in results[:200]]
-                except Exception: pass
+                except Exception as e:
+                    debug(f"FTS 策略B 降级: {e}", source="word-cards")
 
         # 策略C2: 英文/混合→分词AND + 前缀扩展
         cleaned = re.sub(r'[^\w\u4e00-\u9fff]', ' ', query).strip()
@@ -1120,12 +1127,13 @@ def _fts_search(db, query: str) -> list:
                         nm = db.execute("SELECT name FROM word_card WHERE id=?", [r["rowid"]]).fetchone()
                         if nm and nm["name"] and _fts_contains(nm["name"], query):
                             score *= 1.5
-                    except Exception: pass
+                    except Exception as e:
+                        debug(f"FTS 策略C 单卡校验降级: {e}", source="word-cards")
                     results.append((r["rowid"], score))
                 results.sort(key=lambda x: -x[1])
                 if results: return [rid for rid, _ in results[:200]]
-            except Exception:
-                pass
+            except Exception as e:
+                debug(f"FTS 策略C 降级: {e}", source="word-cards")
 
         # 策略C3: LIKE 子串回退（多关键词 OR 拆分）
         sub_queries = [query]

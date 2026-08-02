@@ -5,6 +5,8 @@ import os
 import traceback
 from fastapi import APIRouter, Query, HTTPException
 from database import get_db
+# 2026-08-02 诊断升级: 接入日志引擎
+from logger import info, warn, debug
 
 router = APIRouter(prefix="/api", tags=["prompts"])
 
@@ -25,7 +27,8 @@ def _safe_tags(tags_str):
         return []
     try:
         return _j.loads(tags_str)
-    except:
+    except Exception as e:
+        debug(f"tags JSON 解析失败(已降级为空): {e}", source="prompts")
         return []
 
 
@@ -178,13 +181,14 @@ def create_prompt(data: dict):
                     content, data.get("meaning", "") or "", data.get("scene", "") or "", data.get("tags", "[]") or "[]"])
         db.commit()
         new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        info(f"创建提示词 #{new_id} (模块={data.get('module','custom')})", source="prompts", path="/api/prompts")
         # 新建提示词时异步更新语义搜索向量
         try:
             from semantic import update_embedding
             import threading
             threading.Thread(target=update_embedding, args=(new_id, content), daemon=True).start()
-        except Exception:
-            pass
+        except Exception as e:
+            warn(f"提示词 #{new_id} embedding 线程启动失败: {e}", source="prompts")
         return {"ok": True, "id": new_id}
     except HTTPException:
         raise
@@ -205,8 +209,8 @@ def update_prompt(prompt_id: int, data: dict):
         try:
             from api.versions import save_version
             save_version(prompt_id, change_note=data.get("change_note", ""))
-        except Exception:
-            pass  # 版本保存失败不影响编辑
+        except Exception as e:
+            warn(f"提示词 #{prompt_id} 版本存档失败: {e}", source="prompts")
 
         fields = []
         params = []
@@ -223,16 +227,17 @@ def update_prompt(prompt_id: int, data: dict):
         # 清除翻译缓存（内容已变更，旧翻译作废）
         try:
             db.execute("DELETE FROM translations WHERE prompt_id=?", [prompt_id])
-        except Exception:
-            pass
+        except Exception as e:
+            warn(f"提示词 #{prompt_id} 翻译缓存清除失败: {e}", source="prompts")
 
+        info(f"更新提示词 #{prompt_id} (字段数={len(fields)})", source="prompts", path=f"/api/prompts/{{prompt_id}}")
         # 异步更新语义搜索向量（不阻塞保存响应）
         try:
             from semantic import update_embedding
             import threading
             threading.Thread(target=update_embedding, args=(prompt_id,), daemon=True).start()
-        except Exception:
-            pass
+        except Exception as e:
+            warn(f"提示词 #{prompt_id} embedding 线程启动失败: {e}", source="prompts")
 
         return {"ok": True}
     except HTTPException:
