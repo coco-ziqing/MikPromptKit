@@ -881,6 +881,17 @@ def pick_folder():
         return {"ok": False, "error": f"打开目录选择器失败: {e}"}
 
 
+@app.post("/api/utils/default-download-path")
+def default_download_path():
+    """返回默认下载文件夹路径（%USERPROFILE%\\Downloads），供导出弹窗缺省填充"""
+    try:
+        downloads = os.path.join(os.path.expanduser("~"), "Downloads")
+        path = downloads if os.path.isdir(downloads) else os.path.expanduser("~")
+        return {"ok": True, "path": path}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.post("/api/utils/open-folder")
 def open_folder(data: dict = None):
     """在系统文件管理器中打开指定目录（缺省为下载文件夹）

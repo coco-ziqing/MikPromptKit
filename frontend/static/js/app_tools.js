@@ -841,18 +841,29 @@ Object.assign(App, {
             pi.value = savedPath;
             if (se) { se.innerHTML = '\u2705 目录: <strong>' + savedPath + '</strong>'; se.style.color = '#059669'; }
         } else if (savedPath) {
-            pi.value = '\U0001f4c1 ' + savedPath;
+            pi.value = '📁 ' + savedPath;
             if (se) { se.innerHTML = '\u2705 文件夹: <strong>' + savedPath + '</strong>'; se.style.color = '#059669'; }
         } else {
+            // 2026-08-02: 默认缺省路径 = 下载文件夹（后端返回 %USERPROFILE%\Downloads）
             pi.value = '';
-            if (se) { se.innerHTML = App._t('auto.str_8b8d2b65', '\U0001f4a1 点击输入框选择文件夹，或直接输入完整磁盘路径'); se.style.color = 'var(--text-muted)'; }
+            if (se) { se.innerHTML = App._t('auto.str_8b8d2b65', '💡 点击输入框选择文件夹，或直接输入完整磁盘路径'); se.style.color = 'var(--text-muted)'; }
+            var self = this;
+            fetch('/api/utils/default-download-path', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+            }).then(function(r) { return r.json(); }).then(function(d) {
+                if (d.ok && d.path && document.getElementById('exportPathInput') === pi) {
+                    pi.value = d.path;
+                    if (se) { se.innerHTML = '✅ 默认目录: <strong>' + d.path + '</strong>'; se.style.color = '#059669'; }
+                    localStorage.setItem('promptkit_export_path', d.path);
+                }
+            }).catch(function() {});
         }
 
         pi.oninput = function() {
             var v = this.value.trim();
             var s = document.getElementById('exportPathStatus');
             if (!s) return;
-            if (!v) { s.innerHTML = App._t('auto.str_8b8d2b65', '\U0001f4a1 点击输入框选择文件夹，或直接输入完整磁盘路径'); s.style.color = 'var(--text-muted)'; }
+            if (!v) { s.innerHTML = App._t('auto.str_8b8d2b65', '💡 点击输入框选择文件夹，或直接输入完整磁盘路径'); s.style.color = 'var(--text-muted)'; }
             else if (v.includes(":\\") || v.includes(":/")) {
                 s.innerHTML = '\u23f3 验证路径...';
                 s.style.color = '#f59e0b';
@@ -873,16 +884,19 @@ Object.assign(App, {
         };
 
         var ext = fmt === 'pt' ? '.pt' : '.png';
+        // 2026-08-02 修复: PNG 预览显示「目录」而非文件名；无路径时提示默认下载文件夹
+        var savedP = localStorage.getItem('promptkit_export_path') || '';
+        var dirLabel = (savedP && (savedP.indexOf(':\\') >= 0 || savedP.indexOf(':/') >= 0))
+            ? savedP : '浏览器下载文件夹（默认）';
         document.getElementById('exportPathPreview').innerHTML = fmt === 'pt'
-            ? '\U0001f4c4 将保存为: <strong>' + defaultName + ext + '</strong>'
-            : '\U0001f4c4 将保存 <strong>' + ids.length + '</strong> 张 PNG 图片到目录: <strong>' + defaultName + '</strong>';
+            ? '📄 将保存为: <strong>' + defaultName + ext + '</strong>'
+            : '📄 将保存 <strong>' + ids.length + '</strong> 张 PNG 到目录: <strong>' + dirLabel + '</strong>';
 
         document.getElementById('exportNameInput').oninput = function() {
             var val = this.value.trim() || defaultName;
-            var ext = fmt === 'pt' ? '.pt' : '.png';
             document.getElementById('exportPathPreview').innerHTML = fmt === 'pt'
-                ? '\U0001f4c4 将保存为: <strong>' + val + ext + '</strong>'
-                : '\U0001f4c4 将保存 <strong>' + ids.length + '</strong> 张 PNG 图片到目录: <strong>' + val + '</strong>';
+                ? '📄 将保存为: <strong>' + val + ext + '</strong>'
+                : '📄 将保存 <strong>' + ids.length + '</strong> 张 PNG 到目录: <strong>' + dirLabel + '</strong>';
         };
 
         document.getElementById('btnConfirmExportName').onclick = function() { App._confirmBatchExport(); };
@@ -895,7 +909,7 @@ Object.assign(App, {
         var fmt = this._exportQueue.fmt;
         var customName = document.getElementById('exportNameInput').value.trim();
 
-        var saveDir = document.getElementById('exportPathInput').value.trim().replace(/^\U0001f4c1\s*/, '');
+        var saveDir = document.getElementById('exportPathInput').value.trim().replace(/^📁\s*/, '');
         if (saveDir.includes(":\\") || saveDir.includes(":/")) {
             localStorage.setItem('promptkit_export_path', saveDir);
         } else {
