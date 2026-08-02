@@ -157,18 +157,24 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
     elif table == "prompts":
         group_id = None
 
-    # 读取缩略图 — word_card 用 wc_media/thumbs/, prompts 用 data/thumbnails/
+    # 读取缩略图 — word_card 用 wc_media/thumbs/（历史数据部分在 data/thumbnails/，双目录探测）
+    # 2026-08-02 修复: 旧库恢复后部分词卡缩略图只在 data/thumbnails/，单目录查找导致导出缩略图丢失
     thumbnail_bytes = None
     PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if table == "word_card":
-        THUMB_DIR = os.path.join(PROJECT_ROOT, "data", "wc_media", "thumbs")
+        THUMB_DIRS = [
+            os.path.join(PROJECT_ROOT, "data", "wc_media", "thumbs"),
+            os.path.join(PROJECT_ROOT, "data", "thumbnails"),
+        ]
     else:
-        THUMB_DIR = os.path.join(PROJECT_ROOT, "data", "thumbnails")
+        THUMB_DIRS = [os.path.join(PROJECT_ROOT, "data", "thumbnails")]
     if p.get("thumbnail"):
-        tpath = os.path.join(THUMB_DIR, os.path.basename(p["thumbnail"]))
-        if os.path.exists(tpath):
-            with open(tpath, "rb") as f:
-                thumbnail_bytes = f.read()
+        for _td in THUMB_DIRS:
+            tpath = os.path.join(_td, os.path.basename(p["thumbnail"]))
+            if os.path.exists(tpath):
+                with open(tpath, "rb") as f:
+                    thumbnail_bytes = f.read()
+                break
 
     # 开始绘制卡片
     img = Image.new("RGB", (CARD_WIDTH, CARD_HEIGHT), _hex_to_rgb(COLORS["bg"]))
@@ -441,6 +447,7 @@ def import_prompt_from_png(file_bytes: bytes, conflict: str = "skip", override_m
     # 还原缩略图
     thumbnail_base64 = data.get("thumbnail_base64")
     thumbnail_filename = data.get("thumbnail_filename", "")
+    new_thumb = None
     if thumbnail_base64:
         try:
             thumb_bytes = base64.b64decode(thumbnail_base64)
@@ -462,6 +469,16 @@ def import_prompt_from_png(file_bytes: bytes, conflict: str = "skip", override_m
             db.execute("INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) "
                        "VALUES (?, ?, 'image', datetime('now','localtime'))",
                        [new_id, new_thumb])
+            db.commit()
+        except Exception:
+            pass
+
+    # 2026-08-02 修复: 缩略图同步到 word_card（导入到分组的词卡此前无 thumbnail 字段）
+    if new_thumb and final_group_id:
+        try:
+            db.execute("UPDATE word_card SET thumbnail=?, updated_at=datetime('now','localtime') "
+                       "WHERE id=(SELECT MAX(id) FROM word_card WHERE group_id=? AND source='png_import')",
+                       [new_thumb, final_group_id])
             db.commit()
         except Exception:
             pass
