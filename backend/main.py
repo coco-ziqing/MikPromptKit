@@ -881,6 +881,31 @@ def pick_folder():
         return {"ok": False, "error": f"打开目录选择器失败: {e}"}
 
 
+@app.post("/api/utils/open-folder")
+def open_folder(data: dict = None):
+    """在系统文件管理器中打开指定目录（缺省为下载文件夹）
+
+    2026-08-02 补全: PNG 导出后「打开文件夹」按钮的后端支撑。
+    默认打开 %USERPROFILE%\\Downloads（浏览器默认下载目录）。
+    """
+    try:
+        path = ""
+        if data and data.get("path"):
+            path = os.path.abspath(str(data["path"]).strip())
+            if not os.path.isdir(path):
+                return {"ok": False, "error": f"目录不存在: {path}"}
+        else:
+            downloads = os.path.join(os.path.expanduser("~"), "Downloads")
+            path = downloads if os.path.isdir(downloads) else os.path.expanduser("~")
+        if sys.platform == "win32":
+            os.startfile(path)  # type: ignore
+        else:
+            subprocess.Popen(["xdg-open", path])
+        return {"ok": True, "path": path}
+    except Exception as e:
+        return {"ok": False, "error": f"打开目录失败: {e}"}
+
+
 @app.post("/api/utils/save-blob")
 def save_blob(data: dict = None):
     """将 base64 数据写入指定路径，文件已存在时自动新建副本不覆盖

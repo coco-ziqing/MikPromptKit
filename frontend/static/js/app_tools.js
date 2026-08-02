@@ -948,6 +948,10 @@ Object.assign(App, {
                     }
                 }
                 App.showToast(App._t('common.export', '导出成功 (') + saved + '/' + ids.length + ' 张 PNG)', 'success');
+                // 2026-08-02: 保存到指定目录时提供「打开文件夹」入口
+                if (saved > 0 && saveDir && confirm('已保存 ' + saved + ' 张 PNG 到:\n' + saveDir + '\n\n是否打开该文件夹？')) {
+                    App._openExportFolder(saveDir);
+                }
             }
         } catch (e) {
             App.showToast(App._t('common.export', '导出未完成: ') + e.message, 'error');
@@ -971,6 +975,20 @@ Object.assign(App, {
         } catch (e) {
             this.showToast(App._t('auto.str_71fa02a5', '目录选择器调用未完成'), 'error');
         }
+    },
+
+    // 2026-08-02 补全: 导出后打开系统文件管理器定位目录（缺省=下载文件夹）
+    _openExportFolder(path) {
+        var self = this;
+        fetch('/api/utils/open-folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(path ? { path: path } : {})
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            if (!d.ok) self.showToast('打开目录未完成: ' + (d.error || ''), 'error');
+        }).catch(function(e) {
+            self.showToast('打开目录未完成: ' + e.message, 'error');
+        });
     },
 
     _fallbackDownload(blob, filename) {
@@ -1540,7 +1558,7 @@ Object.assign(App, {
             }
             document.getElementById('ieExportResult').style.display = 'block';
             document.getElementById('ieExportResult').style.color = '#059669';
-            document.getElementById('ieExportResult').innerHTML = App._t('common.export', '导出成功，') + ids.length + App._t('auto.str_0759f025', ' 条词条已下载');
+            document.getElementById('ieExportResult').innerHTML = App._t('common.export', '导出成功，') + ids.length + App._t('auto.str_0759f025', ' 条词条已下载') + ' <button class="btn btn-sm" style="margin-left:8px;background:rgba(34,197,94,0.12);border:1px solid #22c55e;color:#22c55e;padding:3px 10px;border-radius:6px;cursor:pointer;" onclick="App._openExportFolder()">📂 打开下载文件夹</button>';
         } catch(e) {
             document.getElementById('ieExportResult').style.display = 'block';
             document.getElementById('ieExportResult').style.color = '#ef4444';
