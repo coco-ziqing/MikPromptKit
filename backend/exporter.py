@@ -7,6 +7,19 @@ from PIL import Image, ImageDraw, ImageFont, PngImagePlugin
 from database import get_db
 from fastapi import HTTPException
 
+# 2026-08-02 落地 7/31 未提交修复: 动态读取项目版本号（此前硬编码 PromptKit v3.5 / 3.0.0.1）
+def _read_version():
+    """从项目根 VERSION 文件读取当前版本号（缺省回退 v5.29.2）"""
+    try:
+        v_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
+        with open(v_path, "r", encoding="utf-8") as f:
+            v = f.read().strip()
+        return v if v else "v5.29.2"
+    except Exception:
+        return "v5.29.2"
+
+APP_VERSION = _read_version()
+
 # 卡片尺寸（加大高度，自适应内容）
 CARD_WIDTH = 500
 CARD_HEIGHT = 960  # 足够容纳所有信息
@@ -310,14 +323,14 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
     # 9. 底部信息
     y = CARD_HEIGHT - 36
     usage_text = f"使用 {p.get('usage_count', 0)} 次"
-    draw.text((20, y), f"PromptKit v3.5", fill=_hex_to_rgb(COLORS["text_muted"]), font=font_tiny)
+    draw.text((20, y), f"MikPromptKit {APP_VERSION}", fill=_hex_to_rgb(COLORS["text_muted"]), font=font_tiny)
     draw.text((CARD_WIDTH - 20 - draw.textlength(usage_text, font=font_tiny), y),
               usage_text, fill=_hex_to_rgb(COLORS["text_muted"]), font=font_tiny)
 
     # ===== 写入元数据 =====
     meta = {
         "prompt_kit": {
-            "version": "3.0.0.1",
+            "version": APP_VERSION,
             "exported_at": None,  # 由调用方填充
             "data": {
                 "id": p["id"],
