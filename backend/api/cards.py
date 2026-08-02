@@ -112,19 +112,22 @@ def get_card(card_id: int):
     item['library_refs'] = lib_refs
     
     # 批量1: media + versions + usage 合并查询
+    # 2026-08-02 修复: UNION ALL 分量内不允许 ORDER BY/LIMIT（SQLite 语法错误），排序移到 Python 侧
     combined = db.execute("""
         SELECT 'media' as _type, id, filename, original_filename, media_type,
                file_size, width, height, created_at, NULL as version, NULL as change_note
         FROM media_assets WHERE prompt_id=?
         UNION ALL
         SELECT 'version', id, content, meaning, scene, NULL, NULL, NULL, created_at, version, change_note
-        FROM prompt_versions WHERE prompt_id=? ORDER BY version DESC LIMIT 5
+        FROM prompt_versions WHERE prompt_id=?
         UNION ALL
         SELECT 'usage', NULL, CAST(COUNT(*) AS TEXT), NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
         FROM usage_history WHERE prompt_id=?
     """, (card_id, card_id, card_id)).fetchall()
     item['media'] = [dict(r2) for r2 in combined if r2['_type'] == 'media']
-    item['versions'] = [dict(r2) for r2 in combined if r2['_type'] == 'version']
+    item['versions'] = sorted(
+        [dict(r2) for r2 in combined if r2['_type'] == 'version'],
+        key=lambda v: v['version'] or 0, reverse=True)[:5]
     item['usage_history_count'] = sum(1 for r2 in combined if r2['_type'] == 'usage')
 
     # 批量2: 词库引用详情（一次IN查询替代逐条循环）
@@ -554,12 +557,15 @@ def rollback_card(card_id: int, data: dict):
     current = db.execute("SELECT * FROM prompt_cards WHERE id=? AND is_deleted=0", (card_id,)).fetchone()
     if not current:
         return {"ok": False, "error": "卡片不存在"}
+    # 2026-08-02 修复: sqlite3.Row 无 .get() 方法，先转 dict
+    current = dict(current)
     row = db.execute(
         "SELECT * FROM prompt_versions WHERE prompt_id=? AND version=?",
         (card_id, version)
     ).fetchone()
     if not row:
         return {"ok": False, "error": "版本未找到"}
+    row = dict(row)
 
     # 回滚前将当前内容存档（完整10字段，与versions.py save_version对齐）
     next_ver = compute_next_version(db, card_id)
@@ -606,6 +612,8 @@ def card_version_history(card_id: int):
     current = db.execute("SELECT * FROM prompt_cards WHERE id=? AND is_deleted=0", (card_id,)).fetchone()
     if not current:
         return {"ok": False, "error": "卡片不存在"}
+    # 2026-08-02 修复: sqlite3.Row 无 .get() 方法，先转 dict
+    current = dict(current)
 
     rows = db.execute("""
         SELECT id, version, content, meaning, scene, module, category, subcategory, tags,

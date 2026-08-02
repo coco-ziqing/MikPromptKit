@@ -197,6 +197,13 @@ async def lifespan(app: FastAPI):
     try:
         init_db()
         db = get_db()
+
+        # 2026-08-02 修复: atoms 原子化表迁移接入启动（独立脚本此前未被调用，恢复的旧库缺 atom_* 表）
+        try:
+            from migrate_atom_tables import migrate as migrate_atom
+            migrate_atom()
+        except Exception as e:
+            log_warn(f"[main] atoms 表迁移跳过: {e}")
         
         # Phase18: 插件框架数据库迁移（幂等）
         try:
