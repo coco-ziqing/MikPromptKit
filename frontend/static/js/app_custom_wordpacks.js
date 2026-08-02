@@ -91,6 +91,7 @@ Object.assign(App, {
         }
         html += '</div>';
         container.innerHTML = html;
+        App.applyColumns();
     },
 
     backToWordpacks() {

@@ -701,6 +701,7 @@ var App = window.App || {
         }
         html += '</div>';
         container.innerHTML = html;
+        App.applyColumns();
     },
 
     // ============ 模块名中文化 ============

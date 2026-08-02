@@ -437,6 +437,7 @@ Object.assign(App, {
         }
         html += '</div>';
         container.innerHTML = html;
+        App.applyColumns();
     },
 
     renderSeedancePagination() {
@@ -574,6 +575,7 @@ Object.assign(App, {
             html += '</div>';
         }
         container.innerHTML = html;
+        App.applyColumns();
     },
 
     async openTemplateById(id) {

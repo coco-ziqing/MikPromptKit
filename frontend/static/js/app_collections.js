@@ -505,6 +505,7 @@ Object.assign(App, {
         }
         html += '</div>';
         container.innerHTML = html;
+        App.applyColumns();
         if (typeof this.bindVideoHover === 'function') this.bindVideoHover();
     },
 
@@ -943,6 +944,7 @@ Object.assign(App, {
         }
         html += '</div>';
         container.innerHTML = html;
+        App.applyColumns();
     },
 
     backToWordpacks() {
@@ -1042,6 +1044,7 @@ Object.assign(App, {
         }
         html += '</div>';
         container.innerHTML = html;
+        App.applyColumns();
     },
 
     async clearHistory() {
@@ -1108,6 +1111,7 @@ Object.assign(App, {
             html += '</div>';
         }
         grid.innerHTML = html;
+        App.applyColumns();
         // 绑定视频悬停播放
         if (typeof this.bindVideoHover === 'function') this.bindVideoHover();
         // _onDropPng 已由 _initDropZone 统一管理（viewHomeScroll 容器），此处不再重复绑定
