@@ -125,6 +125,37 @@ def _wal_checkpoint():
             except: pass
 
 
+def _check_db_health(db_path=None, max_detail=200):
+    """数据库健康校验：PRAGMA integrity_check
+
+    2026-08-02 加固：备份前必须校验源库，防止把损坏库备份进历史。
+    已知坑：Python 3.14 + SQLite 3.50 在损坏库上会把乱码二进制当错误消息返回，
+    解码失败抛 UnicodeDecodeError（极具误导性），必须整体兜底捕获。
+
+    返回 (ok: bool, detail: str|None)
+    """
+    import sqlite3 as _sqlite3
+    target = db_path or DB_PATH
+    conn = None
+    try:
+        conn = _sqlite3.connect(target, timeout=5)
+        rows = conn.execute("PRAGMA integrity_check").fetchall()
+        if len(rows) == 1 and rows[0][0] == "ok":
+            return True, None
+        # 失败：收集前几条错误，截断防乱码刷屏
+        detail = "; ".join(str(r[0])[:max_detail] for r in rows[:5])
+        return False, detail or "unknown error"
+    except UnicodeDecodeError:
+        # 库损坏时 SQLite 错误消息含乱码二进制 → UTF-8 解码失败
+        return False, "UnicodeDecodeError（数据库文件可能已损坏）"
+    except Exception as e:
+        return False, f"{type(e).__name__}: {str(e)[:max_detail]}"
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
+
+
 def do_backup() -> dict:
     """执行一次备份，返回结果"""
     global _last_backup_time, _backup_count, _last_error
@@ -142,6 +173,14 @@ def do_backup() -> dict:
         # 备份前强制 WAL 回写，确保备份数据完整 + 避免 WAL 膨胀
         _wal_checkpoint()
 
+        # ===== 加固(2026-08-02): 备份前校验源库健康度 =====
+        # 历史教训: 7/30、7/31 备份的都是坏库（malformed），带病备份毫无意义
+        ok, err = _check_db_health(DB_PATH)
+        if not ok:
+            _last_error = f"备份中止: 源库健康校验失败 - {err}"
+            print(f"[备份] 中止: {_last_error}")
+            return {"ok": False, "error": _last_error, "skipped": True}
+
         # 备份文件名
         backup_name = _make_backup_name()
         backup_path = os.path.join(BACKUP_DIR, backup_name)
@@ -149,6 +188,17 @@ def do_backup() -> dict:
         # copyfile 替代 shutil.copy2 确保跨设备/exFAT兼容（copy2拷贝元数据在移动盘上可能失败）
         os.makedirs(BACKUP_DIR, exist_ok=True)  # 二次确保，防止线程race
         shutil.copy(DB_PATH, backup_path)
+
+        # ===== 加固(2026-08-02): 备份后校验产物，坏备份不入库 =====
+        ok2, err2 = _check_db_health(backup_path)
+        if not ok2:
+            try:
+                os.remove(backup_path)
+            except OSError:
+                pass
+            _last_error = f"备份产物校验失败，已删除: {err2}"
+            print(f"[备份] 产物校验失败: {err2}")
+            return {"ok": False, "error": _last_error, "skipped": True}
 
         # 清理旧备份
         removed = _cleanup_old_backups()
