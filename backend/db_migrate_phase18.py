@@ -532,6 +532,26 @@ def run_migration(db=None):
     for sql in OWNER_COLUMN_ALTERS:
         _execute_safe(db, sql)
         columns_altered += 1
+
+    # 2026-08-02 修复: users 表缺列（phone/email/wechat）→ /auth/me 500 → 登录后弹回封面
+    # v5.26 团队空间升级新增的个人资料列，旧库（含恢复的备份）缺此迁移
+    for col, typ in [
+        ("phone",       "TEXT DEFAULT ''"),
+        ("email",       "TEXT DEFAULT ''"),
+        ("wechat",      "TEXT DEFAULT ''"),
+        ("avatar_url",  "TEXT DEFAULT ''"),
+        ("bio",         "TEXT DEFAULT ''"),
+        ("website",     "TEXT DEFAULT ''"),
+        ("cover_url",   "TEXT DEFAULT ''"),
+    ]:
+        try:
+            cols = [c[1] for c in db.execute("PRAGMA table_info(users)").fetchall()]
+            if col not in cols:
+                db.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
+                columns_altered += 1
+                print(f"  [OK] users 补列 {col}")
+        except Exception:
+            pass
     
     # ---- 7. 索引 ----
     print("\n  --- 索引创建 ---")
