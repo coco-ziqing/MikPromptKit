@@ -864,21 +864,47 @@ def check_path(data: dict = None):
 
 @app.post("/api/utils/pick-folder")
 def pick_folder():
-    """弹出 Windows 原生文件夹选择对话框，返回真实完整路径"""
+    """弹出 Windows 原生文件夹选择对话框，返回真实完整路径
+
+    2026-08-03 修复: ① 串行化 — tkinter 非线程安全，多点击并发创建多个
+    Tk() 会互相卡死（曾导致 15:43 服务全端点超时）；
+    ② 守护线程 + 120s 超时 — 对话框挂起不再占用线程池线程。
+    """
+    import threading
+    if not hasattr(pick_folder, '_lock'):
+        pick_folder._lock = threading.Lock()
+    if not pick_folder._lock.acquire(blocking=False):
+        return {"ok": False, "error": "目录选择器已在运行，请先完成当前选择"}
     try:
         import tkinter
         from tkinter import filedialog
-        root = tkinter.Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
-        folder = filedialog.askdirectory(title="选择导出文件夹")
-        root.destroy()
+        result = {}
+        def _do():
+            try:
+                root = tkinter.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                folder = filedialog.askdirectory(title="选择导出文件夹")
+                root.destroy()
+                result['folder'] = folder
+            except Exception as e:
+                result['error'] = str(e)
+        t = threading.Thread(target=_do, daemon=True)
+        t.start()
+        t.join(timeout=120)  # 超时保护，防止线程被对话框永久占用
+        if 'error' in result:
+            return {"ok": False, "error": f"打开目录选择器失败: {result['error']}"}
+        if t.is_alive():
+            return {"ok": False, "error": "目录选择超时，请重试"}
+        folder = result.get('folder')
         if folder:
             folder = os.path.abspath(folder)
             return {"ok": True, "path": folder, "name": os.path.basename(folder)}
         return {"ok": False, "error": "未选择目录"}
     except Exception as e:
         return {"ok": False, "error": f"打开目录选择器失败: {e}"}
+    finally:
+        pick_folder._lock.release()
 
 
 @app.post("/api/utils/default-download-path")

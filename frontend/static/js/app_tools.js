@@ -1069,6 +1069,9 @@ Object.assign(App, {
     },
 
     async _pickExportPath() {
+        // 2026-08-03 防抖: 多点击只触发一次目录选择器（后端已串行化，前端再挡一层）
+        if (this._pickingPath) return;
+        this._pickingPath = true;
         try {
             var r = await fetch('/api/utils/pick-folder', { method: 'POST' });
             var d = await r.json();
@@ -1084,6 +1087,8 @@ Object.assign(App, {
             }
         } catch (e) {
             this.showToast(App._t('auto.str_71fa02a5', '目录选择器调用未完成'), 'error');
+        } finally {
+            this._pickingPath = false;
         }
     },
 
