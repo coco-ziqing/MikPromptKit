@@ -152,7 +152,7 @@ App.wordEditor._ensureModal = function() {
     '</div>' +
     '</div>' +
     // 分组选择弹窗（层级独立，放在 body 末尾）
-    '<div id="wcGroupPickerModal" class="modal-overlay" style="display:none;z-index:600;" onclick="if(event.target===this)App.wordEditor._hideGroupPicker()">' +
+    '<div id="wcGroupPickerModal" class="modal-overlay" style="display:none;z-index:600;">' +
     '<div class="modal-content" style="max-width:420px;width:92%;max-height:70vh;overflow-y:auto;border-radius:12px;padding:0;">' +
     '<div style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">' +
     '<h6 style="margin:0;font-size:14px;">📁 选择分组</h6>' +

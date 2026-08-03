@@ -161,7 +161,7 @@ if (!App.seedanceV2 || App.seedanceV2._uploadWordCardThumb) return;
         var overlay=document.createElement('div');overlay.id='s2MediaLibModal';
         overlay.className='modal-overlay';
         overlay.style.cssText='display:flex;z-index:900;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
-        overlay.onclick=function(e){if(e.target===this)this.style.display='none';};
+        overlay.onclick=function(e){};  // 2026-08-03: 禁止点击遮罩关闭（易误操作）
         overlay.innerHTML='<div class="modal-content" style="max-width:680px;max-height:85vh;">'+
             '<div class="modal-header"><h5>📂 预览选择 — 从媒体库选取</h5><span style="font-size:11px;color:var(--text-muted);margin-left:12px;">→ 目标: #'+cardId+'</span><button class="header-btn-sm" onclick="document.getElementById(\'s2MediaLibModal\').style.display=\'none\'">✕</button></div>'+
             '<div style="display:flex;gap:0;padding:0 16px;border-bottom:1px solid var(--border-color);">'+

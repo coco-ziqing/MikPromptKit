@@ -41,7 +41,7 @@
       if (existing) existing.remove();
 
       const html = /*html*/`
-        <div class="modal-overlay" id="license-modal" onclick="if(event.target===this) LicenseManager._close()">
+        <div class="modal-overlay" id="license-modal">
           <div class="modal-content license-panel" onclick="event.stopPropagation()" style="max-width:480px;">
             <div class="modal-header">
               <h5><i class="bi bi-key"></i> License 激活 — ${this._escHtml(pluginName)}</h5>
@@ -103,7 +103,7 @@
       if (existing) existing.remove();
 
       const html = /*html*/`
-        <div class="modal-overlay" id="license-modal" onclick="if(event.target===this) LicenseManager._close()">
+        <div class="modal-overlay" id="license-modal">
           <div class="modal-content license-panel" onclick="event.stopPropagation()" style="max-width:600px;">
             <div class="modal-header">
               <h5><i class="bi bi-shield-lock"></i> License 管理</h5>
