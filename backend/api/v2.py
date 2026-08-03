@@ -619,6 +619,58 @@ def batch_copy(data: dict):
     }
 
 
+def _find_media_file(fname: str, dirs) -> str:
+    """多目录探测媒体文件，返回存在路径或空串"""
+    if not fname:
+        return ""
+    for d in dirs:
+        fp = os.path.join(d, fname)
+        if os.path.isfile(fp):
+            return fp
+    return ""
+
+
+def _fetch_export_rows(db, prompt_ids):
+    """双表查询导出数据：word_card(词库) 优先 + prompts(旧表) 兜底
+
+    2026-08-03 修复: batch/export 与 pt/export 原只查 prompts 旧表，
+    #batchBar 选择的词库(word_card 1433 张)导出为空 → 「无法导出词库的信息」。
+    统一输出字段: id/module/category/subcategory/content/meaning/scene/tags/
+    name/thumbnail/preview_media/group_id/source_table
+    """
+    if not prompt_ids:
+        return []
+    placeholders = ",".join("?" * len(prompt_ids))
+    rows = []
+    # 1) word_card 词库（主表）
+    wc_rows = db.execute(
+        f"SELECT id, module, category, '' AS subcategory, content, meaning, scene, tags, name, "
+        f"thumbnail, preview_media, group_id FROM word_card "
+        f"WHERE id IN ({placeholders}) AND is_deleted=0", prompt_ids).fetchall()
+    found = set()
+    for r in wc_rows:
+        d = dict(r)
+        d["source_table"] = "word_card"
+        rows.append(d)
+        found.add(d["id"])
+    # 2) prompts 旧表补漏（word_card 查不到的 id）
+    missing = [pid for pid in prompt_ids if pid not in found]
+    if missing:
+        mp = ",".join("?" * len(missing))
+        pr_rows = db.execute(
+            f"SELECT p.id, p.module, p.category, p.subcategory, p.content, p.meaning, p.scene, p.tags, "
+            f"'' AS name, pt.filename AS thumbnail, pv.filename AS preview_media, NULL AS group_id "
+            f"FROM prompts p "
+            f"LEFT JOIN prompt_thumbnails pt ON pt.prompt_id=p.id "
+            f"LEFT JOIN prompt_videos pv ON pv.prompt_id=p.id "
+            f"WHERE p.id IN ({mp}) AND p.deleted_at IS NULL", missing).fetchall()
+        for r in pr_rows:
+            d = dict(r)
+            d["source_table"] = "prompts"
+            rows.append(d)
+    return rows
+
+
 @router.post("/batch/export")
 def batch_export(data: dict):
     """批量导出为文件"""
@@ -629,10 +681,10 @@ def batch_export(data: dict):
 
     placeholders = ",".join("?" * len(prompt_ids))
     db = get_db()
-    rows = db.execute(
-        f"SELECT id, content, meaning, module, category FROM prompts WHERE id IN ({placeholders})",
-        prompt_ids
-    ).fetchall()
+    # 2026-08-03 修复: 双表查询 — word_card(词库) + prompts(旧表)，词库导出不再为空
+    rows = _fetch_export_rows(db, prompt_ids)
+    if not rows:
+        raise HTTPException(404, "未找到可导出的词条")
 
     if fmt == "json":
         export_data = {
@@ -648,7 +700,8 @@ def batch_export(data: dict):
                  f"导出时间: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')}  |  共 {len(rows)} 条\n",
                  "---\n"]
         for i, r in enumerate(rows, 1):
-            lines.append(f"### {i}. {r['content']}\n")
+            title = r.get('name') or r['content'] or '未命名'
+            lines.append(f"### {i}. {title}\n")
             lines.append(f"- **模块**: {r['module']}  |  **分类**: {r['category']}")
             if r["meaning"]:
                 lines.append(f"- **释义**: {r['meaning']}")
@@ -661,7 +714,8 @@ def batch_export(data: dict):
         lines = [f"# 批量导出 - {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')}",
                  f"# 共 {len(rows)} 条", "", "---", ""]
         for i, r in enumerate(rows, 1):
-            lines.append(f"[{i}] [{r['module']}/{r['category']}] {r['content']}")
+            title = r.get('name') or r['content'] or '未命名'
+            lines.append(f"[{i}] [{r['module']}/{r['category']}] {title}")
             if r["meaning"]:
                 lines.append(f"    释义: {r['meaning']}")
             lines.append("")
@@ -680,20 +734,22 @@ def export_pt_package(data: dict):
         raise HTTPException(400, "缺少 prompt_ids")
 
     db = get_db()
-    placeholders = ",".join("?" * len(prompt_ids))
-    rows = db.execute(
-        f"SELECT id, module, category, subcategory, content, meaning, scene, tags, usage_count "
-        f"FROM prompts WHERE id IN ({placeholders})",
-        prompt_ids
-    ).fetchall()
+    # 2026-08-03 修复: 双表查询 — 词库(word_card) + 旧表(prompts)，.pt 包导出词卡不再为空
+    rows = _fetch_export_rows(db, prompt_ids)
 
     if not rows:
-        raise HTTPException(404, "未找到有效的提示词")
+        raise HTTPException(404, "未找到可导出的词条")
 
-    # 获取媒体文件路径
+    # 获取媒体文件路径（多目录探测：word_card 用 wc_media/，prompts 用根 data/）
     DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
-    THUMB_DIR = os.path.join(DATA_DIR, "thumbnails")
-    VIDEO_DIR = os.path.join(DATA_DIR, "videos")
+    THUMB_DIRS = [
+        os.path.join(DATA_DIR, "wc_media", "thumbs"),
+        os.path.join(DATA_DIR, "thumbnails"),
+    ]
+    VIDEO_DIRS = [
+        os.path.join(DATA_DIR, "wc_media", "videos"),
+        os.path.join(DATA_DIR, "videos"),
+    ]
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -701,45 +757,32 @@ def export_pt_package(data: dict):
         for r in rows:
             rdict = dict(r)
             pid = rdict["id"]
-            # 获取缩略图文件
-            thumb_row = db.execute(
-                "SELECT filename, media_type FROM prompt_thumbnails WHERE prompt_id=?", [pid]
-            ).fetchone()
-            video_row = db.execute(
-                "SELECT filename, poster, duration, fps, width, height FROM prompt_videos WHERE prompt_id=?", [pid]
-            ).fetchone()
 
             entry = {
                 "module": rdict["module"],
                 "category": rdict["category"],
-                "subcategory": rdict["subcategory"],
+                "subcategory": rdict.get("subcategory") or "",
                 "content": rdict["content"],
-                "meaning": rdict["meaning"],
-                "scene": rdict["scene"],
-                "tags": json.loads(rdict["tags"]) if rdict["tags"] else [],
+                "meaning": rdict.get("meaning") or "",
+                "scene": rdict.get("scene") or "",
+                "tags": json.loads(rdict["tags"]) if rdict.get("tags") else [],
             }
 
-            # 写入缩略图
-            if thumb_row:
-                thumb_fn = thumb_row["filename"]
-                thumb_path = os.path.join(THUMB_DIR, thumb_fn)
-                if os.path.isfile(thumb_path):
-                    arc_name = f"thumbnails/{pid}_{thumb_fn}"
-                    zf.write(thumb_path, arc_name)
-                    entry["thumbnail"] = arc_name
-                    entry["thumbnail_media_type"] = thumb_row["media_type"]
+            # 缩略图: word_card 用 thumbnail 字段，prompts 已 JOIN prompt_thumbnails.filename
+            thumb_fn = rdict.get("thumbnail") or ""
+            thumb_path = _find_media_file(os.path.basename(thumb_fn), THUMB_DIRS)
+            if thumb_path:
+                arc_name = f"thumbnails/{pid}_{os.path.basename(thumb_fn)}"
+                zf.write(thumb_path, arc_name)
+                entry["thumbnail"] = arc_name
 
-            # 写入视频
-            if video_row:
-                vfn = video_row["filename"]
-                video_path = os.path.join(VIDEO_DIR, vfn)
-                if os.path.isfile(video_path):
-                    arc_name = f"videos/{pid}_{vfn}"
-                    zf.write(video_path, arc_name)
-                    entry["video"] = arc_name
-                    entry["video_poster"] = video_row["poster"]
-                    entry["video_duration"] = video_row["duration"]
-                    entry["video_fps"] = video_row["fps"]
+            # 视频: word_card 用 preview_media，prompts 已 JOIN prompt_videos.filename
+            vfn = rdict.get("preview_media") or ""
+            video_path = _find_media_file(os.path.basename(vfn), VIDEO_DIRS)
+            if video_path:
+                arc_name = f"videos/{pid}_{os.path.basename(vfn)}"
+                zf.write(video_path, arc_name)
+                entry["video"] = arc_name
 
             metadata.append(entry)
 
