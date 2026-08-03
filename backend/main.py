@@ -37,7 +37,7 @@ def _read_app_version() -> str:
         ver_path = os.path.join(BASE_DIR, 'VERSION')
         if not os.path.exists(ver_path):
             ver_path = os.path.join(get_resource_dir(), 'VERSION')
-        with open(ver_path, 'r', encoding='utf-8') as f:
+        with open(ver_path, 'r', encoding='utf-8-sig') as f:
             v = f.read().strip()
             if v:
                 return v

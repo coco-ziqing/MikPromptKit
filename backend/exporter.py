@@ -175,6 +175,17 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
                 with open(tpath, "rb") as f:
                     thumbnail_bytes = f.read()
                 break
+    # 2026-08-03 兜底: thumbnail 字段为空时，按 id 探测 data/thumbnails/{id}.png
+    # 背景: 8/3 浏览器误操作 DELETE thumbnail 清空了 #1097-#1104 字段，
+    # 文件仍存在但导出丢失。此兜底保证字段被清空时导出仍能找回缩略图。
+    # 仅 word_card（prompts 旧表 id 段与 word_card 重叠，不能按 id 匹配）。
+    if thumbnail_bytes is None and table == "word_card":
+        for _td in THUMB_DIRS:
+            tpath = os.path.join(_td, f"{prompt_id}.png")
+            if os.path.exists(tpath):
+                with open(tpath, "rb") as f:
+                    thumbnail_bytes = f.read()
+                break
 
     # 开始绘制卡片
     img = Image.new("RGB", (CARD_WIDTH, CARD_HEIGHT), _hex_to_rgb(COLORS["bg"]))
