@@ -81,13 +81,15 @@ def migrate():
     safe_execute("CREATE INDEX IF NOT EXISTS idx_stats_count ON atom_stats(usage_count DESC)")
     safe_execute("CREATE INDEX IF NOT EXISTS idx_stats_hash ON atom_stats(text_hash)")
 
-    # 5. atom_decompose 加溯源字段（幂等：忽略已存在列的错误）
+    # 5. atom_decompose 加溯源字段（幂等：先查列是否存在，避免 duplicate column 假告警）
+    # 2026-08-03 修复: 原 try/except 吞异常方案 → 每次启动都打印 [ERR] duplicate column name，
+    # 且真错误（锁冲突等）也被静默吞掉（except:pass 诊断黑洞）。改为 PRAGMA 探测后再 ALTER。
+    existing_cols = {r[1] for r in db.execute("PRAGMA table_info(atom_decompose)").fetchall()}
     for col, dtype in [("parent_decompose_id", "INTEGER DEFAULT NULL"),
                         ("source_card_id", "INTEGER DEFAULT NULL")]:
-        try:
-            safe_execute(f"ALTER TABLE atom_decompose ADD COLUMN {col} {dtype}")
-        except Exception:
-            pass
+        if col not in existing_cols:
+            safe_execute(f"ALTER TABLE atom_decompose ADD COLUMN {col} {dtype}", commit=True)
+            print(f"[OK] 迁移: atom_decompose 新增列 {col}")
 
     # 6. Phase15 新增: 原子↔词卡 双向桥接表
     safe_execute("""

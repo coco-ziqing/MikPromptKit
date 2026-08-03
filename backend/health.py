@@ -2,7 +2,7 @@
 v4.0.0-phase11: Startup Health Check Engine
 服务启动自检 — 9项外部依赖检测 + 用户可配置跳过项
 """
-import json, os, sys, subprocess, asyncio, shutil, socket
+import json, os, sys, subprocess, asyncio, shutil, socket, re
 from typing import Optional
 from fastapi import APIRouter, Query
 
@@ -420,13 +420,19 @@ def _check_self_reachable() -> dict:
         s.close()
     except Exception:
         pass
-    # 防火墙规则检查（依次匹配 PromptKit / PromptKit-8080 / PromptKit 8080）
+    # 防火墙规则检查（匹配已知规则名 + 端口校验，兼容中英文 locale）
+    # 2026-08-03 修复: ① 规则名列表漏了实际存在的 "PromptKit HTTP" → 误报未配置；
+    # ② 原 'LocalPort' in stdout 是英文依赖，中文系统 netsh 输出“本地端口”永远匹配不上。
     fw_ok = False; fw_rule_name = ""
+    rule_names = ["PromptKit HTTP", "PromptKit", "PromptKit-8080", "PromptKit 8080"]
+    port_str = str(default_port)
     try:
-        for rule_name in ["PromptKit", "PromptKit-8080", "PromptKit 8080"]:
+        for rule_name in rule_names:
             fw = subprocess.run(['netsh','advfirewall','firewall','show','rule',f'name={rule_name}'],
                 capture_output=True,encoding='utf-8',errors='replace',timeout=3,creationflags=subprocess.CREATE_NO_WINDOW)
-            if 'LocalPort' in fw.stdout:
+            out = fw.stdout
+            # 兼容中英文: LocalPort / 本地端口 后跟端口号
+            if re.search(r'(?:LocalPort|本地端口)\s*[:：]?\s*' + re.escape(port_str), out):
                 fw_ok = True
                 fw_rule_name = rule_name
                 break

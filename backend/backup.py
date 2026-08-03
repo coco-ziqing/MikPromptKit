@@ -125,6 +125,84 @@ def _wal_checkpoint():
             except: pass
 
 
+def _backup_snapshot(backup_path):
+    """SQLite 在线备份 API — 生成一致性快照（WAL 写负载下也安全）
+
+    2026-08-03 修复：原 shutil.copy 直接复制主库 .db 文件，
+    WAL 模式下若 checkpoint/写入并发，复制产物会撕裂 → integrity_check 报 malformed
+    （启动时语义索引重建 897+ pages 写库即触发）。
+    sqlite3.Connection.backup() 基于 SQLite Online Backup API，
+    在快照层面保证一致性，不受并发写影响，也无需先 checkpoint。
+    """
+    import sqlite3 as _sqlite3
+    src = None
+    dst = None
+    try:
+        src = _sqlite3.connect(DB_PATH, timeout=10)
+        dst = _sqlite3.connect(backup_path, timeout=10)
+        src.backup(dst)
+        return True
+    except Exception:
+        # 失败时清理半成品，避免坏产物留在备份目录
+        try:
+            if os.path.exists(backup_path):
+                os.remove(backup_path)
+        except OSError:
+            pass
+        raise
+    finally:
+        if dst:
+            try: dst.close()
+            except: pass
+        if src:
+            try: src.close()
+            except: pass
+
+
+class _BackupLock:
+    """跨线程/跨进程互斥锁（进程内 threading.Lock + 文件锁 O_EXCL）
+
+    2026-08-03 修复：原代码声明了 lock_path 却从未真正加锁，
+    定时备份与手动 /api/backup/now 并发时可能同时 checkpoint + 写备份目录。
+    文件锁带 mtime 过期检测（>30 分钟视为僵死锁，进程崩溃后自动恢复）。
+    """
+    _inner = threading.Lock()
+    _STALE_SECONDS = 1800
+
+    def __enter__(self):
+        self._inner.acquire()
+        _ensure_dir()
+        for _ in range(5):
+            try:
+                fd = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(fd, str(os.getpid()).encode())
+                os.close(fd)
+                self._held = True
+                return self
+            except FileExistsError:
+                # 锁已存在：检查是否僵死
+                try:
+                    if time.time() - os.path.getmtime(LOCK_FILE) > self._STALE_SECONDS:
+                        os.remove(LOCK_FILE)
+                        continue
+                except OSError:
+                    pass
+                # 锁被占用：等待后重试
+                self._inner.release()
+                time.sleep(1)
+                self._inner.acquire()
+        raise RuntimeError("无法获取备份锁（另一备份正在进行或锁文件僵死）")
+
+    def __exit__(self, *exc):
+        try:
+            if getattr(self, "_held", False):
+                os.remove(LOCK_FILE)
+        except OSError:
+            pass
+        self._inner.release()
+        return False
+
+
 def _check_db_health(db_path=None, max_detail=200):
     """数据库健康校验：PRAGMA integrity_check
 
@@ -167,73 +245,73 @@ def do_backup() -> dict:
         return {"ok": False, "error": _last_error}
 
     try:
-        # 使用文件锁防止并发备份
-        lock_path = LOCK_FILE
+        # ===== 修复(2026-08-03): 文件锁真正生效，防并发备份 =====
+        with _BackupLock():
+            # WAL 回写（保持 WAL 文件精简；快照一致性已由 backup API 保证，不再依赖此步）
+            _wal_checkpoint()
 
-        # 备份前强制 WAL 回写，确保备份数据完整 + 避免 WAL 膨胀
-        _wal_checkpoint()
+            # ===== 加固(2026-08-02): 备份前校验源库健康度 =====
+            # 历史教训: 7/30、7/31 备份的都是坏库（malformed），带病备份毫无意义
+            ok, err = _check_db_health(DB_PATH)
+            if not ok:
+                _last_error = f"备份中止: 源库健康校验失败 - {err}"
+                print(f"[备份] 中止: {_last_error}")
+                return {"ok": False, "error": _last_error, "skipped": True}
 
-        # ===== 加固(2026-08-02): 备份前校验源库健康度 =====
-        # 历史教训: 7/30、7/31 备份的都是坏库（malformed），带病备份毫无意义
-        ok, err = _check_db_health(DB_PATH)
-        if not ok:
-            _last_error = f"备份中止: 源库健康校验失败 - {err}"
-            print(f"[备份] 中止: {_last_error}")
-            return {"ok": False, "error": _last_error, "skipped": True}
+            # 备份文件名
+            backup_name = _make_backup_name()
+            backup_path = os.path.join(BACKUP_DIR, backup_name)
 
-        # 备份文件名
-        backup_name = _make_backup_name()
-        backup_path = os.path.join(BACKUP_DIR, backup_name)
+            # ===== 修复(2026-08-03): 在线备份 API 替代 shutil.copy =====
+            # 裸复制在 WAL 写负载下会撕裂产物（启动时语义重建即触发 malformed）
+            os.makedirs(BACKUP_DIR, exist_ok=True)  # 二次确保，防止线程race
+            _backup_snapshot(backup_path)
 
-        # copyfile 替代 shutil.copy2 确保跨设备/exFAT兼容（copy2拷贝元数据在移动盘上可能失败）
-        os.makedirs(BACKUP_DIR, exist_ok=True)  # 二次确保，防止线程race
-        shutil.copy(DB_PATH, backup_path)
+            # ===== 加固(2026-08-02): 备份后校验产物，坏备份不入库 =====
+            ok2, err2 = _check_db_health(backup_path)
+            if not ok2:
+                try:
+                    os.remove(backup_path)
+                except OSError:
+                    pass
+                _last_error = f"备份产物校验失败，已删除: {err2}"
+                print(f"[备份] 产物校验失败: {err2}")
+                return {"ok": False, "error": _last_error, "skipped": True}
 
-        # ===== 加固(2026-08-02): 备份后校验产物，坏备份不入库 =====
-        ok2, err2 = _check_db_health(backup_path)
-        if not ok2:
-            try:
-                os.remove(backup_path)
-            except OSError:
-                pass
-            _last_error = f"备份产物校验失败，已删除: {err2}"
-            print(f"[备份] 产物校验失败: {err2}")
-            return {"ok": False, "error": _last_error, "skipped": True}
+            # 清理旧备份
+            removed = _cleanup_old_backups()
 
-        # 清理旧备份
-        removed = _cleanup_old_backups()
+            _last_backup_time = time.time()
+            _backup_count += 1
+            _last_error = None
 
-        _last_backup_time = time.time()
-        _backup_count += 1
-        _last_error = None
+            # 写入备份日志
+            log_path = os.path.join(BACKUP_DIR, "backup_history.json")
+            history = []
+            if os.path.exists(log_path):
+                try:
+                    with open(log_path, "r", encoding="utf-8") as f:
+                        history = json.load(f)
+                except Exception:
+                    history = []
+            history.append({
+                "time": datetime.now().isoformat(),
+                "file": backup_name,
+                "size": os.path.getsize(backup_path),
+                "kept": True
+            })
+            # 只保留最近 100 条记录
+            if len(history) > 100:
+                history = history[-100:]
+            with open(log_path, "w", encoding="utf-8") as f:
+                json.dump(history, f, ensure_ascii=False, indent=2)
 
-        # 写入备份日志
-        log_path = os.path.join(BACKUP_DIR, "backup_history.json")
-        history = []
-        if os.path.exists(log_path):
-            try:
-                with open(log_path, "r", encoding="utf-8") as f:
-                    history = json.load(f)
-            except Exception:
-                history = []
-        history.append({
-            "time": datetime.now().isoformat(),
-            "file": backup_name,
-            "size": os.path.getsize(backup_path),
-            "kept": True
-        })
-        # 只保留最近 100 条记录
-        if len(history) > 100:
-            history = history[-100:]
-        with open(log_path, "w", encoding="utf-8") as f:
-            json.dump(history, f, ensure_ascii=False, indent=2)
-
-        return {
-            "ok": True,
-            "file": backup_name,
-            "size": os.path.getsize(backup_path),
-            "removed": removed
-        }
+            return {
+                "ok": True,
+                "file": backup_name,
+                "size": os.path.getsize(backup_path),
+                "removed": removed
+            }
 
     except Exception as e:
         _last_error = str(e)
