@@ -180,7 +180,9 @@ async batchExport(fmt) {
 // ============ 导出命名弹窗 ============
 _showExportNameDialog(ids, fmt) {
     var fmtNames = { pt: '.pt 提示词包', png: '导出 PNG 卡片' };
-    document.getElementById('exportNameTitle').textContent = '导出 ' + (fmtNames[fmt] || fmt.toUpperCase());
+    // 2026-08-03: png 标题固定为「导出PNG词卡」（原逻辑拼出“导出 导出 PNG 卡片”重复文案）
+    var title = fmt === 'png' ? '导出PNG词卡' : ('导出 ' + (fmtNames[fmt] || fmt.toUpperCase()));
+    document.getElementById('exportNameTitle').textContent = title;
     document.getElementById('exportNameInput').value = '提示词导出_' + new Date().toISOString().slice(0,10);
     document.getElementById('exportNameCount').textContent = '共 ' + ids.length + ' 条 · 格式: ' + (fmt === 'pt' ? '.pt 压缩包' : 'PNG 图片');
     var savedPath = localStorage.getItem('promptkit_export_path') || '';

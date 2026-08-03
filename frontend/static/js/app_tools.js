@@ -829,7 +829,9 @@ Object.assign(App, {
 
     _showExportNameDialog(ids, fmt) {
         var fmtNames = { pt: App._t('auto.str_7f391c64', '.pt 提示词包'), png: App._t('common.export', '导出 PNG 卡片') };
-        document.getElementById('exportNameTitle').textContent = App._t('common.export', '导出 ') + (fmtNames[fmt] || fmt.toUpperCase());
+        // 2026-08-03: png 标题固定为「导出PNG词卡」（原逻辑拼出重复文案）
+        var title = fmt === 'png' ? '导出PNG词卡' : (App._t('common.export', '导出 ') + (fmtNames[fmt] || fmt.toUpperCase()));
+        document.getElementById('exportNameTitle').textContent = title;
         var defaultName = this._makeExportFilename(ids, fmt).replace('.' + fmt, '');
         document.getElementById('exportNameInput').value = defaultName;
         document.getElementById('exportNameCount').textContent = '共 ' + ids.length + ' 条 · 格式: ' + (fmt === 'pt' ? App._t('auto.str_7f391c64', '.pt 提示词包') : App._t('auto.str_aa9fa585', 'PNG 卡片'));
