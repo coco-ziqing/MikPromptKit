@@ -763,6 +763,7 @@ Object.assign(App, {
                 var name = files[fi].name.toLowerCase();
                 if (name.endsWith('.json')) { App._handleDropFile(files[fi]); return; }
                 if (name.endsWith('.pt')) { App._handleDropPtFile(files[fi]); return; }
+                if (name.endsWith('.txt') || name.endsWith('.md')) { App._handleDropTextFile(files[fi]); return; }
                 if (name.endsWith('.png') || files[fi].type === 'image/png') { App.handleDropPngFile(files[fi]); return; }
             }
         });

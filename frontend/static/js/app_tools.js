@@ -460,6 +460,48 @@ Object.assign(App, {
         document.getElementById('modalDropImport').style.display = 'flex';
     },
 
+    // ============ TXT/MD 拖拽导入（2026-08-03 对齐 PNG 链路新增） ============
+    async _handleDropTextFile(file) {
+        try {
+            var formData = new FormData();
+            formData.append('file', file);
+            var resp = await fetch('/api/export/preview-text', { method: 'POST', body: formData });
+            var d = await resp.json();
+            if (!d.ok || !d.items || d.items.length === 0) {
+                this.showToast('未识别到有效的提示词条目', 'error');
+                return;
+            }
+            var items = d.items.map(function(it) {
+                return {
+                    content: it.content || '',
+                    meaning: it.meaning || '',
+                    module: it.module || 'custom',
+                    category: it.category || '',
+                    tags: []
+                };
+            });
+            this._diFile = file;
+            this._diItems = items;
+            this._diIsPt = false;
+            this._diIsPng = false;
+            this._diPngGroupId = null;
+            this._diPngGroupName = '';
+            this._diCurrentGroupId = App.state.currentGroupId || null;
+            document.getElementById('diFileName').textContent = file.name;
+            document.getElementById('diFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB · ' + items.length + ' 条提示词';
+            document.getElementById('diCount').textContent = '共 ' + items.length + ' 条提示词';
+            this._renderDiItems(items);
+            document.getElementById('diSelectAll').checked = true;
+            document.getElementById('diResult').style.display = 'none';
+            document.getElementById('btnDiImport').disabled = false;
+            document.getElementById('btnDiImport').innerHTML = '<i class="bi bi-check-lg"></i> 确认导入';
+            document.getElementById('btnDiImport').onclick = function() { App._confirmDropImport(); };
+            document.getElementById('modalDropImport').style.display = 'flex';
+        } catch (e) {
+            this.showToast('TXT/MD 未能解析: ' + e.message, 'error');
+        }
+    },
+
     // ============ 导入预览渲染（JSON / .pt / PNG 共用） ============
 
     _renderDiItems(items) {
@@ -1547,7 +1589,39 @@ Object.assign(App, {
                 var name = file.name.toLowerCase();
                 var endpoint;
                 if (name.endsWith('.json')) {
-                    endpoint = '/api/export/import-json';
+                    // 2026-08-03 对齐: JSON 弹窗导入改走 from-json-data（写 word_card 词库，
+                    // 原 import-json 写 prompts 旧表导致词库看不到导入结果）
+                    var txt = await file.text();
+                    var parsed = JSON.parse(txt);
+                    var jitems = parsed.prompts || parsed;
+                    if (!Array.isArray(jitems)) jitems = [jitems];
+                    jitems = jitems.filter(function(it) { return it && (it.content || it.prompt); })
+                        .map(function(it) {
+                            if (!it.content && it.prompt) it.content = it.prompt;
+                            return it;
+                        });
+                    var rj = await this.fetchJSON('/api/v2/import/from-json-data', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ items: jitems, conflict: conflict })
+                    });
+                    if (rj && rj.ok) { created += rj.created || 0; skipped += rj.skipped || 0; failed += rj.failed || 0; }
+                    else failed++;
+                    continue;
+                } else if (name.endsWith('.txt') || name.endsWith('.md')) {
+                    // 2026-08-03 新增: TXT/MD 弹窗导入 — 解析后写 word_card
+                    var pt = await fetch('/api/export/preview-text', { method: 'POST', body: formData });
+                    var pd = await pt.json();
+                    if (pd.ok && pd.items && pd.items.length > 0) {
+                        var rj2 = await this.fetchJSON('/api/v2/import/from-json-data', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ items: pd.items, conflict: conflict })
+                        });
+                        if (rj2 && rj2.ok) { created += rj2.created || 0; skipped += rj2.skipped || 0; failed += rj2.failed || 0; }
+                        else failed++;
+                    } else {
+                        failed++;
+                    }
+                    continue;
                 } else if (name.endsWith('.pt')) {
                     endpoint = '/api/v2/pt/import';
                 } else {

@@ -141,6 +141,65 @@ async def import_batch_png(
     }
 
 
+@router.post("/preview-text")
+async def preview_text_import(file: UploadFile = File(...)):
+    """解析 TXT/MD 提示词文本 — 支持本系统导出的 txt/md 格式 + 裸文本行
+
+    2026-08-03: 对齐 PNG 导入链路新增，供拖拽/弹窗导入预览。
+    识别格式:
+      TXT:  [i] [module/category] 标题\n    释义: xxx
+      MD:   ### i. 标题\n- **模块**: m  |  **分类**: c\n- **释义**: xxx
+      裸文本: 每行一条 content
+    """
+    import re as _re
+    raw = (await file.read()).decode("utf-8", errors="replace")
+    items = []
+    # 1) 结构化 TXT/MD 条目: [n] [模块/分类] 标题 或 ### n. 标题
+    structured = _re.split(r"\n(?=(?:\[\d+\]|###\s*\d+\.))", raw)
+    for block in structured:
+        block = block.strip()
+        if not block:
+            continue
+        m = _re.match(r"^\[(\d+)\]\s*\[([^/\]]+)(?:/([^\]]+))?\]\s*(.+)$", block, _re.M)
+        h = _re.match(r"^###\s*\d+\.\s*(.+)$", block, _re.M)
+        if m:
+            module = (m.group(2) or "").strip()
+            category = (m.group(3) or "").strip()
+            content = m.group(4).strip()
+            meaning = ""
+            mm = _re.search(r"释义[:：]\s*(.+)$", block, _re.M)
+            if mm:
+                meaning = mm.group(1).strip()
+            if content:
+                items.append({"content": content, "meaning": meaning,
+                              "module": module, "category": category})
+        elif h:
+            content = h.group(1).strip()
+            module = category = meaning = ""
+            mm = _re.search(r"\*\*模块\*\*[:：]\s*([^|]+)", block)
+            if mm:
+                module = mm.group(1).strip()
+            cc = _re.search(r"\*\*分类\*\*[:：]\s*([^|\n]+)", block)
+            if cc:
+                category = cc.group(1).strip()
+            mm2 = _re.search(r"\*\*释义\*\*[:：]\s*(.+)$", block, _re.M)
+            if mm2:
+                meaning = mm2.group(1).strip()
+            if content:
+                items.append({"content": content, "meaning": meaning,
+                              "module": module, "category": category})
+    # 2) 兜底: 裸文本行（跳过标题/分隔线）
+    if not items:
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("---"):
+                continue
+            items.append({"content": line, "meaning": "", "module": "", "category": ""})
+    if not items:
+        raise HTTPException(400, "未识别到有效的提示词条目")
+    return {"ok": True, "items": items, "count": len(items)}
+
+
 @router.post("/import-json")
 async def import_json_backup(file: UploadFile = File(...), conflict: str = Form("skip")):
     """导入 JSON 备份文件"""
