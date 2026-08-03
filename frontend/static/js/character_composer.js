@@ -548,6 +548,8 @@ App.cc._replaceThumb = function(cardId) {
 
 App.cc._deleteThumb = async function(cardId) {
     var m = document.getElementById('_ccContextMenu'); if (m) m.remove();
+    // 2026-08-03 加固: 破坏性操作二次确认（此前误删导致 #1097-#1104 缩略图字段清空）
+    if (!confirm('确认移除该词卡的缩略图与视频预览？\n（文件仍保留，仅清除引用，可重新上传）')) return;
     try {
         // 同时删除缩略图和视频
         await App.fetchJSON('/api/v4/word-cards/' + cardId + '/thumbnail', {method:'DELETE'});

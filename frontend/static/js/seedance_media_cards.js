@@ -140,6 +140,8 @@ if (!App.seedanceV2 || App.seedanceV2._uploadWordCardThumb) return;
     // 移除预览：同时删除缩略图和视频
     App.seedanceV2._deleteThumb=async function(cardId){
         var lib=App.seedanceV2.getLibraryById(App.seedanceV2.activePickerLibId);
+        // 2026-08-03 加固: 破坏性操作二次确认（此前误删导致 #1097-#1104 缩略图字段清空）
+        if(!confirm('确认移除该词卡的缩略图与视频预览？\n（文件仍保留，仅清除引用，可重新上传）'))return;
         try{
             await fetch('/api/seedance/v2/cards/'+cardId+'/thumbnail',{method:'DELETE'});
             await fetch('/api/seedance/v2/cards/'+cardId+'/video',{method:'DELETE'});
