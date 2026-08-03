@@ -357,6 +357,33 @@ Object.assign(App, {
 
     // _initDropZone 实现在 app_editor.js 中（此处不覆盖）
 
+    // ============ 导入分组规则统一（PNG/.pt/JSON/TXT-MD 共用） ============
+    // 2026-08-03: 统一选择分组规则 — 文件内原始默认分组第一顺位(★)，当前所在分组第二顺位(●)
+    _applyImportGroupPriority(items) {
+        var origGid = null, origGname = '';
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it && it.group_id) {
+                origGid = it.group_id;
+                origGname = it.group_name || '';
+                break;
+            }
+        }
+        this._diPngGroupId = origGid;
+        if (origGid && !origGname && this.state.groupTree) {
+            (function findG(nodes) {
+                for (var j = 0; j < nodes.length; j++) {
+                    if (String(nodes[j].id) === String(origGid)) { origGname = nodes[j].name || ''; return true; }
+                    if (nodes[j].children && findG(nodes[j].children)) return true;
+                }
+                return false;
+            })(this.state.groupTree);
+        }
+        this._diPngGroupName = origGname;
+        // 第二顺位: 当前所在分组（●）
+        this._diCurrentGroupId = App.state.currentGroupId || null;
+    },
+
     async handleDropPngFile(file) {
         try {
             // 立即读取文件为 ArrayBuffer，避免拖拽 File 流被消耗后无法复用
@@ -383,10 +410,8 @@ Object.assign(App, {
                 group_name: p.group_name || ''        // 分组名称用于显示
             };
             // 记录 PNG 识别的分组信息（供下拉排序用）
-            this._diPngGroupId = p.group_id || null;
-            this._diPngGroupName = p.group_name || '';
+            this._applyImportGroupPriority([item]);
             // 记录当前页面所在分组（第二顺位）
-            this._diCurrentGroupId = App.state.currentGroupId || null;
             this._diFile = file;
             this._diItems = [item];
             this._diIsPt = false;
@@ -439,9 +464,8 @@ Object.assign(App, {
         this._diFile = file;
         this._diItems = items;
         this._diIsPt = false;
-        this._diPngGroupId = null;
-        this._diPngGroupName = '';
-        this._diCurrentGroupId = App.state.currentGroupId || null;
+        // 2026-08-03 统一: 识别 JSON 内 group_id 为第一顺位(★)，当前分组第二顺位(●)
+        this._applyImportGroupPriority(items);
 
         // 填充弹窗信息
         document.getElementById('diFileName').textContent = file.name;
@@ -484,9 +508,8 @@ Object.assign(App, {
             this._diItems = items;
             this._diIsPt = false;
             this._diIsPng = false;
-            this._diPngGroupId = null;
-            this._diPngGroupName = '';
-            this._diCurrentGroupId = App.state.currentGroupId || null;
+            // 2026-08-03 统一: TXT/MD 无原始分组信息（格式限制），当前分组第二顺位(●) 生效
+            this._applyImportGroupPriority(items);
             document.getElementById('diFileName').textContent = file.name;
             document.getElementById('diFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB · ' + items.length + ' 条提示词';
             document.getElementById('diCount').textContent = '共 ' + items.length + ' 条提示词';
@@ -797,23 +820,8 @@ Object.assign(App, {
         this._diPtFile = file;
         this._diIsPt = true;
         this._diItems = data.items;
-        // 2026-08-03 对齐 PNG 分组规则: 识别 .pt 文件原始默认分组(第一顺位 ★) + 当前所在分组(第二顺位 ●)
-        var origGid = null, origGname = '';
-        for (var di = 0; di < data.items.length; di++) {
-            if (data.items[di].group_id) { origGid = data.items[di].group_id; break; }
-        }
-        this._diPngGroupId = origGid;
-        if (origGid && this.state.groupTree) {
-            (function _findG(nodes) {
-                for (var j = 0; j < nodes.length; j++) {
-                    if (String(nodes[j].id) === String(origGid)) { origGname = nodes[j].name || ''; return true; }
-                    if (nodes[j].children && _findG(nodes[j].children)) return true;
-                }
-                return false;
-            })(this.state.groupTree);
-        }
-        this._diPngGroupName = origGname;
-        this._diCurrentGroupId = App.state.currentGroupId || null;
+        // 2026-08-03 统一: 识别 .pt 文件原始默认分组(第一顺位 ★) + 当前所在分组(第二顺位 ●)
+        this._applyImportGroupPriority(data.items);
         document.getElementById('diFileName').textContent = file.name;
         document.getElementById('diFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB \u00B7 ' + data.count + ' \u6761\u63D0\u793A\u8BCD';
         document.getElementById('diCount').textContent = '共 ' + data.count + App._t('auto.str_6f2666c1', ' 条提示词');
