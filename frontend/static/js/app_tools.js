@@ -1007,6 +1007,16 @@ Object.assign(App, {
         });
     },
 
+    // 2026-08-03: 导出弹窗「下载目录」按钮 — 打开当前设定的下载目录（未设定时缺省=下载文件夹）
+    _openExportDir() {
+        var pi = document.getElementById('exportPathInput');
+        var path = '';
+        if (pi && pi.value) {
+            path = pi.value.trim().replace(/^\uD83D\uDCC1\s*/, '');  // 清理「📁 」前缀
+        }
+        this._openExportFolder(path || '');
+    },
+
     _fallbackDownload(blob, filename) {
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
