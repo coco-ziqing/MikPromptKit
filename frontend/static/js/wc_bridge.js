@@ -41,7 +41,8 @@ App.loadGroupTree = async function() {
                     if (expandState.hasOwnProperty(n.id)) {
                         n._expanded = expandState[n.id];
                     } else if (n._expanded === undefined) {
-                        n._expanded = false;
+                        // 2026-08-03: 默认展开（原 dev 设计默认折叠导致侧边栏分组"不显示"）
+                        n._expanded = true;
                     }
                     if (n.children) _ensureCollapsed(n.children);
                 }
