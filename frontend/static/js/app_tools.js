@@ -797,6 +797,23 @@ Object.assign(App, {
         this._diPtFile = file;
         this._diIsPt = true;
         this._diItems = data.items;
+        // 2026-08-03 对齐 PNG 分组规则: 识别 .pt 文件原始默认分组(第一顺位 ★) + 当前所在分组(第二顺位 ●)
+        var origGid = null, origGname = '';
+        for (var di = 0; di < data.items.length; di++) {
+            if (data.items[di].group_id) { origGid = data.items[di].group_id; break; }
+        }
+        this._diPngGroupId = origGid;
+        if (origGid && this.state.groupTree) {
+            (function _findG(nodes) {
+                for (var j = 0; j < nodes.length; j++) {
+                    if (String(nodes[j].id) === String(origGid)) { origGname = nodes[j].name || ''; return true; }
+                    if (nodes[j].children && _findG(nodes[j].children)) return true;
+                }
+                return false;
+            })(this.state.groupTree);
+        }
+        this._diPngGroupName = origGname;
+        this._diCurrentGroupId = App.state.currentGroupId || null;
         document.getElementById('diFileName').textContent = file.name;
         document.getElementById('diFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB \u00B7 ' + data.count + ' \u6761\u63D0\u793A\u8BCD';
         document.getElementById('diCount').textContent = '共 ' + data.count + App._t('auto.str_6f2666c1', ' 条提示词');
