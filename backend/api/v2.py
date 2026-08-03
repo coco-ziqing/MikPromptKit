@@ -673,11 +673,27 @@ def _fetch_export_rows(db, prompt_ids):
 
 @router.post("/batch/export")
 def batch_export(data: dict):
-    """批量导出为文件"""
+    """批量导出为文件（txt/md/json）
+
+    2026-08-03: 支持 name 参数自定义文件名（#batchBar 导出统一走命名弹窗）
+    """
     prompt_ids = data.get("prompt_ids", [])
     fmt = data.get("format", "txt")
     if not prompt_ids:
         raise HTTPException(400, "缺少 prompt_ids")
+
+    # 自定义文件名（安全过滤非法字符，缺省用 prompts_export）
+    import re as _re
+    from urllib.parse import quote as _quote
+    raw_name = (data.get("name") or "").strip()
+    safe_name = _re.sub(r'[\\/:*?"<>|\r\n]', '', raw_name).strip()[:80]
+    if not safe_name:
+        safe_name = "prompts_export"
+
+    def _dl_header(filename: str):
+        """Content-Disposition：ASCII 回退 + RFC5987 UTF-8 编码（中文文件名 header 必需）"""
+        ascii_name = _re.sub(r'[^\x20-\x7e]', '_', filename)
+        return f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{_quote(filename)}'
 
     placeholders = ",".join("?" * len(prompt_ids))
     db = get_db()
@@ -693,8 +709,9 @@ def batch_export(data: dict):
             "prompts": [dict(r) for r in rows]
         }
         content = json.dumps(export_data, ensure_ascii=False, indent=2)
+        filename = safe_name + ".json"
         return Response(content=content, media_type="application/json",
-                        headers={"Content-Disposition": 'attachment; filename="prompts_export.json"'})
+                        headers={"Content-Disposition": _dl_header(filename)})
     elif fmt == "md":
         lines = [f"# 提示词批量导出\n",
                  f"导出时间: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')}  |  共 {len(rows)} 条\n",
@@ -707,9 +724,9 @@ def batch_export(data: dict):
                 lines.append(f"- **释义**: {r['meaning']}")
             lines.append("")
         content = "\n".join(lines)
-        filename = "prompts_export.md"
+        filename = safe_name + ".md"
         return Response(content=content, media_type="text/markdown; charset=utf-8",
-                        headers={"Content-Disposition": 'attachment; filename="' + filename + '"'})
+                        headers={"Content-Disposition": _dl_header(filename)})
     else:
         lines = [f"# 批量导出 - {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')}",
                  f"# 共 {len(rows)} 条", "", "---", ""]
@@ -720,8 +737,9 @@ def batch_export(data: dict):
                 lines.append(f"    释义: {r['meaning']}")
             lines.append("")
         content = "\n".join(lines)
+        filename = safe_name + ".txt"
         return Response(content=content, media_type="text/plain; charset=utf-8",
-                        headers={"Content-Disposition": 'attachment; filename="prompts_export.txt"'})
+                        headers={"Content-Disposition": _dl_header(filename)})
 
 
 # ==================== .pt 包导出/导入 ====================

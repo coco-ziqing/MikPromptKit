@@ -801,40 +801,23 @@ Object.assign(App, {
     async batchExport(fmt) {
         const ids = [...this.state.batchSelected];
         if (ids.length === 0) { this.showToast(App._t('auto.please_选择提示词', '请先选择提示词'), 'error'); return; }
-        if (fmt === 'pt' || fmt === 'png') {
-            this._exportQueue = { ids: ids, fmt: fmt };
-            this._showExportNameDialog(ids, fmt);
-            return;
-        }
-        try {
-            var res = await fetch('/api/v2/batch/export', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt_ids: ids, format: fmt })
-            });
-            var blob = await res.blob();
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = App._makeExportFilename(ids, fmt);
-            a.click();
-            URL.revokeObjectURL(url);
-            this.showToast(App._t('common.export', '导出成功 (') + ids.length + ' 条)', 'success');
-        } catch (e) {
-            this.showToast(App._t('common.export', '导出未完成'), 'error');
-        }
+        // 2026-08-03: 全部格式统一走命名弹窗（自定义文件名 + 保存目录），txt/md/json 不再直接下载
+        this._exportQueue = { ids: ids, fmt: fmt };
+        this._showExportNameDialog(ids, fmt);
     },
 
     // ============ 导出命名弹窗 ============
 
     _showExportNameDialog(ids, fmt) {
-        var fmtNames = { pt: App._t('auto.str_7f391c64', '.pt 提示词包'), png: App._t('common.export', '导出 PNG 卡片') };
-        // 2026-08-03: png 标题固定为「导出PNG词卡」（原逻辑拼出重复文案）
-        var title = fmt === 'png' ? '导出PNG词卡' : (App._t('common.export', '导出 ') + (fmtNames[fmt] || fmt.toUpperCase()));
+        var fmtLabels = { pt: '.pt 提示词包', png: 'PNG 卡片', txt: 'TXT 文本', md: 'Markdown', json: 'JSON 数据' };
+        // 2026-08-03: png 标题固定为「导出PNG词卡」；txt/md/json 统一「导出X词卡」；pt 保持原样
+        var title = fmt === 'png' ? '导出PNG词卡'
+            : fmt === 'pt' ? '导出 .pt 提示词包'
+            : ('导出' + fmt.toUpperCase() + '词卡');
         document.getElementById('exportNameTitle').textContent = title;
         var defaultName = this._makeExportFilename(ids, fmt).replace('.' + fmt, '');
         document.getElementById('exportNameInput').value = defaultName;
-        document.getElementById('exportNameCount').textContent = '共 ' + ids.length + ' 条 · 格式: ' + (fmt === 'pt' ? App._t('auto.str_7f391c64', '.pt 提示词包') : App._t('auto.str_aa9fa585', 'PNG 卡片'));
+        document.getElementById('exportNameCount').textContent = '共 ' + ids.length + ' 条 · 格式: ' + (fmtLabels[fmt] || fmt.toUpperCase());
 
         var savedPath = localStorage.getItem('promptkit_export_path') || '';
         var pi = document.getElementById('exportPathInput');
@@ -890,15 +873,18 @@ Object.assign(App, {
         var savedP = localStorage.getItem('promptkit_export_path') || '';
         var dirLabel = (savedP && (savedP.indexOf(':\\') >= 0 || savedP.indexOf(':/') >= 0))
             ? savedP : '浏览器下载文件夹（默认）';
-        document.getElementById('exportPathPreview').innerHTML = fmt === 'pt'
-            ? '📄 将保存为: <strong>' + defaultName + ext + '</strong>'
-            : '📄 将保存 <strong>' + ids.length + '</strong> 张 PNG 到目录: <strong>' + dirLabel + '</strong>';
+        // 2026-08-03: txt/md/json 统一命名弹窗后，预览文案按格式适配（不再一律显示 PNG）
+        var fmtUnit = { png: '张 PNG', txt: '条 TXT', md: '条 Markdown', json: '条 JSON' }[fmt] || ('条 ' + fmt.toUpperCase());
+        var renderPreview = function(val) {
+            document.getElementById('exportPathPreview').innerHTML = fmt === 'pt'
+                ? '📄 将保存为: <strong>' + val + ext + '</strong>'
+                : '📄 将保存 <strong>' + ids.length + '</strong> ' + fmtUnit + ' 到目录: <strong>' + dirLabel + '</strong>';
+        };
+        renderPreview(defaultName);
 
         document.getElementById('exportNameInput').oninput = function() {
             var val = this.value.trim() || defaultName;
-            document.getElementById('exportPathPreview').innerHTML = fmt === 'pt'
-                ? '📄 将保存为: <strong>' + val + ext + '</strong>'
-                : '📄 将保存 <strong>' + ids.length + '</strong> 张 PNG 到目录: <strong>' + dirLabel + '</strong>';
+            renderPreview(val);
         };
 
         document.getElementById('btnConfirmExportName').onclick = function() { App._confirmBatchExport(); };
@@ -980,6 +966,29 @@ Object.assign(App, {
                     else { App._fallbackDownload(b, dn); App.showToast(App._t('auto.str_1680e142', '写入未完成，已改为下载'), 'warning'); }
                 } else {
                     App._fallbackDownload(b, dn);
+                    App.showToast(App._t('common.export', '导出成功 (') + ids.length + ' 条)', 'success');
+                }
+            } else if (fmt === 'txt' || fmt === 'md' || fmt === 'json') {
+                // 2026-08-03: txt/md/json 统一走命名弹窗 — 自定义文件名 + 保存目录/下载
+                var r = await fetch('/api/v2/batch/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt_ids: ids, format: fmt, name: customName })
+                });
+                if (!r.ok) {
+                    var errTxt = '';
+                    try { var ed2 = await r.json(); errTxt = ': ' + (ed2.detail || r.statusText); } catch(_) {}
+                    App.showToast('导出未完成' + errTxt, 'error');
+                    return;
+                }
+                var b2 = await r.blob();
+                var dn = customName + '.' + fmt;
+                if (saveDir) {
+                    var ok2 = await App._saveBlobToPath(b2, saveDir + '\\' + dn);
+                    if (ok2) { App.showToast(App._t('common.export', '导出成功 (') + ids.length + ' 条)', 'success'); }
+                    else { App._fallbackDownload(b2, dn); App.showToast(App._t('auto.str_1680e142', '写入未完成，已改为下载'), 'warning'); }
+                } else {
+                    App._fallbackDownload(b2, dn);
                     App.showToast(App._t('common.export', '导出成功 (') + ids.length + ' 条)', 'success');
                 }
             } else if (fmt === 'png') {
