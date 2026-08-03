@@ -784,6 +784,8 @@ def export_pt_package(data: dict):
                 "meaning": rdict.get("meaning") or "",
                 "scene": rdict.get("scene") or "",
                 "tags": json.loads(rdict["tags"]) if rdict.get("tags") else [],
+                # 2026-08-03: 导出带分组（词卡导入可还原分组）
+                "group_id": rdict.get("group_id"),
             }
 
             # 缩略图: word_card 用 thumbnail 字段，prompts 已 JOIN prompt_thumbnails.filename
@@ -854,9 +856,15 @@ async def import_pt_package(
     THUMB_DIR = os.path.join(DATA_DIR, "thumbnails")
     VIDEO_DIR = os.path.join(DATA_DIR, "videos")
     ORIGINAL_DIR = os.path.join(DATA_DIR, "originals")
+    # 2026-08-03: word_card 词卡媒体目录（词卡视图缩略图/视频服务只读 wc_media/）
+    WC_MEDIA_DIR = os.path.join(DATA_DIR, "wc_media")
+    WC_THUMB_DIR = os.path.join(WC_MEDIA_DIR, "thumbs")
+    WC_VIDEO_DIR = os.path.join(WC_MEDIA_DIR, "videos")
     os.makedirs(THUMB_DIR, exist_ok=True)
     os.makedirs(VIDEO_DIR, exist_ok=True)
     os.makedirs(ORIGINAL_DIR, exist_ok=True)
+    os.makedirs(WC_THUMB_DIR, exist_ok=True)
+    os.makedirs(WC_VIDEO_DIR, exist_ok=True)
 
     db = get_db()
     created = 0
@@ -888,7 +896,10 @@ async def import_pt_package(
                     failed += 1
                     continue
 
-                existing = db.execute("SELECT id FROM prompts WHERE content=?", [content]).fetchone()
+                # 2026-08-03 对齐: 去重检测 word_card 优先 + prompts 补查
+                existing = db.execute("SELECT id FROM word_card WHERE content=? AND is_deleted=0", [content]).fetchone()
+                if not existing:
+                    existing = db.execute("SELECT id FROM prompts WHERE content=? AND deleted_at IS NULL", [content]).fetchone()
                 if existing:
                     if conflict == "skip":
                         skipped += 1
@@ -899,8 +910,8 @@ async def import_pt_package(
                         for tbl in ["collection_items", "wordpack_items", "usage_history", "prompt_thumbnails", "prompt_videos"]:
                             db.execute(f"DELETE FROM {_safe_delete_table(tbl)} WHERE prompt_id=?", [existing["id"]])
                         db.execute("DELETE FROM prompts WHERE id=?", [existing["id"]])
-                        # 同步清理 prompt_cards
-                        db.execute("DELETE FROM prompt_cards WHERE name=? AND content=?", [entry.get("subcategory","") or entry.get("content","")[:30], existing["content"]])
+                        db.execute("DELETE FROM prompt_cards WHERE id=?", [existing["id"]])
+                        db.execute("DELETE FROM word_card WHERE id=?", [existing["id"]])
 
                 module = entry.get("module", "custom")
                 category = entry.get("category", "通用")
@@ -919,10 +930,40 @@ async def import_pt_package(
                     "INSERT INTO prompt_cards (id, card_type, name, content, meaning, scene, module, category, tags, structured_fields, is_builtin, is_deleted, created_at, updated_at) VALUES (?,'image',?,?,?,?,?,?,?,'{}',0,0,datetime('now','localtime'),datetime('now','localtime'))",
                     [new_id, subcategory or content[:30], content, meaning, scene, module, category, tags]
                 )
+                # 2026-08-03 对齐 PNG: 新建词卡（word_card）并关联分组 — 分组来自
+                # overrides.group_id（用户选择）→ entry.group_id（导出时存储）→ 无则 NULL（仍入词库）
+                final_group_id = None
+                if idx < len(override_list) and override_list[idx] and override_list[idx].get("group_id"):
+                    try:
+                        final_group_id = int(override_list[idx]["group_id"])
+                    except Exception:
+                        final_group_id = None
+                if final_group_id is None and entry.get("group_id"):
+                    try:
+                        final_group_id = int(entry["group_id"])
+                    except Exception:
+                        final_group_id = None
+                if final_group_id is not None:
+                    grp = db.execute("SELECT id FROM word_card_group WHERE id=? AND is_active=1", [final_group_id]).fetchone()
+                    if not grp:
+                        final_group_id = None
+                wc_id = None
+                try:
+                    max_sort = db.execute("SELECT COALESCE(MAX(sort_order),0) FROM word_card WHERE group_id IS ?",
+                                          [final_group_id]).fetchone()[0]
+                    name = (entry.get("name") or content)[:60]
+                    db.execute(
+                        "INSERT INTO word_card (group_id,name,content,meaning,scene,module,category,tags,sort_order,is_builtin,source,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,0,'pt_import',datetime('now','localtime'),datetime('now','localtime'))",
+                        [final_group_id, name, content, meaning, scene, module, category, tags, max_sort + 1]
+                    )
+                    wc_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+                except Exception:
+                    wc_id = None
                 db.commit()
 
-                # 还原缩略图（路径穿越防护）
+                # 还原缩略图（路径穿越防护）— 2026-08-03: 落盘 wc_media/thumbs 并关联 word_card.thumbnail
                 thumb_arc = entry.get("thumbnail")
+                thumb_fn_out = None
                 if thumb_arc and thumb_arc in zf.namelist():
                     try:
                         # 校验 arcname 不包含 .. 或绝对路径
@@ -931,32 +972,38 @@ async def import_pt_package(
                         thumb_data = zf.read(thumb_arc)
                         ext = os.path.splitext(thumb_arc)[1] or ".jpg"
                         thumb_fn = f"{uuid.uuid4().hex}{ext}"
-                        thumb_path = os.path.join(THUMB_DIR, thumb_fn)
+                        # 词卡媒体目录（词卡视图缩略图服务只读 wc_media/thumbs）
+                        thumb_path = os.path.join(WC_THUMB_DIR, thumb_fn)
                         with open(thumb_path, "wb") as f:
                             f.write(thumb_data)
+                        thumb_fn_out = thumb_fn
                         media_type = entry.get("thumbnail_media_type", "image/jpeg")
                         db.execute(
                             "INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type) VALUES (?,?,?)",
                             [new_id, thumb_fn, media_type]
                         )
+                        if wc_id is not None:
+                            db.execute("UPDATE word_card SET thumbnail=? WHERE id=?", [thumb_fn, wc_id])
                         db.commit()
                     except Exception:
                         pass
 
-                # 还原视频
+                # 还原视频 — 2026-08-03: 落盘 wc_media/videos 并关联 word_card.preview_media
                 video_arc = entry.get("video")
                 if video_arc and video_arc in zf.namelist():
                     try:
                         video_data = zf.read(video_arc)
                         ext = os.path.splitext(video_arc)[1] or ".mp4"
                         vfn = f"{uuid.uuid4().hex}{ext}"
-                        video_path = os.path.join(VIDEO_DIR, vfn)
+                        video_path = os.path.join(WC_VIDEO_DIR, vfn)
                         with open(video_path, "wb") as f:
                             f.write(video_data)
                         db.execute(
                             "INSERT OR REPLACE INTO prompt_videos (prompt_id, filename, poster, duration, fps) VALUES (?,?,?,?,?)",
                             [new_id, vfn, entry.get("video_poster", ""), entry.get("video_duration", 0), entry.get("video_fps", 0)]
                         )
+                        if wc_id is not None:
+                            db.execute("UPDATE word_card SET preview_media=? WHERE id=?", [vfn, wc_id])
                         db.commit()
                     except Exception:
                         pass
@@ -997,6 +1044,8 @@ async def preview_pt_package(file: UploadFile = File(...)):
                     "content": (entry.get("content") or ""),
                     "module": entry.get("module", "custom"),
                     "category": entry.get("category", "通用"),
+                    "name": entry.get("name") or (entry.get("content") or "")[:30],
+                    "group_id": entry.get("group_id"),
                     "has_thumbnail": bool(entry.get("thumbnail")),
                     "has_video": bool(entry.get("video")),
                 })
