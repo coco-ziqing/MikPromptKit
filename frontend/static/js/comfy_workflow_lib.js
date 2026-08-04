@@ -214,14 +214,18 @@ App.comfyLib._renderList = function() {
         var isSel = self._selectedWf && self._selectedWf.id === w.id;
         var tip = (w.name || '') + (w.description ? '\n' + w.description : '') + (w.prompt_text ? '\n\n📝 ' + w.prompt_text : '');
         html += '<div class="cwl-card" onclick="App.comfyLib.selectWf(\'' + App._escape(w.id) + '\')" title="' + App._escape(tip) + '" ' +
-          'style="border:1px solid ' + (isSel ? 'var(--primary)' : 'var(--border-color)') + ';border-radius:10px;overflow:hidden;cursor:pointer;background:var(--bg-card);">' +
+          'style="border:1px solid ' + (isSel ? 'var(--primary)' : 'var(--border-color)') + ';border-radius:10px;overflow:hidden;cursor:pointer;background:var(--bg-card);position:relative;">' +
           '<div style="height:84px;background:linear-gradient(135deg,#1e293b,#334155);display:flex;align-items:center;justify-content:center;position:relative;">' +
             (cover ? '<img src="' + cover + '" style="width:100%;height:100%;object-fit:cover;">' : '<span style="font-size:26px;opacity:0.5;">🎨</span>') +
             '<span style="position:absolute;top:6px;right:6px;font-size:9px;padding:2px 7px;border-radius:8px;background:rgba(0,0,0,0.55);color:#e2e8f0;">' + src + '</span>' +
             (w.is_favorite ? '<span style="position:absolute;top:6px;left:6px;font-size:11px;">⭐</span>' : '') +
           '</div>' +
           '<div style="padding:8px 10px;">' +
-            '<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + App._escape(w.name || '') + '">' + App._escape(w.name || '未命名') + '</div>' +
+            '<div style="display:flex;align-items:center;gap:4px;">' +
+              '<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;" title="' + App._escape(w.name || '') + '">' + App._escape(w.name || '未命名') + '</div>' +
+              '<span onclick="event.stopPropagation();App.comfyLib.toggleFavorite(\'' + App._escape(w.id) + '\')" title="' + (w.is_favorite ? '取消收藏' : '收藏') + '" style="font-size:13px;cursor:pointer;opacity:0.75;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.75">' + (w.is_favorite ? '⭐' : '☆') + '</span>' +
+              '<span onclick="event.stopPropagation();App.comfyLib.deleteWorkflow(\'' + App._escape(w.id) + '\')" title="删除模板" style="font-size:12px;cursor:pointer;opacity:0.65;color:#ef4444;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.65">🗑</span>' +
+            '</div>' +
             '<div style="font-size:10px;color:var(--text-muted);margin-top:3px;display:flex;justify-content:space-between;">' +
               '<span>' + (w.node_count || 0) + ' 节点</span><span>使用 ' + (w.usage_count || 0) + ' 次</span>' +
             '</div>' +
@@ -229,6 +233,51 @@ App.comfyLib._renderList = function() {
         '</div>';
     });
     grid.innerHTML = html;
+};
+
+// 收藏/取消收藏
+App.comfyLib.toggleFavorite = async function(wfId) {
+    var wf = null;
+    for (var i = 0; i < this._wfList.length; i++) {
+        if (this._wfList[i].id === wfId) { wf = this._wfList[i]; break; }
+    }
+    var next = wf && wf.is_favorite ? 0 : 1;
+    try {
+        await App.fetchJSON('/api/v2/comfyui/workflows/' + encodeURIComponent(wfId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_favorite: next })
+        });
+        App.showToast(next ? '⭐ 已收藏' : '已取消收藏', 'success');
+        this.loadList();
+    } catch(e) {
+        App.showToast('操作失败: ' + e.message, 'error');
+    }
+};
+
+// 删除工作流模板（二次确认）
+App.comfyLib.deleteWorkflow = async function(wfId) {
+    var wf = null;
+    for (var i = 0; i < this._wfList.length; i++) {
+        if (this._wfList[i].id === wfId) { wf = this._wfList[i]; break; }
+    }
+    var name = (wf && wf.name) || '该模板';
+    if (!confirm('确定删除工作流模板「' + name + '」？\n删除后不可恢复（关联的生成记录与词卡不受影响）。')) return;
+    try {
+        await App.fetchJSON('/api/v2/comfyui/workflows/' + encodeURIComponent(wfId), { method: 'DELETE' });
+        App.showToast('已删除「' + name + '」', 'success');
+        if (this._selectedWf && this._selectedWf.id === wfId) {
+            this._selectedWf = null;
+            this._activePreset = null;
+            var panel = document.getElementById('cwlGenPanel');
+            if (panel) panel.style.display = 'none';
+            var form = document.getElementById('cwlParamForm');
+            if (form) form.innerHTML = '';
+        }
+        this.loadList();
+    } catch(e) {
+        App.showToast('删除失败: ' + e.message, 'error');
+    }
 };
 
 App.comfyLib.selectWf = async function(id) {
