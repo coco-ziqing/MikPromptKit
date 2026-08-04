@@ -734,30 +734,54 @@ def _ui_to_api_wf(ui_wf: dict, object_info: dict = None) -> dict:
         opt = info.get("input", {}).get("optional", {}) or {}
         order = list(req.keys()) + list(opt.keys())
         widgets = node.get("widgets_values") or []
-        wi = 0
-        # 跳过非输入 widget：inputs 数组里 name 不在 order 中的占位项
         node_inputs_def = node.get("inputs") or []
-        skip_names = {i.get("name") for i in node_inputs_def if i.get("name") not in order}
-        for name in order:
-            if name in skip_names:
-                continue
-            if wi >= len(widgets):
-                break
-            val = widgets[wi]
-            if val is None:
+        # 新版 ComfyUI(0.10+)：widget 输入也定义在 inputs 中（带 widget 字段）
+        # 此时 node.inputs 顺序即 widgets_values 顺序，直接按序映射
+        has_widget_defs = any(i.get("widget") for i in node_inputs_def)
+        if has_widget_defs:
+            wi = 0
+            for i, inp in enumerate(node_inputs_def):
+                name = inp.get("name", "")
+                if not name:
+                    continue
+                if inp.get("link") is not None or (nid, i) in in_links:
+                    conns = in_links.get((nid, i))
+                    if conns:
+                        inputs[name] = [str(conns[0][0]), conns[0][1]]
+                elif inp.get("widget"):
+                    if wi < len(widgets):
+                        val = widgets[wi]
+                        wi += 1
+                        if val is None:
+                            continue
+                        if isinstance(val, str) and val in ("true", "false"):
+                            val = val == "true"
+                        inputs[name] = val
+        else:
+            # 旧版兼容：widgets_values 按 object_info order 映射 + links 填连接
+            info = (object_info or {}).get(ct, {})
+            req = info.get("input", {}).get("required", {}) or {}
+            opt = info.get("input", {}).get("optional", {}) or {}
+            order = list(req.keys()) + list(opt.keys())
+            slot_names = {i.get("name") for i in node_inputs_def if i.get("name")}
+            wi = 0
+            for name in order:
+                if name in slot_names:
+                    continue
+                if wi >= len(widgets):
+                    break
+                val = widgets[wi]
                 wi += 1
-                continue
-            # 布尔 widget 偶尔是字符串
-            if isinstance(val, str) and val in ("true", "false"):
-                val = val == "true"
-            inputs[name] = val
-            wi += 1
-        # 连线输入：node.inputs 的 slot 名 → API input 名
-        for i, inp in enumerate(node_inputs_def):
-            name = inp.get("name", "")
-            conns = in_links.get((nid, i))
-            if conns and name:
-                inputs[name] = [str(conns[0][0]), conns[0][1]]
+                if val is None:
+                    continue
+                if isinstance(val, str) and val in ("true", "false"):
+                    val = val == "true"
+                inputs[name] = val
+            for i, inp in enumerate(node_inputs_def):
+                name = inp.get("name", "")
+                conns = in_links.get((nid, i))
+                if conns and name:
+                    inputs[name] = [str(conns[0][0]), conns[0][1]]
         api[str(nid)] = {"class_type": ct, "inputs": inputs}
     return api
 
