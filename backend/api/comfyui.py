@@ -1174,21 +1174,18 @@ def sync_workflow(data: SyncRequest = None):
                         "source": source
                     }
 
-    new_wf = {
-        "id": wf_id,
-        "name": name,
-        "description": f"从ComfyUI {source}自动同步 ({len(workflow)}节点)",
-        "prompt_node_id": prompt_node_id,
-        "prompt_field": prompt_field,
-        "image_output_node_id": output_node_id,
-        "workflow_json": workflow
-    }
-    workflows = cfg.get("workflows", [])
-    workflows.append(new_wf)
-    cfg["workflows"] = workflows
+    # 新模板写入 comfyui_workflows 表（此前误写 config 旧数组导致列表不显示）
+    _db2 = get_db()
+    _db2.execute(
+        """INSERT OR IGNORE INTO comfyui_workflows
+           (id, name, description, workflow_json, ui_json, prompt_text, thumbnail, source, tags)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        [wf_id, name, f"从ComfyUI {source}自动同步 ({len(workflow)}节点)",
+         json.dumps(workflow, ensure_ascii=False), "",
+         _extract_positive_text(workflow), "", "comfyui_sync", ""])
+    # active_workflow 记录到 config（兼容旧逻辑），旧数组不再追加（防复活）
     cfg["active_workflow"] = wf_id
     _save_config(cfg)
-
     return {
         "ok": True,
         "status": "已导入",
