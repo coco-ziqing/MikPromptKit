@@ -592,6 +592,7 @@ App.aiTools.showContextMenu = function(e, promptId, content, module) {
     '<div class="ctx-item" onclick="App.aiTools._ctxTranslate()"><span>🌐</span> 翻译 (中英互译)</div>' +
     '<div class="ctx-item" onclick="App.aiTools._ctxAutoTag()"><span>🏷️</span> AI 分析标签</div>' +
     '<div class="ctx-item" onclick="App.aiTools._ctxAiThumb()"><span>🎨</span> AI 生成缩略图</div>' +
+    '<div class="ctx-item" onclick="App.aiTools._ctxOpenWorkflow()"><span>🧩</span> 用工作流生成</div>' +
     '<div class="ctx-sep"></div>' +
     '<div class="ctx-item ctx-copy" onclick="App.aiTools._ctxCopyPrompt()"><span>📋</span> 复制提示词</div>';
 
@@ -727,12 +728,24 @@ App.aiTools._ctxAiThumb = async function() {
         var d = await App.fetchJSON('/api/ai/thumbnail/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt_id: pid })
+            body: JSON.stringify({ prompt_id: pid, card_type: 'word_card' })
         });
         App.showToast(d.ok ? App._t('auto.str_90ef7b61', 'AI缩略图已生成') : App._t('auto.str_7f7de8a2', '生成未完成'), d.ok ? 'success' : 'error');
         App.loadPrompts();
     } catch(e) {
         App.showToast('生成遇到问题: ' + e.message, 'error');
+    }
+};
+
+// 用工作流生成：从词卡调取关联工作流（ComfyUI 预览图生成）
+App.aiTools._ctxOpenWorkflow = function() {
+    this._removeContextMenu();
+    var pid = this._contextPromptId;
+    if (!pid) return;
+    if (window.App && App.comfyLib) {
+        App.comfyLib.openFromCard(pid);
+    } else {
+        App.showToast('工作流库未加载，请刷新页面', 'warning');
     }
 };
 

@@ -764,6 +764,75 @@ def init_db():
             )
         """)
 
+        # ========== 2026-08-04: ComfyUI 工作流存储调用空间 ==========
+        conn.executescript("""
+            -- 工作流库：从 PNG/JSON/ComfyUI 同步导入的可执行工作流模板
+            CREATE TABLE IF NOT EXISTS comfyui_workflows (
+                id            TEXT PRIMARY KEY,
+                name          TEXT NOT NULL DEFAULT '',
+                description   TEXT DEFAULT '',
+                workflow_json TEXT NOT NULL,      -- API 格式（可提交执行）
+                ui_json       TEXT DEFAULT '',    -- UI 格式（含节点布局，编辑器用）
+                prompt_text   TEXT DEFAULT '',    -- 模板默认提示词（positive）
+                thumbnail     TEXT DEFAULT '',    -- 封面图（data/thumbnails 内文件名）
+                source        TEXT DEFAULT 'manual',  -- manual / png_import / comfyui_sync / generate
+                source_file   TEXT DEFAULT '',    -- 来源 PNG 文件路径
+                tags          TEXT DEFAULT '',
+                is_favorite   INTEGER DEFAULT 0,
+                usage_count   INTEGER DEFAULT 0,
+                last_used_at  TEXT DEFAULT '',
+                created_at    TEXT DEFAULT (datetime('now','localtime')),
+                updated_at    TEXT DEFAULT (datetime('now','localtime'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_cwf_source ON comfyui_workflows(source);
+            CREATE INDEX IF NOT EXISTS idx_cwf_fav ON comfyui_workflows(is_favorite);
+
+            -- 生成记录：每次 ComfyUI 调用可追溯（引擎/耗时/结果/关联词卡）
+            CREATE TABLE IF NOT EXISTS comfyui_generation_logs (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                workflow_id  TEXT DEFAULT '',
+                prompt_text  TEXT DEFAULT '',
+                seed         INTEGER DEFAULT 0,
+                status       TEXT DEFAULT 'running',   -- running / success / failed / cancelled
+                error        TEXT DEFAULT '',
+                output_file  TEXT DEFAULT '',          -- 原图文件名（data/comfyui_outputs/）
+                thumb_file   TEXT DEFAULT '',          -- 缩略图文件名（data/thumbnails/）
+                card_id      INTEGER DEFAULT 0,        -- 关联词卡 id
+                card_type    TEXT DEFAULT 'word_card', -- word_card / prompts
+                duration_sec REAL DEFAULT 0,
+                engine       TEXT DEFAULT 'comfyui',   -- comfyui / llm_fallback
+                created_at   TEXT DEFAULT (datetime('now','localtime'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_cgl_status ON comfyui_generation_logs(status);
+            CREATE INDEX IF NOT EXISTS idx_cgl_wf ON comfyui_generation_logs(workflow_id);
+
+            -- 工作流前端参数配置（编辑模式 → 用户模式锁定）
+            CREATE TABLE IF NOT EXISTS comfyui_workflow_presets (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                workflow_id TEXT NOT NULL DEFAULT '',
+                name        TEXT NOT NULL DEFAULT '',
+                params_json TEXT NOT NULL DEFAULT '[]',  -- [{key,label,node_id,field,type,min,max,step,default,options}]
+                mode        TEXT NOT NULL DEFAULT 'user',   -- editor(编辑中) / user(已锁定)
+                created_at  TEXT DEFAULT (datetime('now','localtime')),
+                updated_at  TEXT DEFAULT (datetime('now','localtime'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_cwp_wf ON comfyui_workflow_presets(workflow_id);
+        """)
+        # media_assets 幂等加列：workflow_id（ComfyUI 产出资产关联工作流）
+        try:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(media_assets)")]
+            if "workflow_id" not in cols:
+                conn.execute("ALTER TABLE media_assets ADD COLUMN workflow_id TEXT DEFAULT ''")
+        except Exception:
+            pass
+        # word_card 幂等加列：workflow_id（ComfyUI 词卡调取工作流）
+        try:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(word_card)")]
+            if "workflow_id" not in cols:
+                conn.execute("ALTER TABLE word_card ADD COLUMN workflow_id TEXT DEFAULT ''")
+        except Exception:
+            pass
+
         conn.commit()
     except sqlite3.Error as e:
         log_error(f"[DB] 建表失败: {e}", source="database")

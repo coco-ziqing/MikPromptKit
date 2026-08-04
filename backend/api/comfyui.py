@@ -3,7 +3,7 @@ ComfyUI 集成 — 发送提示词生成图片并自动收录为缩略图
 包含：模块主体预设提示词组合、工作流同步、自动轮询生成
 """
 import os, json, uuid, time, io, base64, asyncio, threading, copy
-from fastapi import APIRouter
+from fastapi import APIRouter, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from database import get_db, safe_commit
@@ -17,6 +17,7 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 THUMB_DIR = os.path.join(_PROJECT_ROOT, "data", "thumbnails")
 ORIGINALS_DIR = os.path.join(_PROJECT_ROOT, "data", "originals")
+OUTPUTS_DIR = os.path.join(_PROJECT_ROOT, "data", "comfyui_outputs")
 
 DEFAULT_CONFIG = {
     "server_url": "http://127.0.0.1:8188",
@@ -104,6 +105,551 @@ def _find_workflow(cfg: dict, workflow_id: str = ""):
                 return (w, w.get("name", ""))
     return (workflows[0], workflows[0].get("name", ""))
 
+
+# ==================== 工作流库（comfyui_workflows 表） ====================
+
+def _extract_positive_text(wf) -> str:
+    """从工作流提取 positive 提示词：优先跟随 KSampler.positive 链路的 CLIPTextEncode，
+    无则取第一个非空 CLIPTextEncode"""
+    try:
+        if isinstance(wf, str):
+            wf = json.loads(wf)
+        if not isinstance(wf, dict):
+            return ""
+        for nid, node in wf.items():
+            if node.get("class_type") == "KSampler":
+                pos = node.get("inputs", {}).get("positive")
+                if isinstance(pos, list) and len(pos) >= 1:
+                    tnode = wf.get(str(pos[0]))
+                    if tnode and tnode.get("class_type") == "CLIPTextEncode":
+                        return (tnode.get("inputs", {}).get("text", "") or "").strip()
+        for nid, node in wf.items():
+            if node.get("class_type") == "CLIPTextEncode":
+                t = (node.get("inputs", {}).get("text", "") or "").strip()
+                if t:
+                    return t
+    except Exception:
+        pass
+    return ""
+
+
+def _parse_png_workflow(data: bytes) -> dict:
+    """解析 ComfyUI 生成 PNG 的自带工作流元数据
+    返回 {"prompt": dict|None, "workflow": str|None, "width": int, "height": int};
+    SaveImage 节点写入 tEXt chunk: prompt(API格式) + workflow(UI格式)
+    """
+    import io as _io
+    try:
+        img = Image.open(_io.BytesIO(data))
+        info = img.info or {}
+        w, h = img.size
+    except Exception:
+        return {"prompt": None, "workflow": None, "width": 0, "height": 0}
+    prompt_raw = info.get("prompt", "")
+    prompt = None
+    if prompt_raw:
+        try:
+            prompt = json.loads(prompt_raw)
+        except Exception:
+            prompt = None
+    return {
+        "prompt": prompt,
+        "workflow": info.get("workflow", "") or "",
+        "width": w, "height": h
+    }
+
+
+def _migrate_legacy_workflows():
+    """幂等迁移：config.comfyui_config.workflows[] → comfyui_workflows 表"""
+    try:
+        db = get_db()
+        row = db.execute("SELECT value FROM config WHERE key='comfyui_config'").fetchone()
+        if not row:
+            return
+        cfg = json.loads(row["value"])
+        workflows = cfg.get("workflows") or []
+        if not workflows:
+            return
+        cnt = db.execute("SELECT COUNT(*) FROM comfyui_workflows").fetchone()[0]
+        if cnt > 0:
+            return
+        for w in workflows:
+            wf_json = w.get("workflow_json", {})
+            if isinstance(wf_json, str):
+                try:
+                    wf_json = json.loads(wf_json)
+                except Exception:
+                    wf_json = {}
+            db.execute(
+                """INSERT OR IGNORE INTO comfyui_workflows
+                   (id, name, description, workflow_json, ui_json, prompt_text, thumbnail, source, tags)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                [w.get("id", "wf_" + uuid.uuid4().hex[:10]),
+                 w.get("name", "未命名"), w.get("description", ""),
+                 json.dumps(wf_json, ensure_ascii=False), "",
+                 _extract_positive_text(wf_json), "", "comfyui_sync", ""])
+        safe_commit()
+        print(f"[ComfyUI] 已迁移 {len(workflows)} 个工作流到 comfyui_workflows 表")
+    except Exception as e:
+        print(f"[ComfyUI] 工作流迁移跳过: {e}")
+
+
+def _find_workflow_v2(workflow_id: str = ""):
+    """从工作流库取工作流，返回 (row_dict, None) 或 (None, error)"""
+    try:
+        _migrate_legacy_workflows()
+        db = get_db()
+        if workflow_id:
+            row = db.execute("SELECT * FROM comfyui_workflows WHERE id=?", [workflow_id]).fetchone()
+            if row:
+                d = dict(row)
+                d["workflow_json"] = json.loads(d["workflow_json"])
+                return (d, None)
+        row = db.execute("SELECT * FROM comfyui_workflows ORDER BY is_favorite DESC, updated_at DESC LIMIT 1").fetchone()
+        if row:
+            d = dict(row)
+            d["workflow_json"] = json.loads(d["workflow_json"])
+            return (d, None)
+        return (None, "工作流库为空，请先导入或同步工作流")
+    except Exception as e:
+        return (None, f"工作流库读取失败: {e}")
+
+
+# ==================== 工作流库 API ====================
+
+class WorkflowCreate(BaseModel):
+    name: str = ""
+    description: str = ""
+    workflow_json: dict = {}
+    ui_json: str = ""
+    prompt_text: str = ""
+    tags: str = ""
+
+class WorkflowUpdate(BaseModel):
+    name: str = ""
+    description: str = ""
+    workflow_json: dict = None
+    ui_json: str = ""
+    prompt_text: str = ""
+    tags: str = ""
+    thumbnail: str = ""
+    is_favorite: int = None
+
+
+@router.get("/workflows")
+def list_workflows(search: str = "", source: str = "", favorite: int = 0):
+    """工作流库列表"""
+    _migrate_legacy_workflows()
+    db = get_db()
+    sql = "SELECT * FROM comfyui_workflows WHERE 1=1"
+    args = []
+    if search:
+        sql += " AND (name LIKE ? OR description LIKE ? OR tags LIKE ? OR prompt_text LIKE ?)"
+        args += [f"%{search}%"] * 4
+    if source:
+        sql += " AND source=?"
+        args.append(source)
+    if favorite:
+        sql += " AND is_favorite=1"
+    sql += " ORDER BY is_favorite DESC, updated_at DESC, created_at DESC"
+    rows = db.execute(sql, args).fetchall()
+    items = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["node_count"] = len(json.loads(d["workflow_json"]))
+        except Exception:
+            d["node_count"] = 0
+        items.append(d)
+    return {"ok": True, "items": items, "total": len(items)}
+
+
+@router.post("/workflows")
+def create_workflow(data: WorkflowCreate):
+    """手动保存工作流"""
+    wf_id = "wf_" + str(int(time.time() * 1000)) + "_" + uuid.uuid4().hex[:6]
+    db = get_db()
+    db.execute(
+        """INSERT INTO comfyui_workflows
+           (id, name, description, workflow_json, ui_json, prompt_text, tags, source)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        [wf_id, data.name or "未命名", data.description,
+         json.dumps(data.workflow_json, ensure_ascii=False), data.ui_json,
+         data.prompt_text or _extract_positive_text(data.workflow_json),
+         data.tags, "manual"])
+    safe_commit()
+    return {"ok": True, "workflow_id": wf_id}
+
+
+@router.get("/workflows/{wf_id}")
+def get_workflow(wf_id: str):
+    db = get_db()
+    row = db.execute("SELECT * FROM comfyui_workflows WHERE id=?", [wf_id]).fetchone()
+    if not row:
+        return {"ok": False, "error": "工作流不存在"}
+    d = dict(row)
+    try:
+        d["workflow_json"] = json.loads(d["workflow_json"])
+    except Exception:
+        pass
+    return {"ok": True, "workflow": d}
+
+
+@router.put("/workflows/{wf_id}")
+def update_workflow(wf_id: str, data: WorkflowUpdate):
+    db = get_db()
+    row = db.execute("SELECT * FROM comfyui_workflows WHERE id=?", [wf_id]).fetchone()
+    if not row:
+        return {"ok": False, "error": "工作流不存在"}
+    sets = ["updated_at=datetime('now','localtime')"]
+    args = []
+    if data.name:
+        sets.append("name=?"); args.append(data.name)
+    if data.description is not None:
+        sets.append("description=?"); args.append(data.description)
+    if data.workflow_json is not None:
+        sets.append("workflow_json=?"); args.append(json.dumps(data.workflow_json, ensure_ascii=False))
+        if not data.prompt_text:
+            sets.append("prompt_text=?"); args.append(_extract_positive_text(data.workflow_json))
+    if data.ui_json is not None:
+        sets.append("ui_json=?"); args.append(data.ui_json)
+    if data.prompt_text is not None:
+        sets.append("prompt_text=?"); args.append(data.prompt_text)
+    if data.tags is not None:
+        sets.append("tags=?"); args.append(data.tags)
+    if data.thumbnail:
+        sets.append("thumbnail=?"); args.append(data.thumbnail)
+    if data.is_favorite is not None:
+        sets.append("is_favorite=?"); args.append(data.is_favorite)
+    args.append(wf_id)
+    db.execute(f"UPDATE comfyui_workflows SET {', '.join(sets)} WHERE id=?", args)
+    safe_commit()
+    return {"ok": True}
+
+
+@router.delete("/workflows/{wf_id}")
+def delete_workflow(wf_id: str):
+    db = get_db()
+    db.execute("DELETE FROM comfyui_workflows WHERE id=?", [wf_id])
+    safe_commit()
+    return {"ok": True}
+
+
+@router.post("/workflows/{wf_id}/duplicate")
+def duplicate_workflow(wf_id: str):
+    db = get_db()
+    row = db.execute("SELECT * FROM comfyui_workflows WHERE id=?", [wf_id]).fetchone()
+    if not row:
+        return {"ok": False, "error": "工作流不存在"}
+    d = dict(row)
+    new_id = "wf_" + str(int(time.time() * 1000)) + "_" + uuid.uuid4().hex[:6]
+    db.execute(
+        """INSERT INTO comfyui_workflows
+           (id, name, description, workflow_json, ui_json, prompt_text, thumbnail, source, tags)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        [new_id, d["name"] + " (副本)", d["description"], d["workflow_json"],
+         d["ui_json"], d["prompt_text"], d["thumbnail"], "manual", d["tags"]])
+    safe_commit()
+    return {"ok": True, "workflow_id": new_id}
+
+
+@router.post("/workflows/import-png")
+async def import_workflow_from_png(file: UploadFile = File(...)):
+    """从 ComfyUI 生成的 PNG 提取自带工作流元数据（prompt/workflow chunk）入库"""
+    data = await file.read()
+    if not data:
+        return {"ok": False, "error": "空文件"}
+    parsed = _parse_png_workflow(data)
+    if not parsed["prompt"]:
+        return {"ok": False, "error": "PNG 中未找到 prompt 工作流元数据。请确认图片由 ComfyUI SaveImage 节点生成"}
+    wf = parsed["prompt"]
+    pos_text = _extract_positive_text(wf)
+    wf_id = "wf_" + str(int(time.time() * 1000)) + "_" + uuid.uuid4().hex[:6]
+    name = (pos_text[:20] + "…") if len(pos_text) > 20 else (pos_text or "从PNG导入")
+    # 原图存档（PNG 自带元数据，可再次提取）
+    os.makedirs(OUTPUTS_DIR, exist_ok=True)
+    fname = wf_id + ".png"
+    with open(os.path.join(OUTPUTS_DIR, fname), "wb") as f:
+        f.write(data)
+    db = get_db()
+    db.execute(
+        """INSERT INTO comfyui_workflows
+           (id, name, description, workflow_json, ui_json, prompt_text, source, source_file)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        [wf_id, name, f"从 PNG 导入（{len(wf)} 节点, {parsed['width']}x{parsed['height']}）",
+         json.dumps(wf, ensure_ascii=False), parsed["workflow"], pos_text, "png_import", fname])
+    safe_commit()
+    return {"ok": True, "workflow_id": wf_id, "name": name, "node_count": len(wf),
+            "prompt_text": pos_text, "image_file": fname,
+            "width": parsed["width"], "height": parsed["height"]}
+
+
+@router.get("/outputs/{filename}")
+def serve_output_file(filename: str):
+    """访问 data/comfyui_outputs/ 下的生成原图（PNG 带工作流元数据）"""
+    from fastapi.responses import FileResponse
+    safe = os.path.basename(filename)
+    p = os.path.join(OUTPUTS_DIR, safe)
+    if not os.path.exists(p):
+        return {"ok": False, "error": "文件不存在"}
+    return FileResponse(p, media_type="image/png")
+
+
+class ImportFromOutputRequest(BaseModel):
+    output_file: str = ""
+
+
+@router.post("/workflows/import-from-output")
+def import_workflow_from_output(data: ImportFromOutputRequest):
+    """从存档的生成 PNG（comfyui_outputs/）提取工作流入库"""
+    if not data.output_file:
+        return {"ok": False, "error": "缺少 output_file"}
+    p = os.path.join(OUTPUTS_DIR, os.path.basename(data.output_file))
+    if not os.path.exists(p):
+        return {"ok": False, "error": "文件不存在"}
+    with open(p, "rb") as f:
+        parsed = _parse_png_workflow(f.read())
+    if not parsed["prompt"]:
+        return {"ok": False, "error": "PNG 中未找到工作流元数据"}
+    wf = parsed["prompt"]
+    pos_text = _extract_positive_text(wf)
+    wf_id = "wf_" + str(int(time.time() * 1000)) + "_" + uuid.uuid4().hex[:6]
+    name = (pos_text[:20] + "…") if len(pos_text) > 20 else (pos_text or "从生成结果导入")
+    db = get_db()
+    db.execute(
+        """INSERT INTO comfyui_workflows
+           (id, name, description, workflow_json, ui_json, prompt_text, source, source_file)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        [wf_id, name, f"从生成结果导入（{len(wf)} 节点）",
+         json.dumps(wf, ensure_ascii=False), parsed["workflow"], pos_text, "generate", os.path.basename(p)])
+    safe_commit()
+    return {"ok": True, "workflow_id": wf_id, "name": name, "node_count": len(wf), "prompt_text": pos_text}
+
+
+# ==================== 工作流前端参数系统 ====================
+
+def _infer_param_type(val):
+    """根据当前值推断适合的前端组件类型"""
+    if isinstance(val, bool):
+        return "checkbox"
+    if isinstance(val, (int, float)):
+        return "slider"
+    if isinstance(val, str):
+        if val.endswith((".safetensors", ".sft", ".ckpt", ".pt", ".pth", ".onnx", ".gguf")):
+            return "select_file"
+        return "text"
+    return "text"
+
+
+def _analyze_workflow_params(wf) -> list:
+    """自动分析工作流可参数化节点：遍历所有节点的非链接输入"""
+    try:
+        if isinstance(wf, str):
+            wf = json.loads(wf)
+    except Exception:
+        return []
+    if not isinstance(wf, dict):
+        return []
+    candidates = []
+    seen = set()
+    for nid, node in wf.items():
+        if not isinstance(node, dict):
+            continue
+        ct = node.get("class_type", "")
+        inputs = node.get("inputs", {})
+        if not isinstance(inputs, dict):
+            continue
+        for field, val in inputs.items():
+            if isinstance(val, (list, dict)):
+                continue  # 链接型/复杂输入不暴露
+            key = f"{nid}.{field}"
+            if key in seen:
+                continue
+            seen.add(key)
+            label_map = {
+                "text": "提示词", "seed": "随机种子", "steps": "步数",
+                "cfg": "CFG", "denoise": "重绘幅度", "width": "宽度",
+                "height": "高度", "batch_size": "批量数",
+                "sampler_name": "采样器", "scheduler": "调度器",
+                "filename_prefix": "输出文件名前缀", "strength_model": "LoRA强度",
+            }
+            candidates.append({
+                "node_id": str(nid),
+                "field": field,
+                "class_type": ct,
+                "key": key,
+                "label": label_map.get(field, f"{ct}.{field}"),
+                "value": val,
+                "type": _infer_param_type(val),
+                "default": val,
+            })
+    return candidates
+
+
+def _apply_params(workflow: dict, params: list, values: dict):
+    """把用户表单参数值写回工作流对应节点"""
+    for p in params or []:
+        nid = str(p.get("node_id", ""))
+        field = p.get("field", "")
+        key = p.get("key", "")
+        if key not in values:
+            continue
+        if nid in workflow and isinstance(workflow[nid].get("inputs"), dict):
+            try:
+                cur = workflow[nid]["inputs"].get(field)
+                v = values[key]
+                if isinstance(cur, bool):
+                    v = bool(v)
+                elif isinstance(cur, int):
+                    v = int(float(v))
+                elif isinstance(cur, float):
+                    v = float(v)
+                workflow[nid]["inputs"][field] = v
+            except Exception:
+                pass
+
+
+class PresetCreate(BaseModel):
+    name: str = ""
+    params: list = []          # [{key,label,node_id,field,type,min,max,step,default,options}]
+    mode: str = "user"        # editor / user
+
+class PresetUpdate(BaseModel):
+    name: str = None
+    params: list = None
+    mode: str = None
+
+
+@router.get("/workflows/{wf_id}/params/analyze")
+def analyze_workflow_params(wf_id: str):
+    """分析工作流可参数化节点，返回候选参数 + 已保存配置"""
+    wf, err = _find_workflow_v2(wf_id)
+    if not wf:
+        return {"ok": False, "error": err or "工作流不存在"}
+    candidates = _analyze_workflow_params(wf["workflow_json"])
+    db = get_db()
+    presets = db.execute("SELECT * FROM comfyui_workflow_presets WHERE workflow_id=? ORDER BY id", [wf_id]).fetchall()
+    return {"ok": True, "candidates": candidates, "presets": [dict(r) for r in presets]}
+
+
+@router.get("/workflows/{wf_id}/presets")
+def list_presets(wf_id: str):
+    db = get_db()
+    rows = db.execute("SELECT * FROM comfyui_workflow_presets WHERE workflow_id=? ORDER BY id", [wf_id]).fetchall()
+    return {"ok": True, "items": [dict(r) for r in rows]}
+
+
+@router.post("/workflows/{wf_id}/presets")
+def create_preset(wf_id: str, data: PresetCreate):
+    """保存参数配置（编辑模式保存后前端可切换锁定为用户模式）"""
+    db = get_db()
+    db.execute(
+        """INSERT INTO comfyui_workflow_presets (workflow_id, name, params_json, mode)
+           VALUES (?,?,?,?)""",
+        [wf_id, data.name or "参数配置", json.dumps(data.params, ensure_ascii=False), data.mode])
+    safe_commit()
+    pid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    return {"ok": True, "preset_id": pid}
+
+
+@router.put("/presets/{preset_id}")
+def update_preset(preset_id: int, data: PresetUpdate):
+    db = get_db()
+    sets = ["updated_at=datetime('now','localtime')"]
+    args = []
+    if data.name is not None:
+        sets.append("name=?"); args.append(data.name)
+    if data.params is not None:
+        sets.append("params_json=?"); args.append(json.dumps(data.params, ensure_ascii=False))
+    if data.mode is not None:
+        sets.append("mode=?"); args.append(data.mode)
+    args.append(preset_id)
+    db.execute(f"UPDATE comfyui_workflow_presets SET {', '.join(sets)} WHERE id=?", args)
+    safe_commit()
+    return {"ok": True}
+
+
+@router.delete("/presets/{preset_id}")
+def delete_preset(preset_id: int):
+    db = get_db()
+    db.execute("DELETE FROM comfyui_workflow_presets WHERE id=?", [preset_id])
+    safe_commit()
+    return {"ok": True}
+
+
+@router.get("/runtime")
+def comfyui_runtime():
+    """当前 ComfyUI 运行状态：执行中 + 排队中的任务（供前端直观查看）"""
+    cfg = _get_config()
+    if not cfg.get("enabled"):
+        return {"ok": False, "error": "ComfyUI 未启用"}
+    url = (cfg.get("server_url") or "").rstrip("/")
+    if not url:
+        return {"ok": False, "error": "未配置服务器地址"}
+    try:
+        with httpx.Client(timeout=5) as cl:
+            q = cl.get(f"{url}/queue").json()
+        def _fmt(item):
+            return {"prompt_id": item[1] if len(item) > 1 else "",
+                    "node_count": len(item[2]) if len(item) > 2 and isinstance(item[2], dict) else 0}
+        running = [_fmt(i) for i in q.get("queue_running", [])]
+        pending = [_fmt(i) for i in q.get("queue_pending", [])]
+        return {"ok": True, "running": running, "pending": pending,
+                "running_count": len(running), "pending_count": len(pending)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@router.get("/workflows/by-card/{card_id}")
+def get_workflow_by_card(card_id: int):
+    """从词卡调取工作流：优先 workflow_id 关联，否则从预览 PNG 元数据提取（查重复用）"""
+    db = get_db()
+    row = db.execute("SELECT id, workflow_id, preview_media, content FROM word_card WHERE id=?", [card_id]).fetchone()
+    if not row:
+        return {"ok": False, "error": "词卡不存在"}
+    if row["workflow_id"]:
+        wf, err = _find_workflow_v2(row["workflow_id"])
+        if wf:
+            return {"ok": True, "workflow_id": wf["id"], "name": wf.get("name", ""), "via": "word_card"}
+    # 从预览媒体 PNG 提取
+    media = row["preview_media"] or ""
+    if media.lower().endswith(".png"):
+        for base in (OUTPUTS_DIR, ORIGINALS_DIR, THUMB_DIR):
+            pp = os.path.join(base, os.path.basename(media))
+            if not os.path.exists(pp):
+                continue
+            with open(pp, "rb") as f:
+                parsed = _parse_png_workflow(f.read())
+            if not parsed["prompt"]:
+                continue
+            wf = parsed["prompt"]
+            wf_str = json.dumps(wf, ensure_ascii=False, sort_keys=True)
+            # 查重：结构与库中已有工作流相同则复用
+            existing = db.execute("SELECT id FROM comfyui_workflows").fetchall()
+            for ex in existing:
+                try:
+                    e = db.execute("SELECT workflow_json FROM comfyui_workflows WHERE id=?", [ex["id"]]).fetchone()
+                    if e and json.dumps(json.loads(e["workflow_json"]), ensure_ascii=False, sort_keys=True) == wf_str:
+                        db.execute("UPDATE word_card SET workflow_id=? WHERE id=?", [ex["id"], card_id])
+                        safe_commit()
+                        return {"ok": True, "workflow_id": ex["id"], "via": "word_card", "matched": True}
+                except Exception:
+                    pass
+            # 新导入
+            wf_id = "wf_" + str(int(time.time() * 1000)) + "_" + uuid.uuid4().hex[:6]
+            pos_text = _extract_positive_text(wf)
+            name = (pos_text[:20] + "…") if len(pos_text) > 20 else (pos_text or "从词卡提取")
+            db.execute(
+                """INSERT INTO comfyui_workflows
+                   (id, name, description, workflow_json, prompt_text, source)
+                   VALUES (?,?,?,?,?,?)""",
+                [wf_id, name, f"从词卡 #{card_id} 提取", json.dumps(wf, ensure_ascii=False), pos_text, "generate"])
+            db.execute("UPDATE word_card SET workflow_id=? WHERE id=?", [wf_id, card_id])
+            safe_commit()
+            return {"ok": True, "workflow_id": wf_id, "name": name, "via": "png_extract"}
+    return {"ok": False, "error": "词卡未关联工作流且预览媒体非 ComfyUI PNG"}
+
+
 def _compose_prompt(preset_text: str, card_text: str, style_suffix: str) -> str:
     """自然语言组合规则
     针对分镜构图模块：卡片内容(构图指令)优先，确保模型接收到明确的构图要求
@@ -180,6 +726,8 @@ class GenerateRequest(BaseModel):
     workflow_id: str = ""
     module_name: str = ""        # 所属模块，用于取预设
     module_preset: str = ""      # 模块主体预设（可在前端传递）
+    preset_id: int = 0           # 工作流参数配置（用户模式表单提交）
+    param_values: dict = {}      # {参数key: 值}，注入到工作流对应节点
 
 
 class SyncRequest(BaseModel):
@@ -418,10 +966,23 @@ async def generate_thumbnail(data: GenerateRequest):
     if not cfg.get("enabled") or not cfg.get("server_url"):
         return {"ok": False, "error": "ComfyUI 未启用或服务器地址未配置"}
 
-    # 1. 取卡片内容
+    # 1. 取卡片内容（若参数配置已含提示词参数值，无需查库）
     db = get_db()
+    preset_prompt_val = None
+    if data.preset_id and data.param_values:
+        try:
+            _prow = db.execute("SELECT params_json FROM comfyui_workflow_presets WHERE id=?", [data.preset_id]).fetchone()
+            if _prow:
+                for _p in json.loads(_prow["params_json"]):
+                    if _p.get("key") in data.param_values and _p.get("type") == "text":
+                        preset_prompt_val = str(data.param_values[_p.get("key")])
+                        break
+        except Exception:
+            pass
     if data.prompt_text:
         card_text = data.prompt_text
+    elif preset_prompt_val:
+        card_text = preset_prompt_val
     else:
         row = db.execute("SELECT content FROM prompts WHERE id=?", [data.prompt_id]).fetchone()
         if not row:
@@ -440,13 +1001,46 @@ async def generate_thumbnail(data: GenerateRequest):
     final_prompt = _compose_prompt(preset_text, card_text, DEFAULT_STYLE_SUFFIX)
     print(f"[ComfyUI] 组合后提示词: {final_prompt[:200]}")
 
-    # 3. 查找工作流配置
-    workflow_cfg, _ = _find_workflow(cfg, data.workflow_id)
-    if not workflow_cfg or not workflow_cfg.get("workflow_json"):
-        return {"ok": False, "error": "未找到工作流模板，请先配置"}
+    # 3. 查找工作流（工作流库优先，兼容旧配置）
+    workflow_cfg, wf_err = _find_workflow_v2(data.workflow_id)
+    if not workflow_cfg:
+        cfg_old, _ = _find_workflow(cfg, data.workflow_id)
+        if not cfg_old or not cfg_old.get("workflow_json"):
+            return {"ok": False, "error": wf_err or "未找到工作流模板，请先配置"}
+        workflow_cfg = {
+            "workflow_json": cfg_old["workflow_json"],
+            "prompt_node_id": cfg_old.get("prompt_node_id", "6"),
+            "prompt_field": cfg_old.get("prompt_field", "text"),
+            "image_output_node_id": cfg_old.get("image_output_node_id", "9"),
+            "id": data.workflow_id or cfg_old.get("id", ""),
+        }
 
     server_url = cfg["server_url"].rstrip("/")
     workflow = workflow_cfg["workflow_json"]
+    # 记录工作流使用次数
+    if workflow_cfg.get("id"):
+        try:
+            db.execute("UPDATE comfyui_workflows SET usage_count=usage_count+1, last_used_at=datetime('now','localtime'), updated_at=datetime('now','localtime') WHERE id=?", [workflow_cfg["id"]])
+            safe_commit()
+        except Exception:
+            pass
+
+    # 参数配置注入（用户模式表单）：把 param_values 写回工作流对应节点
+    if data.preset_id:
+        try:
+            prow = db.execute("SELECT params_json FROM comfyui_workflow_presets WHERE id=? AND workflow_id=?",
+                              [data.preset_id, workflow_cfg.get("id", "")]).fetchone()
+            if prow:
+                params = json.loads(prow["params_json"])
+                _apply_params(workflow, params, data.param_values or {})
+                # 若参数表单包含提示词节点字段且用户填写，优先使用表单提示词
+                pn, pf = workflow_cfg.get("prompt_node_id", "6"), workflow_cfg.get("prompt_field", "text")
+                for p in params:
+                    if str(p.get("node_id")) == str(pn) and p.get("field") == pf and p.get("key") in (data.param_values or {}):
+                        final_prompt = str(data.param_values[p["key"]])
+                        break
+        except Exception as e:
+            print(f"[ComfyUI] 参数注入失败: {e}")
 
     try:
         return await _run_comfyui(server_url, workflow, workflow_cfg, final_prompt, data.prompt_id)
@@ -457,16 +1051,121 @@ async def generate_thumbnail(data: GenerateRequest):
         return {"ok": False, "error": str(e)}
 
 
+class SaveCardRequest(BaseModel):
+    output_file: str = ""     # data/comfyui_outputs 下文件名
+    workflow_id: str = ""
+    prompt_text: str = ""
+    name: str = ""
+    group_id: int = 0         # 可选：存到指定词卡组
+    module: str = "custom"
+
+
+@router.post("/generate/save-card")
+def save_generated_as_card(data: SaveCardRequest):
+    """将 ComfyUI 生成结果存为词卡：原图关联 preview_media + 缩略图 + content=提示词"""
+    import shutil
+    if not data.output_file:
+        return {"ok": False, "error": "缺少 output_file"}
+    src = os.path.join(OUTPUTS_DIR, os.path.basename(data.output_file))
+    if not os.path.exists(src):
+        return {"ok": False, "error": f"生成文件不存在: {data.output_file}"}
+    db = get_db()
+    # 1. 生成缩略图（240x160 居中裁剪）
+    thumb_name = "ai_thumb_" + uuid.uuid4().hex[:12] + ".jpg"
+    os.makedirs(THUMB_DIR, exist_ok=True)
+    tp = os.path.join(THUMB_DIR, thumb_name)
+    iw = ih = 0
+    try:
+        _im = Image.open(src)
+        iw, ih = _im.size
+        sw, sh = _im.size
+        tr = 240.0 / 160.0
+        sr = sw / sh
+        if sr > tr:
+            nw = int(sh * tr); ox = (sw - nw) // 2; _im = _im.crop((ox, 0, ox + nw, sh))
+        else:
+            nh = int(sw / tr); oy = (sh - nh) // 2; _im = _im.crop((0, oy, sw, oy + nh))
+        _im = _im.resize((240, 160), Image.LANCZOS)
+        if _im.mode in ("RGBA", "P"):
+            _im = _im.convert("RGB")
+        _im.save(tp, "JPEG", quality=85)
+    except Exception:
+        shutil.copy(src, tp)
+    # 2. 创建词卡（word_card）
+    content = data.prompt_text or ""
+    if not content:
+        with open(src, "rb") as f:
+            parsed = _parse_png_workflow(f.read())
+        if parsed["prompt"]:
+            content = _extract_positive_text(parsed["prompt"])
+    name = data.name or (content[:20] + "…" if len(content) > 20 else (content or "ComfyUI 生成"))
+    import datetime
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    db.execute(
+        """INSERT INTO word_card
+           (group_id, name, content, meaning, scene, module, category, tags, icon, thumbnail,
+            preview_media, media_type, is_builtin, is_deleted, source, created_at, updated_at,
+            thumb_width, thumb_height, original_ref, workflow_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        [data.group_id or 1, name, content, "", "", data.module or "custom", "", "[]", "🖼️",
+         thumb_name, os.path.basename(src), "image", 0, 0, "comfyui_generated",
+         now, now, iw, ih, os.path.basename(src), data.workflow_id])
+    card_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    # 3. media_assets 登记
+    try:
+        fsize = os.path.getsize(src)
+        db.execute(
+            """INSERT OR IGNORE INTO media_assets
+               (filename, original_filename, file_size, original_size, media_type,
+                width, height, mime_type, prompt_id, source, workflow_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            [os.path.basename(src), os.path.basename(src), fsize, fsize, "image",
+             iw, ih, "image/png", card_id, "comfyui_workflow", data.workflow_id])
+    except Exception as e:
+        print(f"[ComfyUI] 资产登记失败: {e}")
+    # 4. 更新生成日志关联
+    try:
+        db.execute("UPDATE comfyui_generation_logs SET card_id=?, card_type='word_card', thumb_file=? WHERE output_file=? AND card_id=0",
+                   [card_id, thumb_name, os.path.basename(src)])
+    except Exception:
+        pass
+    safe_commit()
+    return {"ok": True, "card_id": card_id, "name": name, "thumbnail": thumb_name,
+            "preview_media": os.path.basename(src)}
+
+
+@router.get("/generation-logs")
+def list_generation_logs(limit: int = Query(50, ge=1, le=200), status: str = ""):
+    """生成历史记录"""
+    db = get_db()
+    sql = "SELECT * FROM comfyui_generation_logs"
+    args = []
+    if status:
+        sql += " WHERE status=?"
+        args.append(status)
+    sql += " ORDER BY id DESC LIMIT ?"
+    args.append(limit)
+    rows = db.execute(sql, args).fetchall()
+    return {"ok": True, "items": [dict(r) for r in rows]}
+
+
+
 async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_id):
     """执行 ComfyUI 生成流程（同步 httpx + 线程池，避免异步死锁）"""
     loop = asyncio.get_event_loop()
     import time as _time, uuid, io as _io
 
     def _sync_run():
+        _t0 = _time.time()
+        import random
         node_id = workflow_cfg.get("prompt_node_id", "6")
         field = workflow_cfg.get("prompt_field", "text")
         if node_id in workflow and field in workflow[node_id]["inputs"]:
             workflow[node_id]["inputs"][field] = prompt_text
+        # 随机 seed：每次生成结果不同（找 KSampler 节点）
+        for _nid, _node in workflow.items():
+            if _node.get("class_type") == "KSampler" and "seed" in _node.get("inputs", {}):
+                _node["inputs"]["seed"] = random.randint(0, 2**53 - 1)
         from database import get_db
         from PIL import Image as PILImage
         import os
@@ -501,7 +1200,7 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
                         continue
                     for no in hist[pid].get("outputs", {}).values():
                         for im in no.get("images", []):
-                            if im.get("type") == "output":
+                            if im.get("type") in ("output", "temp"):
                                 out_imgs.append(im)
                     if out_imgs:
                         print(f"[ComfyUI] 获取到 {len(out_imgs)} 张输出")
@@ -556,22 +1255,40 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
         with open(op, "wb") as f:
             f.write(img_bytes)
 
+        # 原图 PNG 存档（保留自带 prompt/workflow 元数据，可再次提取工作流）
+        os.makedirs(OUTPUTS_DIR, exist_ok=True)
+        png_name = _base + ".png"
+        with open(os.path.join(OUTPUTS_DIR, png_name), "wb") as f:
+            f.write(img_bytes)
+
         # Step 5: write DB
         db = get_db()
-        db.execute("DELETE FROM prompt_videos WHERE prompt_id=?", [prompt_id])
-        db.execute("INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) VALUES (?,?,'image',datetime('now','localtime'))", [prompt_id, tf])
+        if prompt_id > 0:
+            db.execute("DELETE FROM prompt_videos WHERE prompt_id=?", [prompt_id])
+            db.execute("INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) VALUES (?,?,'image',datetime('now','localtime'))", [prompt_id, tf])
+            try:
+                ts = os.path.getsize(tp) if os.path.exists(tp) else 0
+                db.execute("""INSERT OR IGNORE INTO media_assets
+                    (filename, original_filename, file_size, original_size,
+                     media_type, width, height, mime_type, prompt_id, source, workflow_id)
+                    VALUES (?,?,?,?,'image',?,?,'image/jpeg',?,'ai_generated',?)""",
+                    [tf, of, ts, len(img_bytes), iw, ih, prompt_id, workflow_cfg.get("id", "")])
+            except Exception as _e:
+                print(f"[ComfyUI] 媒体资产写入失败: {_e}")
+        # 生成日志（可追溯）
         try:
-            ts = os.path.getsize(tp) if os.path.exists(tp) else 0
-            db.execute("""INSERT OR IGNORE INTO media_assets
-                (filename, original_filename, file_size, original_size,
-                 media_type, width, height, mime_type, prompt_id, source)
-                VALUES (?,?,?,?,'image',?,?,'image/jpeg',?,'ai_generated')""",
-                [tf, of, ts, len(img_bytes), iw, ih, prompt_id])
+            db.execute(
+                """INSERT INTO comfyui_generation_logs
+                   (workflow_id, prompt_text, seed, status, output_file, thumb_file, duration_sec, engine)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                [workflow_cfg.get("id", ""), prompt_text[:500],
+                 next((n["inputs"]["seed"] for n in workflow.values() if n.get("class_type") == "KSampler"), 0),
+                 "success", png_name, tf, _time.time() - _t0, "comfyui"])
         except Exception as _e:
-            print(f"[ComfyUI] 媒体资产写入失败: {_e}")
+            print(f"[ComfyUI] 生成日志写入失败: {_e}")
         safe_commit()
         print(f"[ComfyUI] 已关联 prompt_id={prompt_id}: {tf}")
-        return {"ok": True, "thumbnail": tf, "thumbnail_url": f"/api/thumbnails/file/{tf}", "original": of, "image_size": len(img_bytes), "generated_from": prompt_text[:80]}
+        return {"ok": True, "thumbnail": tf, "thumbnail_url": f"/api/thumbnails/file/{tf}", "original": of, "output_file": png_name, "image_size": len(img_bytes), "generated_from": prompt_text[:80]}
 
     return await loop.run_in_executor(None, _sync_run)
 

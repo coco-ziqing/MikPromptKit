@@ -142,46 +142,72 @@ def _generate_gradient_thumbnail(prompt_text: str, module: str = "custom") -> tu
 class GenThumbnailRequest(BaseModel):
     prompt_id: int
     module: str = ""  # 可选，覆盖自动检测
+    card_type: str = "word_card"  # word_card（词库） / prompts（旧表）
 
 class BatchGenRequest(BaseModel):
     prompt_ids: list
     module: str = ""
+    card_type: str = "word_card"
+
+
+def _find_card(prompt_id: int, card_type: str = "word_card"):
+    """统一查卡：词库 word_card 优先，旧表 prompts 补漏"""
+    db = get_db()
+    if card_type == "word_card":
+        row = db.execute("SELECT id, content, module, thumbnail FROM word_card WHERE id=? AND is_deleted=0", [prompt_id]).fetchone()
+        if row:
+            return {"type": "word_card", "row": row}
+    row = db.execute("SELECT id, content, module FROM prompts WHERE id=?", [prompt_id]).fetchone()
+    if row:
+        return {"type": "prompts", "row": row}
+    return None
+
+
+def _save_thumbnail(prompt_id: int, card_type: str, filename: str):
+    """按卡类型写缩略图字段：word_card 写 thumbnail 列，prompts 写 prompt_thumbnails 表"""
+    db = get_db()
+    if card_type == "word_card":
+        db.execute("UPDATE word_card SET thumbnail=?, updated_at=datetime('now','localtime') WHERE id=?", [filename, prompt_id])
+    else:
+        db.execute(
+            "INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) VALUES (?,?,'image',datetime('now','localtime'))",
+            [prompt_id, filename])
+    safe_commit()
 
 
 # ============ API ============
 
 @router.post("/generate")
 async def generate_thumbnail(data: GenThumbnailRequest):
-    """为单个提示词生成AI缩略图"""
-    db = get_db()
-    row = db.execute("SELECT id, content, module FROM prompts WHERE id=?", [data.prompt_id]).fetchone()
-    if not row:
-        return {"ok": False, "error": "提示词不存在"}
+    """为单个词卡生成AI缩略图（word_card 优先，兼容 prompts 旧表）"""
+    found = _find_card(data.prompt_id, data.card_type)
+    if not found:
+        return {"ok": False, "error": "词卡不存在"}
+    row = found["row"]
+    card_type = found["type"]
 
     module = data.module or row["module"] or "custom"
     content = row["content"] or ""
 
-    # 生成缩略图
     loop = asyncio.get_event_loop()
     filename, path = await loop.run_in_executor(None, _generate_gradient_thumbnail, content, module)
 
-    # 关联到提示词
-    db.execute("UPDATE prompts SET thumbnail=? WHERE id=?", [filename, data.prompt_id])
-    db.commit()
+    _save_thumbnail(data.prompt_id, card_type, filename)
 
     return {
         "ok": True,
         "prompt_id": data.prompt_id,
         "thumbnail": filename,
-        "module": module
+        "module": module,
+        "card_type": card_type
     }
 
 
 @router.post("/batch-generate")
 async def batch_generate(data: BatchGenRequest):
-    """批量生成AI缩略图"""
+    """批量生成AI缩略图（word_card 优先，兼容 prompts 旧表）"""
     if not data.prompt_ids:
-        return {"ok": False, "error": "请提供提示词ID列表"}
+        return {"ok": False, "error": "请提供词卡ID列表"}
     if len(data.prompt_ids) > 20:
         return {"ok": False, "error": "单次最多20条"}
 
@@ -191,9 +217,11 @@ async def batch_generate(data: BatchGenRequest):
     async def _gen_one(pid):
         async with sem:
             try:
-                row = db.execute("SELECT id, content, module FROM prompts WHERE id=?", [pid]).fetchone()
-                if not row:
+                found = _find_card(pid, data.card_type)
+                if not found:
                     return {"prompt_id": pid, "ok": False, "error": "不存在"}
+                row = found["row"]
+                card_type = found["type"]
 
                 module = data.module or row["module"] or "custom"
                 content = row["content"] or ""
@@ -201,13 +229,7 @@ async def batch_generate(data: BatchGenRequest):
                 loop = asyncio.get_event_loop()
                 filename, path = await loop.run_in_executor(None, _generate_gradient_thumbnail, content, module)
 
-                # 异步更新数据库（每个线程自己的连接）
-                import sqlite3
-                _db_path = os.path.join(os.path.dirname(THUMB_DIR), "prompts.db")
-                _conn = sqlite3.connect(_db_path)
-                _conn.execute("UPDATE prompts SET thumbnail=? WHERE id=?", [filename, pid])
-                _conn.commit()
-                _conn.close()
+                _save_thumbnail(pid, card_type, filename)
 
                 return {"prompt_id": pid, "ok": True, "thumbnail": filename}
             except Exception as e:
