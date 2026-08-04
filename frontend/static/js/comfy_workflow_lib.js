@@ -553,7 +553,8 @@ App.comfyLib.openParamEditor = function() {
         html += '<div style="border:1px solid ' + (isSel ? 'var(--primary)' : 'var(--border-color)') + ';border-radius:8px;padding:8px 10px;">' +
           '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
             '<input type="checkbox" class="cpe-sel" data-key="' + App._escape(c.key) + '" ' + (isSel ? 'checked' : '') + ' onchange="App.comfyLib._toggleCandidate(this)" style="width:16px;height:16px;">' +
-            '<span style="font-size:12px;font-weight:600;">' + App._escape(c.label) + '</span>' +
+            '<span style="font-size:12px;font-weight:600;flex:1;">' + App._escape(c.label) + '</span>' +
+            '<span onclick="App.comfyLib.renameCandidate(\'' + App._escape(c.key) + '\')" title="重命名此参数（勾选并编辑名称）" style="font-size:13px;cursor:pointer;opacity:0.7;color:#8b5cf6;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.7">✎</span>' +
             '<code style="font-size:10px;color:var(--text-muted);">' + App._escape(c.key) + ' = ' + App._escape(String(c.value)) + '</code>' +
           '</div>' +
           '<div class="cpe-detail" style="display:' + (isSel ? 'flex' : 'none') + ';gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">' +
@@ -574,6 +575,35 @@ App.comfyLib.openParamEditor = function() {
 App.comfyLib._toggleCandidate = function(cb) {
     var detail = cb.closest('div').querySelector('.cpe-detail');
     if (detail) detail.style.display = cb.checked ? 'flex' : 'none';
+    if (cb.checked) {
+        // 勾选后自动聚焦名称输入框，方便直接重命名
+        var key = cb.getAttribute('data-key');
+        var labelInput = document.querySelector('.cpe-label[data-key="' + key + '"]');
+        if (labelInput) {
+            setTimeout(function() { labelInput.focus(); labelInput.select(); }, 50);
+        }
+    }
+};
+
+// 参数重命名入口：一键勾选 + 展开 + 聚焦名称输入框
+App.comfyLib.renameCandidate = function(key) {
+    var cb = document.querySelector('.cpe-sel[data-key="' + key + '"]');
+    if (cb) {
+        if (!cb.checked) {
+            cb.checked = true;
+            this._toggleCandidate(cb);
+        }
+        var labelInput = document.querySelector('.cpe-label[data-key="' + key + '"]');
+        if (labelInput) {
+            labelInput.focus();
+            labelInput.select();
+        }
+        var detail = cb.closest('div').querySelector('.cpe-detail');
+        if (detail) {
+            detail.style.borderColor = '#8b5cf6';
+            setTimeout(function() { detail.style.borderColor = ''; }, 1200);
+        }
+    }
 };
 
 App.comfyLib.savePreset = async function() {
