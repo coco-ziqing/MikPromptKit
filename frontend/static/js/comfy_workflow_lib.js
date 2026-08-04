@@ -622,26 +622,95 @@ App.comfyLib.importPng = async function(input) {
 // ============ 从 ComfyUI 同步 ============
 
 App.comfyLib.syncFromComfy = async function() {
-    App.showToast('正在从 ComfyUI 同步工作流...', 'info');
+    App.showToast('正在获取 ComfyUI 工作流来源...', 'info');
+    try {
+        var d = await App.fetchJSON('/api/v2/comfyui/available');
+        if (!d || !d.ok) {
+            App.showToast('获取失败: ' + (d && d.error ? d.error : '未知'), 'error');
+            return;
+        }
+        this._showSourcePicker(d);
+    } catch(e) {
+        App.showToast('获取失败: ' + e.message, 'error');
+    }
+};
+
+// 来源选择弹窗：已保存模板 / 最近运行 / 执行中排队中
+App.comfyLib._showSourcePicker = function(d) {
+    var overlay = document.getElementById('cwlSrcPicker');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'cwlSrcPicker';
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'display:none;z-index:760;';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.style.display = 'none'; };
+        overlay.innerHTML =
+        '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:640px;max-height:82vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
+          '<div class="modal-header" style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
+            '<h5 style="margin:0;font-size:14px;"><i class="bi bi-diagram-3"></i> 从 ComfyUI 获取工作流</h5>' +
+            '<button class="header-btn-sm" onclick="document.getElementById(\'cwlSrcPicker\').style.display=\'none\'">&times;</button>' +
+          '</div>' +
+          '<div class="modal-body" id="cwlSrcList" style="flex:1;overflow-y:auto;padding:10px 16px;"></div>' +
+          '<div class="modal-footer" style="padding:8px 16px;border-top:1px solid var(--border-color);font-size:11px;color:var(--text-muted);flex-shrink:0;">点击任一来源即导入；已在库中匹配的会自动定位</div>' +
+        '</div>';
+        document.body.appendChild(overlay);
+    }
+    var html = '';
+    // 已保存模板
+    html += '<div style="font-size:12px;font-weight:600;margin:10px 0 6px;">📁 已保存模板 (' + (d.templates || []).length + ')</div>';
+    if (!d.templates || d.templates.length === 0) {
+        html += '<div style="font-size:11px;color:var(--text-muted);padding:4px 0 8px;">无（在 ComfyUI 中打开工作流后按 Ctrl+S 保存，即可出现在此）</div>';
+    } else {
+        d.templates.forEach(function(t) {
+            html += '<div class="cwl-src-item" onclick="App.comfyLib._importSource(\'file=' + t.file + '\',\'' + App._escape(t.name) + '\')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;margin-bottom:6px;cursor:pointer;font-size:12px;" onmouseenter="this.style.borderColor=\'var(--primary)\';this.style.background=\'rgba(99,102,241,0.05)\';" onmouseleave="this.style.borderColor=\'var(--border-color)\';this.style.background=\'transparent\';">' +
+              '<span>📄</span><span style="flex:1;">' + App._escape(t.name) + '</span>' +
+              '<span style="color:var(--text-muted);font-size:10px;">' + t.node_count + ' 节点 · ' + App._escape(t.mtime) + '</span>' +
+            '</div>';
+        });
+    }
+    // 最近运行
+    html += '<div style="font-size:12px;font-weight:600;margin:14px 0 6px;">🕘 最近运行 (' + (d.recent || []).length + ')</div>';
+    (d.recent || []).forEach(function(r) {
+        html += '<div class="cwl-src-item" onclick="App.comfyLib._importSource(\'history=' + r.prompt_id + '\',\'' + App._escape((r.prompt_text || r.prompt_id).slice(0, 18)) + '\')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;margin-bottom:6px;cursor:pointer;font-size:12px;" onmouseenter="this.style.borderColor=\'var(--primary)\';this.style.background=\'rgba(99,102,241,0.05)\';" onmouseleave="this.style.borderColor=\'var(--border-color)\';this.style.background=\'transparent\';">' +
+          '<span>🕘</span><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + App._escape(r.prompt_id) + '">' + App._escape((r.prompt_text || ('任务 ' + r.prompt_id.slice(0, 8))) + (r.status ? ' (' + r.status + ')' : '')) + '</span>' +
+          '<span style="color:var(--text-muted);font-size:10px;">' + r.node_count + ' 节点</span>' +
+        '</div>';
+    });
+    // 执行中/排队中
+    if ((d.running || []).length + (d.pending || []).length > 0) {
+        html += '<div style="font-size:12px;font-weight:600;margin:14px 0 6px;">▶ 执行中 / 排队中</div>';
+        d.running.forEach(function(r) {
+            html += '<div class="cwl-src-item" onclick="App.comfyLib._importSource(\'queue=' + r.prompt_id + '\',\'执行中任务\')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #10b981;border-radius:8px;margin-bottom:6px;cursor:pointer;font-size:12px;color:#10b981;">' +
+              '<span>▶</span><span style="flex:1;">执行中 ' + r.prompt_id.slice(0, 8) + '…</span><span style="font-size:10px;">' + r.node_count + ' 节点</span></div>';
+        });
+        d.pending.forEach(function(r) {
+            html += '<div class="cwl-src-item" onclick="App.comfyLib._importSource(\'queue=' + r.prompt_id + '\',\'排队任务\')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #f59e0b;border-radius:8px;margin-bottom:6px;cursor:pointer;font-size:12px;color:#f59e0b;">' +
+              '<span>◌</span><span style="flex:1;">排队中 ' + r.prompt_id.slice(0, 8) + '…</span><span style="font-size:10px;">' + r.node_count + ' 节点</span></div>';
+        });
+    }
+    document.getElementById('cwlSrcList').innerHTML = html || '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">无可获取的工作流来源</div>';
+    overlay.style.display = 'flex';
+};
+
+App.comfyLib._importSource = async function(source, label) {
+    var picker = document.getElementById('cwlSrcPicker');
+    if (picker) picker.style.display = 'none';
+    App.showToast('正在导入「' + label + '」...', 'info');
     try {
         var d = await App.fetchJSON('/api/v2/comfyui/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
+            body: JSON.stringify({ source: source })
         });
         if (d && d.ok) {
-            if (d.matched) {
-                App.showToast('✅ 已匹配当前运行的工作流：「' + (d.workflow_name || '') + '」（' + (d.node_count || 0) + ' 节点，已自动定位）', 'success');
-            } else {
-                App.showToast('✅ 已导入新模板：「' + (d.workflow_name || '') + '」（' + (d.node_count || 0) + ' 节点）', 'success');
-            }
+            App.showToast((d.matched ? '✅ 已匹配现有模板「' : '✅ 已导入新模板「') + (d.workflow_name || label) + '」', 'success');
             await this.loadList();
             if (d.workflow_id) this.selectWf(d.workflow_id);
         } else {
-            App.showToast('同步失败: ' + (d && d.error ? d.error : '未知'), 'error');
+            App.showToast('导入失败: ' + (d && d.error ? d.error : '未知'), 'error');
         }
     } catch(e) {
-        App.showToast('同步失败: ' + e.message, 'error');
+        App.showToast('导入失败: ' + e.message, 'error');
     }
 };
 

@@ -650,6 +650,162 @@ def get_workflow_by_card(card_id: int):
     return {"ok": False, "error": "词卡未关联工作流且预览媒体非 ComfyUI PNG"}
 
 
+# ==================== UI 格式 → API 格式转换 ====================
+
+_comfy_object_info_cache = None
+_comfy_object_info_ts = 0
+
+
+def _get_object_info(server_url: str):
+    """获取 ComfyUI 节点定义（带 5min 缓存）"""
+    global _comfy_object_info_cache, _comfy_object_info_ts
+    now = time.time()
+    if _comfy_object_info_cache and now - _comfy_object_info_ts < 300:
+        return _comfy_object_info_cache
+    try:
+        with httpx.Client(timeout=8) as cl:
+            info = cl.get(f"{server_url}/object_info").json()
+        _comfy_object_info_cache = info
+        _comfy_object_info_ts = now
+        return info
+    except Exception:
+        return _comfy_object_info_cache or {}
+
+
+def _ui_to_api_wf(ui_wf: dict, object_info: dict = None) -> dict:
+    """ComfyUI UI 格式工作流 → API 格式（可提交执行）
+    widgets_values 按 object_info input 顺序映射，links 填充连线输入
+    """
+    api = {}
+    nodes = {n.get("id"): n for n in ui_wf.get("nodes", []) if n.get("type")}
+    in_links = {}
+    for link in ui_wf.get("links", []) or []:
+        if len(link) < 6:
+            continue
+        _id, from_node, from_slot, to_node, to_slot, _t = link[:6]
+        in_links.setdefault((to_node, to_slot), []).append((from_node, from_slot))
+
+    for nid, node in nodes.items():
+        ct = node.get("type", "")
+        inputs = {}
+        info = (object_info or {}).get(ct, {})
+        req = info.get("input", {}).get("required", {}) or {}
+        opt = info.get("input", {}).get("optional", {}) or {}
+        order = list(req.keys()) + list(opt.keys())
+        widgets = node.get("widgets_values") or []
+        wi = 0
+        # 跳过非输入 widget：inputs 数组里 name 不在 order 中的占位项
+        node_inputs_def = node.get("inputs") or []
+        skip_names = {i.get("name") for i in node_inputs_def if i.get("name") not in order}
+        for name in order:
+            if name in skip_names:
+                continue
+            if wi >= len(widgets):
+                break
+            val = widgets[wi]
+            if val is None:
+                wi += 1
+                continue
+            # 布尔 widget 偶尔是字符串
+            if isinstance(val, str) and val in ("true", "false"):
+                val = val == "true"
+            inputs[name] = val
+            wi += 1
+        # 连线输入：node.inputs 的 slot 名 → API input 名
+        for i, inp in enumerate(node_inputs_def):
+            name = inp.get("name", "")
+            conns = in_links.get((nid, i))
+            if conns and name:
+                inputs[name] = [str(conns[0][0]), conns[0][1]]
+        api[str(nid)] = {"class_type": ct, "inputs": inputs}
+    return api
+
+
+def _find_comfy_workflows_dir():
+    """定位 ComfyUI 保存模板目录（user/default/workflows）
+    从进程命令行解析 main.py 完整路径
+    """
+    try:
+        import subprocess
+        out = subprocess.run(["wmic", "process", "where", "name='python.exe'", "get", "commandline"],
+                             capture_output=True, text=True, timeout=5).stdout
+        for line in out.splitlines():
+            if "main.py" not in line:
+                continue
+            m_idx = line.lower().find("main.py")
+            if m_idx < 0:
+                continue
+            start = line.rfind('"', 0, m_idx)
+            if start == -1:
+                start = line.rfind(' ', 0, m_idx)
+            main_path = line[start + 1:m_idx].strip().strip('"').strip()
+            if not main_path:
+                continue
+            d = os.path.join(os.path.dirname(main_path), "user", "default", "workflows")
+            if os.path.isdir(d):
+                return d
+    except Exception:
+        pass
+    return None
+
+
+@router.get("/available")
+def list_available_sources():
+    """列出可从 ComfyUI 获取的工作流来源：已保存模板 / 运行中 / 排队中 / 最近运行"""
+    cfg = _get_config()
+    url = (cfg.get("server_url") or "").rstrip("/")
+    result = {"ok": True, "templates": [], "running": [], "pending": [], "recent": [], "server_url": url}
+    # 1. 已保存模板（文件系统）
+    wf_dir = _find_comfy_workflows_dir()
+    if wf_dir and os.path.isdir(wf_dir):
+        try:
+            for fn in sorted(os.listdir(wf_dir)):
+                if not fn.lower().endswith(".json"):
+                    continue
+                fp = os.path.join(wf_dir, fn)
+                try:
+                    with open(fp, "r", encoding="utf-8") as f:
+                        ui = json.load(f)
+                    n_nodes = len(ui.get("nodes", []))
+                    mtime = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(fp)))
+                    result["templates"].append({
+                        "name": fn[:-5], "file": fn, "node_count": n_nodes, "mtime": mtime, "path": fp
+                    })
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    # 2. 运行中/排队中
+    if url:
+        try:
+            with httpx.Client(timeout=5) as cl:
+                q = cl.get(f"{url}/queue").json()
+            for item in q.get("queue_running", []):
+                wf = item[2] if len(item) > 2 and isinstance(item[2], dict) else {}
+                result["running"].append({"prompt_id": item[1] if len(item) > 1 else "", "node_count": len(wf)})
+            for item in q.get("queue_pending", []):
+                wf = item[2] if len(item) > 2 and isinstance(item[2], dict) else {}
+                result["pending"].append({"prompt_id": item[1] if len(item) > 1 else "", "node_count": len(wf)})
+        except Exception:
+            pass
+        # 3. 最近运行（history 前 5）
+        try:
+            with httpx.Client(timeout=5) as cl:
+                hist = cl.get(f"{url}/history").json()
+            for pid, e in list(hist.items())[:5]:
+                p = e.get("prompt", [])
+                wf = p[2] if len(p) > 2 and isinstance(p[2], dict) else {}
+                pos_text = _extract_positive_text(wf)
+                status = e.get("status", {}).get("status_str", "")
+                result["recent"].append({
+                    "prompt_id": pid, "node_count": len(wf),
+                    "prompt_text": pos_text[:60], "status": status
+                })
+        except Exception:
+            pass
+    return result
+
+
 def _compose_prompt(preset_text: str, card_text: str, style_suffix: str) -> str:
     """自然语言组合规则
     针对分镜构图模块：卡片内容(构图指令)优先，确保模型接收到明确的构图要求
@@ -732,6 +888,7 @@ class GenerateRequest(BaseModel):
 
 class SyncRequest(BaseModel):
     server_url: str = ""
+    source: str = ""   # ''=最近运行 / file=<模板文件名> / history=<prompt_id> / queue=<prompt_id>
 
 
 class BatchGenerateRequest(BaseModel):
@@ -843,8 +1000,52 @@ def sync_workflow(data: SyncRequest = None):
     code, qdata = _http_get("/queue")
     workflow = None
     source = ""
+    source_name = ""
 
-    if code == 200:
+    # ===== 指定来源导入 =====
+    src = (data.source if data else "") or ""
+    if src:
+        if src.startswith("file="):
+            fname = src[5:]
+            wf_dir = _find_comfy_workflows_dir()
+            fp = os.path.join(wf_dir, fname) if wf_dir else ""
+            if not fp or not os.path.exists(fp):
+                return {"ok": False, "error": f"模板文件不存在: {fname}"}
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    ui = json.load(f)
+                obj_info = _get_object_info(server_url)
+                workflow = _ui_to_api_wf(ui, obj_info)
+                source = "saved_template"
+                source_name = fname[:-5]
+            except Exception as e:
+                return {"ok": False, "error": f"模板解析失败: {e}"}
+        elif src.startswith("history="):
+            pid = src[8:]
+            code_h, hentry = _http_get(f"/history/{pid}")
+            if code_h == 200 and isinstance(hentry, dict) and pid in hentry:
+                p = hentry[pid].get("prompt", [])
+                if len(p) > 2 and isinstance(p[2], dict):
+                    workflow = p[2]
+                    source = "history"
+                    source_name = pid[:8]
+            if not workflow:
+                return {"ok": False, "error": "未找到该历史任务的工作流"}
+        elif src.startswith("queue="):
+            qpid = src[6:]
+            for items in (qdata.get("queue_running", []), qdata.get("queue_pending", [])):
+                for item in items:
+                    if len(item) > 1 and item[1] == qpid and isinstance(item[2], dict):
+                        workflow = item[2]
+                        source = "queue"
+                        source_name = qpid[:8]
+                        break
+                if workflow:
+                    break
+            if not workflow:
+                return {"ok": False, "error": "队列中未找到该任务"}
+
+    if not workflow:
         for items, label in [(qdata.get("queue_running", []), "queued_running"),
                              (qdata.get("queue_pending", []), "queued_pending")]:
             if items:
@@ -909,7 +1110,7 @@ def sync_workflow(data: SyncRequest = None):
         output_node_id = "9"
 
     wf_id = "wf_" + uuid.uuid4().hex[:12]
-    name = "从ComfyUI同步"
+    name = source_name or "从ComfyUI同步"
 
     for w in cfg.get("workflows", []):
         ewf = w.get("workflow_json", {})
