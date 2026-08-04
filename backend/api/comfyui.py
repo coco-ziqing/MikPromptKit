@@ -160,7 +160,9 @@ def _parse_png_workflow(data: bytes) -> dict:
 
 
 def _migrate_legacy_workflows():
-    """幂等迁移：config.comfyui_config.workflows[] → comfyui_workflows 表"""
+    """幂等迁移：config.comfyui_config.workflows[] → comfyui_workflows 表
+    用 config key 标记迁移状态（一次性），不依赖表是否为空（避免删光后复活）
+    """
     try:
         db = get_db()
         row = db.execute("SELECT value FROM config WHERE key='comfyui_config'").fetchone()
@@ -170,8 +172,8 @@ def _migrate_legacy_workflows():
         workflows = cfg.get("workflows") or []
         if not workflows:
             return
-        cnt = db.execute("SELECT COUNT(*) FROM comfyui_workflows").fetchone()[0]
-        if cnt > 0:
+        mark = db.execute("SELECT value FROM config WHERE key='comfyui_wf_migrated'").fetchone()
+        if mark:
             return
         for w in workflows:
             wf_json = w.get("workflow_json", {})
@@ -188,8 +190,9 @@ def _migrate_legacy_workflows():
                  w.get("name", "未命名"), w.get("description", ""),
                  json.dumps(wf_json, ensure_ascii=False), "",
                  _extract_positive_text(wf_json), "", "comfyui_sync", ""])
+        db.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('comfyui_wf_migrated', '1')")
         safe_commit()
-        print(f"[ComfyUI] 已迁移 {len(workflows)} 个工作流到 comfyui_workflows 表")
+        print(f"[ComfyUI] 已迁移 {len(workflows)} 个工作流到 comfyui_workflows 表（一次性标记）")
     except Exception as e:
         print(f"[ComfyUI] 工作流迁移跳过: {e}")
 
@@ -352,6 +355,23 @@ def update_workflow(wf_id: str, data: WorkflowUpdate):
 def delete_workflow(wf_id: str):
     db = get_db()
     db.execute("DELETE FROM comfyui_workflows WHERE id=?", [wf_id])
+    # 同步清理旧配置 workflows 数组 + active_workflow，防止迁移逻辑复活已删模板
+    try:
+        row = db.execute("SELECT value FROM config WHERE key='comfyui_config'").fetchone()
+        if row:
+            cfg = json.loads(row["value"])
+            changed = False
+            if cfg.get("workflows"):
+                cfg["workflows"] = [w for w in cfg["workflows"] if w.get("id") != wf_id]
+                changed = True
+            if cfg.get("active_workflow") == wf_id:
+                cfg["active_workflow"] = ""
+                changed = True
+            if changed:
+                db.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('comfyui_config', ?)",
+                           [json.dumps(cfg, ensure_ascii=False)])
+    except Exception as e:
+        print(f"[ComfyUI] 删除时清理旧配置失败: {e}")
     safe_commit()
     return {"ok": True}
 
