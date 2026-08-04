@@ -11,4 +11,5 @@ numpy>=2.0,<3          # 修正：原 numpy<2 与已装 2.4.x / torch2.12 冲突
 sentence-transformers==5.5.1
 aiofiles==24.1.0
 python-multipart==0.0.9
+psutil==7.2.2            # 服务监测仪表盘 CPU/内存/网络采集
 torch>=2.2             # 本机验证 2.12.0；给下限避免跨平台锁死
