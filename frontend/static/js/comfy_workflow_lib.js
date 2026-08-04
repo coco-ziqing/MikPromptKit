@@ -199,7 +199,8 @@ App.comfyLib._renderList = function() {
         var cover = w.thumbnail ? '/api/thumbnails/file/' + w.thumbnail
                   : (w.source === 'png_import' && w.source_file ? '/api/v2/comfyui/outputs/' + w.source_file : '');
         var isSel = self._selectedWf && self._selectedWf.id === w.id;
-        html += '<div class="cwl-card" onclick="App.comfyLib.selectWf(\'' + App._escape(w.id) + '\')" ' +
+        var tip = (w.name || '') + (w.description ? '\n' + w.description : '') + (w.prompt_text ? '\n\n📝 ' + w.prompt_text : '');
+        html += '<div class="cwl-card" onclick="App.comfyLib.selectWf(\'' + App._escape(w.id) + '\')" title="' + App._escape(tip) + '" ' +
           'style="border:1px solid ' + (isSel ? 'var(--primary)' : 'var(--border-color)') + ';border-radius:10px;overflow:hidden;cursor:pointer;background:var(--bg-card);">' +
           '<div style="height:84px;background:linear-gradient(135deg,#1e293b,#334155);display:flex;align-items:center;justify-content:center;position:relative;">' +
             (cover ? '<img src="' + cover + '" style="width:100%;height:100%;object-fit:cover;">' : '<span style="font-size:26px;opacity:0.5;">🎨</span>') +
