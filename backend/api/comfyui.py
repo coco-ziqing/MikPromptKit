@@ -275,16 +275,28 @@ def list_workflows(search: str = "", source: str = "", favorite: int = 0, sort: 
 
 @router.post("/workflows")
 def create_workflow(data: WorkflowCreate):
-    """手动保存工作流"""
+    """手动保存工作流（API 格式直接存；UI 格式带 ui_json 自动转换）"""
     wf_id = "wf_" + str(int(time.time() * 1000)) + "_" + uuid.uuid4().hex[:6]
+    wf_json = data.workflow_json
+    ui_json = data.ui_json or ""
+    # UI 格式 → API 格式转换
+    if ui_json and not any(isinstance(v, dict) and v.get("class_type") for v in wf_json.values()):
+        try:
+            cfg = _get_config()
+            url = (cfg.get("server_url") or "").rstrip("/")
+            obj_info = _get_object_info(url)
+            ui_obj = json.loads(ui_json) if isinstance(ui_json, str) else ui_json
+            wf_json = _ui_to_api_wf(ui_obj, obj_info)
+        except Exception as e:
+            return {"ok": False, "error": f"UI 格式转换失败: {e}"}
     db = get_db()
     db.execute(
         """INSERT INTO comfyui_workflows
            (id, name, description, workflow_json, ui_json, prompt_text, tags, source)
            VALUES (?,?,?,?,?,?,?,?)""",
         [wf_id, data.name or "未命名", data.description,
-         json.dumps(data.workflow_json, ensure_ascii=False), data.ui_json,
-         data.prompt_text or _extract_positive_text(data.workflow_json),
+         json.dumps(wf_json, ensure_ascii=False), ui_json,
+         data.prompt_text or _extract_positive_text(wf_json),
          data.tags, "manual"])
     safe_commit()
     return {"ok": True, "workflow_id": wf_id}

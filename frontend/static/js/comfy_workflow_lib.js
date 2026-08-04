@@ -102,7 +102,9 @@ App.comfyLib._ensureModal = function() {
               '<input id="cwlSearch" placeholder="搜索工作流名称 / 提示词..." style="font-size:12px;padding:6px 10px 6px 27px;width:230px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);outline:none;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor=\'#6366f1\';this.style.boxShadow=\'0 0 0 2px rgba(99,102,241,0.18)\'" onblur="this.style.borderColor=\'#94a3b8\';this.style.boxShadow=\'none\'" oninput="App.comfyLib.loadList()">' +
             '</span>' +
             '<button class="btn btn-sm" onclick="document.getElementById(\'cwlPngFile\').click()" title="导入 ComfyUI 生成的 PNG（自动提取自带工作流）" style="font-size:11px;padding:5px 12px;border:1px solid #6366f1;color:#6366f1;border-radius:8px;"><i class="bi bi-upload"></i> 导入 PNG</button>' +
+            '<button class="btn btn-sm" onclick="document.getElementById(\'cwlJsonFile\').click()" title="导入工作流 JSON 文件（API/UI 格式均可）" style="font-size:11px;padding:5px 12px;border:1px solid #0ea5e9;color:#0ea5e9;border-radius:8px;"><i class="bi bi-file-code"></i> 导入 JSON</button>' +
             '<input type="file" id="cwlPngFile" accept=".png,image/png" style="display:none;" onchange="App.comfyLib.importPng(this)">' +
+            '<input type="file" id="cwlJsonFile" accept=".json,application/json" style="display:none;" onchange="App.comfyLib.importJson(this)">' +
           '</div>' +
         '</div>' +
         '<div id="cwlGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">' +
@@ -223,6 +225,8 @@ App.comfyLib._renderList = function() {
           '<div style="padding:8px 10px;">' +
             '<div style="display:flex;align-items:center;gap:4px;">' +
               '<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;" title="' + App._escape(w.name || '') + '">' + App._escape(w.name || '未命名') + '</div>' +
+              '<span onclick="event.stopPropagation();App.comfyLib.renameWorkflow(\'' + App._escape(w.id) + '\')" title="重命名" style="font-size:12px;cursor:pointer;opacity:0.65;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.65">✎</span>' +
+              '<span onclick="event.stopPropagation();App.comfyLib.duplicateWorkflow(\'' + App._escape(w.id) + '\')" title="复制模板" style="font-size:12px;cursor:pointer;opacity:0.65;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.65">⧉</span>' +
               '<span onclick="event.stopPropagation();App.comfyLib.toggleFavorite(\'' + App._escape(w.id) + '\')" title="' + (w.is_favorite ? '取消收藏' : '收藏') + '" style="font-size:13px;cursor:pointer;opacity:0.75;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.75">' + (w.is_favorite ? '⭐' : '☆') + '</span>' +
               '<span onclick="event.stopPropagation();App.comfyLib.deleteWorkflow(\'' + App._escape(w.id) + '\')" title="删除模板" style="font-size:12px;cursor:pointer;opacity:0.65;color:#ef4444;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.65">🗑</span>' +
             '</div>' +
@@ -233,6 +237,94 @@ App.comfyLib._renderList = function() {
         '</div>';
     });
     grid.innerHTML = html;
+};
+
+// 重命名模板
+App.comfyLib.renameWorkflow = async function(wfId) {
+    var wf = null;
+    for (var i = 0; i < this._wfList.length; i++) {
+        if (this._wfList[i].id === wfId) { wf = this._wfList[i]; break; }
+    }
+    if (!wf) return;
+    var name = prompt('重命名工作流模板：', wf.name || '');
+    if (name === null) return;
+    name = name.trim();
+    if (!name) { App.showToast('名称不能为空', 'warning'); return; }
+    try {
+        await App.fetchJSON('/api/v2/comfyui/workflows/' + encodeURIComponent(wfId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name })
+        });
+        App.showToast('已重命名为「' + name + '」', 'success');
+        this.loadList();
+    } catch(e) {
+        App.showToast('重命名失败: ' + e.message, 'error');
+    }
+};
+
+// 复制模板
+App.comfyLib.duplicateWorkflow = async function(wfId) {
+    try {
+        var d = await App.fetchJSON('/api/v2/comfyui/workflows/' + encodeURIComponent(wfId) + '/duplicate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        if (d && d.ok) {
+            App.showToast('已复制为「' + (d.workflow_id || '') + '」', 'success');
+            this.loadList();
+        } else {
+            App.showToast('复制失败: ' + (d && d.error ? d.error : '未知'), 'error');
+        }
+    } catch(e) {
+        App.showToast('复制失败: ' + e.message, 'error');
+    }
+};
+
+// JSON 文件导入（ComfyUI 导出的 API 格式或 UI 格式）
+App.comfyLib.importJson = async function(input) {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    var self = this;
+    reader.onload = async function(e) {
+        try {
+            var wf = JSON.parse(e.target.result);
+            if (!wf || typeof wf !== 'object') throw new Error('无效的 JSON');
+            var isApi = Object.keys(wf).some(function(k) { return wf[k] && wf[k].class_type; });
+            var name = prompt('命名此工作流模板：', file.name.replace(/\.json$/i, ''));
+            if (name === null) { input.value = ''; return; }
+            name = (name || '').trim() || '导入模板';
+            var body = { name: name, description: (isApi ? 'API 格式 JSON 导入' : 'UI 格式 JSON 导入（自动转换）') };
+            if (isApi) {
+                body.workflow_json = wf;
+            } else {
+                // UI 格式：先取 object_info 转换（复用后端转换器）
+                body.workflow_json = wf;
+                body.ui_json = JSON.stringify(wf);
+                body.prompt_text = '';
+            }
+            var d = await App.fetchJSON('/api/v2/comfyui/workflows', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (d && d.ok) {
+                App.showToast('✅ 已导入「' + name + '」', 'success');
+                input.value = '';
+                self.loadList();
+                self.selectWf(d.workflow_id);
+            } else {
+                App.showToast('导入失败: ' + (d && d.error ? d.error : '未知'), 'error');
+                input.value = '';
+            }
+        } catch(err) {
+            App.showToast('JSON 解析失败: ' + err.message, 'error');
+            input.value = '';
+        }
+    };
+    reader.readAsText(file);
 };
 
 // 收藏/取消收藏
