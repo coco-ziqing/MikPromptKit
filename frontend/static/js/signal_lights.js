@@ -110,4 +110,30 @@ App.signalLights._updateTimer = function() {
     el.textContent = now.toLocaleTimeString();
 };
 
+// ============ 兜底启动（2026-08-04 加固） ============
+// 原启动链依赖 App.init() 内 try 块成功执行到末尾；若并行加载抛错
+// （catch 分支只 switchView），信号灯永不出现。此处独立兜底，幂等。
+function _ensureSignalLights() {
+    try {
+        if (window.App && App.signalLights && typeof App.signalLights.init === 'function') {
+            if (!document.getElementById('slBar')) {
+                App.signalLights.init();
+            }
+        }
+    } catch(e) { /* 静默 */ }
+}
+
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(_ensureSignalLights, 1500);
+    setTimeout(_ensureSignalLights, 5000);
+} else {
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(_ensureSignalLights, 1500);
+        setTimeout(_ensureSignalLights, 5000);
+    });
+}
+window.addEventListener('load', function() {
+    setTimeout(_ensureSignalLights, 1200);
+});
+
 })();
