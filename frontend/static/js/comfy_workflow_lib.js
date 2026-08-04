@@ -88,8 +88,11 @@ App.comfyLib._ensureModal = function() {
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">' +
           '<div style="font-size:13px;font-weight:600;"><i class="bi bi-collection"></i> 工作流模板 <span id="cwlCount" style="font-size:11px;color:var(--text-muted);"></span></div>' +
           '<div style="display:flex;gap:6px;align-items:center;">' +
-            '<input id="cwlSearch" placeholder="搜索工作流..." style="font-size:11px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);width:140px;" oninput="App.comfyLib.loadList()">' +
-            '<button class="btn btn-sm" onclick="document.getElementById(\'cwlPngFile\').click()" title="导入 ComfyUI 生成的 PNG（自动提取自带工作流）" style="font-size:11px;padding:3px 10px;border:1px solid #6366f1;color:#6366f1;"><i class="bi bi-upload"></i> 导入 PNG</button>' +
+            '<span style="position:relative;display:inline-flex;align-items:center;">' +
+              '<i class="bi bi-search" style="position:absolute;left:9px;font-size:12px;color:var(--text-muted);pointer-events:none;"></i>' +
+              '<input id="cwlSearch" placeholder="搜索工作流名称 / 提示词..." style="font-size:12px;padding:6px 10px 6px 27px;width:230px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);outline:none;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 2px rgba(99,102,241,0.18)'" onblur="this.style.borderColor='var(--border-color)';this.style.boxShadow='none'" oninput="App.comfyLib.loadList()">' +
+            '</span>' +
+            '<button class="btn btn-sm" onclick="document.getElementById(\'cwlPngFile\').click()" title="导入 ComfyUI 生成的 PNG（自动提取自带工作流）" style="font-size:11px;padding:5px 12px;border:1px solid #6366f1;color:#6366f1;border-radius:8px;"><i class="bi bi-upload"></i> 导入 PNG</button>' +
             '<input type="file" id="cwlPngFile" accept=".png,image/png" style="display:none;" onchange="App.comfyLib.importPng(this)">' +
           '</div>' +
         '</div>' +
