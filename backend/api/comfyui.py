@@ -1133,24 +1133,26 @@ def sync_workflow(data: SyncRequest = None):
     wf_id = "wf_" + uuid.uuid4().hex[:12]
     name = source_name or "从ComfyUI同步"
 
-    for w in cfg.get("workflows", []):
-        ewf = w.get("workflow_json", {})
-        if len(ewf) == len(workflow):
-            if w.get("prompt_node_id") == prompt_node_id and w.get("image_output_node_id") == output_node_id:
-                cfg["active_workflow"] = w["id"]
-                _save_config(cfg)
-                return {
-                    "ok": True,
-                    "status": "已匹配",
-                    "matched": True,
-                    "workflow_id": w["id"],
-                    "workflow_name": w.get("name", ""),
-                    "prompt_node_id": prompt_node_id,
-                    "prompt_field": prompt_field,
-                    "output_node_id": output_node_id,
-                    "node_count": len(workflow),
-                    "source": source
-                }
+    # 查重（仅自动同步模式；用户主动选择来源时总是新增，避免“选了没反应”）
+    if not src:
+        for w in cfg.get("workflows", []):
+            ewf = w.get("workflow_json", {})
+            if len(ewf) == len(workflow):
+                if w.get("prompt_node_id") == prompt_node_id and w.get("image_output_node_id") == output_node_id:
+                    cfg["active_workflow"] = w["id"]
+                    _save_config(cfg)
+                    return {
+                        "ok": True,
+                        "status": "已匹配",
+                        "matched": True,
+                        "workflow_id": w["id"],
+                        "workflow_name": w.get("name", ""),
+                        "prompt_node_id": prompt_node_id,
+                        "prompt_field": prompt_field,
+                        "output_node_id": output_node_id,
+                        "node_count": len(workflow),
+                        "source": source
+                    }
 
     new_wf = {
         "id": wf_id,
