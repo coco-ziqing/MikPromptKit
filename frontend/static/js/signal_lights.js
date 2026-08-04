@@ -24,34 +24,42 @@ App.signalLights.init = function() {
 };
 
 App.signalLights._buildBar = function() {
-    if (document.getElementById('slBar')) return;
+    if (document.getElementById('slNav')) return;
 
-    var bar = document.createElement('div');
-    bar.id = 'slBar';
-    bar.className = 'sl-bar';
+    var slot = document.getElementById('slNavSlot');
+    var bar = document.createElement('span');
+    bar.id = 'slNav';
+    bar.className = 'sl-nav';
     bar.title = App._t('auto.str_85cfe79e', '外部依赖连接状态 · 点击刷新');
-    bar.style.cssText = 'position:fixed;bottom:12px;right:14px;z-index:500;height:26px;display:flex;align-items:center;gap:10px;'
-        + 'padding:0 10px;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,0.15);'
-        + 'font-size:10px;background:var(--bg-card);border:1px solid var(--border-color);color:var(--text-muted);opacity:0.95;'
-        + 'font-family:system-ui,monospace;cursor:pointer;user-select:none;';
+    bar.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:10px;padding:2px 7px;'
+        + 'border-radius:12px;color:var(--text-muted);cursor:pointer;white-space:nowrap;user-select:none;'
+        + 'transition:background 0.15s;';
+    bar.onmouseenter = function() { bar.style.background = 'var(--hover-bg)'; };
+    bar.onmouseleave = function() { bar.style.background = 'transparent'; };
     bar.onclick = function() { App.signalLights.refresh(true); };
 
     // Ollama
-    bar.innerHTML += '<span id="slOllama" class="sl-item"><span class="sl-dot sl-dot-unknown"></span> Ollama <span class="sl-ms" id="slOllamaMs"></span></span>';
+    bar.innerHTML += '<span id="slOllama" class="sl-item" style="display:inline-flex;align-items:center;gap:3px;"><span class="sl-dot sl-dot-unknown"></span><span class="sl-name">Ollama</span> <span class="sl-ms" id="slOllamaMs"></span></span>';
 
     // ComfyUI
-    bar.innerHTML += '<span id="slComfyui" class="sl-item"><span class="sl-dot sl-dot-unknown"></span> ComfyUI <span class="sl-ms" id="slComfyuiMs"></span></span>';
+    bar.innerHTML += '<span id="slComfyui" class="sl-item" style="display:inline-flex;align-items:center;gap:3px;"><span class="sl-dot sl-dot-unknown"></span><span class="sl-name">ComfyUI</span> <span class="sl-ms" id="slComfyuiMs"></span></span>';
 
-    // 折叠按钮
-    bar.innerHTML += '<span id="slToggle" title="折叠" style="font-size:11px;opacity:0.7;padding:0 2px;cursor:pointer;">✕</span>';
+    // 横向折叠按钮
+    bar.innerHTML += '<span id="slToggle" title="折叠/展开" style="font-size:10px;opacity:0.65;padding:0 1px;cursor:pointer;margin-left:2px;">▾</span>';
 
-    document.body.appendChild(bar);
+    if (slot) {
+        slot.appendChild(bar);
+    } else {
+        document.body.appendChild(bar);
+        bar.style.cssText += 'position:fixed;bottom:12px;right:14px;z-index:500;box-shadow:0 2px 10px rgba(0,0,0,0.15);';
+    }
     this._bar = bar;
     this._bindToggle();
+    this._applyCollapseState();
 };
 
 App.signalLights._bindToggle = function() {
-    var bar = document.getElementById('slBar');
+    var bar = document.getElementById('slNav');
     var tg = document.getElementById('slToggle');
     if (!bar || !tg) return;
     tg.onclick = function(e) {
@@ -60,33 +68,32 @@ App.signalLights._bindToggle = function() {
     };
 };
 
+// 折叠状态：▾=展开(横向显示文字+延迟)，▸=折叠(仅两圆点)
+App.signalLights._applyCollapseState = function() {
+    var bar = document.getElementById('slNav');
+    if (!bar) return;
+    var collapsed = localStorage.getItem('pk_sl_collapsed') === '1';
+    bar.setAttribute('data-collapsed', collapsed ? '1' : '0');
+    var o = document.getElementById('slOllama');
+    var c = document.getElementById('slComfyui');
+    var t = document.getElementById('slToggle');
+    if (collapsed) {
+        if (o) { o.querySelector('.sl-name').style.display = 'none'; o.querySelector('.sl-ms').style.display = 'none'; }
+        if (c) { c.querySelector('.sl-name').style.display = 'none'; c.querySelector('.sl-ms').style.display = 'none'; }
+        if (t) t.textContent = '▸';
+    } else {
+        if (o) { o.querySelector('.sl-name').style.display = ''; o.querySelector('.sl-ms').style.display = ''; }
+        if (c) { c.querySelector('.sl-name').style.display = ''; c.querySelector('.sl-ms').style.display = ''; }
+        if (t) t.textContent = '▾';
+    }
+};
+
 App.signalLights.toggleCollapse = function() {
-    var bar = document.getElementById('slBar');
+    var bar = document.getElementById('slNav');
     if (!bar) return;
     var collapsed = bar.getAttribute('data-collapsed') === '1';
-    if (collapsed) {
-        // 展开
-        bar.setAttribute('data-collapsed', '0');
-        bar.style.width = 'auto';
-        bar.style.padding = '0 10px';
-        var o = document.getElementById('slOllama');
-        var c = document.getElementById('slComfyui');
-        var t = document.getElementById('slToggle');
-        if (o) o.style.display = '';
-        if (c) c.style.display = '';
-        if (t) t.textContent = '✕';
-    } else {
-        // 折叠成小圆点
-        bar.setAttribute('data-collapsed', '1');
-        bar.style.width = 'auto';
-        bar.style.padding = '0 6px';
-        var o = document.getElementById('slOllama');
-        var c = document.getElementById('slComfyui');
-        var t = document.getElementById('slToggle');
-        if (o) { o.style.display = 'none'; }
-        if (c) { c.style.display = 'none'; }
-        if (t) t.textContent = '●';
-    }
+    localStorage.setItem('pk_sl_collapsed', collapsed ? '0' : '1');
+    this._applyCollapseState();
 };
 
 App.signalLights.refresh = async function(force) {
@@ -151,7 +158,7 @@ App.signalLights._updateTimer = function() {
 function _ensureSignalLights() {
     try {
         if (window.App && App.signalLights && typeof App.signalLights.init === 'function') {
-            if (!document.getElementById('slBar')) {
+            if (!document.getElementById('slNav') && !document.getElementById('slBar')) {
                 App.signalLights.init();
             }
         }
