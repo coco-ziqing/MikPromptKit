@@ -30,28 +30,63 @@ App.signalLights._buildBar = function() {
     bar.id = 'slBar';
     bar.className = 'sl-bar';
     bar.title = App._t('auto.str_85cfe79e', '外部依赖连接状态 · 点击刷新');
-    bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:500;height:22px;display:flex;align-items:center;justify-content:center;gap:16px;'
-        + 'font-size:10px;background:var(--bg-card);border-top:1px solid var(--border-color);color:var(--text-muted);opacity:0.92;'
-        + 'font-family:system-ui,monospace;cursor:pointer;';
+    bar.style.cssText = 'position:fixed;bottom:12px;right:14px;z-index:500;height:26px;display:flex;align-items:center;gap:10px;'
+        + 'padding:0 10px;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,0.15);'
+        + 'font-size:10px;background:var(--bg-card);border:1px solid var(--border-color);color:var(--text-muted);opacity:0.95;'
+        + 'font-family:system-ui,monospace;cursor:pointer;user-select:none;';
     bar.onclick = function() { App.signalLights.refresh(true); };
 
     // Ollama
     bar.innerHTML += '<span id="slOllama" class="sl-item"><span class="sl-dot sl-dot-unknown"></span> Ollama <span class="sl-ms" id="slOllamaMs"></span></span>';
 
-    // separator
-    bar.innerHTML += '<span style="color:var(--border-color);">|</span>';
-
     // ComfyUI
     bar.innerHTML += '<span id="slComfyui" class="sl-item"><span class="sl-dot sl-dot-unknown"></span> ComfyUI <span class="sl-ms" id="slComfyuiMs"></span></span>';
 
-    // separator
-    bar.innerHTML += '<span style="color:var(--border-color);">|</span>';
-
-    // Auto-refresh indicator
-    bar.innerHTML += '<span id="slTimer" style="font-size:9px;opacity:0.5;"></span>';
+    // 折叠按钮
+    bar.innerHTML += '<span id="slToggle" title="折叠" style="font-size:11px;opacity:0.7;padding:0 2px;cursor:pointer;">✕</span>';
 
     document.body.appendChild(bar);
     this._bar = bar;
+    this._bindToggle();
+};
+
+App.signalLights._bindToggle = function() {
+    var bar = document.getElementById('slBar');
+    var tg = document.getElementById('slToggle');
+    if (!bar || !tg) return;
+    tg.onclick = function(e) {
+        e.stopPropagation();
+        App.signalLights.toggleCollapse();
+    };
+};
+
+App.signalLights.toggleCollapse = function() {
+    var bar = document.getElementById('slBar');
+    if (!bar) return;
+    var collapsed = bar.getAttribute('data-collapsed') === '1';
+    if (collapsed) {
+        // 展开
+        bar.setAttribute('data-collapsed', '0');
+        bar.style.width = 'auto';
+        bar.style.padding = '0 10px';
+        var o = document.getElementById('slOllama');
+        var c = document.getElementById('slComfyui');
+        var t = document.getElementById('slToggle');
+        if (o) o.style.display = '';
+        if (c) c.style.display = '';
+        if (t) t.textContent = '✕';
+    } else {
+        // 折叠成小圆点
+        bar.setAttribute('data-collapsed', '1');
+        bar.style.width = 'auto';
+        bar.style.padding = '0 6px';
+        var o = document.getElementById('slOllama');
+        var c = document.getElementById('slComfyui');
+        var t = document.getElementById('slToggle');
+        if (o) { o.style.display = 'none'; }
+        if (c) { c.style.display = 'none'; }
+        if (t) t.textContent = '●';
+    }
 };
 
 App.signalLights.refresh = async function(force) {
