@@ -493,6 +493,8 @@ def _analyze_workflow_params(wf) -> list:
         return []
     candidates = []
     seen = set()
+    pos_node = _find_positive_node(wf)
+    neg_node = _find_negative_node(wf)
     for nid, node in wf.items():
         if not isinstance(node, dict):
             continue
@@ -514,6 +516,12 @@ def _analyze_workflow_params(wf) -> list:
                 "sampler_name": "采样器", "scheduler": "调度器",
                 "filename_prefix": "输出文件名前缀", "strength_model": "LoRA强度",
             }
+            role = ""
+            if ct == "CLIPTextEncode" and field == "text":
+                if str(nid) == str(pos_node):
+                    role = "positive"
+                elif str(nid) == str(neg_node):
+                    role = "negative"
             candidates.append({
                 "node_id": str(nid),
                 "field": field,
@@ -523,6 +531,7 @@ def _analyze_workflow_params(wf) -> list:
                 "value": val,
                 "type": _infer_param_type(val),
                 "default": val,
+                "role": role,
             })
     return candidates
 
@@ -869,6 +878,167 @@ def list_available_sources():
         except Exception:
             pass
     return result
+
+
+class RewriteWorkflowRequest(BaseModel):
+    prompt_text: str = ""        # positive 提示词
+    negative_text: str = ""      # negative 提示词
+    params: dict = {}             # {"{node_id}.{field}": value} 写回对应节点
+
+
+def _trace_conditioning(wf: dict, node_id, depth=0):
+    """沿 conditioning 链路追踪到 CLIPTextEncode 节点（穿透 FluxGuidance 等中间节点）"""
+    if depth > 5:
+        return None
+    nid = str(node_id)
+    if nid not in wf:
+        return None
+    node = wf[nid]
+    ct = node.get("class_type", "")
+    if ct == "CLIPTextEncode":
+        return nid
+    ins = node.get("inputs", {})
+    for key in ("conditioning", "positive"):
+        v = ins.get(key)
+        if isinstance(v, list) and len(v) >= 1:
+            r = _trace_conditioning(wf, v[0], depth + 1)
+            if r:
+                return r
+    return None
+
+
+def _find_positive_node(wf: dict):
+    """定位 positive 提示词节点
+    优先级：KSampler.positive → SamplerCustomAdvanced.guider 链路 → 其他 Guider → fallback 首个有 text 的 CLIPTextEncode
+    """
+    # 1. KSampler.positive 链路
+    for nid, node in wf.items():
+        if node.get("class_type") == "KSampler":
+            pos = node.get("inputs", {}).get("positive")
+            if isinstance(pos, list) and len(pos) >= 1:
+                r = _trace_conditioning(wf, pos[0])
+                if r:
+                    return r
+    # 2. SamplerCustomAdvanced.guider 链路（Flux 原生采样）
+    for nid, node in wf.items():
+        if node.get("class_type") == "SamplerCustomAdvanced":
+            g = node.get("inputs", {}).get("guider")
+            if isinstance(g, list) and len(g) >= 1:
+                r = _trace_conditioning(wf, g[0])
+                if r:
+                    return r
+    # 3. 其他 Guider 节点
+    for nid, node in wf.items():
+        ct = node.get("class_type", "")
+        if "Guider" in ct or ct in ("BasicGuider", "CFGGuider"):
+            cond = node.get("inputs", {}).get("conditioning")
+            if isinstance(cond, list) and len(cond) >= 1:
+                r = _trace_conditioning(wf, cond[0])
+                if r:
+                    return r
+    # 4. fallback：首个有 text 键的 CLIPTextEncode（字符串或连线均可）
+    for nid, node in wf.items():
+        if node.get("class_type") == "CLIPTextEncode" and "text" in node.get("inputs", {}):
+            return str(nid)
+    return None
+
+
+def _find_negative_node(wf: dict):
+    """定位 negative 提示词节点"""
+    # 1. KSampler.negative 链路
+    for nid, node in wf.items():
+        if node.get("class_type") == "KSampler":
+            neg = node.get("inputs", {}).get("negative")
+            if isinstance(neg, list) and len(neg) >= 1:
+                r = _trace_conditioning(wf, neg[0])
+                if r:
+                    return r
+    # 2. fallback：positive 之外的 CLIPTextEncode（优先空字符串）
+    pos = _find_positive_node(wf)
+    empty = None
+    for nid, node in wf.items():
+        if node.get("class_type") == "CLIPTextEncode" and str(nid) != str(pos):
+            t = node.get("inputs", {}).get("text", "")
+            if isinstance(t, str) and not t.strip():
+                empty = str(nid)
+                break
+    if empty:
+        return empty
+    for nid, node in wf.items():
+        if node.get("class_type") == "CLIPTextEncode" and str(nid) != str(pos):
+            return str(nid)
+    return None
+
+
+@router.post("/workflows/{wf_id}/reset")
+def reset_workflow(wf_id: str):
+    """清零工作流：清空所有 CLIPTextEncode 提示词 + seed 归零，保留模板结构"""
+    wf, err = _find_workflow_v2(wf_id)
+    if not wf:
+        return {"ok": False, "error": err or "工作流不存在"}
+    wj = wf["workflow_json"]
+    cleared_text = 0
+    cleared_seed = 0
+    # 文本型节点（CLIPTextEncode / Text Multiline / Text Concatenate 等）的 text 字符串字段清空
+    for nid, node in wj.items():
+        if not isinstance(node, dict):
+            continue
+        ins = node.get("inputs", {})
+        if not isinstance(ins, dict):
+            continue
+        for field, val in ins.items():
+            if field == "text" and isinstance(val, str) and val:
+                ins[field] = ""
+                cleared_text += 1
+        ct = node.get("class_type", "")
+        if ct in ("KSampler", "SamplerCustomAdvanced") and "seed" in ins and ins["seed"]:
+            ins["seed"] = 0
+            cleared_seed += 1
+    db = get_db()
+    db.execute("UPDATE comfyui_workflows SET workflow_json=?, prompt_text='', updated_at=datetime('now','localtime') WHERE id=?",
+               [json.dumps(wj, ensure_ascii=False), wf_id])
+    safe_commit()
+    return {"ok": True, "cleared_text": cleared_text, "cleared_seed": cleared_seed}
+
+
+@router.post("/workflows/{wf_id}/rewrite")
+def rewrite_workflow(wf_id: str, data: RewriteWorkflowRequest):
+    """重写工作流：覆盖提示词（positive/negative）与任意参数（node_id.field），保存到库中模板"""
+    wf, err = _find_workflow_v2(wf_id)
+    if not wf:
+        return {"ok": False, "error": err or "工作流不存在"}
+    wj = wf["workflow_json"]
+    # 1. 参数直接写回
+    applied = 0
+    for key, val in (data.params or {}).items():
+        parts = key.split(".")
+        if len(parts) == 2 and parts[0] in wj:
+            ins = wj[parts[0]].get("inputs", {})
+            if parts[1] in ins:
+                try:
+                    cur = ins[parts[1]]
+                    if isinstance(cur, bool):
+                        val = bool(val)
+                    elif isinstance(cur, int):
+                        val = int(float(val))
+                    elif isinstance(cur, float):
+                        val = float(val)
+                except Exception:
+                    pass
+                ins[parts[1]] = val
+                applied += 1
+    # 2. 提示词写入 positive / negative 节点
+    pos_node = _find_positive_node(wj)
+    if pos_node and data.prompt_text is not None:
+        wj[pos_node]["inputs"]["text"] = data.prompt_text
+    neg_node = _find_negative_node(wj)
+    if neg_node and data.negative_text is not None:
+        wj[neg_node]["inputs"]["text"] = data.negative_text
+    db = get_db()
+    db.execute("UPDATE comfyui_workflows SET workflow_json=?, prompt_text=?, updated_at=datetime('now','localtime') WHERE id=?",
+               [json.dumps(wj, ensure_ascii=False), data.prompt_text or "", wf_id])
+    safe_commit()
+    return {"ok": True, "applied": applied, "positive_node": pos_node, "negative_node": neg_node}
 
 
 def _compose_prompt(preset_text: str, card_text: str, style_suffix: str) -> str:

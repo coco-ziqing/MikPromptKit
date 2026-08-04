@@ -117,6 +117,8 @@ App.comfyLib._ensureModal = function() {
             '<span style="font-size:13px;font-weight:600;"><i class="bi bi-stars"></i> 生成</span>' +
             '<span id="cwlGenWfName" style="font-size:12px;color:var(--primary);"></span>' +
             '<span style="margin-left:auto;display:flex;gap:6px;">' +
+              '<button class="btn btn-sm" onclick="App.comfyLib.openRewrite()" title="重写模板的提示词与参数（保存到库中）" style="font-size:11px;padding:3px 10px;border:1px solid #10b981;color:#10b981;"><i class="bi bi-pencil-square"></i> 重写</button>' +
+              '<button class="btn btn-sm" onclick="App.comfyLib.resetWorkflow()" title="清零：清空提示词与种子，保留模板结构" style="font-size:11px;padding:3px 10px;border:1px solid #f59e0b;color:#f59e0b;"><i class="bi bi-eraser"></i> 清零</button>' +
               '<button class="btn btn-sm" id="cwlBtnEditParams" onclick="App.comfyLib.openParamEditor()" title="编辑模式：自主选择暴露哪些参数、命名、设置组件类型" style="font-size:11px;padding:3px 10px;border:1px solid #8b5cf6;color:#8b5cf6;"><i class="bi bi-sliders"></i> 参数配置</button>' +
             '</span>' +
           '</div>' +
@@ -393,6 +395,150 @@ App.comfyLib.selectWf = async function(id) {
     if (result) result.style.display = 'none';
     // 加载参数分析 + 配置
     await this._loadParams(id);
+};
+
+// ============ 清零 / 重写工作流 ============
+
+App.comfyLib.resetWorkflow = async function() {
+    if (!this._selectedWf) { App.showToast('请先选择工作流模板', 'warning'); return; }
+    if (!confirm('清零模板「' + (this._selectedWf.name || '') + '」？\n将清空所有提示词并把种子归零（模板结构与节点连接保留）。')) return;
+    try {
+        var d = await App.fetchJSON('/api/v2/comfyui/workflows/' + encodeURIComponent(this._selectedWf.id) + '/reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        if (d && d.ok) {
+            App.showToast('✅ 已清零：' + d.cleared_text + ' 处提示词、' + d.cleared_seed + ' 处种子', 'success');
+            await this.loadList();
+            var promptEl = document.getElementById('cwlPrompt');
+            if (promptEl) promptEl.value = '';
+        } else {
+            App.showToast('清零失败: ' + (d && d.error ? d.error : ''), 'error');
+        }
+    } catch(e) {
+        App.showToast('清零失败: ' + e.message, 'error');
+    }
+};
+
+// 重写弹窗：编辑模板的提示词与参数，保存到库
+App.comfyLib.openRewrite = async function() {
+    if (!this._selectedWf) { App.showToast('请先选择工作流模板', 'warning'); return; }
+    var overlay = document.getElementById('cwlRewrite');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'cwlRewrite';
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'display:none;z-index:740;';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.style.display = 'none'; };
+        overlay.innerHTML =
+        '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:680px;max-height:86vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
+          '<div class="modal-header" style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
+            '<h5 style="margin:0;font-size:14px;"><i class="bi bi-pencil-square"></i> 重写工作流 <span id="cwlRwName" style="font-size:11px;color:var(--text-muted);"></span></h5>' +
+            '<button class="header-btn-sm" onclick="document.getElementById(\'cwlRewrite\').style.display=\'none\'">&times;</button>' +
+          '</div>' +
+          '<div class="modal-body" id="cwlRwBody" style="flex:1;overflow-y:auto;padding:12px 16px;">加载中...</div>' +
+          '<div class="modal-footer" style="padding:10px 16px;border-top:1px solid var(--border-color);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;">' +
+            '<span style="margin-right:auto;font-size:11px;color:var(--text-muted);">保存后更新库中模板默认值</span>' +
+            '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'cwlRewrite\').style.display=\'none\'">取消</button>' +
+            '<button class="btn btn-primary btn-sm" onclick="App.comfyLib.saveRewrite()"><i class="bi bi-check"></i> 保存重写</button>' +
+          '</div>' +
+        '</div>';
+        document.body.appendChild(overlay);
+    }
+    document.getElementById('cwlRwName').textContent = '「' + (this._selectedWf.name || '') + '」';
+    overlay.style.display = 'flex';
+    var bodyEl = document.getElementById('cwlRwBody');
+    bodyEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;">分析工作流参数...</div>';
+    try {
+        var d = await App.fetchJSON('/api/v2/comfyui/workflows/' + encodeURIComponent(this._selectedWf.id) + '/params/analyze');
+        if (!d || !d.ok) throw new Error(d && d.error || '分析失败');
+        this._candidates = d.candidates || [];
+        this._renderRewriteForm();
+    } catch(e) {
+        bodyEl.innerHTML = '<div style="color:#ef4444;font-size:12px;">' + App._escape(e.message) + '</div>';
+    }
+};
+
+App.comfyLib._renderRewriteForm = function() {
+    var bodyEl = document.getElementById('cwlRwBody');
+    if (!bodyEl) return;
+    var self = this;
+    var pos = null, neg = null;
+    var params = [];
+    this._candidates.forEach(function(c) {
+        if (c.role === 'positive') { pos = c; return; }
+        if (c.role === 'negative') { neg = c; return; }
+        if (c.class_type === 'CLIPTextEncode' && c.field === 'text') {
+            if (!pos) { pos = c; return; }
+            if (!neg) { neg = c; return; }
+        }
+        params.push(c);
+    });
+    var html = '';
+    // 提示词区
+    html += '<div style="margin-bottom:10px;"><label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">📝 正面提示词 (positive)</label>' +
+      '<textarea id="cwlRwPos" rows="3" style="width:100%;font-size:12px;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);resize:vertical;">' + App._escape(pos ? String(pos.value) : '') + '</textarea></div>';
+    if (neg) {
+        html += '<div style="margin-bottom:10px;"><label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">🚫 负面提示词 (negative)</label>' +
+          '<textarea id="cwlRwNeg" rows="2" style="width:100%;font-size:12px;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);resize:vertical;">' + App._escape(String(neg.value || '')) + '</textarea></div>';
+    }
+    // 参数区
+    html += '<div style="margin:12px 0 6px;font-size:12px;font-weight:600;">⚙️ 模板参数</div>';
+    if (params.length === 0) {
+        html += '<div style="font-size:11px;color:var(--text-muted);">无其他可调参数</div>';
+    } else {
+        html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px;">';
+        params.forEach(function(c) {
+            var key = c.key;
+            var val = c.value;
+            html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:7px 9px;">' +
+              '<div style="font-size:11px;font-weight:600;margin-bottom:3px;">' + App._escape(c.label) + ' <code style="font-size:9px;color:var(--text-muted);font-weight:400;">' + App._escape(key) + '</code></div>';
+            if (c.type === 'slider') {
+                html += '<input type="number" class="cwl-rw-p" data-key="' + App._escape(key) + '" value="' + App._escape(String(val)) + '" style="width:100%;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);">';
+            } else if (c.type === 'checkbox') {
+                html += '<input type="checkbox" class="cwl-rw-p" data-key="' + App._escape(key) + '" ' + (val ? 'checked' : '') + ' style="width:16px;height:16px;">';
+            } else {
+                html += '<input type="text" class="cwl-rw-p" data-key="' + App._escape(key) + '" value="' + App._escape(String(val === undefined ? '' : val)) + '" style="width:100%;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);">';
+            }
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+    bodyEl.innerHTML = html;
+};
+
+App.comfyLib.saveRewrite = async function() {
+    if (!this._selectedWf) return;
+    var promptText = (document.getElementById('cwlRwPos') || {}).value || '';
+    var negEl = document.getElementById('cwlRwNeg');
+    var negativeText = negEl ? negEl.value : '';
+    var params = {};
+    var els = document.querySelectorAll('.cwl-rw-p');
+    for (var i = 0; i < els.length; i++) {
+        var key = els[i].getAttribute('data-key');
+        var v = els[i].value;
+        if (els[i].type === 'checkbox') v = els[i].checked;
+        else if (els[i].type === 'number') v = parseFloat(v);
+        params[key] = v;
+    }
+    try {
+        var d = await App.fetchJSON('/api/v2/comfyui/workflows/' + encodeURIComponent(this._selectedWf.id) + '/rewrite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt_text: promptText, negative_text: negativeText, params: params })
+        });
+        if (d && d.ok) {
+            App.showToast('✅ 已重写模板（' + d.applied + ' 项参数 + 提示词）', 'success');
+            document.getElementById('cwlRewrite').style.display = 'none';
+            await this.loadList();
+            this.selectWf(this._selectedWf.id);
+        } else {
+            App.showToast('重写失败: ' + (d && d.error ? d.error : ''), 'error');
+        }
+    } catch(e) {
+        App.showToast('重写失败: ' + e.message, 'error');
+    }
 };
 
 // ============ 参数系统 ============
