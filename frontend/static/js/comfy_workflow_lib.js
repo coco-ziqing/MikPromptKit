@@ -630,8 +630,13 @@ App.comfyLib.syncFromComfy = async function() {
             body: JSON.stringify({})
         });
         if (d && d.ok) {
-            App.showToast('✅ ' + (d.status || '已同步') + '「' + (d.workflow_name || '') + '」 ' + (d.node_count || 0) + ' 节点', 'success');
-            this.loadList();
+            if (d.matched) {
+                App.showToast('✅ 已匹配当前运行的工作流：「' + (d.workflow_name || '') + '」（' + (d.node_count || 0) + ' 节点，已自动定位）', 'success');
+            } else {
+                App.showToast('✅ 已导入新模板：「' + (d.workflow_name || '') + '」（' + (d.node_count || 0) + ' 节点）', 'success');
+            }
+            await this.loadList();
+            if (d.workflow_id) this.selectWf(d.workflow_id);
         } else {
             App.showToast('同步失败: ' + (d && d.error ? d.error : '未知'), 'error');
         }

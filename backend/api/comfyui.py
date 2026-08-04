@@ -919,7 +919,8 @@ def sync_workflow(data: SyncRequest = None):
                 _save_config(cfg)
                 return {
                     "ok": True,
-                    "status": "已切换",
+                    "status": "已匹配",
+                    "matched": True,
                     "workflow_id": w["id"],
                     "workflow_name": w.get("name", ""),
                     "prompt_node_id": prompt_node_id,
@@ -947,6 +948,7 @@ def sync_workflow(data: SyncRequest = None):
     return {
         "ok": True,
         "status": "已导入",
+        "matched": False,
         "workflow_id": wf_id,
         "workflow_name": name,
         "prompt_node_id": prompt_node_id,
