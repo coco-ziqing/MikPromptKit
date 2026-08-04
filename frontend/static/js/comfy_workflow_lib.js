@@ -69,7 +69,6 @@ App.comfyLib._ensureModal = function() {
       '<div class="modal-header" style="padding:12px 18px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
         '<h5 style="margin:0;font-size:15px;"><i class="bi bi-magic"></i> 工作流库 <span style="font-size:11px;color:var(--text-muted);">ComfyUI 存储调用空间</span></h5>' +
         '<div style="display:flex;gap:8px;align-items:center;">' +
-          '<button class="btn btn-sm" onclick="App.comfyLib.syncFromComfy()" title="从 ComfyUI 队列/历史同步最新工作流" style="font-size:11px;padding:3px 10px;"><i class="bi bi-arrow-repeat"></i> 从 ComfyUI 同步</button>' +
           '<button class="header-btn-sm" onclick="App.comfyLib.close()">&times;</button>' +
         '</div>' +
       '</div>' +
@@ -81,7 +80,10 @@ App.comfyLib._ensureModal = function() {
           '<span id="cwlRtRunning" style="color:#10b981;">● 执行中: <b>0</b></span>' +
           '<span id="cwlRtPending" style="color:#f59e0b;">◌ 排队中: <b>0</b></span>' +
           '<span id="cwlRtDetail" style="color:var(--text-muted);font-size:11px;"></span>' +
-          '<span style="margin-left:auto;font-size:11px;color:var(--text-muted);">5s 自动刷新</span>' +
+          '<span style="margin-left:auto;display:flex;gap:8px;align-items:center;">' +
+            '<button class="btn btn-sm" onclick="App.comfyLib.syncFromComfy()" title="从 ComfyUI 队列/历史同步最新工作流" style="font-size:11px;padding:4px 12px;border:1px solid var(--primary);color:var(--primary);border-radius:8px;"><i class="bi bi-arrow-repeat"></i> 从 ComfyUI 同步</button>' +
+            '<span style="font-size:11px;color:var(--text-muted);">5s 自动刷新</span>' +
+          '</span>' +
         '</div>' +
 
         // ===== 工作流列表 =====
