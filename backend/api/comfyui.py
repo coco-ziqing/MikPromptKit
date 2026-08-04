@@ -237,8 +237,10 @@ class WorkflowUpdate(BaseModel):
 
 
 @router.get("/workflows")
-def list_workflows(search: str = "", source: str = "", favorite: int = 0):
-    """工作流库列表"""
+def list_workflows(search: str = "", source: str = "", favorite: int = 0, sort: str = "recent"):
+    """工作流库列表
+    sort: recent(默认 收藏+最近使用) / usage(使用最多) / name(名称) / nodes(节点数) / newest(最新导入)
+    """
     _migrate_legacy_workflows()
     db = get_db()
     sql = "SELECT * FROM comfyui_workflows WHERE 1=1"
@@ -251,7 +253,14 @@ def list_workflows(search: str = "", source: str = "", favorite: int = 0):
         args.append(source)
     if favorite:
         sql += " AND is_favorite=1"
-    sql += " ORDER BY is_favorite DESC, updated_at DESC, created_at DESC"
+    order = {
+        "recent": "is_favorite DESC, COALESCE(last_used_at,'') DESC, updated_at DESC, created_at DESC",
+        "usage": "usage_count DESC, COALESCE(last_used_at,'') DESC",
+        "name": "name ASC",
+        "nodes": "(SELECT COUNT(*) FROM json_each(workflow_json)) DESC, usage_count DESC",
+        "newest": "created_at DESC",
+    }.get(sort, "is_favorite DESC, COALESCE(last_used_at,'') DESC, updated_at DESC")
+    sql += f" ORDER BY {order}"
     rows = db.execute(sql, args).fetchall()
     items = []
     for r in rows:

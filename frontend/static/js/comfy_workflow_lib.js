@@ -90,6 +90,13 @@ App.comfyLib._ensureModal = function() {
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">' +
           '<div style="font-size:13px;font-weight:600;"><i class="bi bi-collection"></i> 工作流模板 <span id="cwlCount" style="font-size:11px;color:var(--text-muted);"></span></div>' +
           '<div style="display:flex;gap:6px;align-items:center;">' +
+            '<select id="cwlSort" onchange="App.comfyLib.loadList()" title="排序方式" style="font-size:11px;padding:5px 6px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);outline:none;">' +
+              '<option value="recent">最近使用</option>' +
+              '<option value="usage">使用最多</option>' +
+              '<option value="newest">最新导入</option>' +
+              '<option value="name">名称排序</option>' +
+              '<option value="nodes">节点最多</option>' +
+            '</select>' +
             '<span style="position:relative;display:inline-flex;align-items:center;">' +
               '<i class="bi bi-search" style="position:absolute;left:9px;font-size:12px;color:var(--text-muted);pointer-events:none;"></i>' +
               '<input id="cwlSearch" placeholder="搜索工作流名称 / 提示词..." style="font-size:12px;padding:6px 10px 6px 27px;width:230px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);outline:none;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor=\'#6366f1\';this.style.boxShadow=\'0 0 0 2px rgba(99,102,241,0.18)\'" onblur="this.style.borderColor=\'#94a3b8\';this.style.boxShadow=\'none\'" oninput="App.comfyLib.loadList()">' +
@@ -176,8 +183,9 @@ App.comfyLib.loadList = async function() {
     var grid = document.getElementById('cwlGrid');
     if (!grid) return;
     var search = (document.getElementById('cwlSearch') || {}).value || '';
+    var sort = (document.getElementById('cwlSort') || {}).value || 'recent';
     try {
-        var d = await App.fetchJSON('/api/v2/comfyui/workflows?search=' + encodeURIComponent(search));
+        var d = await App.fetchJSON('/api/v2/comfyui/workflows?search=' + encodeURIComponent(search) + '&sort=' + encodeURIComponent(sort));
         if (!d || !d.items) throw new Error('获取失败');
         this._wfList = d.items;
         var cnt = document.getElementById('cwlCount');
