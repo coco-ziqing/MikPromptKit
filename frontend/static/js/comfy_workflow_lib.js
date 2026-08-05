@@ -64,10 +64,14 @@ App.comfyLib.open = function() {
     m.style.display = 'flex';
     this.loadList();
     this.loadLogs();
+    this.loadTasks();
     this.refreshRuntime();
     if (this._runtimeTimer) clearInterval(this._runtimeTimer);
     var self = this;
-    this._runtimeTimer = setInterval(function() { self.refreshRuntime(); }, 5000);
+    this._runtimeTimer = setInterval(function() {
+        self.refreshRuntime();
+        self.loadTasks();
+    }, 5000);
 };
 
 App.comfyLib.close = function() {
@@ -179,6 +183,14 @@ App.comfyLib._ensureModal = function() {
               '</div>' +
             '</div>' +
           '</div>' +
+        '</div>' +
+
+        // ===== 生成任务（队列监督） =====
+        '<div style="border-top:1px solid var(--border-color);padding-top:10px;margin-bottom:12px;">' +
+          '<div style="font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px;"><i class="bi bi-list-task"></i> 生成任务 <span style="font-size:11px;color:var(--text-muted);">队列自动串行 · 防大批量卡死</span>' +
+            '<span style="margin-left:auto;"><button class="cwl-tree-btn" onclick="App.comfyLib.loadTasks()" title="刷新任务列表"><i class="bi bi-arrow-repeat"></i> 刷新</button></span>' +
+          '</div>' +
+          '<div id="cwlTasks" style="font-size:11px;color:var(--text-muted);">加载中...</div>' +
         '</div>' +
 
         // ===== 生成历史 =====
@@ -1611,6 +1623,69 @@ App.comfyLib._importSource = async function(source, label) {
     } catch(e) {
         App.showToast('导入失败: ' + e.message, 'error');
     }
+};
+
+// ============ 生成任务（队列监督） ============
+
+App.comfyLib.loadTasks = async function() {
+    var el = document.getElementById('cwlTasks');
+    if (!el) return;
+    try {
+        var d = await App.fetchJSON('/api/v2/comfyui/batch-tasks?limit=15');
+        if (!d || !d.items) throw new Error('获取失败');
+        if (d.items.length === 0) {
+            el.innerHTML = '<span style="color:var(--text-muted);">暂无批量生成任务</span>';
+            return;
+        }
+        var stMap = { queued: ['排队中', '#f59e0b'], running: ['生成中', '#6366f1'], done: ['已完成', '#10b981'], cancelled: ['已取消', '#94a3b8'], error: ['失败', '#ef4444'] };
+        var html = '<div style="display:flex;flex-direction:column;gap:6px;">';
+        d.items.forEach(function(t) {
+            var st = stMap[t.status] || [t.status, '#94a3b8'];
+            var pct = t.total > 0 ? Math.round(t.current_index / t.total * 100) : 0;
+            var mt = { flux: 'FLUX', sdxl: 'SDXL', sd15: 'SD1.5' }[t.model_type] || '';
+            html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:7px 9px;">' +
+              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+                '<b style="font-size:11px;">#' + t.id + '</b>' +
+                '<span style="font-size:11px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + App._escape(t.workflow_name || '') + '">' + App._escape((t.workflow_name || '未命名') + (mt ? ' · ' + mt : '')) + '</span>' +
+                '<span style="font-size:9px;padding:1px 7px;border-radius:8px;color:#fff;background:' + st[1] + ';">' + st[0] + '</span>' +
+                '<span style="font-size:10px;color:var(--text-muted);">' + (t.success || 0) + '✓/' + (t.failed || 0) + '✗</span>' +
+                '<span style="font-size:10px;color:var(--text-muted);">' + App._escape(String(t.created_at || '').slice(5, 16)) + '</span>' +
+                '<span style="display:flex;gap:4px;">' +
+                  ((t.status === 'queued' || t.status === 'running') ? '<button class="cwl-tree-btn" style="border-color:#ef4444;color:#ef4444;" onclick="App.comfyLib.cancelTask(' + t.id + ')">取消</button>' : '') +
+                  ((t.status === 'done' && t.failed > 0) ? '<button class="cwl-tree-btn" style="border-color:#f59e0b;color:#f59e0b;" onclick="App.comfyLib.retryTask(' + t.id + ')">重试失败</button>' : '') +
+                '</span>' +
+              '</div>' +
+              '<div style="height:5px;background:var(--border-color);border-radius:3px;overflow:hidden;margin-top:5px;">' +
+                '<div style="height:100%;width:' + pct + '%;background:' + st[1] + ';transition:width .3s;"></div>' +
+              '</div>' +
+            '</div>';
+        });
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) {
+        el.innerHTML = '<span style="color:#ef4444;">' + App._escape(e.message) + '</span>';
+    }
+};
+
+App.comfyLib.cancelTask = async function(taskId) {
+    if (!confirm('取消任务 #' + taskId + '？已完成的结果保留。')) return;
+    try {
+        await App.fetchJSON('/api/v2/comfyui/batch-tasks/' + taskId + '/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        App.showToast('已请求取消任务 #' + taskId, 'info');
+        this.loadTasks();
+    } catch(e) { App.showToast('取消失败: ' + e.message, 'error'); }
+};
+
+App.comfyLib.retryTask = async function(taskId) {
+    try {
+        var d = await App.fetchJSON('/api/v2/comfyui/batch-tasks/' + taskId + '/retry-failed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        if (d && d.ok) {
+            App.showToast('已创建重试任务 #' + d.task_id + '（' + d.total + ' 张）', 'success');
+            this.loadTasks();
+        } else {
+            App.showToast('重试失败: ' + (d && d.error || ''), 'error');
+        }
+    } catch(e) { App.showToast('重试异常: ' + e.message, 'error'); }
 };
 
 // ============ 生成历史 ============

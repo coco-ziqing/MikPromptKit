@@ -646,14 +646,9 @@ Object.assign(App, {
         var bar = document.getElementById('bgenProgressBar');
         var txt = document.getElementById('bgenProgressText');
         if (bar) bar.style.width = '0%';
-        if (txt) txt.textContent = '正在连接 ComfyUI...';
+        if (txt) txt.textContent = '正在创建生成任务...';
         startBtn.disabled = true;
         this._batchGenRunning = true;
-        this._batchAbort = new AbortController();
-        this._batchFailedIds = [];
-        this._batchSuccess = [];
-        this._batchStartTs = Date.now();
-        this._batchDurations = [];
         var paramValues = this._collectBatchParams();
         var body = {
             prompt_ids: this._batchIds,
@@ -663,75 +658,115 @@ Object.assign(App, {
             style_suffix: (document.getElementById('bgenSuffix') || {}).value,
             use_module_preset: (document.getElementById('bgenUsePreset') || {}).checked ? 1 : 0
         };
-        var success = 0, errors = 0, total = this._batchIds.length;
         try {
-            var resp = await fetch('/api/v2/comfyui/batch-generate', {
+            var d = await this.fetchJSON('/api/v2/comfyui/batch-tasks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-                signal: this._batchAbort.signal
+                body: JSON.stringify(body)
             });
-            if (!resp.ok) { this.showToast('批处理请求未响应', 'error'); return; }
-            var reader = resp.body.getReader();
-            var decoder = new TextDecoder();
-            var buffer = '';
-            while (true) {
-                var chunk = await reader.read();
-                if (chunk.done) break;
-                buffer += decoder.decode(chunk.value, { stream: true });
-                var lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-                for (var li = 0; li < lines.length; li++) {
-                    var line = lines[li].trim();
-                    if (!line || !line.startsWith('data: ')) continue;
-                    try {
-                        var ev = JSON.parse(line.substring(6));
-                        if (ev.start) {
-                            var name = ev.workflow_name || '';
-                            if (txt) txt.textContent = '开始生成 ' + ev.total + ' 张（工作流：' + (name || '') + '）';
-                            this.showToast('开始批量生成 ' + ev.total + ' 张（' + (name || '') + '）', 'info');
-                        } else if (ev.complete) {
-                            success = ev.success || 0;
-                            errors = ev.errors || 0;
-                        } else if (ev.done !== undefined) {
-                            if (bar) bar.style.width = (ev.progress || 0) + '%';
-                            // ETA 估算：平均耗时 × 剩余
-                            var dur = (Date.now() - this._batchStartTs) / 1000;
-                            this._batchDurations.push(dur);
-                            var avg = this._batchDurations.reduce(function(a, b) { return a + b; }, 0) / this._batchDurations.length;
-                            var remain = Math.max(0, ev.total - ev.done);
-                            var eta = remain > 0 ? Math.round(avg * remain) : 0;
-                            var etaTxt = eta > 0 ? ' · 预计剩余 ' + (eta < 60 ? eta + 's' : Math.floor(eta / 60) + '分' + (eta % 60) + 's') : '';
-                            if (txt) txt.textContent = '已完成 ' + ev.done + '/' + ev.total + etaTxt;
-                            if (!ev.ok) this._batchFailedIds.push(ev.prompt_id);
-                            if (ev.ok && ev.thumbnail_url) this._batchSuccess.push({ thumb: ev.thumbnail_url, text: ev.prompt_text || '' });
-                            this._batchStartTs = Date.now();
-                            this._appendBatchDetail(ev);
-                        }
-                    } catch(e) {}
-                }
+            if (!d || !d.ok) {
+                this.showToast('任务创建失败: ' + (d && d.error || ''), 'error');
+                if (txt) txt.textContent = '❌ ' + (d && d.error || '创建失败');
+                return;
             }
-            this.showToast('批量生成完成: ' + success + ' 成功, ' + errors + ' 未完成', errors > 0 ? 'warning' : 'success');
-            if (txt) txt.textContent = '完成：' + success + ' 成功 / ' + errors + ' 失败';
-            if (bar) bar.style.width = '100%';
-            // 成功缩略图网格 + 失败重试按钮
-            this._renderBatchGrid();
-            if (errors > 0 && this._batchFailedIds.length > 0) {
-                if (retryBtn) retryBtn.style.display = 'inline-flex';
-            }
-            await this.loadPrompts();
+            this._batchTaskId = d.task_id;
+            this._batchTaskTotal = d.total || this._batchIds.length;
+            if (txt) txt.textContent = '任务 #' + d.task_id + ' 已创建（' + (d.workflow_name || '') + '），等待执行...';
+            this.showToast('生成任务 #' + d.task_id + ' 已入队（' + this._batchTaskTotal + ' 张）', 'info');
+            // 轮询监督进度（任务持久化，断线/刷新后可恢复）
+            this._pollBatchTask();
         } catch(e) {
-            if (e.name === 'AbortError') {
-                this.showToast('已取消批量生成', 'info');
-                if (txt) txt.textContent = '已取消';
-            } else {
-                this.showToast('批量生成异常: ' + e.message, 'error');
-            }
-        } finally {
+            this.showToast('任务创建异常: ' + e.message, 'error');
+            if (txt) txt.textContent = '❌ ' + e.message;
             startBtn.disabled = false;
             this._batchGenRunning = false;
-            this._batchAbort = null;
         }
+    },
+
+    // 轮询任务进度（2s 间隔；任务在后台线程执行，前端刷新/断线不影响）
+    _pollBatchTask() {
+        var self = this;
+        if (this._batchPolling) return;
+        this._batchPolling = true;
+        var bar = document.getElementById('bgenProgressBar');
+        var txt = document.getElementById('bgenProgressText');
+        var interval = setInterval(async function() {
+            if (!self._batchTaskId) { clearInterval(interval); self._batchPolling = false; return; }
+            try {
+                var d = await self.fetchJSON('/api/v2/comfyui/batch-tasks/' + self._batchTaskId);
+                if (!d || !d.ok || !d.task) { clearInterval(interval); self._batchPolling = false; return; }
+                var t = d.task;
+                var pct = t.total > 0 ? Math.round(t.current_index / t.total * 100) : 0;
+                if (bar) bar.style.width = pct + '%';
+                var stMap = { queued: '排队中', running: '生成中', done: '已完成', cancelled: '已取消', error: '失败' };
+                if (txt) {
+                    var eta = '';
+                    if (t.status === 'running') eta = self._batchEtaText(t);
+                    txt.textContent = (stMap[t.status] || t.status) + '：' + t.current_index + '/' + t.total + '（成功 ' + t.success + ' / 失败 ' + t.failed + '）' + eta;
+                }
+                // 明细（全量渲染，最后一项高亮为当前项）
+                self._renderBatchResults(t.results || [], t.status);
+                if (t.status === 'done' || t.status === 'cancelled' || t.status === 'error') {
+                    clearInterval(interval);
+                    self._batchPolling = false;
+                    self._batchGenRunning = false;
+                    var startBtn = document.getElementById('bgenStartBtn');
+                    if (startBtn) startBtn.disabled = false;
+                    self._batchTaskTotal = t.total;
+                    if (t.status === 'done') {
+                        self.showToast('任务 #' + self._batchTaskId + ' 完成：' + t.success + ' 成功 / ' + t.failed + ' 失败', t.failed > 0 ? 'warning' : 'success');
+                        self._batchFailedIds = (t.results || []).filter(function(r) { return !r.ok; }).map(function(r) { return r.prompt_id; });
+                        self._batchSuccess = (t.results || []).filter(function(r) { return r.ok && r.thumbnail_url; }).map(function(r) { return { thumb: r.thumbnail_url, text: r.prompt_text || '' }; });
+                        self._renderBatchGrid();
+                        if (t.failed > 0 && retryBtn) {
+                            var retryBtn2 = document.getElementById('bgenRetryBtn');
+                            if (retryBtn2) retryBtn2.style.display = 'inline-flex';
+                        }
+                        self.loadPrompts();
+                    } else if (t.status === 'cancelled') {
+                        self.showToast('任务已取消（已完成 ' + t.current_index + '/' + t.total + '）', 'info');
+                    } else {
+                        self.showToast('任务异常: ' + (t.error || ''), 'error');
+                    }
+                }
+            } catch(e) { /* 网络抖动忽略，下轮重试 */ }
+        }, 2000);
+    },
+
+    // ETA 估算文本（基于任务进度与已耗时）
+    _batchEtaText(t) {
+        try {
+            var elapsed = (Date.now() - new Date((t.started_at || '').replace(' ', 'T')).getTime()) / 1000;
+            if (elapsed < 5 || t.current_index <= 0) return '';
+            var avg = elapsed / t.current_index;
+            var remain = Math.max(0, t.total - t.current_index);
+            var eta = Math.round(avg * remain);
+            if (eta <= 0) return '';
+            return ' · 预计剩余 ' + (eta < 60 ? eta + 's' : Math.floor(eta / 60) + '分' + (eta % 60) + 's');
+        } catch(e) { return ''; }
+    },
+
+    // 从任务结果渲染明细列表
+    _renderBatchResults(results, status) {
+        var det = document.getElementById('bgenDetail');
+        if (!det) return;
+        if (!results || results.length === 0) {
+            if (status === 'queued') det.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">任务排队中，等待执行...</div>';
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < results.length; i++) {
+            var r = results[i];
+            var isCur = (status === 'running') && (i === results.length - 1);
+            var color = r.ok ? '#10b981' : '#ef4444';
+            html += '<div class="bgen-item' + (isCur ? ' bgen-active" style="border-left:3px solid ' + color + ';"' : '"') + ' style="border-color:' + color + '33;">' +
+              (r.thumbnail_url ? '<img src="' + r.thumbnail_url + '" style="width:42px;height:28px;object-fit:cover;border-radius:4px;flex-shrink:0;" loading="lazy">' : '<span style="width:42px;text-align:center;flex-shrink:0;">' + (r.ok ? '✅' : '❌') + '</span>') +
+              '<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + App._escape(r.prompt_text || '') + '">' + App._escape((r.prompt_text || '').slice(0, 40)) + '</span>' +
+              '<span style="font-size:10px;color:' + color + ';flex-shrink:0;">' + (r.ok ? '成功' : (r.error || '失败')) + '</span>' +
+            '</div>';
+        }
+        det.innerHTML = html;
+        det.scrollTop = det.scrollHeight;
     },
 
     _appendBatchDetail(ev) {
@@ -766,16 +801,41 @@ Object.assign(App, {
         grid.style.display = 'block';
     },
 
-    // 重试失败项（仅失败的词条重新生成）
+    // 重试失败项：创建新任务（仅失败词条）
     async _retryBatchFailed() {
-        var failed = this._batchFailedIds || [];
-        if (failed.length === 0) return;
-        this._batchIds = failed.slice();
-        await this._startBatchGen();
+        if (!this._batchTaskId) return;
+        try {
+            var d = await this.fetchJSON('/api/v2/comfyui/batch-tasks/' + this._batchTaskId + '/retry-failed', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+            });
+            if (!d || !d.ok) { this.showToast('重试失败: ' + (d && d.error || ''), 'error'); return; }
+            var retryBtn = document.getElementById('bgenRetryBtn');
+            if (retryBtn) retryBtn.style.display = 'none';
+            var det = document.getElementById('bgenDetail');
+            if (det) det.innerHTML = '';
+            this._batchTaskId = d.task_id;
+            this._batchTaskTotal = d.total;
+            this._batchGenRunning = true;
+            var startBtn = document.getElementById('bgenStartBtn');
+            if (startBtn) startBtn.disabled = true;
+            var txt = document.getElementById('bgenProgressText');
+            if (txt) txt.textContent = '重试任务 #' + d.task_id + '（' + d.total + ' 张）...';
+            this._pollBatchTask();
+        } catch(e) {
+            this.showToast('重试异常: ' + e.message, 'error');
+        }
     },
 
-    _cancelBatchGen() {
-        if (this._batchAbort) this._batchAbort.abort();
+    async _cancelBatchGen() {
+        if (!this._batchTaskId) { this.showToast('无进行中的任务', 'info'); return; }
+        try {
+            var d = await this.fetchJSON('/api/v2/comfyui/batch-tasks/' + this._batchTaskId + '/cancel', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+            });
+            this.showToast('已请求取消任务 #' + this._batchTaskId, 'info');
+        } catch(e) {
+            this.showToast('取消失败: ' + e.message, 'error');
+        }
     },
 
     // ============ 收藏夹 ============

@@ -1371,6 +1371,287 @@ class BatchGenerateRequest(BaseModel):
     use_module_preset: int = 1   # 0=忽略模块主体预设
 
 
+# ==================== 批量生成任务队列 ====================
+
+# 全局批量并发锁：同一时刻只允许 1 个批量任务执行（其余排队），防止大量任务叠加提交 ComfyUI 卡死
+_BATCH_GLOBAL_LOCK = threading.Lock()
+
+
+class BatchTaskCreate(BaseModel):
+    prompt_ids: list[int]
+    workflow_id: str = ""
+    preset_id: int = 0
+    param_values: dict = {}
+    style_suffix: str = ""
+    use_module_preset: int = 1
+
+
+def _ensure_batch_task_table():
+    db = get_db()
+    db.execute("""CREATE TABLE IF NOT EXISTS comfyui_batch_tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workflow_id TEXT DEFAULT '',
+        workflow_name TEXT DEFAULT '',
+        model_type TEXT DEFAULT '',
+        prompt_ids TEXT DEFAULT '[]',
+        total INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'queued',
+        success INTEGER DEFAULT 0,
+        failed INTEGER DEFAULT 0,
+        current_index INTEGER DEFAULT 0,
+        current_prompt TEXT DEFAULT '',
+        results TEXT DEFAULT '[]',
+        error TEXT DEFAULT '',
+        style_suffix TEXT DEFAULT '',
+        use_module_preset INTEGER DEFAULT 1,
+        preset_id INTEGER DEFAULT 0,
+        param_values TEXT DEFAULT '{}',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        started_at TEXT DEFAULT '',
+        finished_at TEXT DEFAULT ''
+    )""")
+    safe_commit()
+
+
+def _batch_update(task_id: int, **kw):
+    """更新任务字段（独立连接，避免与执行线程连接冲突）"""
+    try:
+        db = get_db()
+        sets = [f"{k}=?" for k in kw]
+        db.execute(f"UPDATE comfyui_batch_tasks SET {', '.join(sets)} WHERE id=?",
+                   list(kw.values()) + [task_id])
+        safe_commit()
+    except Exception as e:
+        print(f"[Batch] 任务更新失败: {e}")
+
+
+def _batch_worker(task_id: int):
+    """后台执行批量任务：全局锁串行，逐条生成并写入进度（不依赖 SSE 连接存活）"""
+    import time as _t
+    with _BATCH_GLOBAL_LOCK:
+        try:
+            db = get_db()
+            row = db.execute("SELECT * FROM comfyui_batch_tasks WHERE id=?", [task_id]).fetchone()
+            if not row:
+                return
+            d = dict(row)
+            if d["status"] == "cancelled":
+                return
+            prompt_ids = json.loads(d["prompt_ids"] or "[]")
+            total = len(prompt_ids)
+            cfg = _get_config()
+            server_url = cfg.get("server_url", "").rstrip("/")
+            if not server_url:
+                _batch_update(task_id, status="error", error="未配置服务器地址", finished_at=_now_str())
+                return
+            workflow_cfg, wf_err = _find_workflow_v2(d.get("workflow_id") or "")
+            if not workflow_cfg:
+                _batch_update(task_id, status="error", error=wf_err or "未找到工作流", finished_at=_now_str())
+                return
+            workflow_template = workflow_cfg["workflow_json"]
+            presets = _get_module_presets()
+            preset_params = []
+            if d.get("preset_id"):
+                try:
+                    prow = db.execute("SELECT params_json FROM comfyui_workflow_presets WHERE id=?", [d["preset_id"]]).fetchone()
+                    if prow:
+                        preset_params = json.loads(prow["params_json"])
+                except Exception:
+                    preset_params = []
+            param_values = json.loads(d.get("param_values") or "{}")
+            user_size = any(str(k).endswith(".width") or str(k).endswith(".height") for k in (param_values or {}))
+            suffix = d.get("style_suffix") if d.get("style_suffix") is not None else DEFAULT_STYLE_SUFFIX
+            use_preset = d.get("use_module_preset", 1) != 0
+            model_type = _detect_model_type(workflow_template)
+            results = []
+            success = 0
+            failed = 0
+            _batch_update(task_id, status="running", started_at=_now_str(), current_index=0,
+                          current_prompt="准备中...", success=0, failed=0, results="[]")
+            for idx, pid in enumerate(prompt_ids):
+                # 取消检查
+                chk = db.execute("SELECT status FROM comfyui_batch_tasks WHERE id=?", [task_id]).fetchone()
+                if not chk or chk["status"] == "cancelled":
+                    _batch_update(task_id, status="cancelled", finished_at=_now_str())
+                    return
+                # 兼容两种数据源：prompts / word_card
+                row2 = db.execute("SELECT content, module FROM prompts WHERE id=?", [pid]).fetchone()
+                src_table = "prompts"
+                if not row2:
+                    row2 = db.execute("SELECT content, module FROM word_card WHERE id=? AND is_deleted=0", [pid]).fetchone()
+                    src_table = "word_card"
+                if not row2:
+                    failed += 1
+                    results.append({"prompt_id": pid, "ok": False, "error": "提示词不存在", "prompt_text": ""})
+                    _batch_update(task_id, current_index=idx + 1, success=success, failed=failed, results=json.dumps(results, ensure_ascii=False))
+                    continue
+                card_text = row2["content"]
+                module_name = row2["module"] or ""
+                preset_text = ""
+                if use_preset and module_name:
+                    pm = presets.get(module_name, {})
+                    if pm.get("enabled") and pm.get("preset"):
+                        preset_text = pm["preset"]
+                final_prompt = _compose_prompt(preset_text, card_text, suffix)
+                wf = copy.deepcopy(workflow_template)
+                if preset_params and param_values:
+                    _apply_params(wf, preset_params, param_values)
+                if model_type == "sd15" and not user_size:
+                    for _nid, _node in wf.items():
+                        if _node.get("class_type") == "EmptyLatentImage":
+                            _ins = _node.get("inputs", {}) or {}
+                            _w, _h = _ins.get("width"), _ins.get("height")
+                            if isinstance(_w, (int, float)) and isinstance(_h, (int, float)) and (_w >= 1024 or _h >= 1024):
+                                _ins["width"] = 512
+                                _ins["height"] = 512
+                                break
+                _batch_update(task_id, current_index=idx + 1, current_prompt=final_prompt[:80])
+                try:
+                    result = asyncio.run(_run_comfyui(server_url, wf, workflow_cfg, final_prompt, pid))
+                    if result.get("ok"):
+                        success += 1
+                    else:
+                        failed += 1
+                    results.append({
+                        "prompt_id": pid, "ok": result.get("ok", False),
+                        "thumbnail": result.get("thumbnail", ""),
+                        "thumbnail_url": result.get("thumbnail_url", ""),
+                        "error": result.get("error", ""),
+                        "prompt_text": final_prompt[:80],
+                    })
+                except Exception as e:
+                    failed += 1
+                    results.append({"prompt_id": pid, "ok": False, "error": str(e)[:200], "prompt_text": final_prompt[:80]})
+                _batch_update(task_id, current_index=idx + 1, success=success, failed=failed,
+                              results=json.dumps(results, ensure_ascii=False))
+            _batch_update(task_id, status="done", success=success, failed=failed,
+                          current_index=total, current_prompt="",
+                          results=json.dumps(results, ensure_ascii=False), finished_at=_now_str())
+        except Exception as e:
+            _batch_update(task_id, status="error", error=str(e)[:300], finished_at=_now_str())
+            print(f"[Batch] 任务 {task_id} 异常: {e}")
+
+
+def _now_str():
+    import datetime as _dt
+    return _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+@router.post("/batch-tasks")
+def create_batch_task(data: BatchTaskCreate):
+    """创建批量生成任务（立即返回 task_id，后台线程执行，支持进度查询/取消/恢复）"""
+    _ensure_batch_task_table()
+    if not data.prompt_ids:
+        return {"ok": False, "error": "未选择任何词条"}
+    cfg = _get_config()
+    if not cfg.get("enabled") or not cfg.get("server_url"):
+        return {"ok": False, "error": "ComfyUI 未启用或服务器地址未配置"}
+    db = get_db()
+    workflow_cfg, wf_err = _find_workflow_v2(data.workflow_id)
+    wf_name = workflow_cfg.get("name", "") if workflow_cfg else ""
+    model_type = _detect_model_type(workflow_cfg["workflow_json"]) if workflow_cfg else ""
+    cur = db.execute(
+        """INSERT INTO comfyui_batch_tasks
+           (workflow_id, workflow_name, model_type, prompt_ids, total, status,
+            style_suffix, use_module_preset, preset_id, param_values)
+           VALUES (?,?,?,?,?,'queued',?,?,?,?)""",
+        [data.workflow_id, wf_name, model_type, json.dumps(data.prompt_ids), len(data.prompt_ids),
+         data.style_suffix, data.use_module_preset, data.preset_id,
+         json.dumps(data.param_values or {}, ensure_ascii=False)])
+    safe_commit()
+    task_id = cur.lastrowid
+    threading.Thread(target=_batch_worker, args=(task_id,), daemon=True).start()
+    return {"ok": True, "task_id": task_id, "total": len(data.prompt_ids), "status": "queued",
+            "workflow_name": wf_name, "model_type": model_type}
+
+
+@router.get("/batch-tasks")
+def list_batch_tasks(limit: int = Query(20, ge=1, le=100)):
+    """批量任务列表（含运行中/排队/历史）"""
+    _ensure_batch_task_table()
+    db = get_db()
+    rows = db.execute("SELECT * FROM comfyui_batch_tasks ORDER BY id DESC LIMIT ?", [limit]).fetchall()
+    items = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["prompt_ids"] = json.loads(d["prompt_ids"] or "[]")
+        except Exception:
+            d["prompt_ids"] = []
+        try:
+            d["results"] = json.loads(d["results"] or "[]")
+        except Exception:
+            d["results"] = []
+        items.append(d)
+    return {"ok": True, "items": items, "total": len(items)}
+
+
+@router.get("/batch-tasks/{task_id}")
+def get_batch_task(task_id: int):
+    """查询单个任务进度（断线恢复/监督轮询）"""
+    _ensure_batch_task_table()
+    db = get_db()
+    row = db.execute("SELECT * FROM comfyui_batch_tasks WHERE id=?", [task_id]).fetchone()
+    if not row:
+        return {"ok": False, "error": "任务不存在"}
+    d = dict(row)
+    try:
+        d["prompt_ids"] = json.loads(d["prompt_ids"] or "[]")
+    except Exception:
+        d["prompt_ids"] = []
+    try:
+        d["results"] = json.loads(d["results"] or "[]")
+    except Exception:
+        d["results"] = []
+    return {"ok": True, "task": d}
+
+
+@router.post("/batch-tasks/{task_id}/cancel")
+def cancel_batch_task(task_id: int):
+    """取消任务（worker 在下一张前检查标志退出）"""
+    _ensure_batch_task_table()
+    db = get_db()
+    row = db.execute("SELECT status FROM comfyui_batch_tasks WHERE id=?", [task_id]).fetchone()
+    if not row:
+        return {"ok": False, "error": "任务不存在"}
+    if row["status"] in ("done", "cancelled", "error"):
+        return {"ok": True, "status": row["status"]}
+    db.execute("UPDATE comfyui_batch_tasks SET status='cancelled' WHERE id=?", [task_id])
+    safe_commit()
+    return {"ok": True, "status": "cancelled"}
+
+
+@router.post("/batch-tasks/{task_id}/retry-failed")
+def retry_batch_failed(task_id: int):
+    """重试失败项：创建新任务（仅失败词条）"""
+    _ensure_batch_task_table()
+    db = get_db()
+    row = db.execute("SELECT * FROM comfyui_batch_tasks WHERE id=?", [task_id]).fetchone()
+    if not row:
+        return {"ok": False, "error": "任务不存在"}
+    d = dict(row)
+    try:
+        results = json.loads(d["results"] or "[]")
+    except Exception:
+        results = []
+    failed_ids = [r["prompt_id"] for r in results if not r.get("ok")]
+    if not failed_ids:
+        return {"ok": False, "error": "没有失败项可重试"}
+    cur = db.execute(
+        """INSERT INTO comfyui_batch_tasks
+           (workflow_id, workflow_name, model_type, prompt_ids, total, status,
+            style_suffix, use_module_preset, preset_id, param_values)
+           VALUES (?,?,?,?,?,'queued',?,?,?,?)""",
+        [d["workflow_id"], d["workflow_name"] + " (重试)", d["model_type"],
+         json.dumps(failed_ids), len(failed_ids),
+         d["style_suffix"], d["use_module_preset"], d["preset_id"], d["param_values"]])
+    safe_commit()
+    new_id = cur.lastrowid
+    threading.Thread(target=_batch_worker, args=(new_id,), daemon=True).start()
+    return {"ok": True, "task_id": new_id, "total": len(failed_ids), "failed_ids": failed_ids}
+
+
+
 @router.post("/batch-generate")
 async def batch_generate_thumbnail(data: BatchGenerateRequest):
     """批量 AI 生成缩略图 — 逐条排队发送到 ComfyUI，SSE 流式返回，每生成一张即刻推送
