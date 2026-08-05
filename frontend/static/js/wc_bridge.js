@@ -243,7 +243,7 @@ App._showShowcase = function() {
                     if (grp.group_type === 'sub' || grp.group_type === 'root') continue;
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
                     html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
-                    html += ' onmouseenter="this.style.borderColor=#3b82f6;this.style.background=#f1f5f9" onmouseleave="this.style.borderColor=#cbd5e1;this.style.background=#ffffff"';
+                    html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'#f1f5f9\'" onmouseleave="this.style.borderColor=\'#cbd5e1\';this.style.background=\'#ffffff\'"';
                     html += '>';
                     html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
                     html += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
@@ -276,7 +276,7 @@ App._showShowcase = function() {
                     var sub = selfLeafSubs[sl2];
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + sub.id + ',\'' + (sub.name||'').replace(/'/g,"\\'") + '\')" ';
                     html += 'class="showcase-leaf-btn" style="font-size:12px;padding:3px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.6;"';
-                    html += ' onmouseenter="this.style.borderColor=#3b82f6;this.style.background=#f1f5f9" onmouseleave="this.style.borderColor=#cbd5e1;this.style.background=#ffffff"';
+                    html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'#f1f5f9\'" onmouseleave="this.style.borderColor=\'#cbd5e1\';this.style.background=\'#ffffff\'"';
                     html += '>';
                     html += (sub.icon||'📋') + ' ' + App._escape(sub.name.replace(sub.icon||'','').trim());
                     html += '<span style="font-size:10px;color:var(--text-muted);margin-left:3px;">' + (sub.card_count||0) + '</span>';
@@ -301,7 +301,7 @@ App._showShowcase = function() {
                     var grp = atomLeaves[g];
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
                     html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
-                    html += ' onmouseenter="this.style.borderColor=#3b82f6;this.style.background=#f1f5f9" onmouseleave="this.style.borderColor=#cbd5e1;this.style.background=#ffffff"';
+                    html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'#f1f5f9\'" onmouseleave="this.style.borderColor=\'#cbd5e1\';this.style.background=\'#ffffff\'"';
                     html += '>';
                     html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
                     html += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
@@ -330,7 +330,7 @@ App._showShowcase = function() {
                     var grp = uwLeaves[g2];
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
                     html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
-                    html += ' onmouseenter="this.style.borderColor=#3b82f6;this.style.background=#f1f5f9" onmouseleave="this.style.borderColor=#cbd5e1;this.style.background=#ffffff"';
+                    html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'#f1f5f9\'" onmouseleave="this.style.borderColor=\'#cbd5e1\';this.style.background=\'#ffffff\'"';
                     html += '>';
                     html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
                     html += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
@@ -2519,7 +2519,7 @@ App._showActivationDialog = function(mode, tier) {
         '<div style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">🔍 本机指纹</label>' +
         '<div style="display:flex;gap:8px;align-items:center;">' +
         '<code id="licFpDisplay" style="flex:1;padding:8px 10px;background:var(--bg);border:1px solid var(--border-color);border-radius:6px;font-size:12px;word-break:break-all;color:var(--text);">⏳ 获取中...</code>' +
-        '<button id="licFpCopy" onclick="window._licCopyFp()" style="padding:8px 14px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s;" onmouseenter="this.style.borderColor=#3b82f6;this.style.color=#3b82f6" onmouseleave="this.style.borderColor=#cbd5e1;this.style.color=#1e293b">📋 复制指纹</button>' +
+        '<button id="licFpCopy" onclick="window._licCopyFp()" style="padding:8px 14px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s;" onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.color=\'#3b82f6\'" onmouseleave="this.style.borderColor=\'#cbd5e1\';this.style.color=\'#1e293b\'">📋 复制指纹</button>' +
         '</div>' +
         '<div id="licFpMsg" style="font-size:11px;margin-top:6px;padding:6px 10px;border-radius:4px;display:none;"></div>' +
         '</div>' +
@@ -2532,8 +2532,8 @@ App._showActivationDialog = function(mode, tier) {
         '<li>发送给持有本服务器 <code style="font-size:10px;">.license_seed</code> 的管理员</li>' +
         '<li>管理员在 <b>激活码生成器</b> 中连接服务器即可生成激活码</li>' +
         '</ol>' +
-        '<button id="licCopyInfo" onclick="window._licCopyInfo()" style="margin-top:10px;width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;" onmouseenter="this.style.borderColor=#3b82f6;this.style.color=#3b82f6" onmouseleave="this.style.borderColor=#cbd5e1;this.style.color=#1e293b">📋 复制服务器地址 + 指纹</button>' +
-        '<button id="licDownloadPkg" onclick="window._licDownloadPkg()" style="margin-top:6px;width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;" onmouseenter="this.style.borderColor=#3b82f6;this.style.color=#3b82f6" onmouseleave="this.style.borderColor=#cbd5e1;this.style.color=#1e293b">📥 下载激活数据包（异地离线用）</button>' +
+        '<button id="licCopyInfo" onclick="window._licCopyInfo()" style="margin-top:10px;width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;" onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.color=\'#3b82f6\'" onmouseleave="this.style.borderColor=\'#cbd5e1\';this.style.color=\'#1e293b\'">📋 复制服务器地址 + 指纹</button>' +
+        '<button id="licDownloadPkg" onclick="window._licDownloadPkg()" style="margin-top:6px;width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;" onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.color=\'#3b82f6\'" onmouseleave="this.style.borderColor=\'#cbd5e1\';this.style.color=\'#1e293b\'">📥 下载激活数据包（异地离线用）</button>' +
         '</div>' +
         '<div id="licMsg" style="font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;display:none;"></div>' +
         '<div class="form-group"><label style="font-size:12px;">激活码</label>' +
