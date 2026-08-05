@@ -164,11 +164,11 @@ async def _probe_comfy_url(url: str, timeout: float = 2.0):
     except Exception:
         pass
     
-    # 旧版兼容: /api/queue
+    # 旧版兼容: /api/queue（仅 200 才算命中；404 不能证明是 ComfyUI，避免误判其他本地服务）
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.get(f"{url}/api/queue")
-            if resp.status_code in (200, 404) and 'json' in str(resp.headers.get('content-type', '')).lower():
+            if resp.status_code == 200 and 'json' in str(resp.headers.get('content-type', '')).lower():
                 return {"ok": True, "url": url, "system": "ComfyUI (API)",
                         "latency_ms": round(resp.elapsed.total_seconds() * 1000)}
     except Exception:
