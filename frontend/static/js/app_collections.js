@@ -278,6 +278,18 @@ Object.assign(App, {
                 // 提示词组合
                 '<div id="bgenCompose" style="border:1px solid var(--border-color);border-radius:10px;padding:8px 10px;">' +
                   '<div style="font-size:12px;font-weight:600;margin-bottom:6px;"><i class="bi bi-fonts"></i> 提示词组合 <span style="font-size:10px;color:var(--text-muted);font-weight:400;">词卡内容 + 模块预设 + 品质后缀 → 注入工作流正面提示词</span></div>' +
+                  // Ollama 优化工具条
+                  '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;padding:6px 8px;border:1px dashed #10b981;border-radius:8px;background:rgba(16,185,129,0.04);">' +
+                    '<span style="font-size:11px;font-weight:600;">✨ Ollama 优化</span>' +
+                    '<span id="bgenOllamaStatus" style="font-size:10px;color:var(--text-muted);">检测中...</span>' +
+                    '<select id="bgenOllamaModel" onchange="App._saveOllamaBar()" style="font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);min-width:120px;"><option value="">选择模型</option></select>' +
+                    '<select id="bgenOllamaLang" onchange="App._saveOllamaBar()" style="font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
+                      '<option value="en">English</option>' +
+                      '<option value="zh">中文</option>' +
+                    '</select>' +
+                    '<button type="button" class="bgen-btn" id="bgenOllamaBtn" onclick="App._enhanceBatchPrompts()" style="border-color:#10b981;color:#10b981;"><i class="bi bi-magic"></i> 优化选中卡提示词</button>' +
+                    '<span id="bgenOllamaHint" style="font-size:10px;color:var(--text-muted);"></span>' +
+                  '</div>' +
                   '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">' +
                     '<label style="font-size:10px;color:var(--text-muted);">品质后缀 <input id="bgenSuffix" value="cinematic lighting, high quality, 4k, detailed" oninput="App._renderBatchComposePreview()" style="width:220px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);" title="留空则不添加后缀"></label>' +
                     '<label style="font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:4px;"><input type="checkbox" id="bgenUsePreset" checked onchange="App._renderBatchComposePreview()" style="width:14px;height:14px;"> 叠加模块主体预设</label>' +
@@ -351,6 +363,9 @@ Object.assign(App, {
             if (d && d.ok) self._modulePresets = d.presets || {};
             self._renderBatchComposePreview();
         }).catch(function() { self._modulePresets = {}; self._renderBatchComposePreview(); });
+        // Ollama 状态检测（模型列表/语言恢复）
+        this._initOllamaBar();
+        this._batchPromptOverrides = this._batchPromptOverrides || {};
     },
 
     // 提示词组合预览：词卡内容 + 模块预设 + 品质后缀（复刻后端 _compose_prompt 的简化规则）
@@ -370,7 +385,14 @@ Object.assign(App, {
                 var pm = self._modulePresets[p.module] || {};
                 if (pm.enabled && pm.preset) preset = pm.preset;
             }
-            return App._composePromptPreview(preset, p.content || '', suffix);
+            // Ollama 优化结果优先
+            var cardText = p.content || '';
+            var isOpt = false;
+            if (self._batchPromptOverrides && self._batchPromptOverrides[p.id]) {
+                cardText = self._batchPromptOverrides[p.id];
+                isOpt = true;
+            }
+            return (isOpt ? '✨ ' : '') + App._composePromptPreview(preset, cardText, suffix);
         });
         if (lines.length === 0) {
             el.innerHTML = '<span style="color:var(--text-muted);">（无法预览，请确认已选中词条）</span>';
@@ -379,6 +401,93 @@ Object.assign(App, {
         var html = lines.map(function(l) { return '· ' + App._escape(l); }).join('<br>');
         if ((self._batchIds || []).length > 3) html += '<br><span style="color:var(--text-muted);">…等共 ' + self._batchIds.length + ' 条（每条按各自模块预设组合）</span>';
         el.innerHTML = html;
+    },
+
+    // Ollama 状态检测 + 模型列表 + 恢复配置
+    async _initOllamaBar() {
+        var statusEl = document.getElementById('bgenOllamaStatus');
+        var modelSel = document.getElementById('bgenOllamaModel');
+        if (!statusEl || !modelSel) return;
+        try {
+            var d = await this.fetchJSON('/api/v2/comfyui/ollama/status');
+            if (!d || !d.ok) throw new Error('查询失败');
+            if (d.connected && d.models && d.models.length) {
+                statusEl.textContent = '● 已连接';
+                statusEl.style.color = '#10b981';
+                var html = '<option value="">选择模型</option>';
+                d.models.forEach(function(m) { html += '<option value="' + App._escape(m) + '">' + App._escape(m) + '</option>'; });
+                modelSel.innerHTML = html;
+                if (d.config && d.config.model) modelSel.value = d.config.model;
+                var langSel = document.getElementById('bgenOllamaLang');
+                if (langSel && d.config && d.config.language) langSel.value = d.config.language === 'zh' ? 'zh' : 'en';
+                var btn = document.getElementById('bgenOllamaBtn');
+                if (btn) btn.disabled = false;
+            } else {
+                statusEl.textContent = '○ 未连接（Ollama 未运行？）';
+                statusEl.style.color = '#94a3b8';
+                modelSel.innerHTML = '<option value="">Ollama 不可用</option>';
+                var btn = document.getElementById('bgenOllamaBtn');
+                if (btn) btn.disabled = true;
+            }
+        } catch(e) {
+            statusEl.textContent = '○ 检测失败';
+            statusEl.style.color = '#94a3b8';
+        }
+    },
+
+    // 保存 Ollama 模型/语言选择
+    async _saveOllamaBar() {
+        var model = (document.getElementById('bgenOllamaModel') || {}).value || '';
+        var lang = (document.getElementById('bgenOllamaLang') || {}).value || 'en';
+        try {
+            await this.fetchJSON('/api/v2/comfyui/ollama/config', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: model, language: lang })
+            });
+        } catch(e) {}
+    },
+
+    // 逐条通过 Ollama 优化选中卡提示词（中英文切换）
+    async _enhanceBatchPrompts() {
+        var model = (document.getElementById('bgenOllamaModel') || {}).value;
+        if (!model) { this.showToast('请先选择 Ollama 模型', 'warning'); return; }
+        var lang = (document.getElementById('bgenOllamaLang') || {}).value || 'en';
+        var hint = document.getElementById('bgenOllamaHint');
+        var btn = document.getElementById('bgenOllamaBtn');
+        if (btn) btn.disabled = true;
+        var ids = this._batchIds || [];
+        var total = ids.length;
+        var self = this;
+        this._batchPromptOverrides = this._batchPromptOverrides || {};
+        var done = 0, err = 0;
+        for (var i = 0; i < ids.length; i++) {
+            var pid = ids[i];
+            var card = null;
+            (this.state.prompts || []).forEach(function(p) { if (p.id === pid && !card) card = p; });
+            var text = card ? (card.content || '') : '';
+            if (!text) { done++; continue; }
+            if (hint) hint.textContent = '优化中 ' + (done + err + 1) + '/' + total + '...';
+            try {
+                var d = await this.fetchJSON('/api/v2/comfyui/ollama/enhance', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text, model: model, language: lang })
+                });
+                if (d && d.ok && d.text) {
+                    this._batchPromptOverrides[pid] = d.text;
+                    done++;
+                } else {
+                    err++;
+                }
+            } catch(e) {
+                err++;
+            }
+        }
+        if (btn) btn.disabled = false;
+        if (hint) hint.textContent = '';
+        // 更新组合预览 + 保存设置
+        this._renderBatchComposePreview();
+        this._saveBatchSettings();
+        this.showToast('Ollama 优化完成：' + done + ' 条成功 / ' + err + ' 条失败' + (err ? '（生成将使用优化后提示词）' : ''), err > 0 ? 'warning' : 'success');
     },
 
     // 组合规则（简化复刻后端 _compose_prompt）：预设 + 卡片，尾部加后缀，逗号拼接
@@ -787,7 +896,8 @@ Object.assign(App, {
             preset_id: this._batchPresetId || 0,
             param_values: paramValues,
             style_suffix: (document.getElementById('bgenSuffix') || {}).value,
-            use_module_preset: (document.getElementById('bgenUsePreset') || {}).checked ? 1 : 0
+            use_module_preset: (document.getElementById('bgenUsePreset') || {}).checked ? 1 : 0,
+            prompt_overrides: this._batchPromptOverrides || {}
         };
         try {
             var d = await this.fetchJSON('/api/v2/comfyui/batch-tasks', {

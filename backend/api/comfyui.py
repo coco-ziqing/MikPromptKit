@@ -1371,6 +1371,114 @@ class BatchGenerateRequest(BaseModel):
     use_module_preset: int = 1   # 0=忽略模块主体预设
 
 
+# ==================== Ollama 本地模型提示词优化 ====================
+
+OLLAMA_DEFAULTS = {"enabled": False, "url": "http://127.0.0.1:11434", "model": "", "language": "en"}
+
+
+def _get_ollama_config():
+    db = get_db()
+    row = db.execute("SELECT value FROM config WHERE key='ollama_config'").fetchone()
+    if row:
+        try:
+            cfg = json.loads(row["value"])
+            for k in OLLAMA_DEFAULTS:
+                cfg.setdefault(k, OLLAMA_DEFAULTS[k])
+            return cfg
+        except Exception:
+            pass
+    return dict(OLLAMA_DEFAULTS)
+
+
+@router.get("/ollama/status")
+def ollama_status():
+    """检查 Ollama 连接状态与可用模型列表"""
+    cfg = _get_ollama_config()
+    url = (cfg.get("url") or "").rstrip("/")
+    models = []
+    connected = False
+    if url:
+        try:
+            r = httpx.get(f"{url}/api/tags", timeout=5)
+            if r.status_code == 200:
+                models = [m.get("name", "") for m in (r.json().get("models", []) or []) if m.get("name")]
+                connected = True
+        except Exception:
+            pass
+    cfg["enabled"] = connected
+    return {"ok": True, "config": cfg, "models": models, "connected": connected}
+
+
+@router.post("/ollama/config")
+def save_ollama_config(data: dict):
+    """保存 Ollama 配置（地址/模型/语言）"""
+    cfg = _get_ollama_config()
+    for k in ("url", "model", "language"):
+        if data.get(k):
+            cfg[k] = str(data[k])
+    db = get_db()
+    db.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('ollama_config', ?)",
+               [json.dumps(cfg, ensure_ascii=False)])
+    safe_commit()
+    return {"ok": True, "config": cfg}
+
+
+class OllamaEnhanceRequest(BaseModel):
+    text: str = ""
+    model: str = ""
+    language: str = "en"   # en / zh
+
+
+@router.post("/ollama/enhance")
+def ollama_enhance(data: OllamaEnhanceRequest):
+    """通过本地 Ollama 模型优化扩展提示词（保持原意，增强画面细节；输出中/英文）"""
+    if not data.text or not data.text.strip():
+        return {"ok": False, "error": "提示词为空"}
+    cfg = _get_ollama_config()
+    url = (cfg.get("url") or "").rstrip("/")
+    model = data.model or cfg.get("model") or ""
+    if not model:
+        return {"ok": False, "error": "未指定 Ollama 模型，请先在设置中选择"}
+    lang = data.language or "en"
+    if lang == "zh":
+        sys_prompt = ("你是 AI 图像提示词优化专家。请将给定提示词扩展优化为丰富的画面描述"
+                      "（主体、环境、光线、风格、镜头角度、细节质感）。保持原意不变。"
+                      "只输出优化后的中文提示词本身，不要任何解释或前后缀。")
+    else:
+        sys_prompt = ("You are an expert AI image prompt engineer. Expand and optimize the given prompt "
+                      "with vivid visual details (subject, environment, lighting, style, camera angle, "
+                      "texture quality). Keep the original intent. Output ONLY the enhanced prompt "
+                      "in English, no explanation, no quotes.")
+    try:
+        r = httpx.post(f"{url}/api/chat", json={
+            "model": model,
+            "messages": [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": data.text},
+            ],
+            "stream": False,
+            "options": {"temperature": 0.7},
+        }, timeout=180)
+        if r.status_code != 200:
+            return {"ok": False, "error": f"Ollama HTTP {r.status_code}: {r.text[:150]}"}
+        content = (r.json().get("message", {}) or {}).get("content", "").strip()
+        if not content:
+            return {"ok": False, "error": "Ollama 未返回内容"}
+        if content.startswith('"') and content.endswith('"'):
+            content = content[1:-1].strip()
+        # 记住模型/语言配置
+        if model != cfg.get("model") or lang != cfg.get("language"):
+            cfg["model"] = model
+            cfg["language"] = lang
+            db = get_db()
+            db.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('ollama_config', ?)",
+                       [json.dumps(cfg, ensure_ascii=False)])
+            safe_commit()
+        return {"ok": True, "text": content, "model": model, "language": lang}
+    except Exception as e:
+        return {"ok": False, "error": f"Ollama 连接失败: {e}"}
+
+
 # ==================== 批量生成任务队列 ====================
 
 # 全局批量并发锁：同一时刻只允许 1 个批量任务执行（其余排队），防止大量任务叠加提交 ComfyUI 卡死
@@ -1384,6 +1492,7 @@ class BatchTaskCreate(BaseModel):
     param_values: dict = {}
     style_suffix: str = ""
     use_module_preset: int = 1
+    prompt_overrides: dict = {}   # {prompt_id: 优化后提示词}（Ollama 优化结果覆盖）
 
 
 def _ensure_batch_task_table():
@@ -1406,10 +1515,15 @@ def _ensure_batch_task_table():
         use_module_preset INTEGER DEFAULT 1,
         preset_id INTEGER DEFAULT 0,
         param_values TEXT DEFAULT '{}',
+        prompt_overrides TEXT DEFAULT '{}',
         created_at TEXT DEFAULT (datetime('now','localtime')),
         started_at TEXT DEFAULT '',
         finished_at TEXT DEFAULT ''
     )""")
+    # 兼容旧表：补列
+    cols = [r["name"] for r in db.execute("PRAGMA table_info(comfyui_batch_tasks)").fetchall()]
+    if "prompt_overrides" not in cols:
+        db.execute("ALTER TABLE comfyui_batch_tasks ADD COLUMN prompt_overrides TEXT DEFAULT '{}'")
     safe_commit()
 
 
@@ -1486,6 +1600,13 @@ def _batch_worker(task_id: int):
                     _batch_update(task_id, current_index=idx + 1, success=success, failed=failed, results=json.dumps(results, ensure_ascii=False))
                     continue
                 card_text = row2["content"]
+                # Ollama 优化结果覆盖（prompt_overrides）
+                try:
+                    overrides = json.loads(d.get("prompt_overrides") or "{}")
+                except Exception:
+                    overrides = {}
+                if str(pid) in overrides and overrides[str(pid)]:
+                    card_text = overrides[str(pid)]
                 module_name = row2["module"] or ""
                 preset_text = ""
                 if use_preset and module_name:
@@ -1553,11 +1674,12 @@ def create_batch_task(data: BatchTaskCreate):
     cur = db.execute(
         """INSERT INTO comfyui_batch_tasks
            (workflow_id, workflow_name, model_type, prompt_ids, total, status,
-            style_suffix, use_module_preset, preset_id, param_values)
-           VALUES (?,?,?,?,?,'queued',?,?,?,?)""",
+            style_suffix, use_module_preset, preset_id, param_values, prompt_overrides)
+           VALUES (?,?,?,?,?,'queued',?,?,?,?,?)""",
         [data.workflow_id, wf_name, model_type, json.dumps(data.prompt_ids), len(data.prompt_ids),
          data.style_suffix, data.use_module_preset, data.preset_id,
-         json.dumps(data.param_values or {}, ensure_ascii=False)])
+         json.dumps(data.param_values or {}, ensure_ascii=False),
+         json.dumps(data.prompt_overrides or {}, ensure_ascii=False)])
     safe_commit()
     task_id = cur.lastrowid
     threading.Thread(target=_batch_worker, args=(task_id,), daemon=True).start()
@@ -1640,11 +1762,12 @@ def retry_batch_failed(task_id: int):
     cur = db.execute(
         """INSERT INTO comfyui_batch_tasks
            (workflow_id, workflow_name, model_type, prompt_ids, total, status,
-            style_suffix, use_module_preset, preset_id, param_values)
-           VALUES (?,?,?,?,?,'queued',?,?,?,?)""",
+            style_suffix, use_module_preset, preset_id, param_values, prompt_overrides)
+           VALUES (?,?,?,?,?,'queued',?,?,?,?,?)""",
         [d["workflow_id"], d["workflow_name"] + " (重试)", d["model_type"],
          json.dumps(failed_ids), len(failed_ids),
-         d["style_suffix"], d["use_module_preset"], d["preset_id"], d["param_values"]])
+         d["style_suffix"], d["use_module_preset"], d["preset_id"], d["param_values"],
+         d.get("prompt_overrides") or "{}"])
     safe_commit()
     new_id = cur.lastrowid
     threading.Thread(target=_batch_worker, args=(new_id,), daemon=True).start()
