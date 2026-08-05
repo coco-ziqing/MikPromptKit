@@ -673,9 +673,11 @@ App.comfyLib._renderParamForm = function() {
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;">';
     params.forEach(function(p) {
         html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;">';
-        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
-                '<label style="font-size:11px;font-weight:600;">' + App._escape(p.label || p.key) + '</label>' +
-                '<span id="pv_' + App._escape(p.key) + '" style="font-size:11px;color:var(--primary);font-family:monospace;">' + App._escape(String(p.default === undefined ? '' : p.default)) + '</span>' +
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:8px;">' +
+                '<label style="font-size:11px;font-weight:600;min-width:0;">' + App._escape(p.label || p.key) +
+                  ' <span style="font-size:9px;color:var(--text-muted);font-weight:400;" title="原始节点字段名">(' + App._escape(p.key) + ')</span>' +
+                '</label>' +
+                '<span id="pv_' + App._escape(p.key) + '" style="font-size:11px;color:var(--primary);font-family:monospace;flex-shrink:0;">' + App._escape(String(p.default === undefined ? '' : p.default)) + '</span>' +
                 '</div>';
         var val = p.default;
         if (p.type === 'slider') {
@@ -811,12 +813,15 @@ App.comfyLib.openParamEditor = function() {
         html += '<div style="border:1px solid ' + (isSel ? 'var(--primary)' : 'var(--border-color)') + ';border-radius:8px;padding:8px 10px;">' +
           '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
             '<input type="checkbox" class="cpe-sel" data-key="' + App._escape(c.key) + '" ' + (isSel ? 'checked' : '') + ' onchange="App.comfyLib._toggleCandidate(this)" style="width:16px;height:16px;">' +
-            '<span style="font-size:12px;font-weight:600;flex:1;">' + App._escape(c.label) + '</span>' +
+            '<span style="font-size:12px;font-weight:600;flex:1;display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap;">' +
+              '<span class="cpe-title" data-key="' + App._escape(c.key) + '">' + App._escape(label) + '</span>' +
+              '<span style="font-size:9px;color:var(--text-muted);font-weight:400;border:1px solid var(--border-color);border-radius:4px;padding:0 5px;white-space:nowrap;" title="原始节点字段名（节点.字段）">原始 ' + App._escape(c.key) + '</span>' +
+            '</span>' +
             '<span onclick="App.comfyLib.renameCandidate(\'' + App._escape(c.key) + '\')" title="重命名此参数（勾选并编辑名称）" style="font-size:13px;cursor:pointer;opacity:0.7;color:#8b5cf6;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.7">✎</span>' +
             '<code style="font-size:10px;color:var(--text-muted);">' + App._escape(c.key) + ' = ' + App._escape(String(c.value)) + '</code>' +
           '</div>' +
           '<div class="cpe-detail" style="display:' + (isSel ? 'flex' : 'none') + ';gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">' +
-            '<label style="font-size:10px;color:var(--text-muted);">名称 <input type="text" class="cpe-label" data-key="' + App._escape(c.key) + '" value="' + App._escape(label) + '" style="width:100px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);"></label>' +
+            '<label style="font-size:10px;color:var(--text-muted);">名称 <input type="text" class="cpe-label" data-key="' + App._escape(c.key) + '" value="' + App._escape(label) + '" oninput="App.comfyLib._cpeLabelSync(this)" style="width:120px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);" title="自定义名称，保存后参数模块以此显示"></label>' +
             '<label style="font-size:10px;color:var(--text-muted);">组件 <select class="cpe-type" data-key="' + App._escape(c.key) + '" style="font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);">' +
               '<option value="slider" ' + (type === 'slider' ? 'selected' : '') + '>滑块</option>' +
               '<option value="text" ' + (type === 'text' ? 'selected' : '') + '>文本框</option>' +
@@ -912,6 +917,13 @@ App.comfyLib._toggleCandidate = function(cb) {
             setTimeout(function() { labelInput.focus(); labelInput.select(); }, 50);
         }
     }
+};
+
+// 名称输入实时同步候选行标题（自定义名 ↔ 原始名对照）
+App.comfyLib._cpeLabelSync = function(input) {
+    var key = input.getAttribute('data-key');
+    var title = document.querySelector('.cpe-title[data-key="' + key + '"]');
+    if (title) title.textContent = input.value || '(未命名)';
 };
 
 // 参数重命名入口：一键勾选 + 展开 + 聚焦名称输入框
