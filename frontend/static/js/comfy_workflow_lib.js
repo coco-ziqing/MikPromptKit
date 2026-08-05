@@ -869,6 +869,111 @@ App.comfyLib.generate = async function() {
 
 App.comfyLib.saveAsCard = async function() {
     if (!this._lastResult || !this._lastResult.output_file) return;
+    // 弹分组选择框，由用户指定存到词库哪个分组
+    this._openCardGroupPicker();
+};
+
+// 存为词卡 · 分组选择弹窗
+App.comfyLib._openCardGroupPicker = function() {
+    var self = this;
+    var overlay = document.getElementById('cwlGroupPicker');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'cwlGroupPicker';
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'display:none;z-index:760;';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.style.display = 'none'; };
+        overlay.innerHTML =
+        '<style>' +
+          '.cwl-grp{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:12px;border:1px solid transparent;transition:background .12s,border-color .12s;}' +
+          '.cwl-grp:hover{background:var(--hover-bg,#f1f5f9);}' +
+          '.cwl-grp-sel{background:rgba(99,102,241,0.10)!important;border-color:var(--primary)!important;color:var(--primary);font-weight:600;}' +
+        '</style>' +
+        '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:560px;max-height:84vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
+          '<div class="modal-header" style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
+            '<h5 style="margin:0;font-size:14px;"><i class="bi bi-bookmark-plus"></i> 存为词卡 — 选择分组</h5>' +
+            '<button class="header-btn-sm" onclick="document.getElementById(\'cwlGroupPicker\').style.display=\'none\'">&times;</button>' +
+          '</div>' +
+          '<div class="modal-body" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:12px;">' +
+            '<div style="display:flex;gap:14px;align-items:flex-start;">' +
+              '<img id="cwlGroupImg" style="width:150px;height:100px;object-fit:cover;border-radius:10px;border:1px solid var(--border-color);background:#0f172a;flex-shrink:0;">' +
+              '<div style="flex:1;min-width:0;">' +
+                '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">将保存为词卡，提示词：</div>' +
+                '<div id="cwlGroupPrompt" style="font-size:12px;color:var(--text-main);background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;max-height:64px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"></div>' +
+              '</div>' +
+            '</div>' +
+            '<div style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;"><i class="bi bi-folder2-open"></i> 目标分组 <span id="cwlGroupSel" style="font-size:11px;color:var(--primary);font-weight:600;"></span></div>' +
+            '<div id="cwlGroupList" style="border:1px solid var(--border-color);border-radius:10px;padding:6px;max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;">加载分组...</div>' +
+          '</div>' +
+          '<div class="modal-footer" style="padding:10px 16px;border-top:1px solid var(--border-color);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;">' +
+            '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'cwlGroupPicker\').style.display=\'none\'">取消</button>' +
+            '<button class="btn btn-primary btn-sm" onclick="App.comfyLib._confirmSaveAsCard()"><i class="bi bi-check"></i> 存入该分组</button>' +
+          '</div>' +
+        '</div>';
+        document.body.appendChild(overlay);
+    }
+    overlay.style.display = 'flex';
+    // 预览与提示词
+    var img = document.getElementById('cwlGroupImg');
+    if (img && this._lastResult) img.src = this._lastResult.thumbnail_url || ('/api/thumbnails/file/' + this._lastResult.thumbnail);
+    var pt = document.getElementById('cwlGroupPrompt');
+    if (pt) pt.textContent = (document.getElementById('cwlPrompt') || {}).value || '';
+    var selHint = document.getElementById('cwlGroupSel');
+    this._selectedGroupId = 0;
+    if (selHint) selHint.textContent = '';
+    var list = document.getElementById('cwlGroupList');
+    if (!list) return;
+    list.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:12px;">加载分组...</div>';
+    // 优先复用词卡模型缓存接口，缺失时直接拉取
+    var groupsP = (typeof App.cardModel !== 'undefined' && App.cardModel.getGroups)
+        ? App.cardModel.getGroups(true)
+        : App.fetchJSON('/api/v4/word-cards/groups?include_empty=true').then(function(d) { return (d && d.groups) || []; });
+    groupsP.then(function(groups) {
+        if (!groups || groups.length === 0) {
+            list.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:12px;">词库暂无分组</div>';
+            return;
+        }
+        var last = parseInt(localStorage.getItem('cwl_last_group') || '0', 10) || 0;
+        var lastId = 0;
+        var html = '';
+        groups.forEach(function(g) {
+            var depth = g._depth || 0;
+            var icon = '📁';
+            if (g.group_type === 'atom') icon = '🧩';
+            else if (g.group_type === 'builtin') icon = '📦';
+            else if (g.group_type === 'seedance') icon = '🎬';
+            else if (g.group_type === 'custom') icon = '🗂️';
+            else if (depth === 0) icon = '📂';
+            var isLast = (last && g.id === last);
+            html += '<div class="cwl-grp' + (isLast ? ' cwl-grp-sel' : '') + '" data-id="' + g.id + '" data-name="' + App._escape(g.name || '') + '" onclick="App.comfyLib._pickGroup(' + g.id + ', this)" style="padding-left:' + (8 + depth * 16) + 'px;">' +
+              '<span style="font-size:13px;">' + icon + '</span>' +
+              '<span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App._escape(g.name || '未命名') + '</span>' +
+              '<span style="font-size:10px;color:var(--text-muted);flex-shrink:0;">' + (g.card_count || 0) + ' 张</span>' +
+            '</div>';
+            if (isLast) lastId = g.id;
+        });
+        list.innerHTML = html;
+        if (lastId) self._pickGroup(lastId, list.querySelector('.cwl-grp-sel'));
+    });
+};
+
+// 选择分组（单选高亮）
+App.comfyLib._pickGroup = function(id, el) {
+    var all = document.querySelectorAll('#cwlGroupList .cwl-grp');
+    for (var i = 0; i < all.length; i++) all[i].classList.remove('cwl-grp-sel');
+    if (el) el.classList.add('cwl-grp-sel');
+    this._selectedGroupId = id;
+    var selHint = document.getElementById('cwlGroupSel');
+    if (selHint && el) selHint.textContent = '「' + (el.getAttribute('data-name') || '') + '」';
+};
+
+// 确认存入所选分组
+App.comfyLib._confirmSaveAsCard = async function() {
+    var gid = this._selectedGroupId;
+    if (!gid) { App.showToast('请先选择目标分组', 'warning'); return; }
+    localStorage.setItem('cwl_last_group', String(gid));
+    var picker = document.getElementById('cwlGroupPicker');
+    if (picker) picker.style.display = 'none';
     var promptText = (document.getElementById('cwlPrompt') || {}).value || '';
     var paramValues = this._collectParamValues();
     if (!promptText) {
@@ -886,6 +991,7 @@ App.comfyLib.saveAsCard = async function() {
                 output_file: this._lastResult.output_file,
                 workflow_id: this._selectedWf ? this._selectedWf.id : '',
                 prompt_text: promptText,
+                group_id: gid,
                 module: 'custom'
             })
         });
