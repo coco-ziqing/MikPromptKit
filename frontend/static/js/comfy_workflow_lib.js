@@ -887,7 +887,7 @@ App.comfyLib.openParamEditor = function() {
         var min = sp.min === undefined ? (typeof c.value === 'number' && c.value >= 0 && c.value <= 100 ? (c.value <= 2 ? 0 : Math.max(0, Math.floor(c.value / 2))) : 0) : sp.min;
         var max = sp.max === undefined ? (typeof c.value === 'number' ? Math.max(100, Math.ceil(c.value * 2)) : 100) : sp.max;
         var step = sp.step === undefined ? (typeof c.value === 'number' && !Number.isInteger(c.value) ? 0.1 : 1) : sp.step;
-        html += '<div style="border:1px solid ' + (isSel ? 'var(--primary)' : 'var(--border-color)') + ';border-radius:8px;padding:8px 10px;">' +
+        html += '<div class="cpe-row" style="border:1px solid ' + (isSel ? 'var(--primary)' : 'var(--border-color)') + ';border-radius:8px;padding:8px 10px;">' +
           '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
             '<input type="checkbox" class="cpe-sel" data-key="' + App._escape(c.key) + '" ' + (isSel ? 'checked' : '') + ' onchange="App.comfyLib._toggleCandidate(this)" style="width:16px;height:16px;">' +
             '<span style="font-size:12px;font-weight:600;flex:1;display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap;">' +
@@ -975,7 +975,7 @@ App.comfyLib._cpeSetSize = function(rw, rh, absolute) {
     this._candidates.forEach(function(c) {
         if (c.field !== 'width' && c.field !== 'height') return;
         var cb = document.querySelector('.cpe-sel[data-key="' + c.key + '"]');
-        var row = cb ? cb.closest('div') : null;
+        var row = cb ? cb.closest('.cpe-row') : null;
         if (row) {
             var codeEl = row.querySelector('code');
             if (codeEl) codeEl.textContent = c.key + ' = ' + c.value;
@@ -986,7 +986,9 @@ App.comfyLib._cpeSetSize = function(rw, rh, absolute) {
 };
 
 App.comfyLib._toggleCandidate = function(cb) {
-    var detail = cb.closest('div').querySelector('.cpe-detail');
+    // 用 .cpe-row 定位候选行（closest('div') 会命中标题行，找不到详情区）
+    var row = cb.closest('.cpe-row');
+    var detail = row ? row.querySelector('.cpe-detail') : null;
     if (detail) detail.style.display = cb.checked ? 'flex' : 'none';
     if (cb.checked) {
         // 勾选后自动聚焦名称输入框，方便直接重命名
@@ -1018,7 +1020,8 @@ App.comfyLib.renameCandidate = function(key) {
             labelInput.focus();
             labelInput.select();
         }
-        var detail = cb.closest('div').querySelector('.cpe-detail');
+        var row = cb.closest('.cpe-row');
+        var detail = row ? row.querySelector('.cpe-detail') : null;
         if (detail) {
             detail.style.borderColor = '#8b5cf6';
             setTimeout(function() { detail.style.borderColor = ''; }, 1200);
