@@ -27,6 +27,29 @@ Object.assign(App, {
         img.style.maxHeight = '100%';
         img.style.transform = 'scale(1)';
         img.style.cursor = 'grab';
+        // 缩放基准：_viewScale = 相对「适应容器」的倍数（1 = 适配显示）；_fitScale = 适配比例
+        img._viewScale = 1;
+        img._fitScale = 1;
+        img._fitReady = false;
+        img._scale = 1;
+        // 图片加载完成后计算适配比例，首次缩放以当前显示为基准（避免跳到原始尺寸）
+        img.onload = function() {
+            if (img.naturalWidth > 0 && img.clientWidth > 0) {
+                img._fitScale = img.clientWidth / img.naturalWidth;
+            } else {
+                img._fitScale = 1;
+            }
+            img._fitReady = true;
+        };
+        img.onerror = function() { img._fitReady = true; img._fitScale = 1; };
+        // 统一应用当前缩放（maxWidth 解除后按 适配比例×视图倍数 连续缩放）
+        img._applyViewScale = function() {
+            var s = (img._fitScale || 1) * (img._viewScale || 1);
+            img._scale = s;
+            img.style.maxWidth = 'none';
+            img.style.maxHeight = 'none';
+            img.style.transform = 'scale(' + s + ') translate(' + (img._translateX || 0) + 'px,' + (img._translateY || 0) + 'px)';
+        };
 
         // 加载右侧提示词详情
         if (promptId && App._renderViewerRight) {
@@ -39,14 +62,13 @@ Object.assign(App, {
         img._translateX = 0; img._translateY = 0;
         img._scale = 1;
 
-        // 滚轮缩放
+        // 滚轮缩放（以当前显示比例为基础，首次缩放不跳变）
         img.onwheel = function(e) {
             e.preventDefault();
+            if (!img._fitReady) return;
             var delta = e.deltaY > 0 ? 0.9 : 1.1;
-            img._scale = Math.max(0.15, Math.min(10, (img._scale || 1) * delta));
-            img.style.maxWidth = 'none';
-            img.style.maxHeight = 'none';
-            img.style.transform = 'scale(' + img._scale + ') translate(' + (img._translateX || 0) + 'px,' + (img._translateY || 0) + 'px)';
+            img._viewScale = Math.max(0.08, Math.min(20, (img._viewScale || 1) * delta));
+            img._applyViewScale();
         };
 
         // 鼠标拖拽 — 使用 addEventListener 避免被覆盖
@@ -95,36 +117,30 @@ Object.assign(App, {
         if (!img) return;
 
         if (action === 'fit') {
-            img._scale = 1;
+            img._viewScale = 1;
             img._translateX = 0;
             img._translateY = 0;
+            img._scale = 1;
             img.style.maxWidth = '100%';
             img.style.maxHeight = '100%';
             img.style.transform = 'scale(1) translate(0,0)';
         } else if (action === '100') {
-            img._scale = 1;
+            // 原始尺寸：视图倍数 = 1/适配比例，之后滚轮从此基准继续缩放
+            img._viewScale = img._fitScale ? (1 / img._fitScale) : 1;
             img._translateX = 0;
             img._translateY = 0;
+            img._scale = 1;
             img.style.maxWidth = 'none';
             img.style.maxHeight = 'none';
             img.style.transform = 'scale(1) translate(0,0)';
         } else if (action === 'in') {
-            img._scale = Math.min(10, (img._scale || 1) * 1.5);
-            img.style.maxWidth = 'none';
-            img.style.maxHeight = 'none';
-            img.style.transform = 'scale(' + img._scale + ') translate(' + (img._translateX || 0) + 'px,' + (img._translateY || 0) + 'px)';
+            if (!img._fitReady) return;
+            img._viewScale = Math.min(20, (img._viewScale || 1) * 1.5);
+            img._applyViewScale();
         } else if (action === 'out') {
-            img._scale = Math.max(0.15, (img._scale || 1) / 1.5);
-            if (img._scale <= 1) {
-                img._scale = 1;
-                img._translateX = 0;
-                img._translateY = 0;
-                img.style.maxWidth = '100%';
-                img.style.maxHeight = '100%';
-                img.style.transform = 'scale(1) translate(0,0)';
-            } else {
-                img.style.transform = 'scale(' + img._scale + ') translate(' + (img._translateX || 0) + 'px,' + (img._translateY || 0) + 'px)';
-            }
+            if (!img._fitReady) return;
+            img._viewScale = Math.max(0.08, (img._viewScale || 1) / 1.5);
+            img._applyViewScale();
         }
     },
 
