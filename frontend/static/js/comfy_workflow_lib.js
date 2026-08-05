@@ -20,6 +20,8 @@ App.comfyLib = {
     _selectedGroupId: 0,
     _collapsedGroups: {},
     _allGroups: [],
+    _logs: [],
+    _logViewMode: null,
 };
 
 // ============ 打开/关闭 ============
@@ -149,7 +151,12 @@ App.comfyLib._ensureModal = function() {
 
         // ===== 生成历史 =====
         '<div style="border-top:1px solid var(--border-color);padding-top:10px;">' +
-          '<div style="font-size:13px;font-weight:600;margin-bottom:8px;"><i class="bi bi-clock-history"></i> 生成历史 <span style="font-size:11px;color:var(--text-muted);">最近 20 条</span></div>' +
+          '<div style="font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px;"><i class="bi bi-clock-history"></i> 生成历史 <span style="font-size:11px;color:var(--text-muted);">最近 20 条</span>' +
+            '<span style="margin-left:auto;display:flex;gap:2px;border:1px solid var(--border-color);border-radius:8px;padding:2px;">' +
+              '<button id="cwlLogViewGrid" class="cwl-logview-btn" onclick="App.comfyLib.setLogView(\'grid\')" title="网格预览模式（图片优先）"><i class="bi bi-grid-3x3-gap"></i> 预览</button>' +
+              '<button id="cwlLogViewList" class="cwl-logview-btn" onclick="App.comfyLib.setLogView(\'list\')" title="详情列表模式（信息优先）"><i class="bi bi-list-ul"></i> 详情</button>' +
+            '</span>' +
+          '</div>' +
           '<div id="cwlLogs" style="font-size:11px;color:var(--text-muted);">加载中...</div>' +
         '</div>' +
 
@@ -815,16 +822,27 @@ App.comfyLib._collectParamValues = function() {
 App.comfyLib.generate = async function() {
     if (this._generating) return;
     if (!this._selectedWf) { App.showToast('请先选择一个工作流模板', 'warning'); return; }
-    var status = document.getElementById('cwlGenStatus');
-    var btn = document.getElementById('cwlBtnGen');
-    if (status) status.textContent = '⏳ 正在生成（约 15-60s，请勿关闭面板）...';
-    if (btn) btn.disabled = true;
-    this._generating = true;
     var promptText = '';
     var promptEl = document.getElementById('cwlPrompt');
     if (promptEl) promptText = promptEl.value;
     var paramValues = this._collectParamValues();
     var presetId = this._activePreset ? this._activePreset.id : 0;
+    await this._doGenerate(promptText, paramValues, presetId);
+};
+
+// 以指定提示词直接生成（重新生成入口；绕过表单收集，兼容参数配置模式）
+App.comfyLib.generateWithText = async function(promptText) {
+    if (this._generating) return;
+    if (!this._selectedWf) { App.showToast('请先选择一个工作流模板', 'warning'); return; }
+    await this._doGenerate(promptText || '', {}, 0);
+};
+
+App.comfyLib._doGenerate = async function(promptText, paramValues, presetId) {
+    var status = document.getElementById('cwlGenStatus');
+    var btn = document.getElementById('cwlBtnGen');
+    if (status) status.textContent = '⏳ 正在生成（约 15-60s，请勿关闭面板）...';
+    if (btn) btn.disabled = true;
+    this._generating = true;
     try {
         var d = await App.fetchJSON('/api/v2/comfyui/generate', {
             method: 'POST',
@@ -833,8 +851,8 @@ App.comfyLib.generate = async function() {
                 prompt_id: 0,
                 prompt_text: promptText,
                 workflow_id: this._selectedWf.id,
-                preset_id: presetId,
-                param_values: paramValues
+                preset_id: presetId || 0,
+                param_values: paramValues || {}
             })
         });
         if (!d || !d.ok) {
@@ -897,6 +915,12 @@ App.comfyLib._openCardGroupPicker = function() {
           '.cwl-tree-btn:hover{border-color:var(--primary);color:var(--primary);}' +
           '.cwl-rgrp{transition:background .12s,border-color .12s,color .12s;}' +
           '.cwl-rgrp:hover{border-color:var(--primary)!important;color:var(--primary);}' +
+          '.cwl-logview-btn{font-size:10px;padding:3px 9px;border:none;background:transparent;color:var(--text-muted);cursor:pointer;border-radius:6px;}' +
+          '.cwl-logview-btn.active{background:rgba(99,102,241,0.12);color:var(--primary);font-weight:600;}' +
+          '.cwl-rerun-btn{font-size:10px;padding:3px 9px;border:1px solid var(--primary);color:var(--primary);background:transparent;border-radius:6px;cursor:pointer;white-space:nowrap;}' +
+          '.cwl-rerun-btn:hover{background:rgba(99,102,241,0.10);}' +
+          '.cwl-log-card{transition:border-color .12s;}' +
+          '.cwl-log-card:hover{border-color:var(--primary)!important;}' +
         '</style>' +
         '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:560px;max-height:84vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
           '<div class="modal-header" style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
@@ -1298,6 +1322,16 @@ App.comfyLib._importSource = async function(source, label) {
 
 // ============ 生成历史 ============
 
+App.comfyLib.setLogView = function(mode) {
+    this._logViewMode = mode;
+    try { localStorage.setItem('cwl_log_view', mode); } catch(e) {}
+    var g = document.getElementById('cwlLogViewGrid');
+    var l = document.getElementById('cwlLogViewList');
+    if (g) g.className = 'cwl-logview-btn' + (mode === 'grid' ? ' active' : '');
+    if (l) l.className = 'cwl-logview-btn' + (mode === 'list' ? ' active' : '');
+    this._renderLogs();
+};
+
 App.comfyLib.loadLogs = async function() {
     var el = document.getElementById('cwlLogs');
     if (!el) return;
@@ -1305,28 +1339,107 @@ App.comfyLib.loadLogs = async function() {
         var d = await App.fetchJSON('/api/v2/comfyui/generation-logs?limit=20');
         if (!d || !d.items) throw new Error('获取失败');
         this._logs = d.items;
-        if (d.items.length === 0) {
-            el.innerHTML = '<span style="color:var(--text-muted);">暂无生成记录</span>';
-            return;
+        if (!this._logViewMode) {
+            this._logViewMode = (function() { try { return localStorage.getItem('cwl_log_view') === 'list' ? 'list' : 'grid'; } catch(e) { return 'grid'; } })();
         }
-        var html = '<table style="width:100%;border-collapse:collapse;">' +
-          '<tr style="color:var(--text-muted);text-align:left;"><th style="padding:4px 6px;font-weight:500;">时间</th><th style="padding:4px 6px;font-weight:500;">状态</th><th style="padding:4px 6px;font-weight:500;">引擎</th><th style="padding:4px 6px;font-weight:500;">耗时</th><th style="padding:4px 6px;font-weight:500;">词卡</th><th style="padding:4px 6px;font-weight:500;">提示词</th></tr>';
-        d.items.forEach(function(lg) {
-            var stColor = lg.status === 'success' ? '#10b981' : (lg.status === 'failed' ? '#ef4444' : '#f59e0b');
-            html += '<tr style="border-top:1px solid var(--border-color);">' +
-              '<td style="padding:4px 6px;">' + App._escape((lg.created_at || '').slice(5, 16)) + '</td>' +
-              '<td style="padding:4px 6px;color:' + stColor + ';">' + App._escape(lg.status) + '</td>' +
-              '<td style="padding:4px 6px;">' + App._escape(lg.engine) + '</td>' +
-              '<td style="padding:4px 6px;">' + (lg.duration_sec ? Math.round(lg.duration_sec) + 's' : '-') + '</td>' +
-              '<td style="padding:4px 6px;">' + (lg.card_id ? '#' + lg.card_id : '-') + '</td>' +
-              '<td style="padding:4px 6px;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + App._escape(lg.prompt_text || '') + '">' + App._escape((lg.prompt_text || '').slice(0, 46)) + '</td>' +
-            '</tr>';
-        });
-        html += '</table>';
-        el.innerHTML = html;
+        var g = document.getElementById('cwlLogViewGrid');
+        var l = document.getElementById('cwlLogViewList');
+        if (g) g.className = 'cwl-logview-btn' + (this._logViewMode === 'grid' ? ' active' : '');
+        if (l) l.className = 'cwl-logview-btn' + (this._logViewMode === 'list' ? ' active' : '');
+        this._renderLogs();
     } catch(e) {
         el.innerHTML = '<span style="color:#ef4444;">' + App._escape(e.message) + '</span>';
     }
+};
+
+App.comfyLib._renderLogs = function() {
+    var el = document.getElementById('cwlLogs');
+    if (!el) return;
+    var logs = this._logs || [];
+    if (logs.length === 0) {
+        el.innerHTML = '<span style="color:var(--text-muted);">暂无生成记录</span>';
+        return;
+    }
+    if (this._logViewMode === 'list') this._renderLogsTable(el, logs);
+    else this._renderLogsGrid(el, logs);
+};
+
+// 预览模式：图片卡片网格（点击载入生成区，↻ 直接重新生成）
+App.comfyLib._renderLogsGrid = function(el, logs) {
+    var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;">';
+    logs.forEach(function(lg) {
+        var stColor = lg.status === 'success' ? '#10b981' : (lg.status === 'failed' ? '#ef4444' : '#f59e0b');
+        var stLabel = lg.status === 'success' ? '✓ 成功' : (lg.status === 'failed' ? '✗ 失败' : '… ' + (lg.status || '?'));
+        var thumb = lg.thumb_url || '';
+        html += '<div class="cwl-log-card" onclick="App.comfyLib._loadLog(' + lg.id + ')" title="点击载入生成区，可调整后重新生成" style="border:1px solid var(--border-color);border-radius:10px;overflow:hidden;cursor:pointer;background:var(--bg-card);">' +
+          '<div style="height:94px;background:#1e293b;position:relative;">' +
+            (thumb ? '<img src="' + thumb + '" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy">' : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:24px;opacity:0.5;">🎨</div>') +
+            '<span style="position:absolute;top:5px;right:5px;font-size:9px;padding:1px 6px;border-radius:8px;color:#fff;background:' + stColor + ';">' + stLabel + '</span>' +
+          '</div>' +
+          '<div style="padding:6px 8px;">' +
+            '<div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;">' + App._escape((lg.created_at || '').slice(5, 16)) + (lg.duration_sec ? ' · ' + Math.round(lg.duration_sec) + 's' : '') + (lg.card_id ? ' · 词卡#' + lg.card_id : '') + '</div>' +
+            '<div style="font-size:11px;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + App._escape(lg.prompt_text || '') + '">' + App._escape((lg.prompt_text || '(空提示词)').slice(0, 30)) + '</div>' +
+            '<div style="margin-top:5px;">' +
+              '<button class="cwl-rerun-btn" onclick="event.stopPropagation();App.comfyLib._rerunLog(' + lg.id + ')" title="用相同提示词重新生成"><i class="bi bi-arrow-repeat"></i> 重新生成</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+};
+
+// 详情模式：表格（缩略图 + 完整字段 + 操作）
+App.comfyLib._renderLogsTable = function(el, logs) {
+    var html = '<table style="width:100%;border-collapse:collapse;">' +
+      '<tr style="color:var(--text-muted);text-align:left;"><th style="padding:4px 6px;font-weight:500;">图</th><th style="padding:4px 6px;font-weight:500;">时间</th><th style="padding:4px 6px;font-weight:500;">状态</th><th style="padding:4px 6px;font-weight:500;">耗时</th><th style="padding:4px 6px;font-weight:500;">词卡</th><th style="padding:4px 6px;font-weight:500;">提示词</th><th style="padding:4px 6px;font-weight:500;">操作</th></tr>';
+    logs.forEach(function(lg) {
+        var stColor = lg.status === 'success' ? '#10b981' : (lg.status === 'failed' ? '#ef4444' : '#f59e0b');
+        var thumb = lg.thumb_url || '';
+        html += '<tr style="border-top:1px solid var(--border-color);cursor:pointer;" onclick="App.comfyLib._loadLog(' + lg.id + ')" title="点击载入生成区，可调整后重新生成">' +
+          '<td style="padding:4px 6px;">' + (thumb ? '<img src="' + thumb + '" style="width:52px;height:36px;object-fit:cover;border-radius:6px;display:block;" loading="lazy">' : '<span style="color:var(--text-muted);">-</span>') + '</td>' +
+          '<td style="padding:4px 6px;">' + App._escape((lg.created_at || '').slice(5, 16)) + '</td>' +
+          '<td style="padding:4px 6px;color:' + stColor + ';">' + App._escape(lg.status) + '</td>' +
+          '<td style="padding:4px 6px;">' + (lg.duration_sec ? Math.round(lg.duration_sec) + 's' : '-') + '</td>' +
+          '<td style="padding:4px 6px;">' + (lg.card_id ? '#' + lg.card_id : '-') + '</td>' +
+          '<td style="padding:4px 6px;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + App._escape(lg.prompt_text || '') + '">' + App._escape((lg.prompt_text || '').slice(0, 40)) + '</td>' +
+          '<td style="padding:4px 6px;"><button class="cwl-rerun-btn" onclick="event.stopPropagation();App.comfyLib._rerunLog(' + lg.id + ')" title="用相同提示词重新生成"><i class="bi bi-arrow-repeat"></i> 重新生成</button></td>' +
+        '</tr>';
+    });
+    html += '</table>';
+    el.innerHTML = html;
+};
+
+// 载入历史记录到生成区（可再次调整后生成）
+App.comfyLib._loadLog = async function(id) {
+    var lg = null;
+    for (var i = 0; i < (this._logs || []).length; i++) { if (this._logs[i].id === id) { lg = this._logs[i]; break; } }
+    if (!lg) return;
+    if (!lg.workflow_id) { App.showToast('该记录无关联工作流，无法载入', 'warning'); return; }
+    App.showToast('正在载入生成记录...', 'info');
+    await this.loadList();
+    await this.selectWf(lg.workflow_id);
+    if (!this._selectedWf) { App.showToast('关联工作流已被删除，无法载入', 'error'); return; }
+    var promptEl = document.getElementById('cwlPrompt');
+    if (promptEl) promptEl.value = lg.prompt_text || '';
+    var panel = document.getElementById('cwlGenPanel');
+    if (panel) panel.scrollIntoView({ block: 'nearest' });
+    App.showToast('已载入记录，可调整提示词后点击「生成图片」', 'success');
+};
+
+// 重新生成：载入记录并用相同提示词立即生成
+App.comfyLib._rerunLog = async function(id) {
+    var lg = null;
+    for (var i = 0; i < (this._logs || []).length; i++) { if (this._logs[i].id === id) { lg = this._logs[i]; break; } }
+    if (!lg) return;
+    if (!lg.workflow_id) { App.showToast('该记录无关联工作流，无法重新生成', 'warning'); return; }
+    if (this._generating) { App.showToast('正在生成中，请稍候', 'warning'); return; }
+    await this.loadList();
+    await this.selectWf(lg.workflow_id);
+    if (!this._selectedWf) { App.showToast('关联工作流已被删除，无法重新生成', 'error'); return; }
+    var promptEl = document.getElementById('cwlPrompt');
+    if (promptEl) promptEl.value = lg.prompt_text || '';
+    await this.generateWithText(lg.prompt_text || '');
 };
 
 })();

@@ -1588,7 +1588,9 @@ def save_generated_as_card(data: SaveCardRequest):
 
 @router.get("/generation-logs")
 def list_generation_logs(limit: int = Query(50, ge=1, le=200), status: str = ""):
-    """生成历史记录"""
+    """生成历史记录（附带解析后的缩略图 URL）
+    thumb_file 兜底解析：旧 ai_thumb_* 已迁移，按 output_file 同名 {base}.jpg 或词卡 thumbnail 还原
+    """
     db = get_db()
     sql = "SELECT * FROM comfyui_generation_logs"
     args = []
@@ -1598,7 +1600,23 @@ def list_generation_logs(limit: int = Query(50, ge=1, le=200), status: str = "")
     sql += " ORDER BY id DESC LIMIT ?"
     args.append(limit)
     rows = db.execute(sql, args).fetchall()
-    return {"ok": True, "items": [dict(r) for r in rows]}
+    items = []
+    for r in rows:
+        d = dict(r)
+        thumb = d.get("thumb_file") or ""
+        if thumb and not os.path.exists(os.path.join(THUMB_DIR, thumb)):
+            # 按 output_file（{base}.png）推导同名 {base}.jpg
+            base = (d.get("output_file") or "").rsplit(".", 1)[0]
+            cand = base + ".jpg" if base else ""
+            if cand and os.path.exists(os.path.join(THUMB_DIR, cand)):
+                thumb = cand
+            elif d.get("card_id"):
+                row2 = db.execute("SELECT thumbnail FROM word_card WHERE id=?", [d["card_id"]]).fetchone()
+                if row2 and row2["thumbnail"] and os.path.exists(os.path.join(THUMB_DIR, row2["thumbnail"])):
+                    thumb = row2["thumbnail"]
+        d["thumb_url"] = ("/api/thumbnails/file/" + thumb) if thumb else ""
+        items.append(d)
+    return {"ok": True, "items": items}
 
 
 
