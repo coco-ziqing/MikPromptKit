@@ -691,8 +691,8 @@ App.comfyLib._renderParamForm = function() {
         } else if (p.type === 'number') {
             // 数字输入（大整数 seed 等，不适合滑块）
             html += '<input type="number" class="cwl-pv" data-key="' + App._escape(p.key) + '" value="' + App._escape(String(val === undefined ? '' : val)) + '" step="any" style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
-        } else if (p.type === 'select') {
-            // 枚举下拉（采样器/调度器等）
+        } else if (p.type === 'select' || (p.options || []).length > 0) {
+            // 枚举下拉（采样器/调度器等；带 options 的参数一律下拉，即使旧数据 type 为 text/number）
             var opts = p.options || [];
             if (opts.length === 0) opts = [String(val === undefined ? '' : val)];
             html += '<select class="cwl-pv" data-key="' + App._escape(p.key) + '" style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
@@ -976,7 +976,8 @@ App.comfyLib.savePreset = async function() {
         var p = {
             key: key, node_id: cand.node_id, field: cand.field,
             label: (document.querySelector('.cpe-label[data-key="' + key + '"]') || {}).value || cand.label,
-            type: (document.querySelector('.cpe-type[data-key="' + key + '"]') || {}).value || 'text',
+            // 枚举字段（带 options）强制下拉，避免旧配置回填 text/number
+            type: ((cand.options || []).length > 0) ? 'select' : ((document.querySelector('.cpe-type[data-key="' + key + '"]') || {}).value || cand.type || 'text'),
             default: cand.value,
             min: parseFloat((document.querySelector('.cpe-min[data-key="' + key + '"]') || {}).value) || 0,
             max: parseFloat((document.querySelector('.cpe-max[data-key="' + key + '"]') || {}).value) || 100,
