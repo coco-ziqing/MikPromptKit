@@ -163,6 +163,103 @@ def reorder_groups(data: dict):
     safe_commit()
     return {"ok": True, "message": f"已重排 {len(ordered_ids)} 个分组", "ordered_ids": ordered_ids}
 
+
+# ==================== 推荐分组（按提示词内容） ====================
+
+# 分组名 → 关键词映射：提示词命中即推荐该分组
+_RECOMMEND_KEYWORDS = {
+    "主体描述": ["主体", "人物", "角色", "肖像", "女人", "男人", "女孩", "男孩", "猫", "狗", "woman", "man", "girl", "boy", "cat", "dog", "portrait", "subject", "character", "person"],
+    "光影效果": ["光影", "光照", "灯光", "阴影", "逆光", "背光", "照明", "光线", "lighting", "light", "shadow", "rim", "glow", "backlit"],
+    "镜头语言": ["镜头", "景别", "特写", "远景", "中景", "广角", "俯拍", "仰拍", "运镜", "推拉", "close-up", "wide", "angle", "camera", "zoom", "shot"],
+    "画质参数": ["画质", "高清", "细节", "清晰", "锐利", "4k", "8k", "sharp", "detail", "quality", "resolution", "hd", "clarity"],
+    "风格表现": ["风格", "画风", "水墨", "油画", "赛博", "蒸汽波", "动漫", "写实", "anime", "realistic", "style", "art", "illustration", "pixel"],
+    "色调氛围": ["色调", "氛围", "温暖", "冷调", "暗调", "明亮", "梦幻", "warm", "cool", "mood", "atmosphere", "tone", "vibe", "cinematic", "sunset", "night"],
+    "构图取景": ["构图", "取景", "居中", "对称", "留白", "三分法", "仰角", "俯视", "composition", "centered", "symmetry", "framing", "rule of thirds", "angle"],
+    "色彩搭配": ["色彩", "配色", "颜色", "撞色", "饱和度", "明度", "color", "palette", "hue", "saturation", "vibrant", "colour"],
+    "限制条件": ["限制", "禁止", "不要", "避免", "无", "avoid", "without", "no ", "negative"],
+    "环境气氛": ["环境", "场景", "背景", "街道", "森林", "房间", "天空", "海边", "雪地", "environment", "background", "scene", "street", "forest", "room", "sky", "beach"],
+    "创意元素": ["创意", "元素", "奇幻", "魔法", "梦幻", "精灵", "fantasy", "magic", "element", "dreamy", "mythical"],
+}
+
+# 英文停用词（通用品质/连接词，不参与词卡内容匹配）
+_STOPWORDS = {"a", "an", "the", "of", "in", "on", "at", "with", "and", "or", "is", "are", "to", "for", "as", "by", "be", "it", "its", "this", "that", "her", "his", "their", "from", "into", "over", "under", "high", "quality", "very", "best", "most"}
+
+
+def _group_depth_map(groups):
+    """计算分组 _depth（嵌套深度）"""
+    id_map = {g["id"]: g for g in groups}
+    def calc(g):
+        d = 0; pid = g.get("parent_group_id")
+        while pid and pid in id_map:
+            d += 1; pid = id_map[pid].get("parent_group_id")
+        return d
+    for g in groups:
+        g["_depth"] = calc(g)
+    return groups
+
+
+@router.get("/groups/recommend")
+def recommend_groups(text: str = "", limit: int = Query(5, ge=1, le=10)):
+    """根据提示词内容推荐目标分组：关键词映射表命中 + 分组名子串 + 分组内词卡内容 token 匹配
+    返回按匹配度降序的推荐列表（仅含 score>0 的分组）"""
+    import re
+    if not text or not text.strip():
+        return {"ok": True, "items": [], "query": text}
+    text_lower = text.lower()
+    db = get_db()
+    groups = [dict(r) for r in db.execute(
+        "SELECT id, name, group_type, parent_group_id, description, group_key FROM word_card_group WHERE is_active=1"
+    ).fetchall()]
+    groups = _group_depth_map(groups)
+    # 提示词英文 token（>=3 字符，去停用词）
+    tokens = [t for t in re.findall(r"[a-zA-Z][a-zA-Z'-]{1,}", text_lower) if len(t) >= 3 and t not in _STOPWORDS]
+    tokens = list(dict.fromkeys(tokens))  # 去重保序
+    # 分组名关键词索引（映射表 key 匹配分组名）
+    kw_groups = {}
+    for gname_key, words in _RECOMMEND_KEYWORDS.items():
+        kw_groups[gname_key] = words
+
+    scored = []
+    for g in groups:
+        gname = (g["name"] or "").strip()
+        if not gname:
+            continue
+        score = 0
+        matched = []
+        # 1. 分组名出现在提示词中（最高权重）
+        if gname.lower() in text_lower:
+            score += 12
+            matched.append("分组名")
+        # 2. 关键词映射表：分组名包含映射键 → 命中的映射词计数
+        for key, words in kw_groups.items():
+            if key in gname:
+                hits = [w for w in words if w in text_lower]
+                if hits:
+                    score += min(len(hits), 4) * 3
+                    matched.extend(hits[:3])
+        # 3. 分组内词卡内容 token 匹配（仅当前两步已有得分时增强，控制查询量）
+        if score > 0 and tokens:
+            cards = db.execute(
+                "SELECT content FROM word_card WHERE group_id=? AND is_deleted=0 LIMIT 20",
+                [g["id"]]
+            ).fetchall()
+            blob = " ".join((c["content"] or "") for c in cards).lower()
+            hits = [t for t in tokens if t in blob]
+            if hits:
+                score += min(len(hits), 5)
+                matched.extend(hits[:3])
+        if score > 0:
+            ccount = db.execute("SELECT COUNT(*) AS c FROM word_card WHERE group_id=? AND is_deleted=0", [g["id"]]).fetchone()["c"]
+            scored.append({
+                "id": g["id"], "name": gname, "group_type": g["group_type"],
+                "parent_group_id": g["parent_group_id"], "_depth": g["_depth"],
+                "card_count": ccount, "score": score,
+                "matched": list(dict.fromkeys(matched))[:6],
+            })
+    scored.sort(key=lambda x: -x["score"])
+    return {"ok": True, "items": scored[:limit], "query": text}
+
+
 # ==================== 选取器 (静态路径) ====================
 
 @router.get("/suggestions")

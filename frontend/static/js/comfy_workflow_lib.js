@@ -17,6 +17,9 @@ App.comfyLib = {
     _logs: [],
     _generating: false,
     _runtimeTimer: null,
+    _selectedGroupId: 0,
+    _collapsedGroups: {},
+    _allGroups: [],
 };
 
 // ============ 打开/关闭 ============
@@ -888,6 +891,12 @@ App.comfyLib._openCardGroupPicker = function() {
           '.cwl-grp{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:12px;border:1px solid transparent;transition:background .12s,border-color .12s;}' +
           '.cwl-grp:hover{background:var(--hover-bg,#f1f5f9);}' +
           '.cwl-grp-sel{background:rgba(99,102,241,0.10)!important;border-color:var(--primary)!important;color:var(--primary);font-weight:600;}' +
+          '.cwl-arrow{width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--text-muted);cursor:pointer;border-radius:4px;flex-shrink:0;}' +
+          '.cwl-arrow:hover{background:rgba(99,102,241,0.15);color:var(--primary);}' +
+          '.cwl-tree-btn{font-size:10px;padding:3px 9px;border:1px solid var(--border-color);border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer;}' +
+          '.cwl-tree-btn:hover{border-color:var(--primary);color:var(--primary);}' +
+          '.cwl-rgrp{transition:background .12s,border-color .12s,color .12s;}' +
+          '.cwl-rgrp:hover{border-color:var(--primary)!important;color:var(--primary);}' +
         '</style>' +
         '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:560px;max-height:84vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
           '<div class="modal-header" style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
@@ -903,8 +912,18 @@ App.comfyLib._openCardGroupPicker = function() {
               '</div>' +
             '</div>' +
             '<div style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;"><i class="bi bi-folder2-open"></i> 目标分组 <span id="cwlGroupSel" style="font-size:11px;color:var(--primary);font-weight:600;"></span></div>' +
+            '<div id="cwlRecommendedGroups" style="display:none;"></div>' +
             '<div id="cwlRecentGroups" style="border:1px solid var(--border-color);border-radius:10px;padding:8px;display:none;"></div>' +
-            '<div id="cwlGroupList" style="border:1px solid var(--border-color);border-radius:10px;padding:6px;max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;">加载分组...</div>' +
+            '<div id="cwlGroupList" style="border:1px solid var(--border-color);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:2px;">' +
+              '<div id="cwlTreeBar" style="display:flex;align-items:center;gap:6px;padding:2px 4px 6px;border-bottom:1px dashed var(--border-color);margin-bottom:4px;flex-shrink:0;">' +
+                '<span style="font-size:11px;color:var(--text-muted);"><i class="bi bi-diagram-3"></i> 全部分组 <span id="cwlTreeCount"></span></span>' +
+                '<span style="margin-left:auto;display:flex;gap:6px;">' +
+                  '<button class="cwl-tree-btn" onclick="App.comfyLib._collapseAllGroups()" title="折叠所有子分组"><i class="bi bi-arrows-collapse"></i> 全部折叠</button>' +
+                  '<button class="cwl-tree-btn" onclick="App.comfyLib._expandAllGroups()" title="展开所有子分组"><i class="bi bi-arrows-expand"></i> 全部展开</button>' +
+                '</span>' +
+              '</div>' +
+              '<div id="cwlTreeBody" style="display:flex;flex-direction:column;gap:2px;max-height:270px;overflow-y:auto;">加载分组...</div>' +
+            '</div>' +
           '</div>' +
           '<div class="modal-footer" style="padding:10px 16px;border-top:1px solid var(--border-color);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;">' +
             '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'cwlGroupPicker\').style.display=\'none\'">取消</button>' +
@@ -924,14 +943,38 @@ App.comfyLib._openCardGroupPicker = function() {
     if (selHint) selHint.textContent = '';
     var list = document.getElementById('cwlGroupList');
     if (!list) return;
-    list.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:12px;">加载分组...</div>';
+    // 推荐分组：基于提示词内容自动识别
+    var ptText = pt ? pt.textContent : '';
+    var recEl = document.getElementById('cwlRecommendedGroups');
+    if (recEl) {
+        if (ptText && ptText.trim()) {
+            recEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:6px;">💡 正在识别推荐分组...</div>';
+            recEl.style.display = 'block';
+            App.fetchJSON('/api/v4/word-cards/groups/recommend?text=' + encodeURIComponent(ptText) + '&limit=5').then(function(d) {
+                if (!recEl) return;
+                if (!d || !d.ok || !d.items || d.items.length === 0) { recEl.style.display = 'none'; return; }
+                var rh = '<div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-bottom:6px;"><i class="bi bi-magic"></i> 推荐分组 <span style="font-weight:400;">根据提示词自动识别</span></div><div style="display:flex;flex-wrap:wrap;gap:6px;">';
+                d.items.forEach(function(g) {
+                    rh += '<span class="cwl-rgrp cwl-rec" data-id="' + g.id + '" data-name="' + App._escape(g.name || '') + '" onclick="App.comfyLib._pickGroup(' + g.id + ', this)" title="命中：' + App._escape((g.matched || []).join('、') || '内容匹配') + '" style="cursor:pointer;font-size:11px;padding:4px 10px;border-radius:14px;border:1px solid #6366f1;color:var(--primary);background:rgba(99,102,241,0.08);display:inline-flex;align-items:center;gap:4px;">' +
+                      '<span style="font-size:12px;">💡</span>' + App._escape(g.name || '未命名') +
+                    '</span>';
+                });
+                rh += '</div>';
+                recEl.innerHTML = rh;
+                recEl.style.display = 'block';
+            }).catch(function() { if (recEl) recEl.style.display = 'none'; });
+        } else {
+            recEl.style.display = 'none';
+        }
+    }
     // 优先复用词卡模型缓存接口，缺失时直接拉取
     var groupsP = (typeof App.cardModel !== 'undefined' && App.cardModel.getGroups)
         ? App.cardModel.getGroups(true)
         : App.fetchJSON('/api/v4/word-cards/groups?include_empty=true').then(function(d) { return (d && d.groups) || []; });
     groupsP.then(function(groups) {
         if (!groups || groups.length === 0) {
-            list.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:12px;">词库暂无分组</div>';
+            var tb = document.getElementById('cwlTreeBody');
+            if (tb) tb.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:12px;">词库暂无分组</div>';
             return;
         }
         var last = parseInt(localStorage.getItem('cwl_last_group') || '0', 10) || 0;
@@ -954,45 +997,120 @@ App.comfyLib._openCardGroupPicker = function() {
             recentEl.innerHTML = rh;
             recentEl.style.display = 'block';
         }
-        var html = '';
-        groups.forEach(function(g) {
-            var depth = g._depth || 0;
-            var icon = '📁';
-            if (g.group_type === 'atom') icon = '🧩';
-            else if (g.group_type === 'builtin') icon = '📦';
-            else if (g.group_type === 'seedance') icon = '🎬';
-            else if (g.group_type === 'custom') icon = '🗂️';
-            else if (depth === 0) icon = '📂';
-            var isLast = (last && g.id === last);
-            html += '<div class="cwl-grp' + (isLast ? ' cwl-grp-sel' : '') + '" data-id="' + g.id + '" data-name="' + App._escape(g.name || '') + '" onclick="App.comfyLib._pickGroup(' + g.id + ', this)" style="padding-left:' + (8 + depth * 16) + 'px;">' +
-              '<span style="font-size:13px;">' + icon + '</span>' +
-              '<span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App._escape(g.name || '未命名') + '</span>' +
-              '<span style="font-size:10px;color:var(--text-muted);flex-shrink:0;">' + (g.card_count || 0) + ' 张</span>' +
-            '</div>';
-            if (isLast) lastId = g.id;
-        });
-        list.innerHTML = html;
-        // 自动定位到上次选择的分组：高亮 + 滚动到可视区（树中该项）
+        // 保存全部分组供树折叠/展开重渲染
+        self._allGroups = groups;
+        self._renderGroupTree(groups);
+        // 自动定位到上次选择的分组：展开祖先链 + 高亮 + 滚动到可视区
         if (lastId) {
-            var treeEl = list.querySelector('.cwl-grp[data-id="' + lastId + '"]');
-            var recentEl2 = recentEl ? recentEl.querySelector('.cwl-rgrp[data-id="' + lastId + '"]') : null;
-            self._pickGroup(lastId, treeEl || recentEl2);
-            if (treeEl) setTimeout(function() { try { treeEl.scrollIntoView({ block: 'center', behavior: 'auto' }); } catch(e) {} }, 60);
+            var gmap = {};
+            groups.forEach(function(g) { gmap[g.id] = g; });
+            var pid = gmap[lastId] ? gmap[lastId].parent_group_id : null;
+            while (pid && gmap[pid]) { delete self._collapsedGroups[pid]; pid = gmap[pid].parent_group_id; }
+            self._renderGroupTree(groups);
+            var treeEl = document.querySelector('#cwlTreeBody .cwl-grp[data-id="' + lastId + '"]');
+            var rEl2 = recentEl ? recentEl.querySelector('.cwl-rgrp[data-id="' + lastId + '"]') : null;
+            var recEl2 = recEl ? recEl.querySelector('.cwl-rgrp[data-id="' + lastId + '"]') : null;
+            self._pickGroup(lastId, treeEl || rEl2 || recEl2);
+            if (treeEl) setTimeout(function() { try { treeEl.scrollIntoView({ block: 'center', behavior: 'auto' }); } catch(e) {} }, 80);
         }
     });
 };
 
-// 选择分组（单选高亮，树 + 最近分组同步）
+// ============ 分组树：折叠 / 展开 ============
+
+App.comfyLib._groupIcon = function(g, depth) {
+    if (g.group_type === 'atom') return '🧩';
+    if (g.group_type === 'builtin') return '📦';
+    if (g.group_type === 'seedance') return '🎬';
+    if (g.group_type === 'custom') return '🗂️';
+    if (depth === 0) return '📂';
+    return '📁';
+};
+
+// 渲染可折叠分组树（不改变分组层级结构）
+App.comfyLib._renderGroupTree = function(groups) {
+    var body = document.getElementById('cwlTreeBody');
+    if (!body) return;
+    var self = this;
+    var gmap = {};
+    groups.forEach(function(g) { gmap[g.id] = g; });
+    var childrenMap = {};
+    groups.forEach(function(g) {
+        var pid = (g.parent_group_id && gmap[g.parent_group_id]) ? g.parent_group_id : 0;
+        (childrenMap[pid] = childrenMap[pid] || []).push(g);
+    });
+    var roots = childrenMap[0] || [];
+    // 孤立根（父级不在列表中）也纳入，保持原排序
+    groups.forEach(function(g) {
+        if (!g.parent_group_id || !gmap[g.parent_group_id]) roots.push(g);
+    });
+    var seen = {};
+    roots = roots.filter(function(g) { if (seen[g.id]) return false; seen[g.id] = 1; return true; });
+    var count = document.getElementById('cwlTreeCount');
+    if (count) count.textContent = '(' + groups.length + ')';
+    var html = '';
+    var renderNode = function(g, depth) {
+        var kids = childrenMap[g.id] || [];
+        var hasKids = kids.length > 0;
+        var collapsed = !!self._collapsedGroups[g.id];
+        var isSel = self._selectedGroupId === g.id;
+        html += '<div class="cwl-grp' + (isSel ? ' cwl-grp-sel' : '') + '" data-id="' + g.id + '" data-name="' + App._escape(g.name || '') + '" onclick="App.comfyLib._pickGroup(' + g.id + ', this)" style="padding-left:' + (6 + depth * 16) + 'px;">' +
+          (hasKids
+            ? '<span class="cwl-arrow" onclick="event.stopPropagation();App.comfyLib._toggleGroup(' + g.id + ')" title="' + (collapsed ? '展开' : '折叠') + '">' + (collapsed ? '▶' : '▼') + '</span>'
+            : '<span style="width:16px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;"></span>') +
+          '<span style="font-size:13px;">' + self._groupIcon(g, depth) + '</span>' +
+          '<span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App._escape(g.name || '未命名') + '</span>' +
+          '<span style="font-size:10px;color:var(--text-muted);flex-shrink:0;">' + (g.card_count || 0) + ' 张</span>' +
+        '</div>';
+        if (hasKids && !collapsed) {
+            kids.forEach(function(k) { renderNode(k, depth + 1); });
+        }
+    };
+    roots.forEach(function(g) { renderNode(g, 0); });
+    body.innerHTML = html;
+};
+
+// 折叠 / 展开单个分组
+App.comfyLib._toggleGroup = function(id) {
+    if (this._collapsedGroups[id]) delete this._collapsedGroups[id];
+    else this._collapsedGroups[id] = true;
+    if (this._allGroups) this._renderGroupTree(this._allGroups);
+};
+
+// 全部折叠（只折叠有子分组的分组）
+App.comfyLib._collapseAllGroups = function() {
+    if (!this._allGroups) return;
+    var gmap = {};
+    this._allGroups.forEach(function(g) { gmap[g.id] = g; });
+    var childrenMap = {};
+    this._allGroups.forEach(function(g) {
+        var pid = (g.parent_group_id && gmap[g.parent_group_id]) ? g.parent_group_id : 0;
+        (childrenMap[pid] = childrenMap[pid] || []).push(g);
+    });
+    var self = this;
+    this._allGroups.forEach(function(g) {
+        if ((childrenMap[g.id] || []).length > 0) self._collapsedGroups[g.id] = true;
+    });
+    this._renderGroupTree(this._allGroups);
+};
+
+// 全部展开
+App.comfyLib._expandAllGroups = function() {
+    this._collapsedGroups = {};
+    if (this._allGroups) this._renderGroupTree(this._allGroups);
+};
+
+// 选择分组（单选高亮，推荐/最近/树三区同步）
 App.comfyLib._pickGroup = function(id, el) {
-    var all = document.querySelectorAll('#cwlGroupList .cwl-grp, #cwlRecentGroups .cwl-rgrp');
+    var all = document.querySelectorAll('#cwlGroupList .cwl-grp, #cwlRecentGroups .cwl-rgrp, #cwlRecommendedGroups .cwl-rgrp');
     for (var i = 0; i < all.length; i++) all[i].classList.remove('cwl-grp-sel');
     if (el) el.classList.add('cwl-grp-sel');
-    // 从最近分组选择时，同步高亮树中对应项（反之亦然）
-    if (el && el.classList.contains('cwl-rgrp')) {
-        var treeEl = document.querySelector('#cwlGroupList .cwl-grp[data-id="' + id + '"]');
+    // 从推荐/最近分组选择时，同步高亮树中对应项（反之亦然）
+    if (el && (el.classList.contains('cwl-rgrp') || el.classList.contains('cwl-rec'))) {
+        var treeEl = document.querySelector('#cwlTreeBody .cwl-grp[data-id="' + id + '"]');
         if (treeEl) treeEl.classList.add('cwl-grp-sel');
     } else if (el) {
-        var rEl = document.querySelector('#cwlRecentGroups .cwl-rgrp[data-id="' + id + '"]');
+        var rEl = document.querySelector('#cwlRecentGroups .cwl-rgrp[data-id="' + id + '"], #cwlRecommendedGroups .cwl-rgrp[data-id="' + id + '"]');
         if (rEl) rEl.classList.add('cwl-grp-sel');
     }
     this._selectedGroupId = id;
