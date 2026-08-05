@@ -644,16 +644,66 @@ class PresetUpdate(BaseModel):
     mode: str = None
 
 
+def _detect_model_type(wf) -> str:
+    """根据工作流节点识别模型类型：flux / sdxl / sd15 / unknown
+    依据：加载类节点模型文件名关键词 + FLUX/SDXL 特征节点 + 常见 SD1.5 模型名"""
+    try:
+        if isinstance(wf, str):
+            wf = json.loads(wf)
+    except Exception:
+        return "unknown"
+    if not isinstance(wf, dict):
+        return "unknown"
+    names = []
+    has_flux_nodes = False
+    has_sdxl_nodes = False
+    for nid, node in wf.items():
+        if not isinstance(node, dict):
+            continue
+        ct = node.get("class_type", "")
+        if ct in ("FluxGuidance", "ModelSamplingFlux", "DualCLIPLoader", "UNETLoaderGGUF"):
+            has_flux_nodes = True
+        if ct == "CLIPTextEncodeSDXL":
+            has_sdxl_nodes = True
+        if ct not in ("UNETLoader", "CheckpointLoaderSimple", "CheckpointLoader",
+                      "DualCLIPLoader", "LoraLoader", "LoraLoaderModelOnly"):
+            continue
+        ins = node.get("inputs", {}) or {}
+        for f in ("unet_name", "ckpt_name", "clip_name1", "lora_name"):
+            v = ins.get(f)
+            if isinstance(v, str) and v:
+                names.append(v.lower())
+    joined = " ".join(names)
+    if "flux" in joined or ("fp8" in joined and "sd" not in joined):
+        return "flux"
+    if has_flux_nodes:
+        return "flux"
+    if "sdxl" in joined or "xl" in joined or "sd_xl" in joined:
+        return "sdxl"
+    if has_sdxl_nodes:
+        return "sdxl"
+    if "sd1" in joined or "1.5" in joined or "v1-" in joined:
+        return "sd15"
+    # 常见 SD1.5 模型名兜底（文件名无显式标识）
+    for kw in ("dreamshaper", "anything", "realistic", "deliberate", "chillout",
+               "meinamix", "revanimated", "cetusmix", "abyss", "ghostmix",
+               "anime", "majicmix", "counterfeit", "pastel"):
+        if kw in joined:
+            return "sd15"
+    return "unknown"
+
+
 @router.get("/workflows/{wf_id}/params/analyze")
 def analyze_workflow_params(wf_id: str):
-    """分析工作流可参数化节点，返回候选参数 + 已保存配置"""
+    """分析工作流可参数化节点，返回候选参数 + 已保存配置 + 模型类型"""
     wf, err = _find_workflow_v2(wf_id)
     if not wf:
         return {"ok": False, "error": err or "工作流不存在"}
     candidates = _analyze_workflow_params(wf["workflow_json"])
     db = get_db()
     presets = db.execute("SELECT * FROM comfyui_workflow_presets WHERE workflow_id=? ORDER BY id", [wf_id]).fetchall()
-    return {"ok": True, "candidates": candidates, "presets": [dict(r) for r in presets]}
+    return {"ok": True, "candidates": candidates, "presets": [dict(r) for r in presets],
+            "model_type": _detect_model_type(wf["workflow_json"])}
 
 
 @router.get("/workflows/{wf_id}/presets")

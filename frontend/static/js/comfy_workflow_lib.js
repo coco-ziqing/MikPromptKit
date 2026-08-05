@@ -8,6 +8,18 @@
 
 if (!window.App || !App.fetchJSON) { setTimeout(arguments.callee, 200); return; }
 
+// 模型类型 → 常用分辨率预设（按长边基准）
+var CWL_SIZE_PRESETS = {
+    sd15:    { label: 'SD1.5', base: 512,  presets: [[512, 512], [768, 512], [512, 768], [640, 384], [384, 640], [832, 576], [576, 832]] },
+    sdxl:    { label: 'SDXL',  base: 1024, presets: [[1024, 1024], [1152, 896], [896, 1152], [1216, 832], [832, 1216], [1344, 768], [768, 1344]] },
+    flux:    { label: 'FLUX',  base: 1024, presets: [[1024, 1024], [1152, 896], [896, 1152], [1216, 832], [832, 1216], [1344, 768], [768, 1344], [1536, 640], [640, 1536]] },
+    unknown: { label: '通用',  base: 768,  presets: [[512, 512], [768, 768], [1024, 1024], [1280, 720], [720, 1280], [1920, 1080], [1080, 1920]] }
+};
+var CWL_RATIOS = [
+    { label: '1:1', w: 1, h: 1 }, { label: '4:3', w: 4, h: 3 }, { label: '3:2', w: 3, h: 2 },
+    { label: '16:9', w: 16, h: 9 }, { label: '3:4', w: 3, h: 4 }, { label: '2:3', w: 2, h: 3 }, { label: '9:16', w: 9, h: 16 }
+];
+
 App.comfyLib = {
     _wfList: [],
     _selectedWf: null,
@@ -559,6 +571,7 @@ App.comfyLib._loadParams = async function(wfId) {
         if (!d || !d.ok) throw new Error(d && d.error || '分析失败');
         this._candidates = d.candidates || [];
         this._presets = d.presets || [];
+        this._modelType = d.model_type || 'unknown';
         this._renderPresetBar();
         // 默认选中第一个 user 模式配置
         var userPreset = null;
@@ -628,8 +641,36 @@ App.comfyLib._renderParamForm = function() {
         form.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">该配置未包含任何参数</div>';
         return;
     }
-    var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;">';
+    var html = '';
+    // 尺寸快捷：表单含 width + height 滑块时提供横竖/比例/分辨率一键设置
     var self = this;
+    var wP = null, hP = null;
+    params.forEach(function(p) {
+        if (p.field === 'width' && p.type === 'slider') wP = p;
+        if (p.field === 'height' && p.type === 'slider') hP = p;
+    });
+    if (wP && hP) {
+        var mt = CWL_SIZE_PRESETS[this._modelType] || CWL_SIZE_PRESETS.unknown;
+        var base = mt.base;
+        var sb = '<div style="border:1px dashed var(--border-color);border-radius:8px;padding:8px 10px;margin-bottom:10px;">' +
+          '<div style="font-size:11px;font-weight:600;margin-bottom:6px;">📐 尺寸快捷 <span style="font-weight:400;color:var(--text-muted);font-size:10px;">' + App._escape(mt.label) + ' · 长边 ' + base + 'px</span></div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">' +
+            '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._formSetSize(1,1)" style="border-color:#6366f1;color:var(--primary);">□ 方形</button>' +
+            '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._formSetSize(4,3)" style="border-color:#6366f1;color:var(--primary);">▭ 横屏</button>' +
+            '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._formSetSize(3,4)" style="border-color:#6366f1;color:var(--primary);">▯ 竖屏</button>' +
+          '</div>' +
+          '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">';
+        CWL_RATIOS.forEach(function(r) {
+            sb += '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._formSetSize(' + r.w + ',' + r.h + ')">' + r.label + '</button>';
+        });
+        sb += '</div><div style="display:flex;gap:4px;flex-wrap:wrap;">';
+        mt.presets.forEach(function(sz) {
+            sb += '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._formSetSize(' + sz[0] + ',' + sz[1] + ',true)">' + sz[0] + '×' + sz[1] + '</button>';
+        });
+        sb += '</div></div>';
+        html += sb;
+    }
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;">';
     params.forEach(function(p) {
         html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;">';
         html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
@@ -639,7 +680,10 @@ App.comfyLib._renderParamForm = function() {
         var val = p.default;
         if (p.type === 'slider') {
             var min = (p.min === undefined ? 0 : p.min), max = (p.max === undefined ? 100 : p.max), step = (p.step === undefined ? 1 : p.step);
-            html += '<input type="range" class="cwl-pv" data-key="' + App._escape(p.key) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" style="width:100%;" oninput="document.getElementById(\'pv_' + App._escape(p.key) + '\').textContent=this.value">';
+            html += '<div style="display:flex;align-items:center;gap:6px;">' +
+              '<input type="range" class="cwl-pv" data-key="' + App._escape(p.key) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" style="flex:1;" oninput="App.comfyLib._pvSliderSync(this)">' +
+              '<input type="number" class="cwl-pv-num" data-key="' + App._escape(p.key) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" style="width:64px;font-size:11px;padding:3px 5px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);" onchange="App.comfyLib._pvNumSync(this)" title="可手动输入数值">' +
+            '</div>';
         } else if (p.type === 'checkbox') {
             html += '<input type="checkbox" class="cwl-pv" data-key="' + App._escape(p.key) + '" ' + (val ? 'checked' : '') + ' style="width:18px;height:18px;">';
         } else if (p.type === 'select_file') {
@@ -651,6 +695,61 @@ App.comfyLib._renderParamForm = function() {
     });
     html += '</div>';
     form.innerHTML = html;
+};
+
+// 滑块 → 数字输入框 + 显示值同步
+App.comfyLib._pvSliderSync = function(input) {
+    var key = input.getAttribute('data-key');
+    var num = document.querySelector('.cwl-pv-num[data-key="' + key + '"]');
+    if (num) num.value = input.value;
+    var span = document.getElementById('pv_' + key);
+    if (span) span.textContent = input.value;
+};
+
+// 数字输入框 → 滑块同步（手动输入，自动收敛到 min/max）
+App.comfyLib._pvNumSync = function(input) {
+    var key = input.getAttribute('data-key');
+    var rng = document.querySelector('.cwl-pv[data-key="' + key + '"]');
+    if (rng) {
+        var v = parseFloat(input.value);
+        if (isNaN(v)) { input.value = rng.value; return; }
+        var mn = parseFloat(rng.min), mx = parseFloat(rng.max);
+        if (!isNaN(mn) && !isNaN(mx)) v = Math.max(mn, Math.min(mx, v));
+        input.value = v;
+        rng.value = v;
+    }
+    var span = document.getElementById('pv_' + key);
+    if (span) span.textContent = input.value;
+};
+
+// 表单尺寸快捷：设置 width/height 参数（absolute=true 直接使用该分辨率，否则按比例换算长边）
+App.comfyLib._formSetSize = function(rw, rh, absolute) {
+    var w, h;
+    if (absolute) { w = rw; h = rh; }
+    else {
+        var mt = CWL_SIZE_PRESETS[this._modelType] || CWL_SIZE_PRESETS.unknown;
+        var base = mt.base;
+        if (rw >= rh) { w = base; h = Math.round(base * rh / rw); }
+        else { h = base; w = Math.round(base * rw / rh); }
+        var snap = function(n) { return Math.max(64, Math.round(n / 8) * 8); };
+        w = snap(w); h = snap(h);
+    }
+    var keys = [];
+    var params = [];
+    try { params = JSON.parse((this._activePreset || {}).params_json || '[]'); } catch(e) {}
+    params.forEach(function(p) {
+        if (p.field === 'width') keys.push(['width', w]);
+        if (p.field === 'height') keys.push(['height', h]);
+    });
+    keys.forEach(function(k) {
+        var rng = document.querySelector('.cwl-pv[data-key$=".' + k[0] + '"]');
+        var num = document.querySelector('.cwl-pv-num[data-key$=".' + k[0] + '"]');
+        if (rng) rng.value = k[1];
+        if (num) num.value = k[1];
+        var span = document.getElementById('pv_' + rng.getAttribute('data-key'));
+        if (span) span.textContent = k[1];
+    });
+    App.showToast('已设置尺寸 ' + w + '×' + h, 'success');
 };
 
 // ============ 参数配置编辑器（编辑模式） ============
@@ -673,6 +772,7 @@ App.comfyLib.openParamEditor = function() {
           '<div class="modal-body" style="flex:1;overflow-y:auto;padding:12px 16px;">' +
             '<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">系统已自动分析当前工作流的可调参数（' + '，勾选要暴露的项，自定义名称与组件类型，保存后切换为锁定用户模式</div>' +
             '<div style="margin-bottom:10px;"><label style="font-size:11px;color:var(--text-muted);">配置名称</label><input id="cpeName" placeholder="如：基础出图参数" style="width:100%;font-size:12px;padding:6px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);margin-top:4px;"></div>' +
+            '<div id="cpeSizeHelper"></div>' +
             '<div id="cpeList" style="display:flex;flex-direction:column;gap:8px;">加载中...</div>' +
           '</div>' +
           '<div class="modal-footer" style="padding:10px 16px;border-top:1px solid var(--border-color);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;">' +
@@ -697,6 +797,8 @@ App.comfyLib.openParamEditor = function() {
     if (this._activePreset) {
         try { JSON.parse(this._activePreset.params_json || '[]').forEach(function(p) { selected[p.key] = p; }); } catch(e) {}
     }
+    // 尺寸助手：按模型类型智能匹配宽高（横竖/比例/分辨率预设）
+    this._cpeRenderSizeHelper();
     var html = '';
     this._candidates.forEach(function(c) {
         var isSel = !!selected[c.key];
@@ -726,6 +828,77 @@ App.comfyLib.openParamEditor = function() {
         '</div>';
     });
     listEl.innerHTML = html;
+};
+
+// 编辑器尺寸助手：模型类型徽标 + 横竖切换 + 常用比例 + 分辨率预设
+App.comfyLib._cpeRenderSizeHelper = function() {
+    var helper = document.getElementById('cpeSizeHelper');
+    if (!helper) return;
+    var wC = null, hC = null;
+    this._candidates.forEach(function(c) { if (c.field === 'width') wC = c; if (c.field === 'height') hC = c; });
+    if (!wC || !hC) { helper.style.display = 'none'; return; }
+    var mt = CWL_SIZE_PRESETS[this._modelType] || CWL_SIZE_PRESETS.unknown;
+    var html = '<div style="border:1px dashed #6366f1;border-radius:8px;padding:8px 10px;margin-bottom:10px;">' +
+      '<div style="font-size:11px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">📐 尺寸助手 <span style="font-weight:400;font-size:10px;color:var(--text-muted);">按模型智能匹配</span>' +
+        '<span id="cpeModelBadge" style="font-size:9px;padding:2px 7px;border-radius:8px;background:rgba(99,102,241,0.12);color:var(--primary);font-weight:600;">' + App._escape(mt.label) + '</span>' +
+        '<span id="cpeSizeVal" style="font-size:10px;color:var(--text-muted);font-weight:400;">当前 ' + (wC.value || '?') + '×' + (hC.value || '?') + '</span>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">' +
+        '<button type="button" class="cwl-tree-btn" style="border-color:#6366f1;color:var(--primary);" onclick="App.comfyLib._cpeSetSize(1,1)">□ 方形</button>' +
+        '<button type="button" class="cwl-tree-btn" style="border-color:#6366f1;color:var(--primary);" onclick="App.comfyLib._cpeSetSize(4,3)">▭ 横屏</button>' +
+        '<button type="button" class="cwl-tree-btn" style="border-color:#6366f1;color:var(--primary);" onclick="App.comfyLib._cpeSetSize(3,4)">▯ 竖屏</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">';
+    CWL_RATIOS.forEach(function(r) {
+        html += '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._cpeSetSize(' + r.w + ',' + r.h + ')">' + r.label + '</button>';
+    });
+    html += '</div><div style="display:flex;gap:4px;flex-wrap:wrap;">';
+    mt.presets.forEach(function(sz) {
+        html += '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._cpeSetSize(' + sz[0] + ',' + sz[1] + ',true)">' + sz[0] + '×' + sz[1] + '</button>';
+    });
+    html += '</div></div>';
+    helper.innerHTML = html;
+    helper.style.display = 'block';
+};
+
+// 编辑器尺寸助手：应用尺寸（absolute=true 直接使用；否则按比例以模型长边为基准换算，8 对齐）
+App.comfyLib._cpeSetSize = function(rw, rh, absolute) {
+    var w, h;
+    if (absolute) { w = rw; h = rh; }
+    else {
+        var mt = CWL_SIZE_PRESETS[this._modelType] || CWL_SIZE_PRESETS.unknown;
+        var base = mt.base;
+        if (rw >= rh) { w = base; h = Math.round(base * rh / rw); }
+        else { h = base; w = Math.round(base * rw / rh); }
+        var snap = function(n) { return Math.max(64, Math.round(n / 8) * 8); };
+        w = snap(w); h = snap(h);
+    }
+    var self = this;
+    // 更新候选 value（保存时作为默认值）
+    this._candidates.forEach(function(c) {
+        if (c.field === 'width') c.value = w;
+        if (c.field === 'height') c.value = h;
+    });
+    // 自动勾选 width/height
+    ['width', 'height'].forEach(function(f) {
+        var key = null;
+        self._candidates.forEach(function(c) { if (c.field === f) key = c.key; });
+        if (!key) return;
+        var cb = document.querySelector('.cpe-sel[data-key="' + key + '"]');
+        if (cb && !cb.checked) { cb.checked = true; self._toggleCandidate(cb); }
+    });
+    // 更新候选行 code 显示
+    this._candidates.forEach(function(c) {
+        if (c.field !== 'width' && c.field !== 'height') return;
+        var cb = document.querySelector('.cpe-sel[data-key="' + c.key + '"]');
+        var row = cb ? cb.closest('div') : null;
+        if (row) {
+            var codeEl = row.querySelector('code');
+            if (codeEl) codeEl.textContent = c.key + ' = ' + c.value;
+        }
+    });
+    var valEl = document.getElementById('cpeSizeVal');
+    if (valEl) valEl.textContent = '当前 ' + w + '×' + h;
 };
 
 App.comfyLib._toggleCandidate = function(cb) {
