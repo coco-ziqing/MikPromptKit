@@ -1599,10 +1599,18 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
         field = workflow_cfg.get("prompt_field", "text")
         if node_id in workflow and field in workflow[node_id]["inputs"]:
             workflow[node_id]["inputs"][field] = prompt_text
-        # 随机 seed：每次生成结果不同（找 KSampler 节点）
+        # 随机 seed：每次生成结果不同
+        # 覆盖所有 seed 类字段（KSampler.seed / RandomNoise.noise_seed / SamplerCustomAdvanced.seed 等），
+        # 避免 FLUX 等工作流 seed 固定 → 相同提示词命中 ComfyUI 结果缓存 → 无输出 → 超时失败
         for _nid, _node in workflow.items():
-            if _node.get("class_type") == "KSampler" and "seed" in _node.get("inputs", {}):
-                _node["inputs"]["seed"] = random.randint(0, 2**53 - 1)
+            if not isinstance(_node, dict):
+                continue
+            _ins = _node.get("inputs")
+            if not isinstance(_ins, dict):
+                continue
+            for _k, _v in _ins.items():
+                if _k in ("seed", "noise_seed") and isinstance(_v, (int, float)) and not isinstance(_v, bool):
+                    _ins[_k] = random.randint(0, 2**53 - 1)
         from database import get_db
         from PIL import Image as PILImage
         import os
@@ -1642,6 +1650,11 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
                     if out_imgs:
                         print(f"[ComfyUI] 获取到 {len(out_imgs)} 张输出")
                         break
+                    # 任务已结束但无输出：ComfyUI 结果缓存命中（相同提示词+相同 seed）或节点静默失败，
+                    # 立即返回明确错误，避免干等 600s
+                    st = hist[pid].get("status", {}) or {}
+                    if st.get("completed"):
+                        return {"ok": False, "error": "ComfyUI 任务已结束但未产出图片（相同提示词+相同种子命中结果缓存，请更换提示词或种子重试）"}
             except Exception as e:
                 print(f"[ComfyUI] 轮询 {sec}s: {e}")
 
