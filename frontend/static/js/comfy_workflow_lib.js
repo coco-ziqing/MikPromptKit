@@ -903,6 +903,7 @@ App.comfyLib._openCardGroupPicker = function() {
               '</div>' +
             '</div>' +
             '<div style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;"><i class="bi bi-folder2-open"></i> 目标分组 <span id="cwlGroupSel" style="font-size:11px;color:var(--primary);font-weight:600;"></span></div>' +
+            '<div id="cwlRecentGroups" style="border:1px solid var(--border-color);border-radius:10px;padding:8px;display:none;"></div>' +
             '<div id="cwlGroupList" style="border:1px solid var(--border-color);border-radius:10px;padding:6px;max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;">加载分组...</div>' +
           '</div>' +
           '<div class="modal-footer" style="padding:10px 16px;border-top:1px solid var(--border-color);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;">' +
@@ -935,6 +936,24 @@ App.comfyLib._openCardGroupPicker = function() {
         }
         var last = parseInt(localStorage.getItem('cwl_last_group') || '0', 10) || 0;
         var lastId = 0;
+        // 最近分组：按创建时间倒序前 5 个（独立区块，不影响树状结构）
+        var recentEl = document.getElementById('cwlRecentGroups');
+        var recent = groups.filter(function(g) { return g.created_at; })
+            .sort(function(a, b) { return String(b.created_at || '').localeCompare(String(a.created_at || '')); })
+            .slice(0, 5);
+        if (recent.length > 0 && recentEl) {
+            var rh = '<div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-bottom:6px;"><i class="bi bi-clock-history"></i> 最近分组</div><div style="display:flex;flex-wrap:wrap;gap:6px;">';
+            recent.forEach(function(g) {
+                var isLast = (last && g.id === last);
+                rh += '<span class="cwl-rgrp' + (isLast ? ' cwl-grp-sel' : '') + '" data-id="' + g.id + '" data-name="' + App._escape(g.name || '') + '" onclick="App.comfyLib._pickGroup(' + g.id + ', this)" style="cursor:pointer;font-size:11px;padding:4px 10px;border-radius:14px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-main);display:inline-flex;align-items:center;gap:4px;">' +
+                  '<span style="font-size:12px;">📌</span>' + App._escape(g.name || '未命名') +
+                '</span>';
+                if (isLast) lastId = g.id;
+            });
+            rh += '</div>';
+            recentEl.innerHTML = rh;
+            recentEl.style.display = 'block';
+        }
         var html = '';
         groups.forEach(function(g) {
             var depth = g._depth || 0;
@@ -953,15 +972,29 @@ App.comfyLib._openCardGroupPicker = function() {
             if (isLast) lastId = g.id;
         });
         list.innerHTML = html;
-        if (lastId) self._pickGroup(lastId, list.querySelector('.cwl-grp-sel'));
+        // 自动定位到上次选择的分组：高亮 + 滚动到可视区（树中该项）
+        if (lastId) {
+            var treeEl = list.querySelector('.cwl-grp[data-id="' + lastId + '"]');
+            var recentEl2 = recentEl ? recentEl.querySelector('.cwl-rgrp[data-id="' + lastId + '"]') : null;
+            self._pickGroup(lastId, treeEl || recentEl2);
+            if (treeEl) setTimeout(function() { try { treeEl.scrollIntoView({ block: 'center', behavior: 'auto' }); } catch(e) {} }, 60);
+        }
     });
 };
 
-// 选择分组（单选高亮）
+// 选择分组（单选高亮，树 + 最近分组同步）
 App.comfyLib._pickGroup = function(id, el) {
-    var all = document.querySelectorAll('#cwlGroupList .cwl-grp');
+    var all = document.querySelectorAll('#cwlGroupList .cwl-grp, #cwlRecentGroups .cwl-rgrp');
     for (var i = 0; i < all.length; i++) all[i].classList.remove('cwl-grp-sel');
     if (el) el.classList.add('cwl-grp-sel');
+    // 从最近分组选择时，同步高亮树中对应项（反之亦然）
+    if (el && el.classList.contains('cwl-rgrp')) {
+        var treeEl = document.querySelector('#cwlGroupList .cwl-grp[data-id="' + id + '"]');
+        if (treeEl) treeEl.classList.add('cwl-grp-sel');
+    } else if (el) {
+        var rEl = document.querySelector('#cwlRecentGroups .cwl-rgrp[data-id="' + id + '"]');
+        if (rEl) rEl.classList.add('cwl-grp-sel');
+    }
     this._selectedGroupId = id;
     var selHint = document.getElementById('cwlGroupSel');
     if (selHint && el) selHint.textContent = '「' + (el.getAttribute('data-name') || '') + '」';

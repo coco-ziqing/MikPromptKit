@@ -1510,27 +1510,39 @@ def save_generated_as_card(data: SaveCardRequest):
     if not os.path.exists(src):
         return {"ok": False, "error": f"生成文件不存在: {data.output_file}"}
     db = get_db()
-    # 1. 生成缩略图（240x160 居中裁剪）
-    thumb_name = "ai_thumb_" + uuid.uuid4().hex[:12] + ".jpg"
+    # 1. 缩略图：优先复用生成流程已建的 {原图basename}.jpg（_run_comfyui 已生成），
+    #    避免同一生成图在图片库出现两张；不存在时才创建 ai_thumb_*
     os.makedirs(THUMB_DIR, exist_ok=True)
+    src_base = os.path.splitext(os.path.basename(src))[0]
+    thumb_name = src_base + ".jpg"
     tp = os.path.join(THUMB_DIR, thumb_name)
     iw = ih = 0
-    try:
-        _im = Image.open(src)
-        iw, ih = _im.size
-        sw, sh = _im.size
-        tr = 240.0 / 160.0
-        sr = sw / sh
-        if sr > tr:
-            nw = int(sh * tr); ox = (sw - nw) // 2; _im = _im.crop((ox, 0, ox + nw, sh))
-        else:
-            nh = int(sw / tr); oy = (sh - nh) // 2; _im = _im.crop((0, oy, sw, oy + nh))
-        _im = _im.resize((240, 160), Image.LANCZOS)
-        if _im.mode in ("RGBA", "P"):
-            _im = _im.convert("RGB")
-        _im.save(tp, "JPEG", quality=85)
-    except Exception:
-        shutil.copy(src, tp)
+    if not os.path.exists(tp):
+        thumb_name = "ai_thumb_" + uuid.uuid4().hex[:12] + ".jpg"
+        tp = os.path.join(THUMB_DIR, thumb_name)
+        try:
+            _im = Image.open(src)
+            iw, ih = _im.size
+            sw, sh = _im.size
+            tr = 240.0 / 160.0
+            sr = sw / sh
+            if sr > tr:
+                nw = int(sh * tr); ox = (sw - nw) // 2; _im = _im.crop((ox, 0, ox + nw, sh))
+            else:
+                nh = int(sw / tr); oy = (sh - nh) // 2; _im = _im.crop((0, oy, sw, oy + nh))
+            _im = _im.resize((240, 160), Image.LANCZOS)
+            if _im.mode in ("RGBA", "P"):
+                _im = _im.convert("RGB")
+            _im.save(tp, "JPEG", quality=85)
+        except Exception:
+            shutil.copy(src, tp)
+    else:
+        # 复用已有缩略图，仅读取原图尺寸
+        try:
+            _im = Image.open(src)
+            iw, ih = _im.size
+        except Exception:
+            pass
     # 2. 创建词卡（word_card）
     content = data.prompt_text or ""
     if not content:
