@@ -264,6 +264,32 @@ Object.assign(App, {
               '<div class="modal-body" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:12px;">' +
                 // 选中卡预览
                 '<div id="bgenPreview" style="border:1px solid var(--border-color);border-radius:10px;padding:8px 10px;max-height:96px;overflow-y:auto;"></div>' +
+                // 生成引擎切换
+                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">' +
+                  '<span style="font-size:12px;font-weight:600;">生成引擎</span>' +
+                  '<span style="display:flex;gap:2px;border:1px solid var(--border-color);border-radius:8px;padding:2px;">' +
+                    '<button id="bgenEngineComfy" class="cwl-logview-btn active" onclick="App._batchEngine(\'comfyui\')" title="本地 ComfyUI 工作流生成"><i class="bi bi-cpu"></i> ComfyUI</button>' +
+                    '<button id="bgenEngineDreamina" class="cwl-logview-btn" onclick="App._batchEngine(\'dreamina\')" title="即梦 AI 在线生成"><i class="bi bi-stars"></i> 即梦</button>' +
+                  '</span>' +
+                  '<span id="bgenDreaminaStatus" style="font-size:10px;color:var(--text-muted);"></span>' +
+                '</div>' +
+                // 即梦参数区
+                '<div id="bgenDreaminaArea" style="display:none;border:1px solid #6366f1;border-radius:10px;padding:8px 10px;margin-bottom:10px;">' +
+                  '<div style="font-size:12px;font-weight:600;margin-bottom:6px;"><i class="bi bi-stars"></i> 即梦参数 <span style="font-size:10px;color:var(--text-muted);font-weight:400;">在线生成，秒级出图</span></div>' +
+                  '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">' +
+                    '<label style="font-size:10px;color:var(--text-muted);">模型版本 <select id="bgenDreaminaModel" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
+                      '<option value="3.0">3.0</option><option value="3.1">3.1</option><option value="4.0">4.0</option><option value="4.1">4.1</option><option value="4.5">4.5</option><option value="4.6">4.6</option><option value="4.7">4.7</option><option value="5.0" selected>5.0</option><option value="5.0Pro">5.0Pro</option>' +
+                    '</select></label>' +
+                    '<label style="font-size:10px;color:var(--text-muted);">比例 <select id="bgenDreaminaRatio" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
+                      '<option value="21:9">21:9</option><option value="16:9">16:9</option><option value="3:2">3:2</option><option value="4:3">4:3</option><option value="1:1" selected>1:1</option><option value="3:4">3:4</option><option value="2:3">2:3</option><option value="9:16">9:16</option>' +
+                    '</select></label>' +
+                    '<label style="font-size:10px;color:var(--text-muted);">分辨率 <select id="bgenDreaminaRes" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
+                      '<option value="1k">1k</option><option value="2k" selected>2k</option><option value="4k">4k</option>' +
+                    '</select></label>' +
+                  '</div>' +
+                '</div>' +
+                // ComfyUI 模式区域（工作流选择 + 参数预设）
+                '<div id="bgenComfyArea">' +
                 // 工作流选择（可视化双视图：缩略图卡片 / 详细信息）
                 '<div style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;"><i class="bi bi-diagram-3"></i> 生成工作流 <span id="bgenWfHint" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span>' +
                   '<span style="margin-left:auto;display:flex;gap:2px;border:1px solid var(--border-color);border-radius:8px;padding:2px;">' +
@@ -303,6 +329,7 @@ Object.assign(App, {
                   '<div id="bgenSizeQuick" style="display:none;border:1px dashed #6366f1;border-radius:8px;padding:8px 10px;margin-bottom:8px;"></div>' +
                   '<div id="bgenPresetForm" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;"></div>' +
                 '</div>' +
+                '</div>' +   // bgenComfyArea 结束
                 // 进度与明细
                 '<div id="bgenProgressArea" style="display:none;">' +
                   '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">' +
@@ -401,6 +428,45 @@ Object.assign(App, {
         var html = lines.map(function(l) { return '· ' + App._escape(l); }).join('<br>');
         if ((self._batchIds || []).length > 3) html += '<br><span style="color:var(--text-muted);">…等共 ' + self._batchIds.length + ' 条（每条按各自模块预设组合）</span>';
         el.innerHTML = html;
+    },
+
+    // 生成引擎切换（ComfyUI / 即梦）
+    _batchEngine(mode) {
+        this._batchEngineMode = mode;
+        var cb = document.getElementById('bgenEngineComfy');
+        var db2 = document.getElementById('bgenEngineDreamina');
+        if (cb) cb.className = 'cwl-logview-btn' + (mode === 'comfyui' ? ' active' : '');
+        if (db2) db2.className = 'cwl-logview-btn' + (mode === 'dreamina' ? ' active' : '');
+        var comfyArea = document.getElementById('bgenComfyArea');
+        var dreaminaArea = document.getElementById('bgenDreaminaArea');
+        if (comfyArea) comfyArea.style.display = mode === 'comfyui' ? 'block' : 'none';
+        if (dreaminaArea) dreaminaArea.style.display = mode === 'dreamina' ? 'block' : 'none';
+        if (mode === 'dreamina') this._initDreaminaStatus();
+        // 保存设置
+        this._saveBatchSettings();
+    },
+
+    // 即梦状态检测（CLI 可用 + 登录）
+    async _initDreaminaStatus() {
+        var st = document.getElementById('bgenDreaminaStatus');
+        if (!st) return;
+        try {
+            var d = await this.fetchJSON('/api/v2/dreamina/status');
+            if (!d || !d.ok) throw new Error('查询失败');
+            if (d.logged_in) {
+                st.textContent = '● 已登录' + (d.vip_level ? ' · ' + d.vip_level : '');
+                st.style.color = '#10b981';
+            } else if (d.cli_available) {
+                st.textContent = '○ 未登录（请先在终端执行 dreamina login）';
+                st.style.color = '#f59e0b';
+            } else {
+                st.textContent = '○ 即梦 CLI 未安装';
+                st.style.color = '#ef4444';
+            }
+        } catch(e) {
+            st.textContent = '○ 状态检测失败';
+            st.style.color = '#94a3b8';
+        }
     },
 
     // Ollama 状态检测 + 模型列表 + 恢复配置
@@ -600,15 +666,19 @@ Object.assign(App, {
         try { return JSON.parse(localStorage.getItem('cwl_batch_settings') || 'null') || null; } catch(e) { return null; }
     },
 
-    // 保存批量设置（工作流/参数预设/后缀/开关/参数值）
+    // 保存批量设置（引擎/工作流/参数预设/后缀/开关/参数值/即梦参数）
     _saveBatchSettings() {
         try {
             var s = {
+                engine: this._batchEngineMode || 'comfyui',
                 workflow_id: this._batchWfId || '',
                 preset_id: this._batchPresetId || 0,
                 suffix: (document.getElementById('bgenSuffix') || {}).value || '',
                 use_module_preset: (document.getElementById('bgenUsePreset') || {}).checked ? 1 : 0,
-                param_values: this._collectBatchParams()
+                param_values: this._collectBatchParams(),
+                dreamina_model: (document.getElementById('bgenDreaminaModel') || {}).value || '5.0',
+                dreamina_ratio: (document.getElementById('bgenDreaminaRatio') || {}).value || '1:1',
+                dreamina_res: (document.getElementById('bgenDreaminaRes') || {}).value || '2k'
             };
             localStorage.setItem('cwl_batch_settings', JSON.stringify(s));
         } catch(e) {}
@@ -625,9 +695,19 @@ Object.assign(App, {
         if (s.workflow_id) this._batchWfId = s.workflow_id;
         this._batchSavedParams = s.param_values || null;
         if (s.preset_id) this._batchRestorePresetId = s.preset_id;
+        if (s.dreamina_model) document.getElementById('bgenDreaminaModel').value = s.dreamina_model;
+        if (s.dreamina_ratio) document.getElementById('bgenDreaminaRatio').value = s.dreamina_ratio;
+        if (s.dreamina_res) document.getElementById('bgenDreaminaRes').value = s.dreamina_res;
         var vm = null;
         try { vm = localStorage.getItem('cwl_batch_wf_view'); } catch(e) {}
         this._batchViewMode = vm === 'list' ? 'list' : 'grid';
+        // 恢复引擎选择
+        if (s.engine === 'dreamina') {
+            this._batchEngineMode = 'dreamina';
+            setTimeout(function() { App._batchEngine('dreamina'); }, 50);
+        } else {
+            this._batchEngineMode = 'comfyui';
+        }
     },
 
     async _batchWfSelected(wfId) {
@@ -866,13 +946,16 @@ Object.assign(App, {
         var self = this;
         var startBtn = document.getElementById('bgenStartBtn');
         if (!startBtn) return;
+        var engine = this._batchEngineMode || 'comfyui';
         var wfId = this._batchWfId || '';
-        if (!wfId) { this.showToast('请先选择生成工作流', 'warning'); return; }
         if (this._batchGenRunning) { this.showToast('正在生成中，请稍候', 'warning'); return; }
-        var cfg = await this.fetchJSON('/api/v2/comfyui/config');
-        if (!cfg || !cfg.config || !cfg.config.enabled) {
-            this.showToast('ComfyUI 未启用，请先在「工作流库」中启用', 'warning');
-            return;
+        if (engine === 'comfyui') {
+            if (!wfId) { this.showToast('请先选择生成工作流', 'warning'); return; }
+            var cfg = await this.fetchJSON('/api/v2/comfyui/config');
+            if (!cfg || !cfg.config || !cfg.config.enabled) {
+                this.showToast('ComfyUI 未启用，请先在「工作流库」中启用', 'warning');
+                return;
+            }
         }
         // 展示进度区
         var pa = document.getElementById('bgenProgressArea');
@@ -897,7 +980,11 @@ Object.assign(App, {
             param_values: paramValues,
             style_suffix: (document.getElementById('bgenSuffix') || {}).value,
             use_module_preset: (document.getElementById('bgenUsePreset') || {}).checked ? 1 : 0,
-            prompt_overrides: this._batchPromptOverrides || {}
+            prompt_overrides: this._batchPromptOverrides || {},
+            engine: engine,
+            model_version: (document.getElementById('bgenDreaminaModel') || {}).value || '5.0',
+            ratio: (document.getElementById('bgenDreaminaRatio') || {}).value || '1:1',
+            resolution_type: (document.getElementById('bgenDreaminaRes') || {}).value || '2k'
         };
         try {
             var d = await this.fetchJSON('/api/v2/comfyui/batch-tasks', {

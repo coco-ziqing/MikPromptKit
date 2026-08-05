@@ -59,6 +59,7 @@ from api.stats import router as stats_router
 from api.templates import router as templates_router
 from api.workflow import router as workflow_router
 from api.comfyui import router as comfyui_router
+from api.dreamina import router as dreamina_router
 from api.ocr import router as ocr_router
 from api.cards import router as cards_v4_router
 from api.composer_v3 import router as composer_v3_router
@@ -485,6 +486,7 @@ app.include_router(stats_router)
 app.include_router(templates_router)
 app.include_router(workflow_router)
 app.include_router(comfyui_router)
+app.include_router(dreamina_router)
 app.include_router(ocr_router)
 app.include_router(cards_v4_router)
 app.include_router(composer_v3_router)

@@ -1493,6 +1493,13 @@ class BatchTaskCreate(BaseModel):
     style_suffix: str = ""
     use_module_preset: int = 1
     prompt_overrides: dict = {}   # {prompt_id: 优化后提示词}（Ollama 优化结果覆盖）
+    engine: str = "comfyui"      # comfyui / dreamina
+    # dreamina 引擎参数
+    model_version: str = "5.0"
+    ratio: str = "1:1"
+    resolution_type: str = "2k"
+    width: int = 0
+    height: int = 0
 
 
 def _ensure_batch_task_table():
@@ -1516,14 +1523,27 @@ def _ensure_batch_task_table():
         preset_id INTEGER DEFAULT 0,
         param_values TEXT DEFAULT '{}',
         prompt_overrides TEXT DEFAULT '{}',
+        engine TEXT DEFAULT 'comfyui',
+        model_version TEXT DEFAULT '5.0',
+        ratio TEXT DEFAULT '1:1',
+        resolution_type TEXT DEFAULT '2k',
+        width INTEGER DEFAULT 0,
+        height INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now','localtime')),
         started_at TEXT DEFAULT '',
         finished_at TEXT DEFAULT ''
     )""")
     # 兼容旧表：补列
     cols = [r["name"] for r in db.execute("PRAGMA table_info(comfyui_batch_tasks)").fetchall()]
-    if "prompt_overrides" not in cols:
-        db.execute("ALTER TABLE comfyui_batch_tasks ADD COLUMN prompt_overrides TEXT DEFAULT '{}'")
+    for _col, _ddl in [("prompt_overrides", "prompt_overrides TEXT DEFAULT '{}'"),
+                       ("engine", "engine TEXT DEFAULT 'comfyui'"),
+                       ("model_version", "model_version TEXT DEFAULT '5.0'"),
+                       ("ratio", "ratio TEXT DEFAULT '1:1'"),
+                       ("resolution_type", "resolution_type TEXT DEFAULT '2k'"),
+                       ("width", "width INTEGER DEFAULT 0"),
+                       ("height", "height INTEGER DEFAULT 0")]:
+        if _col not in cols:
+            db.execute(f"ALTER TABLE comfyui_batch_tasks ADD COLUMN {_ddl}")
     safe_commit()
 
 
@@ -1553,16 +1573,21 @@ def _batch_worker(task_id: int):
                 return
             prompt_ids = json.loads(d["prompt_ids"] or "[]")
             total = len(prompt_ids)
+            engine = d.get("engine") or "comfyui"
             cfg = _get_config()
-            server_url = cfg.get("server_url", "").rstrip("/")
-            if not server_url:
-                _batch_update(task_id, status="error", error="未配置服务器地址", finished_at=_now_str())
-                return
-            workflow_cfg, wf_err = _find_workflow_v2(d.get("workflow_id") or "")
-            if not workflow_cfg:
-                _batch_update(task_id, status="error", error=wf_err or "未找到工作流", finished_at=_now_str())
-                return
-            workflow_template = workflow_cfg["workflow_json"]
+            server_url = ""
+            workflow_cfg = None
+            workflow_template = None
+            if engine == "comfyui":
+                server_url = cfg.get("server_url", "").rstrip("/")
+                if not server_url:
+                    _batch_update(task_id, status="error", error="未配置服务器地址", finished_at=_now_str())
+                    return
+                workflow_cfg, wf_err = _find_workflow_v2(d.get("workflow_id") or "")
+                if not workflow_cfg:
+                    _batch_update(task_id, status="error", error=wf_err or "未找到工作流", finished_at=_now_str())
+                    return
+                workflow_template = workflow_cfg["workflow_json"]
             presets = _get_module_presets()
             preset_params = []
             if d.get("preset_id"):
@@ -1576,7 +1601,7 @@ def _batch_worker(task_id: int):
             user_size = any(str(k).endswith(".width") or str(k).endswith(".height") for k in (param_values or {}))
             suffix = d.get("style_suffix") if d.get("style_suffix") is not None else DEFAULT_STYLE_SUFFIX
             use_preset = d.get("use_module_preset", 1) != 0
-            model_type = _detect_model_type(workflow_template)
+            model_type = _detect_model_type(workflow_template) if workflow_template else ""
             results = []
             success = 0
             failed = 0
@@ -1614,21 +1639,43 @@ def _batch_worker(task_id: int):
                     if pm.get("enabled") and pm.get("preset"):
                         preset_text = pm["preset"]
                 final_prompt = _compose_prompt(preset_text, card_text, suffix)
-                wf = copy.deepcopy(workflow_template)
-                if preset_params and param_values:
-                    _apply_params(wf, preset_params, param_values)
-                if model_type == "sd15" and not user_size:
-                    for _nid, _node in wf.items():
-                        if _node.get("class_type") == "EmptyLatentImage":
-                            _ins = _node.get("inputs", {}) or {}
-                            _w, _h = _ins.get("width"), _ins.get("height")
-                            if isinstance(_w, (int, float)) and isinstance(_h, (int, float)) and (_w >= 1024 or _h >= 1024):
-                                _ins["width"] = 512
-                                _ins["height"] = 512
-                                break
                 _batch_update(task_id, current_index=idx + 1, current_prompt=final_prompt[:80])
                 try:
-                    result = asyncio.run(_run_comfyui(server_url, wf, workflow_cfg, final_prompt, pid))
+                    if engine == "dreamina":
+                        # 即梦引擎：CLI 文生图 → 下载 → 缩略图落库
+                        from api.dreamina import dreamina_text2image, save_generated_image
+                        dr = dreamina_text2image(final_prompt,
+                                                 d.get("model_version") or "5.0",
+                                                 d.get("ratio") or "1:1",
+                                                 d.get("resolution_type") or "2k",
+                                                 int(d.get("width") or 0), int(d.get("height") or 0), 1)
+                        if not dr.get("ok"):
+                            result = {"ok": False, "error": dr.get("error", "即梦生成失败")}
+                        else:
+                            with httpx.Client(timeout=120) as _cl:
+                                _rr = _cl.get(dr["image_url"])
+                                if _rr.status_code != 200:
+                                    result = {"ok": False, "error": f"图片下载失败 HTTP {_rr.status_code}"}
+                                else:
+                                    saved = save_generated_image(_rr.content, pid, src_table, "dreamina", dr.get("submit_id", ""))
+                                    if saved.get("ok"):
+                                        result = {"ok": True, "thumbnail": saved["thumbnail"], "thumbnail_url": saved["thumbnail_url"]}
+                                    else:
+                                        result = {"ok": False, "error": saved.get("error", "落库失败")}
+                    else:
+                        wf = copy.deepcopy(workflow_template)
+                        if preset_params and param_values:
+                            _apply_params(wf, preset_params, param_values)
+                        if model_type == "sd15" and not user_size:
+                            for _nid, _node in wf.items():
+                                if _node.get("class_type") == "EmptyLatentImage":
+                                    _ins = _node.get("inputs", {}) or {}
+                                    _w, _h = _ins.get("width"), _ins.get("height")
+                                    if isinstance(_w, (int, float)) and isinstance(_h, (int, float)) and (_w >= 1024 or _h >= 1024):
+                                        _ins["width"] = 512
+                                        _ins["height"] = 512
+                                        break
+                        result = asyncio.run(_run_comfyui(server_url, wf, workflow_cfg, final_prompt, pid))
                     if result.get("ok"):
                         success += 1
                     else:
@@ -1668,18 +1715,28 @@ def create_batch_task(data: BatchTaskCreate):
     if not cfg.get("enabled") or not cfg.get("server_url"):
         return {"ok": False, "error": "ComfyUI 未启用或服务器地址未配置"}
     db = get_db()
-    workflow_cfg, wf_err = _find_workflow_v2(data.workflow_id)
-    wf_name = workflow_cfg.get("name", "") if workflow_cfg else ""
-    model_type = _detect_model_type(workflow_cfg["workflow_json"]) if workflow_cfg else ""
+    engine = data.engine or "comfyui"
+    wf_name = ""
+    model_type = ""
+    if engine == "comfyui":
+        workflow_cfg, wf_err = _find_workflow_v2(data.workflow_id)
+        if workflow_cfg:
+            wf_name = workflow_cfg.get("name", "") or ""
+            model_type = _detect_model_type(workflow_cfg["workflow_json"])
+        elif not data.workflow_id:
+            return {"ok": False, "error": "请先选择生成工作流"}
     cur = db.execute(
         """INSERT INTO comfyui_batch_tasks
            (workflow_id, workflow_name, model_type, prompt_ids, total, status,
-            style_suffix, use_module_preset, preset_id, param_values, prompt_overrides)
-           VALUES (?,?,?,?,?,'queued',?,?,?,?,?)""",
+            style_suffix, use_module_preset, preset_id, param_values, prompt_overrides,
+            engine, model_version, ratio, resolution_type, width, height)
+           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?)""",
         [data.workflow_id, wf_name, model_type, json.dumps(data.prompt_ids), len(data.prompt_ids),
          data.style_suffix, data.use_module_preset, data.preset_id,
          json.dumps(data.param_values or {}, ensure_ascii=False),
-         json.dumps(data.prompt_overrides or {}, ensure_ascii=False)])
+         json.dumps(data.prompt_overrides or {}, ensure_ascii=False),
+         engine, data.model_version or "5.0", data.ratio or "1:1",
+         data.resolution_type or "2k", data.width or 0, data.height or 0])
     safe_commit()
     task_id = cur.lastrowid
     threading.Thread(target=_batch_worker, args=(task_id,), daemon=True).start()
@@ -1762,12 +1819,15 @@ def retry_batch_failed(task_id: int):
     cur = db.execute(
         """INSERT INTO comfyui_batch_tasks
            (workflow_id, workflow_name, model_type, prompt_ids, total, status,
-            style_suffix, use_module_preset, preset_id, param_values, prompt_overrides)
-           VALUES (?,?,?,?,?,'queued',?,?,?,?,?)""",
+            style_suffix, use_module_preset, preset_id, param_values, prompt_overrides,
+            engine, model_version, ratio, resolution_type, width, height)
+           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?)""",
         [d["workflow_id"], d["workflow_name"] + " (重试)", d["model_type"],
          json.dumps(failed_ids), len(failed_ids),
          d["style_suffix"], d["use_module_preset"], d["preset_id"], d["param_values"],
-         d.get("prompt_overrides") or "{}"])
+         d.get("prompt_overrides") or "{}",
+         d.get("engine") or "comfyui", d.get("model_version") or "5.0", d.get("ratio") or "1:1",
+         d.get("resolution_type") or "2k", int(d.get("width") or 0), int(d.get("height") or 0)])
     safe_commit()
     new_id = cur.lastrowid
     threading.Thread(target=_batch_worker, args=(new_id,), daemon=True).start()
