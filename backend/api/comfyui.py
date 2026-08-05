@@ -1426,7 +1426,12 @@ async def batch_generate_thumbnail(data: BatchGenerateRequest):
         yield f"data: {json.dumps({'start': True, 'total': total, 'workflow_name': wf_name, 'model_type': model_type}, ensure_ascii=False)}\n\n"
 
         for idx, pid in enumerate(data.prompt_ids):
+            # 兼容两种数据源：prompts（旧词条）与 word_card（新词卡）
             row = db.execute("SELECT content, module FROM prompts WHERE id=?", [pid]).fetchone()
+            src_table = "prompts"
+            if not row:
+                row = db.execute("SELECT content, module FROM word_card WHERE id=? AND is_deleted=0", [pid]).fetchone()
+                src_table = "word_card"
             if not row:
                 ev = {"prompt_id": pid, "ok": False, "error": "提示词不存在", "index": idx, "total": total, "done": idx + 1}
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
@@ -2068,9 +2073,19 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
 
         # Step 5: write DB
         db = get_db()
+        src_table = ""
         if prompt_id > 0:
-            db.execute("DELETE FROM prompt_videos WHERE prompt_id=?", [prompt_id])
-            db.execute("INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) VALUES (?,?,'image',datetime('now','localtime'))", [prompt_id, tf])
+            # 数据源分派：旧词条 prompts / 新词卡 word_card
+            src_table = "prompts"
+            if not db.execute("SELECT 1 FROM prompts WHERE id=?", [prompt_id]).fetchone():
+                src_table = "word_card"
+            if src_table == "prompts":
+                db.execute("DELETE FROM prompt_videos WHERE prompt_id=?", [prompt_id])
+                db.execute("INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) VALUES (?,?,'image',datetime('now','localtime'))", [prompt_id, tf])
+            else:
+                # 词卡：更新缩略图（图片模式，清空视频预览字段）
+                db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, original_ref=?, updated_at=datetime('now','localtime') WHERE id=?",
+                           [tf, iw, ih, png_name, prompt_id])
             try:
                 ts = os.path.getsize(tp) if os.path.exists(tp) else 0
                 db.execute("""INSERT OR IGNORE INTO media_assets
@@ -2084,11 +2099,12 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
         try:
             db.execute(
                 """INSERT INTO comfyui_generation_logs
-                   (workflow_id, prompt_text, seed, status, output_file, thumb_file, duration_sec, engine)
-                   VALUES (?,?,?,?,?,?,?,?)""",
+                   (workflow_id, prompt_text, seed, status, output_file, thumb_file, duration_sec, engine, card_id, card_type)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 [workflow_cfg.get("id", ""), prompt_text[:500],
                  next((n["inputs"]["seed"] for n in workflow.values() if n.get("class_type") == "KSampler"), 0),
-                 "success", png_name, tf, _time.time() - _t0, "comfyui"])
+                 "success", png_name, tf, _time.time() - _t0, "comfyui",
+                 prompt_id if prompt_id > 0 else 0, src_table if prompt_id > 0 else ""])
         except Exception as _e:
             print(f"[ComfyUI] 生成日志写入失败: {_e}")
         safe_commit()
