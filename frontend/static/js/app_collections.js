@@ -272,9 +272,13 @@ Object.assign(App, {
                   '</select>' +
                   '<span id="bgenModelBadge" style="font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(99,102,241,0.12);color:var(--primary);font-weight:600;display:none;"></span>' +
                 '</div>' +
+                // 工作流信息卡
+                '<div id="bgenWfInfo" style="border:1px dashed var(--border-color);border-radius:10px;padding:8px 10px;display:none;font-size:10px;color:var(--text-muted);line-height:1.7;"></div>' +
                 // 参数预设
                 '<div id="bgenPresetArea" style="display:none;">' +
-                  '<div style="font-size:12px;font-weight:600;margin-bottom:6px;"><i class="bi bi-sliders"></i> 参数预设 <span id="bgenPresetName" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span></div>' +
+                  '<div style="font-size:12px;font-weight:600;margin-bottom:4px;"><i class="bi bi-sliders"></i> 参数预设</div>' +
+                  '<div id="bgenPresetBar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>' +
+                  '<div id="bgenSizeQuick" style="display:none;border:1px dashed #6366f1;border-radius:8px;padding:8px 10px;margin-bottom:8px;"></div>' +
                   '<div id="bgenPresetForm" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;"></div>' +
                 '</div>' +
                 // 进度与明细
@@ -282,13 +286,19 @@ Object.assign(App, {
                   '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">' +
                     '<span style="font-size:11px;color:var(--text-muted);" id="bgenProgressText">准备中...</span>' +
                     '<span style="margin-left:auto;display:flex;gap:6px;">' +
+                      '<button class="bgen-btn" id="bgenRetryBtn" onclick="App._retryBatchFailed()" style="border-color:#f59e0b;color:#f59e0b;display:none;"><i class="bi bi-arrow-repeat"></i> 重试失败</button>' +
                       '<button class="bgen-btn" id="bgenCancelBtn" onclick="App._cancelBatchGen()" style="border-color:#ef4444;color:#ef4444;"><i class="bi bi-x-circle"></i> 取消</button>' +
                     '</span>' +
                   '</div>' +
                   '<div style="height:8px;background:var(--border-color);border-radius:4px;overflow:hidden;margin-bottom:8px;">' +
                     '<div id="bgenProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#6366f1,#8b5cf6);transition:width .3s;"></div>' +
                   '</div>' +
-                  '<div id="bgenDetail" style="display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto;"></div>' +
+                  '<div id="bgenDetail" style="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;"></div>' +
+                  // 完成缩略图网格
+                  '<div id="bgenGrid" style="display:none;margin-top:8px;">' +
+                    '<div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">生成结果（点击放大）：</div>' +
+                    '<div id="bgenGridItems" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;"></div>' +
+                  '</div>' +
                 '</div>' +
               '</div>' +
               '<div class="modal-footer" style="padding:10px 16px;border-top:1px solid var(--border-color);display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-shrink:0;">' +
@@ -351,44 +361,101 @@ Object.assign(App, {
         var badge = document.getElementById('bgenModelBadge');
         var presetArea = document.getElementById('bgenPresetArea');
         var hint = document.getElementById('bgenWfHint');
+        var infoEl = document.getElementById('bgenWfInfo');
         try {
             var d = await this.fetchJSON('/api/v2/comfyui/workflows/' + encodeURIComponent(wfId) + '/params/analyze');
             if (!d || !d.ok) throw new Error(d && d.error || '分析失败');
             var mtMap = { flux: 'FLUX', sdxl: 'SDXL', sd15: 'SD1.5', unknown: '通用' };
+            var mtLabel = mtMap[d.model_type] || d.model_type || '通用';
+            this._batchModelType = d.model_type || 'unknown';
             if (badge) {
-                badge.textContent = mtMap[d.model_type] || d.model_type || '通用';
+                badge.textContent = mtLabel;
                 badge.style.display = 'inline-block';
             }
             if (hint) hint.textContent = d.model_type === 'sd15' ? '（SD1.5 默认 512×512）' : '';
-            // 加载参数预设（user 模式优先）
-            var preset = null;
-            (d.presets || []).forEach(function(p) { if (p.mode === 'user' && !preset) preset = p; });
-            this._batchPreset = preset;
-            this._batchPresetId = preset ? preset.id : 0;
-            var pn = document.getElementById('bgenPresetName');
-            if (pn) pn.textContent = preset ? '「' + preset.name + '」' : '（该工作流无已存参数配置，使用模板默认值）';
+            // 工作流信息卡
+            var wfItem = null;
+            (this._batchWorkflows || []).forEach(function(w) { if (w.id === wfId) wfItem = w; });
+            if (infoEl) {
+                var parts = ['<b style="color:var(--text-main);">' + App._escape((wfItem && wfItem.name) || '') + '</b>'];
+                parts.push('模型: <b style="color:var(--primary);">' + App._escape(mtLabel) + '</b>');
+                if (wfItem) {
+                    parts.push('节点: ' + (wfItem.node_count || 0));
+                    if (wfItem.usage_count) parts.push('使用: ' + wfItem.usage_count + ' 次');
+                    if (wfItem.last_used_at) parts.push('上次使用: ' + App._escape(String(wfItem.last_used_at).slice(5, 16)));
+                }
+                if (d.candidates && d.candidates.length) parts.push('可调参数: ' + d.candidates.length + ' 项');
+                infoEl.innerHTML = parts.join(' · ');
+                infoEl.style.display = 'block';
+            }
+            // 参数预设：支持多配置切换
+            this._batchPresets = d.presets || [];
+            var userPreset = null;
+            this._batchPresets.forEach(function(p) { if (p.mode === 'user' && !userPreset) userPreset = p; });
+            this._batchPreset = userPreset || null;
+            this._batchPresetId = userPreset ? userPreset.id : 0;
             if (presetArea) {
-                presetArea.style.display = preset ? 'block' : 'none';
-                if (preset) this._renderBatchParamsForm(preset);
+                presetArea.style.display = 'block';
+                this._renderBatchPresetBar();
             }
         } catch(e) {
             if (badge) badge.style.display = 'none';
+            if (infoEl) infoEl.style.display = 'none';
             if (presetArea) presetArea.style.display = 'none';
         }
     },
 
-    // 简化参数表单（滑块+数字/下拉/开关/文本），用于批量预设
+    // 参数预设切换条（多配置）
+    _renderBatchPresetBar() {
+        var bar = document.getElementById('bgenPresetBar');
+        if (!bar) return;
+        var presets = this._batchPresets || [];
+        var self = this;
+        if (presets.length === 0) {
+            bar.innerHTML = '<span style="font-size:11px;color:var(--text-muted);">该工作流无已存参数配置，将使用模板默认值（可在「工作流库 → 参数配置」中预设）</span>';
+            this._renderBatchParamsForm(null);
+            return;
+        }
+        var html = '';
+        presets.forEach(function(p) {
+            var isAct = self._batchPreset && self._batchPreset.id === p.id;
+            html += '<span onclick="App._batchActivatePreset(' + p.id + ')" style="cursor:pointer;font-size:10px;padding:3px 10px;border-radius:14px;border:1px solid ' + (isAct ? 'var(--primary)' : 'var(--border-color)') + ';color:' + (isAct ? 'var(--primary)' : 'var(--text-muted)') + ';background:' + (isAct ? 'rgba(99,102,241,0.08)' : 'transparent') + ';">' +
+              App._escape(p.name || '参数配置') + (p.mode === 'user' ? ' 🔒' : ' (编辑中)') +
+            '</span>';
+        });
+        bar.innerHTML = html;
+        this._renderBatchParamsForm(this._batchPreset);
+    },
+
+    _batchActivatePreset(pid) {
+        (this._batchPresets || []).forEach(function(p) { if (p.id === pid) { this._batchPreset = p; this._batchPresetId = p.id; } }, this);
+        this._renderBatchPresetBar();
+    },
+
+    // 简化参数表单（滑块+数字/下拉/开关/文本），用于批量预设；preset 为空时用模板默认
     _renderBatchParamsForm(preset) {
         var form = document.getElementById('bgenPresetForm');
         if (!form) return;
         var params = [];
-        try { params = JSON.parse(preset.params_json || '[]'); } catch(e) {}
-        if (params.length === 0) { form.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">该配置无参数</div>'; return; }
+        if (preset) {
+            try { params = JSON.parse(preset.params_json || '[]'); } catch(e) {}
+        }
+        if (!preset || params.length === 0) {
+            form.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">使用模板默认值生成（未应用参数配置）</div>';
+            var sq = document.getElementById('bgenSizeQuick');
+            if (sq) sq.style.display = 'none';
+            return;
+        }
         var FILE_FIELDS = ['ckpt_name', 'lora_name', 'unet_name', 'vae_name', 'clip_name1', 'clip_name2'];
         params.forEach(function(p) {
             if (!p) return;
             if ((p.options || []).length > 0) p.type = (FILE_FIELDS.indexOf(p.field) > -1) ? 'select_file' : 'select';
         });
+        // 尺寸快捷：含 width+height 时显示横竖/比例/分辨率
+        var self = this;
+        var wP = null, hP = null;
+        params.forEach(function(p) { if (p.field === 'width') wP = p; if (p.field === 'height') hP = p; });
+        this._renderBatchSizeQuick(wP, hP);
         var html = '';
         params.forEach(function(p) {
             var val = p.default;
@@ -397,8 +464,8 @@ Object.assign(App, {
             if (p.type === 'slider') {
                 var min = p.min === undefined ? 0 : p.min, max = p.max === undefined ? 100 : p.max, step = p.step === undefined ? 1 : p.step;
                 html += '<div style="display:flex;align-items:center;gap:5px;">' +
-                  '<input type="range" class="bgen-pv" data-key="' + App._escape(p.key) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" style="flex:1;" oninput="document.getElementById(\'bpv_' + App._escape(p.key) + '\').textContent=this.value">' +
-                  '<span id="bpv_' + App._escape(p.key) + '" style="font-size:10px;color:var(--primary);font-family:monospace;">' + val + '</span>' +
+                  '<input type="range" class="bgen-pv" data-key="' + App._escape(p.key) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" style="flex:1;" oninput="App._bgenSliderSync(this)">' +
+                  '<input type="number" class="bgen-pv-num" data-key="' + App._escape(p.key) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" onchange="App._bgenNumSync(this)" style="width:56px;font-size:10px;padding:2px 4px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-main);" title="可手动输入">' +
                 '</div>';
             } else if (p.type === 'number') {
                 html += '<input type="number" class="bgen-pv" data-key="' + App._escape(p.key) + '" value="' + App._escape(String(val === undefined ? '' : val)) + '" step="any" style="width:100%;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);">';
@@ -418,6 +485,74 @@ Object.assign(App, {
             html += '</div>';
         });
         form.innerHTML = html;
+    },
+
+    // 批量弹窗尺寸快捷条（复用工作流库尺寸预设）
+    _renderBatchSizeQuick(wP, hP) {
+        var sq = document.getElementById('bgenSizeQuick');
+        if (!sq) return;
+        if (!wP || !hP || !App.CWL_SIZE_PRESETS) { sq.style.display = 'none'; return; }
+        var mt = App.CWL_SIZE_PRESETS[this._batchModelType || 'unknown'] || App.CWL_SIZE_PRESETS.unknown;
+        var base = mt.base;
+        var html = '<div style="font-size:10px;color:var(--text-muted);margin-bottom:5px;"><b style="color:var(--text-main);">📐 尺寸快捷</b>（' + App._escape(mt.label) + ' · 长边 ' + base + 'px）</div>' +
+          '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:5px;">' +
+            '<button type="button" class="bgen-btn" style="border-color:#6366f1;color:var(--primary);" onclick="App._batchSetSize(1,1)">□ 方形</button>' +
+            '<button type="button" class="bgen-btn" style="border-color:#6366f1;color:var(--primary);" onclick="App._batchSetSize(4,3)">▭ 横屏</button>' +
+            '<button type="button" class="bgen-btn" style="border-color:#6366f1;color:var(--primary);" onclick="App._batchSetSize(3,4)">▯ 竖屏</button>' +
+          '</div>';
+        html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px;">';
+        (App.CWL_RATIOS || []).forEach(function(r) {
+            html += '<button type="button" class="bgen-btn" onclick="App._batchSetSize(' + r.w + ',' + r.h + ')">' + r.label + '</button>';
+        });
+        html += '</div><div style="display:flex;gap:4px;flex-wrap:wrap;">';
+        mt.presets.forEach(function(sz) {
+            html += '<button type="button" class="bgen-btn" onclick="App._batchSetSize(' + sz[0] + ',' + sz[1] + ',true)">' + sz[0] + '×' + sz[1] + '</button>';
+        });
+        html += '</div>';
+        sq.innerHTML = html;
+        sq.style.display = 'block';
+    },
+
+    // 应用尺寸到批量表单的 width/height 参数
+    _batchSetSize(rw, rh, absolute) {
+        var w, h;
+        if (absolute) { w = rw; h = rh; }
+        else {
+            var mt = (App.CWL_SIZE_PRESETS && (App.CWL_SIZE_PRESETS[this._batchModelType] || App.CWL_SIZE_PRESETS.unknown)) || { base: 768 };
+            var base = mt.base;
+            if (rw >= rh) { w = base; h = Math.round(base * rh / rw); }
+            else { h = base; w = Math.round(base * rw / rh); }
+            var snap = function(n) { return Math.max(64, Math.round(n / 8) * 8); };
+            w = snap(w); h = snap(h);
+        }
+        ['width', 'height'].forEach(function(f) {
+            var rng = document.querySelector('#bgenPresetForm .bgen-pv[data-key$=".' + f + '"]');
+            var num = document.querySelector('#bgenPresetForm .bgen-pv-num[data-key$=".' + f + '"]');
+            if (rng) rng.value = (f === 'width' ? w : h);
+            if (num) num.value = (f === 'width' ? w : h);
+        });
+        App.showToast('已设置尺寸 ' + w + '×' + h, 'success');
+    },
+
+    // 滑块 → 数字框同步
+    _bgenSliderSync(input) {
+        var key = input.getAttribute('data-key');
+        var num = document.querySelector('.bgen-pv-num[data-key="' + key + '"]');
+        if (num) num.value = input.value;
+    },
+
+    // 数字框 → 滑块同步
+    _bgenNumSync(input) {
+        var key = input.getAttribute('data-key');
+        var rng = document.querySelector('.bgen-pv[data-key="' + key + '"]');
+        if (rng) {
+            var v = parseFloat(input.value);
+            if (isNaN(v)) { input.value = rng.value; return; }
+            var mn = parseFloat(rng.min), mx = parseFloat(rng.max);
+            if (!isNaN(mn) && !isNaN(mx)) v = Math.max(mn, Math.min(mx, v));
+            input.value = v;
+            rng.value = v;
+        }
     },
 
     _collectBatchParams() {
@@ -449,6 +584,10 @@ Object.assign(App, {
         if (pa) pa.style.display = 'block';
         var det = document.getElementById('bgenDetail');
         if (det) det.innerHTML = '';
+        var grid = document.getElementById('bgenGrid');
+        if (grid) grid.style.display = 'none';
+        var retryBtn = document.getElementById('bgenRetryBtn');
+        if (retryBtn) retryBtn.style.display = 'none';
         var bar = document.getElementById('bgenProgressBar');
         var txt = document.getElementById('bgenProgressText');
         if (bar) bar.style.width = '0%';
@@ -456,6 +595,10 @@ Object.assign(App, {
         startBtn.disabled = true;
         this._batchGenRunning = true;
         this._batchAbort = new AbortController();
+        this._batchFailedIds = [];
+        this._batchSuccess = [];
+        this._batchStartTs = Date.now();
+        this._batchDurations = [];
         var paramValues = this._collectBatchParams();
         var body = {
             prompt_ids: this._batchIds,
@@ -495,7 +638,17 @@ Object.assign(App, {
                             errors = ev.errors || 0;
                         } else if (ev.done !== undefined) {
                             if (bar) bar.style.width = (ev.progress || 0) + '%';
-                            if (txt) txt.textContent = '已完成 ' + ev.done + '/' + ev.total + '（成功 ' + (ev.ok ? 1 : 0) + '）';
+                            // ETA 估算：平均耗时 × 剩余
+                            var dur = (Date.now() - this._batchStartTs) / 1000;
+                            this._batchDurations.push(dur);
+                            var avg = this._batchDurations.reduce(function(a, b) { return a + b; }, 0) / this._batchDurations.length;
+                            var remain = Math.max(0, ev.total - ev.done);
+                            var eta = remain > 0 ? Math.round(avg * remain) : 0;
+                            var etaTxt = eta > 0 ? ' · 预计剩余 ' + (eta < 60 ? eta + 's' : Math.floor(eta / 60) + '分' + (eta % 60) + 's') : '';
+                            if (txt) txt.textContent = '已完成 ' + ev.done + '/' + ev.total + etaTxt;
+                            if (!ev.ok) this._batchFailedIds.push(ev.prompt_id);
+                            if (ev.ok && ev.thumbnail_url) this._batchSuccess.push({ thumb: ev.thumbnail_url, text: ev.prompt_text || '' });
+                            this._batchStartTs = Date.now();
                             this._appendBatchDetail(ev);
                         }
                     } catch(e) {}
@@ -504,6 +657,11 @@ Object.assign(App, {
             this.showToast('批量生成完成: ' + success + ' 成功, ' + errors + ' 未完成', errors > 0 ? 'warning' : 'success');
             if (txt) txt.textContent = '完成：' + success + ' 成功 / ' + errors + ' 失败';
             if (bar) bar.style.width = '100%';
+            // 成功缩略图网格 + 失败重试按钮
+            this._renderBatchGrid();
+            if (errors > 0 && this._batchFailedIds.length > 0) {
+                if (retryBtn) retryBtn.style.display = 'inline-flex';
+            }
             await this.loadPrompts();
         } catch(e) {
             if (e.name === 'AbortError') {
@@ -522,15 +680,41 @@ Object.assign(App, {
     _appendBatchDetail(ev) {
         var det = document.getElementById('bgenDetail');
         if (!det) return;
+        // 移除上一项高亮
+        var prev = det.querySelector('.bgen-item.bgen-active');
+        if (prev) prev.classList.remove('bgen-active');
         var st = ev.ok ? '✅' : '❌';
         var color = ev.ok ? '#10b981' : '#ef4444';
-        var html = '<div class="bgen-item" style="border-color:' + color + '33;">' +
+        var html = '<div class="bgen-item bgen-active" style="border-color:' + color + '33;border-left:3px solid ' + color + ';">' +
           (ev.thumbnail_url ? '<img src="' + ev.thumbnail_url + '" style="width:42px;height:28px;object-fit:cover;border-radius:4px;flex-shrink:0;" loading="lazy">' : '<span style="width:42px;text-align:center;flex-shrink:0;">' + st + '</span>') +
           '<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + App._escape(ev.prompt_text || '') + '">' + App._escape((ev.prompt_text || '').slice(0, 40)) + '</span>' +
           '<span style="font-size:10px;color:' + color + ';flex-shrink:0;">' + (ev.ok ? '成功' : (ev.error || '失败')) + '</span>' +
         '</div>';
         det.insertAdjacentHTML('beforeend', html);
         det.scrollTop = det.scrollHeight;
+    },
+
+    // 成功后缩略图网格总览（点击放大）
+    _renderBatchGrid() {
+        var grid = document.getElementById('bgenGrid');
+        var items = document.getElementById('bgenGridItems');
+        if (!grid || !items) return;
+        var success = this._batchSuccess || [];
+        if (success.length === 0) { grid.style.display = 'none'; return; }
+        var html = '';
+        success.forEach(function(s) {
+            html += '<img src="' + s.thumb + '" style="width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:6px;cursor:zoom-in;border:1px solid var(--border-color);" title="' + App._escape(s.text || '') + '" onclick="App.openImageViewer(\'' + s.thumb.split('/').pop() + '\')" loading="lazy">';
+        });
+        items.innerHTML = html;
+        grid.style.display = 'block';
+    },
+
+    // 重试失败项（仅失败的词条重新生成）
+    async _retryBatchFailed() {
+        var failed = this._batchFailedIds || [];
+        if (failed.length === 0) return;
+        this._batchIds = failed.slice();
+        await this._startBatchGen();
     },
 
     _cancelBatchGen() {

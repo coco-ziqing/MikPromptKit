@@ -1735,4 +1735,9 @@ App.comfyLib._rerunLog = async function(id) {
     await this.generateWithText(lg.prompt_text || '');
 };
 
+// 暴露尺寸/比例/排序常量，供批量生成弹窗等外部模块复用
+App.CWL_SIZE_PRESETS = CWL_SIZE_PRESETS;
+App.CWL_RATIOS = CWL_RATIOS;
+App.CWL_cmpParams = CWL_cmpParams;
+
 })();
