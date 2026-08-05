@@ -20,6 +20,26 @@ var CWL_RATIOS = [
     { label: '16:9', w: 16, h: 9 }, { label: '3:4', w: 3, h: 4 }, { label: '2:3', w: 2, h: 3 }, { label: '9:16', w: 9, h: 16 }
 ];
 
+// 参数排序：角色优先（正面提示词 → 负面提示词 → 其他），再按使用习惯字段顺序
+var CWL_PARAM_SORT = {
+    width: 10, height: 11, batch_size: 12,
+    seed: 20, noise_seed: 21,
+    steps: 30, cfg: 31, guidance: 32, denoise: 33,
+    sampler_name: 40, scheduler: 41,
+    lora_name: 50, ckpt_name: 51, unet_name: 52, vae_name: 53, clip_name1: 54, clip_name2: 55,
+    strength: 60, strength_model: 61,
+    text: 70, prompt_text: 71
+};
+function CWL_cmpParams(a, b) {
+    var ra = a.role === 'positive' ? 0 : (a.role === 'negative' ? 1 : 2);
+    var rb = b.role === 'positive' ? 0 : (b.role === 'negative' ? 1 : 2);
+    if (ra !== rb) return ra - rb;
+    var oa = CWL_PARAM_SORT[a.field] !== undefined ? CWL_PARAM_SORT[a.field] : 100;
+    var ob = CWL_PARAM_SORT[b.field] !== undefined ? CWL_PARAM_SORT[b.field] : 100;
+    if (oa !== ob) return oa - ob;
+    return a.key < b.key ? -1 : (a.key > b.key ? 1 : 0);
+}
+
 App.comfyLib = {
     _wfList: [],
     _selectedWf: null,
@@ -82,7 +102,7 @@ App.comfyLib._ensureModal = function() {
     overlay.onclick = function(e) { if (e.target === overlay) App.comfyLib.close(); };
 
     overlay.innerHTML =
-    '<div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:1060px;width:96%;max-height:92vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
+    '<div class="modal-content modal-wide" onclick="event.stopPropagation()" style="max-width:1360px;width:96%;max-height:92vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
       '<div class="modal-header" style="padding:12px 18px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
         '<h5 style="margin:0;font-size:15px;"><i class="bi bi-magic"></i> 工作流库 <span style="font-size:11px;color:var(--text-muted);">ComfyUI 存储调用空间</span></h5>' +
         '<div style="display:flex;gap:8px;align-items:center;">' +
@@ -663,6 +683,8 @@ App.comfyLib._renderParamForm = function() {
             p.type = (FILE_FIELDS.indexOf(p.field) > -1) ? 'select_file' : 'select';
         }
     });
+    // 参数排序：正面提示词 → 负面提示词 → 常用参数（尺寸/种子/步数/CFG/采样器/调度器/模型/强度）
+    params.sort(CWL_cmpParams);
     var wP = null, hP = null;
     params.forEach(function(p) {
         if (p.field === 'width' && p.type === 'slider') wP = p;
@@ -689,12 +711,12 @@ App.comfyLib._renderParamForm = function() {
         sb += '</div></div>';
         html += sb;
     }
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;">';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:10px;">';
     params.forEach(function(p) {
         html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;">';
         html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:8px;">' +
-                '<label style="font-size:11px;font-weight:600;min-width:0;">' + App._escape(p.label || p.key) +
-                  ' <span style="font-size:9px;color:var(--text-muted);font-weight:400;" title="原始节点字段名">(' + App._escape(p.key) + ')</span>' +
+                '<label style="font-size:11px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + App._escape((p.label || p.key) + ' (' + p.key + ')') + '">' + App._escape(p.label || p.key) +
+                  ' <span style="font-size:9px;color:var(--text-muted);font-weight:400;">(' + App._escape(p.key) + ')</span>' +
                 '</label>' +
                 '<span id="pv_' + App._escape(p.key) + '" style="font-size:11px;color:var(--primary);font-family:monospace;flex-shrink:0;">' + App._escape(String(p.default === undefined ? '' : p.default)) + '</span>' +
                 '</div>';
@@ -843,7 +865,7 @@ App.comfyLib.openParamEditor = function() {
         overlay.style.cssText = 'display:none;z-index:740;';
         overlay.onclick = function(e) { if (e.target === overlay) overlay.style.display = 'none'; };
         overlay.innerHTML =
-        '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:720px;max-height:86vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
+        '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:920px;max-height:86vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
           '<div class="modal-header" style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
             '<h5 style="margin:0;font-size:14px;"><i class="bi bi-sliders"></i> 参数配置 <span style="font-size:11px;color:var(--text-muted);">编辑模式 — 自主选择暴露参数</span></h5>' +
             '<button class="header-btn-sm" onclick="document.getElementById(\'cwlParamEditor\').style.display=\'none\'">&times;</button>' +
@@ -878,8 +900,10 @@ App.comfyLib.openParamEditor = function() {
     }
     // 尺寸助手：按模型类型智能匹配宽高（横竖/比例/分辨率预设）
     this._cpeRenderSizeHelper();
+    // 候选参数按使用习惯排序（正面→负面→常用参数），不改变原数组引用
+    var cands = this._candidates.slice().sort(CWL_cmpParams);
     var html = '';
-    this._candidates.forEach(function(c) {
+    cands.forEach(function(c) {
         var isSel = !!selected[c.key];
         var sp = selected[c.key] || {};
         var label = sp.label || c.label || c.key;

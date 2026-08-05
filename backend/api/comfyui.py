@@ -592,6 +592,31 @@ def _field_enum_options(object_info: dict, class_type: str, field: str) -> list:
     return []
 
 
+# 文本类节点（用于提示词链路角色追踪）
+_TEXT_NODE_TYPES = ("CLIPTextEncode", "CLIPTextEncodeSDXL", "Text Multiline", "Text Concatenate", "String", "Text")
+
+
+def _trace_text_chain(wf: dict, nid, depth=0) -> set:
+    """从提示词节点沿 text 输入链路向上追踪，返回链路上所有文本类节点 id 集合"""
+    if depth > 6:
+        return set()
+    nid = str(nid)
+    if nid not in wf or not isinstance(wf[nid], dict):
+        return set()
+    node = wf[nid]
+    result = set()
+    if node.get("class_type") in _TEXT_NODE_TYPES:
+        result.add(nid)
+    ins = node.get("inputs", {}) or {}
+    for field, val in ins.items():
+        if not (isinstance(val, list) and len(val) >= 1):
+            continue
+        # text 字段，或 Text Concatenate 的 text_a/text_b 组合输入
+        if field == "text" or (node.get("class_type") == "Text Concatenate" and field in ("text_a", "text_b")):
+            result |= _trace_text_chain(wf, str(val[0]), depth + 1)
+    return result
+
+
 def _analyze_workflow_params(wf, object_info: dict = None) -> list:
     """自动分析工作流可参数化节点：遍历所有节点的非链接输入
     传入 object_info 时先清洗占位符值（randomize/normal 等），并携带枚举选项"""
@@ -609,6 +634,9 @@ def _analyze_workflow_params(wf, object_info: dict = None) -> list:
     seen = set()
     pos_node = _find_positive_node(wf)
     neg_node = _find_negative_node(wf)
+    # 提示词链路角色：沿 text 链路追踪，覆盖 Text Multiline/Text Concatenate 等中间文本节点
+    pos_set = _trace_text_chain(wf, pos_node) if pos_node else set()
+    neg_set = _trace_text_chain(wf, neg_node) if neg_node else set()
     for nid, node in wf.items():
         if not isinstance(node, dict):
             continue
@@ -633,10 +661,10 @@ def _analyze_workflow_params(wf, object_info: dict = None) -> list:
                 "clip_name1": "CLIP模型1", "clip_name2": "CLIP模型2",
             }
             role = ""
-            if ct == "CLIPTextEncode" and field == "text":
-                if str(nid) == str(pos_node):
+            if field == "text" and ct in _TEXT_NODE_TYPES:
+                if str(nid) in pos_set:
                     role = "positive"
-                elif str(nid) == str(neg_node):
+                elif str(nid) in neg_set:
                     role = "negative"
             candidates.append({
                 "node_id": str(nid),
