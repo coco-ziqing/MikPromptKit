@@ -1494,6 +1494,7 @@ class BatchTaskCreate(BaseModel):
     use_module_preset: int = 1
     prompt_overrides: dict = {}   # {prompt_id: 优化后提示词}（Ollama 优化结果覆盖）
     engine: str = "comfyui"      # comfyui / dreamina
+    manual_text: str = ""         # 手动附加文本（追加到每条组合提示词末尾）
     # dreamina 引擎参数
     model_version: str = "5.0"
     ratio: str = "1:1"
@@ -1524,6 +1525,7 @@ def _ensure_batch_task_table():
         param_values TEXT DEFAULT '{}',
         prompt_overrides TEXT DEFAULT '{}',
         engine TEXT DEFAULT 'comfyui',
+        manual_text TEXT DEFAULT '',
         model_version TEXT DEFAULT '5.0',
         ratio TEXT DEFAULT '1:1',
         resolution_type TEXT DEFAULT '2k',
@@ -1537,6 +1539,7 @@ def _ensure_batch_task_table():
     cols = [r["name"] for r in db.execute("PRAGMA table_info(comfyui_batch_tasks)").fetchall()]
     for _col, _ddl in [("prompt_overrides", "prompt_overrides TEXT DEFAULT '{}'"),
                        ("engine", "engine TEXT DEFAULT 'comfyui'"),
+                       ("manual_text", "manual_text TEXT DEFAULT ''"),
                        ("model_version", "model_version TEXT DEFAULT '5.0'"),
                        ("ratio", "ratio TEXT DEFAULT '1:1'"),
                        ("resolution_type", "resolution_type TEXT DEFAULT '2k'"),
@@ -1639,6 +1642,10 @@ def _batch_worker(task_id: int):
                     if pm.get("enabled") and pm.get("preset"):
                         preset_text = pm["preset"]
                 final_prompt = _compose_prompt(preset_text, card_text, suffix)
+                # 手动附加文本追加到末尾
+                _manual = (d.get("manual_text") or "").strip()
+                if _manual:
+                    final_prompt = (final_prompt.rstrip(", ") + ", " + _manual) if final_prompt else _manual
                 _batch_update(task_id, current_index=idx + 1, current_prompt=final_prompt[:80])
                 try:
                     if engine == "dreamina":
@@ -1729,13 +1736,13 @@ def create_batch_task(data: BatchTaskCreate):
         """INSERT INTO comfyui_batch_tasks
            (workflow_id, workflow_name, model_type, prompt_ids, total, status,
             style_suffix, use_module_preset, preset_id, param_values, prompt_overrides,
-            engine, model_version, ratio, resolution_type, width, height)
-           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?)""",
+            engine, manual_text, model_version, ratio, resolution_type, width, height)
+           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?,?)""",
         [data.workflow_id, wf_name, model_type, json.dumps(data.prompt_ids), len(data.prompt_ids),
          data.style_suffix, data.use_module_preset, data.preset_id,
          json.dumps(data.param_values or {}, ensure_ascii=False),
          json.dumps(data.prompt_overrides or {}, ensure_ascii=False),
-         engine, data.model_version or "5.0", data.ratio or "1:1",
+         engine, data.manual_text or "", data.model_version or "5.0", data.ratio or "1:1",
          data.resolution_type or "2k", data.width or 0, data.height or 0])
     safe_commit()
     task_id = cur.lastrowid
@@ -1820,14 +1827,15 @@ def retry_batch_failed(task_id: int):
         """INSERT INTO comfyui_batch_tasks
            (workflow_id, workflow_name, model_type, prompt_ids, total, status,
             style_suffix, use_module_preset, preset_id, param_values, prompt_overrides,
-            engine, model_version, ratio, resolution_type, width, height)
-           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?)""",
+            engine, manual_text, model_version, ratio, resolution_type, width, height)
+           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?,?)""",
         [d["workflow_id"], d["workflow_name"] + " (重试)", d["model_type"],
          json.dumps(failed_ids), len(failed_ids),
          d["style_suffix"], d["use_module_preset"], d["preset_id"], d["param_values"],
          d.get("prompt_overrides") or "{}",
-         d.get("engine") or "comfyui", d.get("model_version") or "5.0", d.get("ratio") or "1:1",
-         d.get("resolution_type") or "2k", int(d.get("width") or 0), int(d.get("height") or 0)])
+         d.get("engine") or "comfyui", d.get("manual_text") or "", d.get("model_version") or "5.0",
+         d.get("ratio") or "1:1", d.get("resolution_type") or "2k",
+         int(d.get("width") or 0), int(d.get("height") or 0)])
     safe_commit()
     new_id = cur.lastrowid
     threading.Thread(target=_batch_worker, args=(new_id,), daemon=True).start()

@@ -320,6 +320,10 @@ Object.assign(App, {
                     '<label style="font-size:10px;color:var(--text-muted);">品质后缀 <input id="bgenSuffix" value="cinematic lighting, high quality, 4k, detailed" oninput="App._renderBatchComposePreview()" style="width:220px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);" title="留空则不添加后缀"></label>' +
                     '<label style="font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:4px;"><input type="checkbox" id="bgenUsePreset" checked onchange="App._renderBatchComposePreview()" style="width:14px;height:14px;"> 叠加模块主体预设</label>' +
                   '</div>' +
+                  '<div style="margin-bottom:6px;">' +
+                    '<label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:3px;">手动附加文本 <span style="color:#94a3b8;">（追加到每条组合提示词末尾，如风格/视角/负面词）</span></label>' +
+                    '<textarea id="bgenManualText" rows="2" placeholder="例如：low-angle upward view, volumetric lighting, masterpiece" oninput="App._renderBatchComposePreview()" style="width:100%;font-size:11px;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);resize:vertical;"></textarea>' +
+                  '</div>' +
                   '<div id="bgenComposePreview" style="font-size:10px;color:var(--text-muted);background:var(--bg-card);border:1px dashed var(--border-color);border-radius:6px;padding:6px 8px;max-height:64px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"></div>' +
                 '</div>' +
                 // 参数预设
@@ -395,12 +399,13 @@ Object.assign(App, {
         this._batchPromptOverrides = this._batchPromptOverrides || {};
     },
 
-    // 提示词组合预览：词卡内容 + 模块预设 + 品质后缀（复刻后端 _compose_prompt 的简化规则）
+    // 提示词组合预览：模块预设 + 词卡 + 品质后缀 + 手动附加文本（复刻后端组合规则）
     _renderBatchComposePreview() {
         var el = document.getElementById('bgenComposePreview');
         if (!el) return;
         var self = this;
         var suffix = ((document.getElementById('bgenSuffix') || {}).value || '').trim();
+        var manual = ((document.getElementById('bgenManualText') || {}).value || '').trim();
         var usePreset = !!(document.getElementById('bgenUsePreset') || {}).checked;
         var cards = [];
         (this.state.prompts || []).forEach(function(p) {
@@ -412,14 +417,15 @@ Object.assign(App, {
                 var pm = self._modulePresets[p.module] || {};
                 if (pm.enabled && pm.preset) preset = pm.preset;
             }
-            // Ollama 优化结果优先
             var cardText = p.content || '';
             var isOpt = false;
             if (self._batchPromptOverrides && self._batchPromptOverrides[p.id]) {
                 cardText = self._batchPromptOverrides[p.id];
                 isOpt = true;
             }
-            return (isOpt ? '✨ ' : '') + App._composePromptPreview(preset, cardText, suffix);
+            var composed = App._composePromptPreview(preset, cardText, suffix);
+            if (manual) composed = (composed ? composed.replace(/,\s*$/, '') + ', ' + manual : manual);
+            return (isOpt ? '✨ ' : '') + composed;
         });
         if (lines.length === 0) {
             el.innerHTML = '<span style="color:var(--text-muted);">（无法预览，请确认已选中词条）</span>';
@@ -674,6 +680,7 @@ Object.assign(App, {
                 workflow_id: this._batchWfId || '',
                 preset_id: this._batchPresetId || 0,
                 suffix: (document.getElementById('bgenSuffix') || {}).value || '',
+                manual_text: (document.getElementById('bgenManualText') || {}).value || '',
                 use_module_preset: (document.getElementById('bgenUsePreset') || {}).checked ? 1 : 0,
                 param_values: this._collectBatchParams(),
                 dreamina_model: (document.getElementById('bgenDreaminaModel') || {}).value || '5.0',
@@ -690,6 +697,8 @@ Object.assign(App, {
         if (!s) return;
         var suffixEl = document.getElementById('bgenSuffix');
         if (suffixEl && s.suffix !== undefined) suffixEl.value = s.suffix;
+        var mtEl = document.getElementById('bgenManualText');
+        if (mtEl && s.manual_text !== undefined) mtEl.value = s.manual_text;
         var upEl = document.getElementById('bgenUsePreset');
         if (upEl && s.use_module_preset !== undefined) upEl.checked = !!s.use_module_preset;
         if (s.workflow_id) this._batchWfId = s.workflow_id;
@@ -982,6 +991,7 @@ Object.assign(App, {
             use_module_preset: (document.getElementById('bgenUsePreset') || {}).checked ? 1 : 0,
             prompt_overrides: this._batchPromptOverrides || {},
             engine: engine,
+            manual_text: (document.getElementById('bgenManualText') || {}).value || '',
             model_version: (document.getElementById('bgenDreaminaModel') || {}).value || '5.0',
             ratio: (document.getElementById('bgenDreaminaRatio') || {}).value || '1:1',
             resolution_type: (document.getElementById('bgenDreaminaRes') || {}).value || '2k'
