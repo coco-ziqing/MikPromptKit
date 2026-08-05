@@ -108,6 +108,80 @@ def _find_workflow(cfg: dict, workflow_id: str = ""):
 
 # ==================== 工作流库（comfyui_workflows 表） ====================
 
+# 不可执行的 UI 注释类节点（ComfyUI 无法识别，提交前必须过滤，否则 400 invalid_prompt）
+_SKIP_NODE_TYPES = {"MarkdownNote", "Note", "TextNote"}
+
+
+def _strip_ui_nodes(workflow: dict) -> dict:
+    """过滤工作流中不可执行的 UI 注释节点（MarkdownNote/Note 等），返回新 dict 不污染原对象"""
+    if not isinstance(workflow, dict):
+        return workflow
+    return {k: v for k, v in workflow.items()
+            if not (isinstance(v, dict) and v.get("class_type") in _SKIP_NODE_TYPES)}
+
+
+def _sanitize_workflow_inputs(workflow: dict, object_info: dict):
+    """清洗工作流输入值：UI 占位符（steps=randomize / denoise=normal / 枚举位置数字）会导致
+    ComfyUI 400 invalid_input_type。按节点定义的类型/默认值强制转换，失败则回退默认值。
+    仅清洗标量输入，链接型输入（list/dict）不动。"""
+    if not isinstance(workflow, dict):
+        return
+    for nid, node in workflow.items():
+        if not isinstance(node, dict):
+            continue
+        ct = node.get("class_type", "")
+        info = (object_info or {}).get(ct, {})
+        ins = node.get("inputs")
+        if not isinstance(ins, dict):
+            continue
+        defs = (info.get("input", {}) or {})
+        confs = {}
+        confs.update(defs.get("required", {}) or {})
+        confs.update(defs.get("optional", {}) or {})
+        for field, val in list(ins.items()):
+            if isinstance(val, (list, dict)) or val is None:
+                continue  # 链接型/复杂输入
+            conf = confs.get(field)
+            if not conf or not isinstance(conf, list) or not conf:
+                continue
+            vtype = conf[0]
+            meta = conf[1] if len(conf) > 1 else {}
+            # 兼容新版 ComfyUI：COMBO 类型直接是选项列表（[['euler',...], {tooltip}]）
+            if isinstance(vtype, list):
+                valid = vtype
+                if isinstance(val, (int, float)) or val not in valid:
+                    default = meta.get("default") if isinstance(meta, dict) else None
+                    if default in valid:
+                        ins[field] = default
+                    elif valid:
+                        ins[field] = valid[0]
+                    else:
+                        ins[field] = default
+                continue
+            default = meta.get("default") if isinstance(meta, dict) else None
+            if vtype == "INT":
+                try:
+                    ins[field] = int(float(val))
+                except Exception:
+                    ins[field] = default if isinstance(default, int) else 20
+            elif vtype == "FLOAT":
+                try:
+                    ins[field] = float(val)
+                except Exception:
+                    ins[field] = default if isinstance(default, (int, float)) else 1.0
+            elif vtype == "COMBO":
+                valid = meta if isinstance(meta, list) else (meta.get("options") if isinstance(meta, dict) else [])
+                if valid and (isinstance(val, (int, float)) or val not in valid):
+                    if default in valid:
+                        ins[field] = default
+                    elif valid:
+                        ins[field] = valid[0]
+                    else:
+                        ins[field] = default
+            elif vtype == "BOOLEAN" and isinstance(val, str):
+                ins[field] = val.lower() in ("true", "1", "yes", "on")
+
+
 def _extract_positive_text(wf) -> str:
     """从工作流提取 positive 提示词：优先跟随 KSampler.positive 链路的 CLIPTextEncode，
     无则取第一个非空 CLIPTextEncode"""
@@ -737,6 +811,9 @@ def _ui_to_api_wf(ui_wf: dict, object_info: dict = None) -> dict:
 
     for nid, node in nodes.items():
         ct = node.get("type", "")
+        # 跳过 UI 注释类节点（MarkdownNote/Note），避免入库后提交 400
+        if ct in _SKIP_NODE_TYPES:
+            continue
         inputs = {}
         info = (object_info or {}).get(ct, {})
         req = info.get("input", {}).get("required", {}) or {}
@@ -1626,8 +1703,13 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
     import time as _time, uuid, io as _io
 
     def _sync_run():
+        nonlocal workflow
         _t0 = _time.time()
         import random
+        # 过滤不可执行的 UI 注释节点（如 MarkdownNote），避免 ComfyUI 400 invalid_prompt
+        workflow = _strip_ui_nodes(workflow)
+        # 清洗 UI 占位符输入值（steps=randomize / denoise=normal / 枚举位置数字）
+        _sanitize_workflow_inputs(workflow, _get_object_info(server_url))
         node_id = workflow_cfg.get("prompt_node_id", "6")
         field = workflow_cfg.get("prompt_field", "text")
         if node_id in workflow and field in workflow[node_id]["inputs"]:
