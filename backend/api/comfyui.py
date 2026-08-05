@@ -1649,6 +1649,28 @@ async def generate_thumbnail(data: GenerateRequest):
         except Exception as e:
             print(f"[ComfyUI] 参数注入失败: {e}")
 
+    # SD1.5 默认 512 分辨率兜底：模板 EmptyLatentImage 默认宽高任一 >1024 且用户未通过参数显式设置时，
+    # 降级为 512×512（SD1.5 原生训练分辨率，1024+ 会构图畸形/多人物）
+    try:
+        if _detect_model_type(workflow) == "sd15":
+            user_size = False
+            if data.preset_id and data.param_values:
+                for _k in (data.param_values or {}):
+                    if str(_k).endswith(".width") or str(_k).endswith(".height"):
+                        user_size = True
+                        break
+            if not user_size:
+                for _nid, _node in workflow.items():
+                    if _node.get("class_type") == "EmptyLatentImage":
+                        _ins = _node.get("inputs", {}) or {}
+                        _w, _h = _ins.get("width"), _ins.get("height")
+                        if isinstance(_w, (int, float)) and isinstance(_h, (int, float)) and (_w >= 1024 or _h >= 1024):
+                            _ins["width"] = 512
+                            _ins["height"] = 512
+                            print(f"[ComfyUI] SD1.5 模板尺寸 {_w}x{_h} 越界，已按默认降级为 512x512")
+    except Exception as _e:
+        print(f"[ComfyUI] SD15 尺寸兜底失败: {_e}")
+
     try:
         return await _run_comfyui(server_url, workflow, workflow_cfg, final_prompt, data.prompt_id)
     except Exception as e:
