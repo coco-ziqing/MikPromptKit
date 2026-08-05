@@ -264,14 +264,15 @@ Object.assign(App, {
               '<div class="modal-body" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:12px;">' +
                 // 选中卡预览
                 '<div id="bgenPreview" style="border:1px solid var(--border-color);border-radius:10px;padding:8px 10px;max-height:96px;overflow-y:auto;"></div>' +
-                // 工作流选择
-                '<div style="font-size:12px;font-weight:600;"><i class="bi bi-diagram-3"></i> 生成工作流 <span id="bgenWfHint" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span></div>' +
-                '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
-                  '<select id="bgenWfSelect" onchange="App._batchWfSelected(this.value)" style="flex:1;min-width:240px;font-size:12px;padding:6px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);">' +
-                    '<option value="">加载工作流库...</option>' +
-                  '</select>' +
-                  '<span id="bgenModelBadge" style="font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(99,102,241,0.12);color:var(--primary);font-weight:600;display:none;"></span>' +
+                // 工作流选择（可视化双视图：缩略图卡片 / 详细信息）
+                '<div style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;"><i class="bi bi-diagram-3"></i> 生成工作流 <span id="bgenWfHint" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span>' +
+                  '<span style="margin-left:auto;display:flex;gap:2px;border:1px solid var(--border-color);border-radius:8px;padding:2px;">' +
+                    '<button id="bgenWfViewGrid" class="cwl-logview-btn" onclick="App._batchWfView(\'grid\')" title="缩略图卡片模式"><i class="bi bi-grid-3x3-gap"></i> 卡片</button>' +
+                    '<button id="bgenWfViewList" class="cwl-logview-btn" onclick="App._batchWfView(\'list\')" title="详细信息模式"><i class="bi bi-list-ul"></i> 详情</button>' +
+                  '</span>' +
                 '</div>' +
+                '<div id="bgenWfGrid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;"></div>' +
+                '<div id="bgenWfList" style="display:none;flex-direction:column;gap:5px;"></div>' +
                 // 工作流信息卡
                 '<div id="bgenWfInfo" style="border:1px dashed var(--border-color);border-radius:10px;padding:8px 10px;display:none;font-size:10px;color:var(--text-muted);line-height:1.7;"></div>' +
                 // 提示词组合
@@ -338,7 +339,8 @@ Object.assign(App, {
             if (self._batchIds.length > 8) html += '<div style="font-size:10px;color:var(--text-muted);">…等共 ' + self._batchIds.length + ' 条</div>';
             pv.innerHTML = html;
         }
-        // 加载工作流库
+        // 加载工作流库（先恢复上次参数设置）
+        this._restoreBatchSettings();
         this._loadBatchWorkflows();
         // 加载模块主体预设（供提示词组合预览）
         var self = this;
@@ -389,26 +391,131 @@ Object.assign(App, {
     },
 
     async _loadBatchWorkflows() {
-        var sel = document.getElementById('bgenWfSelect');
-        if (!sel) return;
         try {
             var d = await this.fetchJSON('/api/v2/comfyui/workflows?sort=recent');
             this._batchWorkflows = (d && d.items) || [];
             if (this._batchWorkflows.length === 0) {
-                sel.innerHTML = '<option value="">工作流库为空，请先在「工作流库」导入或同步</option>';
+                var grid = document.getElementById('bgenWfGrid');
+                if (grid) grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--text-muted);font-size:11px;">工作流库为空，请先在「工作流库」导入或同步</div>';
                 return;
             }
-            var html = '';
-            this._batchWorkflows.forEach(function(w) {
-                html += '<option value="' + App._escape(w.id) + '">' + App._escape((w.name || '未命名') + '（' + (w.node_count || 0) + ' 节点）') + '</option>';
-            });
-            sel.innerHTML = html;
-            // 默认选中最近使用的工作流
-            sel.value = this._batchWorkflows[0].id;
-            this._batchWfSelected(sel.value);
+            this._renderBatchWfViews();
+            // 恢复上次选择的工作流（记住参数设置）
+            var saved = this._batchSavedSettings();
+            var targetId = saved && saved.workflow_id;
+            var found = false;
+            (this._batchWorkflows || []).forEach(function(w) { if (w.id === targetId) found = true; });
+            if (!found && this._batchWorkflows.length > 0) targetId = this._batchWorkflows[0].id;
+            this._batchWfId = targetId;
+            this._renderBatchWfViews();
+            this._batchWfSelected(targetId);
         } catch(e) {
-            sel.innerHTML = '<option value="">加载失败: ' + App._escape(e.message) + '</option>';
+            var grid = document.getElementById('bgenWfGrid');
+            if (grid) grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:16px;color:#ef4444;font-size:11px;">加载失败: ' + App._escape(e.message) + '</div>';
         }
+    },
+
+    // 工作流双视图渲染（卡片/详情）
+    _renderBatchWfViews() {
+        var self = this;
+        var grid = document.getElementById('bgenWfGrid');
+        var list = document.getElementById('bgenWfList');
+        if (!grid || !list) return;
+        var wfs = this._batchWorkflows || [];
+        var srcMap = { png_import: 'PNG导入', comfyui_sync: 'Comfy同步', manual: '手动', generate: '生成' };
+        // 卡片视图
+        var gh = '';
+        wfs.forEach(function(w) {
+            var isSel = self._batchWfId === w.id;
+            var cover = w.thumbnail ? '/api/thumbnails/file/' + w.thumbnail : '';
+            var src = srcMap[w.source] || w.source || '';
+            gh += '<div onclick="App._batchPickWf(\'' + App._escape(w.id) + '\')" title="' + App._escape((w.name || '') + (w.prompt_text ? '\n📝 ' + w.prompt_text : '')) + '" style="border:1px solid ' + (isSel ? 'var(--primary)' : 'var(--border-color)') + ';border-radius:10px;overflow:hidden;cursor:pointer;background:var(--bg-card);transition:border-color .12s;">' +
+              '<div style="height:64px;background:linear-gradient(135deg,#1e293b,#334155);display:flex;align-items:center;justify-content:center;position:relative;">' +
+                (cover ? '<img src="' + cover + '" style="width:100%;height:100%;object-fit:cover;">' : '<span style="font-size:22px;opacity:0.5;">🎨</span>') +
+                (src ? '<span style="position:absolute;top:4px;right:4px;font-size:8px;padding:1px 6px;border-radius:8px;background:rgba(0,0,0,0.55);color:#e2e8f0;">' + App._escape(src) + '</span>' : '') +
+              '</div>' +
+              '<div style="padding:5px 7px;">' +
+                '<div style="font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App._escape(w.name || '未命名') + '</div>' +
+                '<div style="font-size:9px;color:var(--text-muted);">' + (w.node_count || 0) + ' 节点 · 使用 ' + (w.usage_count || 0) + ' 次</div>' +
+              '</div>' +
+            '</div>';
+        });
+        grid.innerHTML = gh;
+        // 详情视图
+        var lh = '';
+        wfs.forEach(function(w) {
+            var isSel = self._batchWfId === w.id;
+            var cover = w.thumbnail ? '/api/thumbnails/file/' + w.thumbnail : '';
+            var src = srcMap[w.source] || w.source || '';
+            lh += '<div onclick="App._batchPickWf(\'' + App._escape(w.id) + '\')" style="display:flex;align-items:center;gap:8px;padding:6px 9px;border:1px solid ' + (isSel ? 'var(--primary)' : 'var(--border-color)') + ';border-radius:8px;cursor:pointer;background:' + (isSel ? 'rgba(99,102,241,0.06)' : 'var(--bg-card)') + ';">' +
+              (cover ? '<img src="' + cover + '" style="width:44px;height:30px;object-fit:cover;border-radius:5px;flex-shrink:0;">' : '<span style="width:44px;height:30px;display:flex;align-items:center;justify-content:center;font-size:16px;background:#1e293b;border-radius:5px;flex-shrink:0;">🎨</span>') +
+              '<div style="flex:1;min-width:0;">' +
+                '<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App._escape(w.name || '未命名') + '</div>' +
+                '<div style="font-size:9px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (w.node_count || 0) + ' 节点 · 使用 ' + (w.usage_count || 0) + ' 次' + (src ? ' · ' + src : '') + (w.last_used_at ? ' · ' + App._escape(String(w.last_used_at).slice(5, 16)) : '') + '</div>' +
+              '</div>' +
+              (isSel ? '<span style="color:var(--primary);font-size:13px;">✓</span>' : '') +
+            '</div>';
+        });
+        list.innerHTML = lh;
+        // 应用视图模式
+        this._batchWfView(this._batchViewMode || 'grid');
+    },
+
+    // 视图模式切换（卡片/详情），记住选择
+    _batchWfView(mode) {
+        this._batchViewMode = mode;
+        try { localStorage.setItem('cwl_batch_wf_view', mode); } catch(e) {}
+        var grid = document.getElementById('bgenWfGrid');
+        var list = document.getElementById('bgenWfList');
+        if (grid) { grid.style.display = mode === 'grid' ? 'grid' : 'none'; }
+        if (list) { list.style.display = mode === 'list' ? 'flex' : 'none'; }
+        var gb = document.getElementById('bgenWfViewGrid');
+        var lb = document.getElementById('bgenWfViewList');
+        if (gb) gb.className = 'cwl-logview-btn' + (mode === 'grid' ? ' active' : '');
+        if (lb) lb.className = 'cwl-logview-btn' + (mode === 'list' ? ' active' : '');
+    },
+
+    // 选择工作流（卡片/列表项点击）
+    async _batchPickWf(wfId) {
+        this._batchWfId = wfId;
+        this._renderBatchWfViews();
+        await this._batchWfSelected(wfId);
+        this._saveBatchSettings();
+    },
+
+    // 读取上次批量设置
+    _batchSavedSettings() {
+        try { return JSON.parse(localStorage.getItem('cwl_batch_settings') || 'null') || null; } catch(e) { return null; }
+    },
+
+    // 保存批量设置（工作流/参数预设/后缀/开关/参数值）
+    _saveBatchSettings() {
+        try {
+            var s = {
+                workflow_id: this._batchWfId || '',
+                preset_id: this._batchPresetId || 0,
+                suffix: (document.getElementById('bgenSuffix') || {}).value || '',
+                use_module_preset: (document.getElementById('bgenUsePreset') || {}).checked ? 1 : 0,
+                param_values: this._collectBatchParams()
+            };
+            localStorage.setItem('cwl_batch_settings', JSON.stringify(s));
+        } catch(e) {}
+    },
+
+    // 恢复上次批量设置
+    _restoreBatchSettings() {
+        var s = this._batchSavedSettings();
+        if (!s) return;
+        var suffixEl = document.getElementById('bgenSuffix');
+        if (suffixEl && s.suffix !== undefined) suffixEl.value = s.suffix;
+        var upEl = document.getElementById('bgenUsePreset');
+        if (upEl && s.use_module_preset !== undefined) upEl.checked = !!s.use_module_preset;
+        if (s.workflow_id) this._batchWfId = s.workflow_id;
+        this._batchSavedParams = s.param_values || null;
+        if (s.preset_id) this._batchRestorePresetId = s.preset_id;
+        var vm = null;
+        try { vm = localStorage.getItem('cwl_batch_wf_view'); } catch(e) {}
+        this._batchViewMode = vm === 'list' ? 'list' : 'grid';
     },
 
     async _batchWfSelected(wfId) {
@@ -447,6 +554,13 @@ Object.assign(App, {
             this._batchPresets = d.presets || [];
             var userPreset = null;
             this._batchPresets.forEach(function(p) { if (p.mode === 'user' && !userPreset) userPreset = p; });
+            // 恢复上次选择的参数预设
+            if (this._batchRestorePresetId) {
+                var foundP = null;
+                this._batchPresets.forEach(function(p) { if (p.id === this._batchRestorePresetId) foundP = p; }, this);
+                if (foundP) userPreset = foundP;
+                this._batchRestorePresetId = null;
+            }
             this._batchPreset = userPreset || null;
             this._batchPresetId = userPreset ? userPreset.id : 0;
             if (presetArea) {
@@ -540,6 +654,20 @@ Object.assign(App, {
             html += '</div>';
         });
         form.innerHTML = html;
+        // 恢复上次保存的参数值（记住参数设置）
+        if (this._batchSavedParams) {
+            var self = this;
+            Object.keys(this._batchSavedParams).forEach(function(k) {
+                var el = document.querySelector('#bgenPresetForm .bgen-pv[data-key="' + k + '"]');
+                if (!el) return;
+                var v = self._batchSavedParams[k];
+                if (el.type === 'checkbox') el.checked = !!v;
+                else el.value = (v === undefined || v === null) ? '' : v;
+                var num = document.querySelector('#bgenPresetForm .bgen-pv-num[data-key="' + k + '"]');
+                if (num && num.type !== 'checkbox') num.value = (v === undefined || v === null) ? '' : v;
+            });
+            this._batchSavedParams = null; // 仅恢复一次
+        }
     },
 
     // 批量弹窗尺寸快捷条（复用工作流库尺寸预设）
@@ -671,6 +799,8 @@ Object.assign(App, {
             }
             this._batchTaskId = d.task_id;
             this._batchTaskTotal = d.total || this._batchIds.length;
+            // 记住本次参数设置（下次打开恢复）
+            this._saveBatchSettings();
             if (txt) txt.textContent = '任务 #' + d.task_id + ' 已创建（' + (d.workflow_name || '') + '），等待执行...';
             this.showToast('生成任务 #' + d.task_id + ' 已入队（' + this._batchTaskTotal + ' 张）', 'info');
             // 轮询监督进度（任务持久化，断线/刷新后可恢复）
