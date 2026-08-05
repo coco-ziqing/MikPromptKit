@@ -320,6 +320,9 @@ Object.assign(App, {
             document.body.appendChild(overlay);
         }
         overlay.style.display = 'flex';
+        // 重置任务状态（新打开弹窗；旧轮询检测到 _batchTaskId 置空后自动退出）
+        this._batchGenRunning = false;
+        this._batchTaskId = null;
         // 选中卡预览
         var cnt = document.getElementById('bgenCount');
         if (cnt) cnt.textContent = '（' + (this._batchIds || []).length + ' 张）';
@@ -754,7 +757,7 @@ Object.assign(App, {
         var self = this;
         var startBtn = document.getElementById('bgenStartBtn');
         if (!startBtn) return;
-        var wfId = (document.getElementById('bgenWfSelect') || {}).value;
+        var wfId = this._batchWfId || '';
         if (!wfId) { this.showToast('请先选择生成工作流', 'warning'); return; }
         if (this._batchGenRunning) { this.showToast('正在生成中，请稍候', 'warning'); return; }
         var cfg = await this.fetchJSON('/api/v2/comfyui/config');
