@@ -642,6 +642,17 @@ App.comfyLib._renderParamForm = function() {
         return;
     }
     var html = '';
+    // 模型文件参数存在时：顶部显示「刷新模型列表」工具条
+    var hasFileParam = false;
+    params.forEach(function(p) {
+        if (p && p.type === 'select_file' && (p.options || []).length > 0) hasFileParam = true;
+    });
+    if (hasFileParam) {
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+          '<span style="font-size:10px;color:var(--text-muted);"><i class="bi bi-box-seam"></i> 模型文件自动同步 ComfyUI</span>' +
+          '<span style="margin-left:auto;"><button type="button" class="cwl-tree-btn" onclick="App.comfyLib._refreshModelOptions()" title="强制从 ComfyUI 拉取最新模型列表（新上传模型后点击）"><i class="bi bi-arrow-repeat"></i> 刷新模型列表</button></span>' +
+        '</div>';
+    }
     // 尺寸快捷：表单含 width + height 滑块时提供横竖/比例/分辨率一键设置
     var self = this;
     var FILE_FIELDS = ['ckpt_name', 'lora_name', 'unet_name', 'vae_name', 'clip_name1', 'clip_name2'];
@@ -703,7 +714,7 @@ App.comfyLib._renderParamForm = function() {
             // 枚举下拉（采样器/调度器等；带 options 的参数一律下拉，即使旧数据 type 为 text/number）
             var opts = p.options || [];
             if (opts.length === 0) opts = [String(val === undefined ? '' : val)];
-            html += '<select class="cwl-pv" data-key="' + App._escape(p.key) + '" style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
+            html += '<select class="cwl-pv" data-key="' + App._escape(p.key) + '" data-field="' + App._escape(p.field || '') + '" style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
             opts.forEach(function(o) {
                 html += '<option value="' + App._escape(o) + '"' + (String(val) === String(o) ? ' selected' : '') + '>' + App._escape(o) + '</option>';
             });
@@ -712,7 +723,7 @@ App.comfyLib._renderParamForm = function() {
             // 模型文件：有可用选项时渲染下拉，无选项（ComfyUI 不可达）时回退文本框手输
             var fopts = p.options || [];
             if (fopts.length > 0) {
-                html += '<select class="cwl-pv" data-key="' + App._escape(p.key) + '" style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
+                html += '<select class="cwl-pv" data-key="' + App._escape(p.key) + '" data-field="' + App._escape(p.field || '') + '" style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
                 fopts.forEach(function(o) {
                     html += '<option value="' + App._escape(o) + '"' + (String(val) === String(o) ? ' selected' : '') + '>' + App._escape(o) + '</option>';
                 });
@@ -727,6 +738,42 @@ App.comfyLib._renderParamForm = function() {
     });
     html += '</div>';
     form.innerHTML = html;
+    // 自动同步模型列表（用缓存，不强制；新模型通过手动刷新按钮获取）
+    if (hasFileParam) this._applyModelOptions(false);
+};
+
+// 应用模型选项到表单下拉（force=true 强制刷新 ComfyUI object_info 缓存）
+App.comfyLib._applyModelOptions = async function(force) {
+    try {
+        var d = await App.fetchJSON('/api/v2/comfyui/model-options?refresh=' + (force ? 1 : 0));
+        if (!d || !d.ok || !d.models) return false;
+        var models = d.models;
+        document.querySelectorAll('#cwlParamForm select.cwl-pv[data-field]').forEach(function(sel) {
+            var field = sel.getAttribute('data-field');
+            var opts = models[field] || [];
+            if (!opts.length) return;
+            var cur = sel.value;
+            var h = '';
+            opts.forEach(function(o) {
+                h += '<option value="' + App._escape(o) + '"' + (String(cur) === String(o) ? ' selected' : '') + '>' + App._escape(o) + '</option>';
+            });
+            // 当前选中值不在新列表时追加保留（避免切换丢失）
+            if (cur && opts.indexOf(cur) === -1) {
+                h += '<option value="' + App._escape(cur) + '" selected>' + App._escape(cur) + '</option>';
+            }
+            sel.innerHTML = h;
+        });
+        return true;
+    } catch(e) {
+        return false;
+    }
+};
+
+// 手动刷新模型列表（强制从 ComfyUI 拉取）
+App.comfyLib._refreshModelOptions = async function() {
+    App.showToast('正在从 ComfyUI 刷新模型列表...', 'info');
+    var ok = await this._applyModelOptions(true);
+    App.showToast(ok ? '✅ 模型列表已刷新' : '刷新失败（ComfyUI 不可达？）', ok ? 'success' : 'error');
 };
 
 // 滑块 → 数字输入框 + 显示值同步

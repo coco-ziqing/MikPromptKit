@@ -817,6 +817,44 @@ def comfyui_runtime():
         return {"ok": False, "error": str(e)}
 
 
+# 模型/文件类节点 → 字段名映射（用于聚合模型选项列表）
+_MODEL_OPTION_SOURCES = {
+    "CheckpointLoaderSimple": "ckpt_name",
+    "CheckpointLoader": "ckpt_name",
+    "LoraLoader": "lora_name",
+    "LoraLoaderModelOnly": "lora_name",
+    "UNETLoader": "unet_name",
+    "VAELoader": "vae_name",
+    "DualCLIPLoader": "clip_name1",
+    "CLIPLoader": "clip_name",
+    "ControlNetLoader": "control_net_name",
+    "UpscaleModelLoader": "model_name",
+    "CLIPVisionLoader": "clip_name",
+    "ImageOnlyCheckpointLoader": "ckpt_name",
+}
+
+
+@router.get("/model-options")
+def model_options(refresh: int = 0):
+    """获取 ComfyUI 模型/文件类字段的可选项（按字段聚合，如 ckpt_name/lora_name/unet_name/vae_name/clip_name1）
+    refresh=1 时强制刷新 object_info 缓存（新上传模型立即可见）"""
+    global _comfy_object_info_cache, _comfy_object_info_ts
+    if refresh:
+        _comfy_object_info_cache = None
+        _comfy_object_info_ts = 0
+    url = (_get_config().get("server_url") or "").rstrip("/")
+    info = _get_object_info(url)
+    models = {}
+    for ct, field in _MODEL_OPTION_SOURCES.items():
+        opts = _field_enum_options(info, ct, field)
+        if opts:
+            models.setdefault(field, []).extend(opts)
+    for k in models:
+        seen = set()
+        models[k] = [x for x in models[k] if not (x in seen or seen.add(x))]
+    return {"ok": True, "models": models, "server_url": url}
+
+
 @router.get("/workflows/by-card/{card_id}")
 def get_workflow_by_card(card_id: int):
     """从词卡调取工作流：优先 workflow_id 关联，否则从预览 PNG 元数据提取（查重复用）"""
