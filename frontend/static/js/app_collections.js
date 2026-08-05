@@ -301,6 +301,15 @@ Object.assign(App, {
                 '<div id="bgenWfList" style="display:none;flex-direction:column;gap:5px;"></div>' +
                 // 工作流信息卡
                 '<div id="bgenWfInfo" style="border:1px dashed var(--border-color);border-radius:10px;padding:8px 10px;display:none;font-size:10px;color:var(--text-muted);line-height:1.7;"></div>' +
+                // 参数预设
+                '<div id="bgenPresetArea" style="display:none;">' +
+                  '<div style="font-size:12px;font-weight:600;margin-bottom:4px;"><i class="bi bi-sliders"></i> 参数预设</div>' +
+                  '<div id="bgenPresetBar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>' +
+                  '<div id="bgenSizeQuick" style="display:none;border:1px dashed #6366f1;border-radius:8px;padding:8px 10px;margin-bottom:8px;"></div>' +
+                  '<div id="bgenPresetForm" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;"></div>' +
+                '</div>' +
+                '</div>' +   // bgenComfyArea 结束
+
                 // 提示词组合
                 '<div id="bgenCompose" style="border:1px solid var(--border-color);border-radius:10px;padding:8px 10px;">' +
                   '<div style="font-size:12px;font-weight:600;margin-bottom:6px;"><i class="bi bi-fonts"></i> 提示词组合 <span style="font-size:10px;color:var(--text-muted);font-weight:400;">词卡内容 + 模块预设 + 品质后缀 → 注入工作流正面提示词</span></div>' +
@@ -326,14 +335,6 @@ Object.assign(App, {
                   '</div>' +
                   '<div id="bgenComposePreview" style="font-size:10px;color:var(--text-muted);background:var(--bg-card);border:1px dashed var(--border-color);border-radius:6px;padding:6px 8px;max-height:64px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"></div>' +
                 '</div>' +
-                // 参数预设
-                '<div id="bgenPresetArea" style="display:none;">' +
-                  '<div style="font-size:12px;font-weight:600;margin-bottom:4px;"><i class="bi bi-sliders"></i> 参数预设</div>' +
-                  '<div id="bgenPresetBar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>' +
-                  '<div id="bgenSizeQuick" style="display:none;border:1px dashed #6366f1;border-radius:8px;padding:8px 10px;margin-bottom:8px;"></div>' +
-                  '<div id="bgenPresetForm" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;"></div>' +
-                '</div>' +
-                '</div>' +   // bgenComfyArea 结束
                 // 进度与明细
                 '<div id="bgenProgressArea" style="display:none;">' +
                   '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">' +
