@@ -277,8 +277,9 @@ Object.assign(App, {
             }
             // coll-add-btn 已移动到 card-thumb 底部右下角
 
-            // Phase17: 统一视频字段 — 兼容 video_filename(旧prompts) + preview_media(新word_card)
-            var videoFile = p.video_filename || p.preview_media || '';
+            // Phase17: 统一视频字段 — 兼容 video_filename(旧prompts) + preview_media(新word_card)；
+            // 仅扩展名为视频才视为视频（防御历史脏数据：图片被误写入 preview_media）
+            var videoFile = p.video_filename || (/^(mp4|webm|mov|avi|mkv|m4v|ogv|mts|m2ts)$/i.test((p.preview_media || '').split('.').pop()) ? p.preview_media : '') || '';
             var videoFps = p.video_fps || '';
             var isWordCard = p._source === 'word_card';
             // 原图：word_card 用 original_ref（真原图UUID），旧prompts用缩略图

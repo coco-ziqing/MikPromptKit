@@ -443,7 +443,7 @@ Object.assign(App, {
             const isSelected = this.state.batchSelected.has(p.id);
             const selectedClass = isSelected ? 'selected' : '';
             // 统一视频字段 + word_card 检测
-            var videoFile2 = p.video_filename || p.preview_media || '';
+            var videoFile2 = p.video_filename || (/^(mp4|webm|mov|avi|mkv|m4v|ogv|mts|m2ts)$/i.test((p.preview_media || '').split('.').pop()) ? p.preview_media : '') || '';
             var isWordCard = p._source === 'word_card';
             html += `
                 <div class="prompt-card ${batchClass} ${selectedClass} ${editClass}" data-id="${p.id}" draggable="true">

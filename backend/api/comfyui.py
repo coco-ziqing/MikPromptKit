@@ -654,15 +654,15 @@ def comfyui_runtime():
 def get_workflow_by_card(card_id: int):
     """从词卡调取工作流：优先 workflow_id 关联，否则从预览 PNG 元数据提取（查重复用）"""
     db = get_db()
-    row = db.execute("SELECT id, workflow_id, preview_media, content FROM word_card WHERE id=?", [card_id]).fetchone()
+    row = db.execute("SELECT id, workflow_id, preview_media, original_ref, content FROM word_card WHERE id=?", [card_id]).fetchone()
     if not row:
         return {"ok": False, "error": "词卡不存在"}
     if row["workflow_id"]:
         wf, err = _find_workflow_v2(row["workflow_id"])
         if wf:
             return {"ok": True, "workflow_id": wf["id"], "name": wf.get("name", ""), "via": "word_card"}
-    # 从预览媒体 PNG 提取
-    media = row["preview_media"] or ""
+    # 从原图/预览媒体 PNG 提取（图片词卡原图在 original_ref，视频词卡才用 preview_media）
+    media = row["original_ref"] or row["preview_media"] or ""
     if media.lower().endswith(".png"):
         for base in (OUTPUTS_DIR, ORIGINALS_DIR, THUMB_DIR):
             pp = os.path.join(base, os.path.basename(media))
@@ -1499,7 +1499,10 @@ class SaveCardRequest(BaseModel):
 
 @router.post("/generate/save-card")
 def save_generated_as_card(data: SaveCardRequest):
-    """将 ComfyUI 生成结果存为词卡：原图关联 preview_media + 缩略图 + content=提示词"""
+    """将 ComfyUI 生成结果存为词卡：原图关联 original_ref + 缩略图 + content=提示词
+    注意：preview_media 是词库「视频预览」专用字段（前端据此渲染 <video>），
+    图片词卡必须留空，否则缩略图会被误渲染为视频控件。
+    """
     import shutil
     if not data.output_file:
         return {"ok": False, "error": "缺少 output_file"}
@@ -1545,7 +1548,7 @@ def save_generated_as_card(data: SaveCardRequest):
             thumb_width, thumb_height, original_ref, workflow_id)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         [data.group_id or 1, name, content, "", "", data.module or "custom", "", "[]", "🖼️",
-         thumb_name, os.path.basename(src), "image", 0, 0, "comfyui_generated",
+         thumb_name, "", "image", 0, 0, "comfyui_generated",
          now, now, iw, ih, os.path.basename(src), data.workflow_id])
     card_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     # 3. media_assets 登记
@@ -1568,7 +1571,7 @@ def save_generated_as_card(data: SaveCardRequest):
         pass
     safe_commit()
     return {"ok": True, "card_id": card_id, "name": name, "thumbnail": thumb_name,
-            "preview_media": os.path.basename(src)}
+            "preview_media": "", "original_ref": os.path.basename(src)}
 
 
 @router.get("/generation-logs")
