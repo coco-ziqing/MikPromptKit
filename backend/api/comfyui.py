@@ -1365,35 +1365,68 @@ class SyncRequest(BaseModel):
 class BatchGenerateRequest(BaseModel):
     prompt_ids: list[int]
     workflow_id: str = ""
+    preset_id: int = 0           # 可选：参数预设（应用到全部卡片）
+    param_values: dict = {}      # 可选：参数值（步数/CFG/尺寸/采样器等）
 
 
 @router.post("/batch-generate")
 async def batch_generate_thumbnail(data: BatchGenerateRequest):
-    """批量 AI 生成缩略图 — 逐条排队发送到 ComfyUI，SSE 流式返回，每生成一张即刻推送"""
+    """批量 AI 生成缩略图 — 逐条排队发送到 ComfyUI，SSE 流式返回，每生成一张即刻推送
+    工作流来自工作流库（comfyui_workflows 表），支持参数预设注入与 SD1.5 默认 512 兜底
+    """
     cfg = _get_config()
     if not cfg.get("enabled") or not cfg.get("server_url"):
         return {"ok": False, "error": "ComfyUI 未启用或服务器地址未配置"}
+    if not data.prompt_ids:
+        return {"ok": False, "error": "未选择任何词条"}
 
-    workflow_cfg, _ = _find_workflow(cfg, data.workflow_id)
-    if not workflow_cfg or not workflow_cfg.get("workflow_json"):
-        return {"ok": False, "error": "未找到工作流模板，请先配置"}
+    # 工作流库优先（新架构），兼容旧 config 数组
+    workflow_cfg, wf_err = _find_workflow_v2(data.workflow_id)
+    if not workflow_cfg:
+        old_cfg, _ = _find_workflow(cfg, data.workflow_id)
+        if not old_cfg or not old_cfg.get("workflow_json"):
+            return {"ok": False, "error": wf_err or "未找到工作流模板，请先在「工作流库」中导入或同步工作流"}
+        workflow_cfg = {
+            "workflow_json": old_cfg["workflow_json"],
+            "prompt_node_id": old_cfg.get("prompt_node_id", "6"),
+            "prompt_field": old_cfg.get("prompt_field", "text"),
+            "image_output_node_id": old_cfg.get("image_output_node_id", "9"),
+            "id": data.workflow_id or old_cfg.get("id", ""),
+        }
 
     server_url = cfg["server_url"].rstrip("/")
     workflow_template = workflow_cfg["workflow_json"]
-    node_id = workflow_cfg.get("prompt_node_id", "6")
-    field = workflow_cfg.get("prompt_field", "text")
     presets = _get_module_presets()
     total = len(data.prompt_ids)
+    model_type = _detect_model_type(workflow_template)
+    wf_name = workflow_cfg.get("name", "") or ""
+
+    # 参数预设注入（可选）：先加载 preset 参数定义
+    preset_params = []
+    if data.preset_id:
+        try:
+            prow = get_db().execute("SELECT params_json FROM comfyui_workflow_presets WHERE id=?", [data.preset_id]).fetchone()
+            if prow:
+                preset_params = json.loads(prow["params_json"])
+        except Exception:
+            preset_params = []
+    user_size = False
+    for _k in (data.param_values or {}):
+        if str(_k).endswith(".width") or str(_k).endswith(".height"):
+            user_size = True
+            break
 
     async def event_stream():
         success_count = 0
         error_count = 0
         db = get_db()
+        # 起始事件：工作流信息 + 总数，供前端展示提示
+        yield f"data: {json.dumps({'start': True, 'total': total, 'workflow_name': wf_name, 'model_type': model_type}, ensure_ascii=False)}\n\n"
 
         for idx, pid in enumerate(data.prompt_ids):
             row = db.execute("SELECT content, module FROM prompts WHERE id=?", [pid]).fetchone()
             if not row:
-                ev = {"prompt_id": pid, "ok": False, "error": "提示词不存在", "index": idx, "total": total}
+                ev = {"prompt_id": pid, "ok": False, "error": "提示词不存在", "index": idx, "total": total, "done": idx + 1}
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
                 error_count += 1
                 continue
@@ -1408,8 +1441,19 @@ async def batch_generate_thumbnail(data: BatchGenerateRequest):
             final_prompt = _compose_prompt(preset_text, card_text, DEFAULT_STYLE_SUFFIX)
 
             wf = copy.deepcopy(workflow_template)
-            if node_id in wf and field in wf[node_id]["inputs"]:
-                wf[node_id]["inputs"][field] = final_prompt
+            # 参数预设注入（与单张生成一致）
+            if preset_params and data.param_values:
+                _apply_params(wf, preset_params, data.param_values or {})
+            # SD1.5 默认 512 兜底：模板越界且用户未显式设置
+            if model_type == "sd15" and not user_size:
+                for _nid, _node in wf.items():
+                    if _node.get("class_type") == "EmptyLatentImage":
+                        _ins = _node.get("inputs", {}) or {}
+                        _w, _h = _ins.get("width"), _ins.get("height")
+                        if isinstance(_w, (int, float)) and isinstance(_h, (int, float)) and (_w >= 1024 or _h >= 1024):
+                            _ins["width"] = 512
+                            _ins["height"] = 512
+                            break
 
             try:
                 result = await _run_comfyui(server_url, wf, workflow_cfg, final_prompt, pid)
@@ -1419,14 +1463,17 @@ async def batch_generate_thumbnail(data: BatchGenerateRequest):
                     error_count += 1
                 ev = {"prompt_id": pid, "ok": result.get("ok", False), "thumbnail": result.get("thumbnail"),
                       "thumbnail_url": result.get("thumbnail_url"), "error": result.get("error"),
-                      "index": idx, "total": total, "done": idx + 1}
+                      "prompt_text": final_prompt[:60],
+                      "index": idx, "total": total, "done": idx + 1,
+                      "progress": round((idx + 1) / total * 100)}
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
             except Exception as e:
-                ev = {"prompt_id": pid, "ok": False, "error": str(e), "index": idx, "total": total, "done": idx + 1}
+                ev = {"prompt_id": pid, "ok": False, "error": str(e), "prompt_text": card_text[:60],
+                      "index": idx, "total": total, "done": idx + 1, "progress": round((idx + 1) / total * 100)}
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
                 error_count += 1
 
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
 
         # 完成事件
         final = {"complete": True, "total": total, "success": success_count, "errors": error_count}

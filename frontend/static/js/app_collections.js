@@ -235,31 +235,243 @@ Object.assign(App, {
     async batchGenerateThumbnails() {
         var ids = [...this.state.batchSelected];
         if (ids.length === 0) { this.showToast(App._t('auto.please_选择词条', '请先选择词条'), 'error'); return; }
-        if (!confirm(App._t('common.confirm', '确认对 ') + ids.length + ' 条词条批量生成缩略图？\n注意：每张图需等待 ComfyUI 生成完成，耗时较长。')) return;
+        this._batchIds = ids;
+        this._openBatchGenDialog();
+    },
 
+    // ============ AI 批量生成配置弹窗 ============
+
+    _openBatchGenDialog() {
+        var self = this;
+        var overlay = document.getElementById('batchGenDialog');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'batchGenDialog';
+            overlay.className = 'modal-overlay';
+            overlay.style.cssText = 'display:none;z-index:760;';
+            overlay.onclick = function(e) { if (e.target === overlay) overlay.style.display = 'none'; };
+            overlay.innerHTML =
+            '<style>' +
+              '.bgen-btn{font-size:11px;padding:4px 10px;border:1px solid var(--border-color);border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer;}' +
+              '.bgen-btn:hover{border-color:var(--primary);color:var(--primary);}' +
+              '.bgen-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;font-size:11px;border:1px solid var(--border-color);}' +
+            '</style>' +
+            '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:720px;max-height:88vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
+              '<div class="modal-header" style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
+                '<h5 style="margin:0;font-size:14px;"><i class="bi bi-magic"></i> AI 批量生成缩略图 <span id="bgenCount" style="font-size:11px;color:var(--text-muted);"></span></h5>' +
+                '<button class="header-btn-sm" onclick="document.getElementById(\'batchGenDialog\').style.display=\'none\'">&times;</button>' +
+              '</div>' +
+              '<div class="modal-body" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:12px;">' +
+                // 选中卡预览
+                '<div id="bgenPreview" style="border:1px solid var(--border-color);border-radius:10px;padding:8px 10px;max-height:96px;overflow-y:auto;"></div>' +
+                // 工作流选择
+                '<div style="font-size:12px;font-weight:600;"><i class="bi bi-diagram-3"></i> 生成工作流 <span id="bgenWfHint" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span></div>' +
+                '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+                  '<select id="bgenWfSelect" onchange="App._batchWfSelected(this.value)" style="flex:1;min-width:240px;font-size:12px;padding:6px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);">' +
+                    '<option value="">加载工作流库...</option>' +
+                  '</select>' +
+                  '<span id="bgenModelBadge" style="font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(99,102,241,0.12);color:var(--primary);font-weight:600;display:none;"></span>' +
+                '</div>' +
+                // 参数预设
+                '<div id="bgenPresetArea" style="display:none;">' +
+                  '<div style="font-size:12px;font-weight:600;margin-bottom:6px;"><i class="bi bi-sliders"></i> 参数预设 <span id="bgenPresetName" style="font-size:10px;color:var(--text-muted);font-weight:400;"></span></div>' +
+                  '<div id="bgenPresetForm" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;"></div>' +
+                '</div>' +
+                // 进度与明细
+                '<div id="bgenProgressArea" style="display:none;">' +
+                  '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">' +
+                    '<span style="font-size:11px;color:var(--text-muted);" id="bgenProgressText">准备中...</span>' +
+                    '<span style="margin-left:auto;display:flex;gap:6px;">' +
+                      '<button class="bgen-btn" id="bgenCancelBtn" onclick="App._cancelBatchGen()" style="border-color:#ef4444;color:#ef4444;"><i class="bi bi-x-circle"></i> 取消</button>' +
+                    '</span>' +
+                  '</div>' +
+                  '<div style="height:8px;background:var(--border-color);border-radius:4px;overflow:hidden;margin-bottom:8px;">' +
+                    '<div id="bgenProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#6366f1,#8b5cf6);transition:width .3s;"></div>' +
+                  '</div>' +
+                  '<div id="bgenDetail" style="display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto;"></div>' +
+                '</div>' +
+              '</div>' +
+              '<div class="modal-footer" style="padding:10px 16px;border-top:1px solid var(--border-color);display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-shrink:0;">' +
+                '<span id="bgenFooterHint" style="margin-right:auto;font-size:10px;color:var(--text-muted);"></span>' +
+                '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'batchGenDialog\').style.display=\'none\'">关闭</button>' +
+                '<button class="btn btn-primary btn-sm" id="bgenStartBtn" onclick="App._startBatchGen()"><i class="bi bi-play-fill"></i> 开始生成</button>' +
+              '</div>' +
+            '</div>';
+            document.body.appendChild(overlay);
+        }
+        overlay.style.display = 'flex';
+        // 选中卡预览
+        var cnt = document.getElementById('bgenCount');
+        if (cnt) cnt.textContent = '（' + (this._batchIds || []).length + ' 张）';
+        var pv = document.getElementById('bgenPreview');
+        if (pv) {
+            var cards = [];
+            (this.state.prompts || []).forEach(function(p) {
+                if (self._batchIds.indexOf(p.id) > -1 && cards.length < 8) cards.push(p);
+            });
+            var html = '<div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">选中词条提示词预览：</div>';
+            if (cards.length === 0) {
+                html += '<div style="font-size:11px;color:var(--text-muted);">已选 ' + self._batchIds.length + ' 条</div>';
+            }
+            cards.forEach(function(p) {
+                html += '<div style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-main);">· ' + App._escape((p.content || p.name || '').slice(0, 60)) + '</div>';
+            });
+            if (self._batchIds.length > 8) html += '<div style="font-size:10px;color:var(--text-muted);">…等共 ' + self._batchIds.length + ' 条</div>';
+            pv.innerHTML = html;
+        }
+        // 加载工作流库
+        this._loadBatchWorkflows();
+    },
+
+    async _loadBatchWorkflows() {
+        var sel = document.getElementById('bgenWfSelect');
+        if (!sel) return;
+        try {
+            var d = await this.fetchJSON('/api/v2/comfyui/workflows?sort=recent');
+            this._batchWorkflows = (d && d.items) || [];
+            if (this._batchWorkflows.length === 0) {
+                sel.innerHTML = '<option value="">工作流库为空，请先在「工作流库」导入或同步</option>';
+                return;
+            }
+            var html = '';
+            this._batchWorkflows.forEach(function(w) {
+                html += '<option value="' + App._escape(w.id) + '">' + App._escape((w.name || '未命名') + '（' + (w.node_count || 0) + ' 节点）') + '</option>';
+            });
+            sel.innerHTML = html;
+            // 默认选中最近使用的工作流
+            sel.value = this._batchWorkflows[0].id;
+            this._batchWfSelected(sel.value);
+        } catch(e) {
+            sel.innerHTML = '<option value="">加载失败: ' + App._escape(e.message) + '</option>';
+        }
+    },
+
+    async _batchWfSelected(wfId) {
+        if (!wfId) return;
+        var badge = document.getElementById('bgenModelBadge');
+        var presetArea = document.getElementById('bgenPresetArea');
+        var hint = document.getElementById('bgenWfHint');
+        try {
+            var d = await this.fetchJSON('/api/v2/comfyui/workflows/' + encodeURIComponent(wfId) + '/params/analyze');
+            if (!d || !d.ok) throw new Error(d && d.error || '分析失败');
+            var mtMap = { flux: 'FLUX', sdxl: 'SDXL', sd15: 'SD1.5', unknown: '通用' };
+            if (badge) {
+                badge.textContent = mtMap[d.model_type] || d.model_type || '通用';
+                badge.style.display = 'inline-block';
+            }
+            if (hint) hint.textContent = d.model_type === 'sd15' ? '（SD1.5 默认 512×512）' : '';
+            // 加载参数预设（user 模式优先）
+            var preset = null;
+            (d.presets || []).forEach(function(p) { if (p.mode === 'user' && !preset) preset = p; });
+            this._batchPreset = preset;
+            this._batchPresetId = preset ? preset.id : 0;
+            var pn = document.getElementById('bgenPresetName');
+            if (pn) pn.textContent = preset ? '「' + preset.name + '」' : '（该工作流无已存参数配置，使用模板默认值）';
+            if (presetArea) {
+                presetArea.style.display = preset ? 'block' : 'none';
+                if (preset) this._renderBatchParamsForm(preset);
+            }
+        } catch(e) {
+            if (badge) badge.style.display = 'none';
+            if (presetArea) presetArea.style.display = 'none';
+        }
+    },
+
+    // 简化参数表单（滑块+数字/下拉/开关/文本），用于批量预设
+    _renderBatchParamsForm(preset) {
+        var form = document.getElementById('bgenPresetForm');
+        if (!form) return;
+        var params = [];
+        try { params = JSON.parse(preset.params_json || '[]'); } catch(e) {}
+        if (params.length === 0) { form.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">该配置无参数</div>'; return; }
+        var FILE_FIELDS = ['ckpt_name', 'lora_name', 'unet_name', 'vae_name', 'clip_name1', 'clip_name2'];
+        params.forEach(function(p) {
+            if (!p) return;
+            if ((p.options || []).length > 0) p.type = (FILE_FIELDS.indexOf(p.field) > -1) ? 'select_file' : 'select';
+        });
+        var html = '';
+        params.forEach(function(p) {
+            var val = p.default;
+            html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:7px 9px;">' +
+              '<div style="font-size:10px;font-weight:600;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + App._escape((p.label || p.key) + ' (' + p.key + ')') + '">' + App._escape(p.label || p.key) + '</div>';
+            if (p.type === 'slider') {
+                var min = p.min === undefined ? 0 : p.min, max = p.max === undefined ? 100 : p.max, step = p.step === undefined ? 1 : p.step;
+                html += '<div style="display:flex;align-items:center;gap:5px;">' +
+                  '<input type="range" class="bgen-pv" data-key="' + App._escape(p.key) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" style="flex:1;" oninput="document.getElementById(\'bpv_' + App._escape(p.key) + '\').textContent=this.value">' +
+                  '<span id="bpv_' + App._escape(p.key) + '" style="font-size:10px;color:var(--primary);font-family:monospace;">' + val + '</span>' +
+                '</div>';
+            } else if (p.type === 'number') {
+                html += '<input type="number" class="bgen-pv" data-key="' + App._escape(p.key) + '" value="' + App._escape(String(val === undefined ? '' : val)) + '" step="any" style="width:100%;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);">';
+            } else if (p.type === 'checkbox') {
+                html += '<input type="checkbox" class="bgen-pv" data-key="' + App._escape(p.key) + '" ' + (val ? 'checked' : '') + ' style="width:16px;height:16px;">';
+            } else if (p.type === 'select' || p.type === 'select_file' || (p.options || []).length > 0) {
+                var opts = p.options || [];
+                if (opts.length === 0) opts = [String(val === undefined ? '' : val)];
+                html += '<select class="bgen-pv" data-key="' + App._escape(p.key) + '" style="width:100%;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);">';
+                opts.forEach(function(o) {
+                    html += '<option value="' + App._escape(o) + '"' + (String(val) === String(o) ? ' selected' : '') + '>' + App._escape(o) + '</option>';
+                });
+                html += '</select>';
+            } else {
+                html += '<textarea class="bgen-pv" data-key="' + App._escape(p.key) + '" rows="' + (p.key.indexOf('.text') > -1 ? 2 : 1) + '" style="width:100%;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);resize:vertical;">' + App._escape(String(val === undefined ? '' : val)) + '</textarea>';
+            }
+            html += '</div>';
+        });
+        form.innerHTML = html;
+    },
+
+    _collectBatchParams() {
+        var values = {};
+        document.querySelectorAll('#bgenPresetForm .bgen-pv').forEach(function(el) {
+            var key = el.getAttribute('data-key');
+            var v = el.value;
+            if (el.type === 'checkbox') v = el.checked;
+            else if (el.type === 'range' || el.type === 'number') v = parseFloat(v);
+            values[key] = v;
+        });
+        return values;
+    },
+
+    async _startBatchGen() {
+        var self = this;
+        var startBtn = document.getElementById('bgenStartBtn');
+        if (!startBtn) return;
+        var wfId = (document.getElementById('bgenWfSelect') || {}).value;
+        if (!wfId) { this.showToast('请先选择生成工作流', 'warning'); return; }
+        if (this._batchGenRunning) { this.showToast('正在生成中，请稍候', 'warning'); return; }
         var cfg = await this.fetchJSON('/api/v2/comfyui/config');
         if (!cfg || !cfg.config || !cfg.config.enabled) {
-            this.showToast(App._t('auto.str_5f57664b', 'ComfyUI 未启用，请先配置'), 'warning');
-            this.openComfyConfig();
+            this.showToast('ComfyUI 未启用，请先在「工作流库」中启用', 'warning');
             return;
         }
-
-        this.showToast('⏳ 正在批量生成 ' + ids.length + ' 张缩略图...', 'info');
-        var bar = document.getElementById('batchBar');
-        if (bar) bar.style.opacity = '0.5';
-
-        var success = 0, errors = 0;
+        // 展示进度区
+        var pa = document.getElementById('bgenProgressArea');
+        if (pa) pa.style.display = 'block';
+        var det = document.getElementById('bgenDetail');
+        if (det) det.innerHTML = '';
+        var bar = document.getElementById('bgenProgressBar');
+        var txt = document.getElementById('bgenProgressText');
+        if (bar) bar.style.width = '0%';
+        if (txt) txt.textContent = '正在连接 ComfyUI...';
+        startBtn.disabled = true;
+        this._batchGenRunning = true;
+        this._batchAbort = new AbortController();
+        var paramValues = this._collectBatchParams();
+        var body = {
+            prompt_ids: this._batchIds,
+            workflow_id: wfId,
+            preset_id: this._batchPresetId || 0,
+            param_values: paramValues
+        };
+        var success = 0, errors = 0, total = this._batchIds.length;
         try {
             var resp = await fetch('/api/v2/comfyui/batch-generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    prompt_ids: ids,
-                    workflow_id: cfg.config.active_workflow || ''
-                })
+                body: JSON.stringify(body),
+                signal: this._batchAbort.signal
             });
-            if (!resp.ok) { this.showToast(App._t('auto.str_01b40748', '批处理请求未响应'), 'error'); return; }
-
+            if (!resp.ok) { this.showToast('批处理请求未响应', 'error'); return; }
             var reader = resp.body.getReader();
             var decoder = new TextDecoder();
             var buffer = '';
@@ -274,22 +486,55 @@ Object.assign(App, {
                     if (!line || !line.startsWith('data: ')) continue;
                     try {
                         var ev = JSON.parse(line.substring(6));
-                        if (ev.complete) {
+                        if (ev.start) {
+                            var name = ev.workflow_name || '';
+                            if (txt) txt.textContent = '开始生成 ' + ev.total + ' 张（工作流：' + (name || '') + '）';
+                            this.showToast('开始批量生成 ' + ev.total + ' 张（' + (name || '') + '）', 'info');
+                        } else if (ev.complete) {
                             success = ev.success || 0;
                             errors = ev.errors || 0;
-                        } else if (ev.done) {
-                            this.showToast('(' + ev.done + '/' + ev.total + ') ' + (ev.ok ? '✅ 完成' : '❌ ' + (ev.error || App._t('common.failed', '未完成'))), ev.ok ? 'success' : 'error');
+                        } else if (ev.done !== undefined) {
+                            if (bar) bar.style.width = (ev.progress || 0) + '%';
+                            if (txt) txt.textContent = '已完成 ' + ev.done + '/' + ev.total + '（成功 ' + (ev.ok ? 1 : 0) + '）';
+                            this._appendBatchDetail(ev);
                         }
                     } catch(e) {}
                 }
             }
-            this.showToast('✅ 批量生成完成: ' + success + ' 成功, ' + errors + App._t('auto.str_f73d0c19', ' 未完成'), errors > 0 ? 'warning' : 'success');
+            this.showToast('批量生成完成: ' + success + ' 成功, ' + errors + ' 未完成', errors > 0 ? 'warning' : 'success');
+            if (txt) txt.textContent = '完成：' + success + ' 成功 / ' + errors + ' 失败';
+            if (bar) bar.style.width = '100%';
             await this.loadPrompts();
         } catch(e) {
-            this.showToast('批量生成异常: ' + e.message, 'error');
+            if (e.name === 'AbortError') {
+                this.showToast('已取消批量生成', 'info');
+                if (txt) txt.textContent = '已取消';
+            } else {
+                this.showToast('批量生成异常: ' + e.message, 'error');
+            }
         } finally {
-            if (bar) bar.style.opacity = '';
+            startBtn.disabled = false;
+            this._batchGenRunning = false;
+            this._batchAbort = null;
         }
+    },
+
+    _appendBatchDetail(ev) {
+        var det = document.getElementById('bgenDetail');
+        if (!det) return;
+        var st = ev.ok ? '✅' : '❌';
+        var color = ev.ok ? '#10b981' : '#ef4444';
+        var html = '<div class="bgen-item" style="border-color:' + color + '33;">' +
+          (ev.thumbnail_url ? '<img src="' + ev.thumbnail_url + '" style="width:42px;height:28px;object-fit:cover;border-radius:4px;flex-shrink:0;" loading="lazy">' : '<span style="width:42px;text-align:center;flex-shrink:0;">' + st + '</span>') +
+          '<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + App._escape(ev.prompt_text || '') + '">' + App._escape((ev.prompt_text || '').slice(0, 40)) + '</span>' +
+          '<span style="font-size:10px;color:' + color + ';flex-shrink:0;">' + (ev.ok ? '成功' : (ev.error || '失败')) + '</span>' +
+        '</div>';
+        det.insertAdjacentHTML('beforeend', html);
+        det.scrollTop = det.scrollHeight;
+    },
+
+    _cancelBatchGen() {
+        if (this._batchAbort) this._batchAbort.abort();
     },
 
     // ============ 收藏夹 ============
