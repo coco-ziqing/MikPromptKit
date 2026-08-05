@@ -69,36 +69,46 @@ class DreaminaGenerateRequest(BaseModel):
 
 def dreamina_text2image(prompt: str, model_version: str = "5.0", ratio: str = "1:1",
                         resolution_type: str = "2k", width: int = 0, height: int = 0,
-                        generate_num: int = 1, poll: int = 180) -> dict:
-    """调用 dreamina CLI 文生图，返回 {ok, image_url, width, height, submit_id}"""
-    args = ["text2image", "--prompt", prompt, "--model_version", model_version,
-            "--generate_num", str(generate_num), "--poll", str(poll)]
-    if width and height:
-        args += ["--width", str(width), "--height", str(height), "--resolution_type", resolution_type]
-    else:
-        args += ["--ratio", ratio, "--resolution_type", resolution_type]
-    out, err, code = _dreamina_run(args)
-    # 解析 stdout 中最后一个含 gen_status 的 JSON
-    data = None
-    for cand in reversed(re.findall(r"\{.*\}", out, re.S)):
-        try:
-            d = json.loads(cand)
-            if isinstance(d, dict) and "gen_status" in d:
-                data = d
-                break
-        except Exception:
-            continue
-    if not data:
-        return {"ok": False, "error": f"CLI 输出解析失败: {(err or out)[:250]}"}
-    status = data.get("gen_status", "")
-    if status != "success":
-        return {"ok": False, "error": f"即梦生成失败({status}): {(data.get('fail_reason') or '')[:200] or out[-200:]}"}
-    imgs = ((data.get("result_json") or {}).get("images") or [])
-    if not imgs:
-        return {"ok": False, "error": "即梦未返回图片"}
-    return {"ok": True, "image_url": imgs[0].get("image_url", ""),
-            "width": imgs[0].get("width", 0), "height": imgs[0].get("height", 0),
-            "submit_id": data.get("submit_id", "")}
+                        generate_num: int = 1, poll: int = 180, retries: int = 2) -> dict:
+    """调用 dreamina CLI 文生图，返回 {ok, image_url, width, height, submit_id}
+    即梦生成阶段偶发失败（final generation failed），自动重试 retries 次"""
+    import time as _t
+    last_err = ""
+    for attempt in range(retries + 1):
+        args = ["text2image", "--prompt", prompt, "--model_version", model_version,
+                "--generate_num", str(generate_num), "--poll", str(poll)]
+        if width and height:
+            args += ["--width", str(width), "--height", str(height), "--resolution_type", resolution_type]
+        else:
+            args += ["--ratio", ratio, "--resolution_type", resolution_type]
+        out, err, code = _dreamina_run(args)
+        # 解析 stdout 中最后一个含 gen_status 的 JSON
+        data = None
+        for cand in reversed(re.findall(r"\{.*\}", out, re.S)):
+            try:
+                d = json.loads(cand)
+                if isinstance(d, dict) and "gen_status" in d:
+                    data = d
+                    break
+            except Exception:
+                continue
+        if not data:
+            last_err = f"CLI 输出解析失败: {(err or out)[:250]}"
+        else:
+            status = data.get("gen_status", "")
+            if status == "success":
+                imgs = ((data.get("result_json") or {}).get("images") or [])
+                if imgs:
+                    return {"ok": True, "image_url": imgs[0].get("image_url", ""),
+                            "width": imgs[0].get("width", 0), "height": imgs[0].get("height", 0),
+                            "submit_id": data.get("submit_id", "")}
+                last_err = "即梦未返回图片"
+            else:
+                reason = (data.get("fail_reason") or "").strip()
+                last_err = f"即梦生成失败({status}): {reason or out[-200:]}"
+        if attempt < retries:
+            _t.sleep(2 * (attempt + 1))
+    return {"ok": False, "error": last_err or "即梦生成失败"}
 
 
 def save_generated_image(img_bytes: bytes, prompt_id: int, card_type: str = "word_card",
