@@ -16,6 +16,7 @@ THUMB_DIR = os.path.join(BASE_DIR, "data", "thumbnails")
 ORIGINAL_DIR = os.path.join(BASE_DIR, "data", "originals")
 WC_ORIGINAL_DIR = os.path.join(BASE_DIR, "data", "wc_media", "originals")
 VIDEO_DIR = os.path.join(BASE_DIR, "data", "videos")
+COMFYUI_OUTPUTS_DIR = os.path.join(BASE_DIR, "data", "comfyui_outputs")
 
 # ============ 辅助函数 ============
 
@@ -153,6 +154,10 @@ def serve_original(filename: str):
         wc_fpath = os.path.join(WC_ORIGINAL_DIR, orig_name)
         if os.path.exists(wc_fpath):
             return FileResponse(wc_fpath, media_type=_get_mime_type(orig_name))
+        # 尝试 ComfyUI 生成存档 comfyui_outputs/（AI 生成词卡原图所在）
+        co_fpath = os.path.join(COMFYUI_OUTPUTS_DIR, orig_name)
+        if os.path.exists(co_fpath):
+            return FileResponse(co_fpath, media_type=_get_mime_type(orig_name))
         # 尝试 videos/
         if asset["media_type"] == "video":
             fpath = os.path.join(VIDEO_DIR, orig_name)
@@ -166,6 +171,10 @@ def serve_original(filename: str):
     wc_fpath = os.path.join(WC_ORIGINAL_DIR, safe)
     if os.path.exists(wc_fpath):
         return FileResponse(wc_fpath, media_type=_get_mime_type(safe))
+    # 回退 ComfyUI 生成存档
+    co_fpath = os.path.join(COMFYUI_OUTPUTS_DIR, safe)
+    if os.path.exists(co_fpath):
+        return FileResponse(co_fpath, media_type=_get_mime_type(safe))
     return JSONResponse({"error": "文件不存在"}, status_code=404)
 
 

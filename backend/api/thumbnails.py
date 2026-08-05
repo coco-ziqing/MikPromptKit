@@ -27,6 +27,12 @@ ORIGINAL_DIR = os.path.join(
 )
 os.makedirs(ORIGINAL_DIR, exist_ok=True)
 
+# ComfyUI 生成存档目录（AI 生成词卡原图所在）
+COMFYUI_OUTPUTS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "comfyui_outputs"
+)
+
 def _resize_and_save(file_bytes, dest_path):
     """用 Pillow 缩放裁剪并保存为质量 85 的 JPEG"""
     try:
@@ -275,6 +281,10 @@ def serve_original(filename: str):
                 return FileResponse(wc_orig_path)
             if os.path.exists(wc_thumb_path):
                 return FileResponse(wc_thumb_path)
+            # ComfyUI 生成存档（AI 生成词卡原图）
+            co_path = os.path.join(COMFYUI_OUTPUTS_DIR, safe_name)
+            if os.path.exists(co_path):
+                return FileResponse(co_path)
             raise HTTPException(404, "文件不存在")
     return FileResponse(fpath)
 
