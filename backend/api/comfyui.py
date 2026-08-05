@@ -543,8 +543,23 @@ def import_workflow_from_output(data: ImportFromOutputRequest):
 
 # ==================== 工作流前端参数系统 ====================
 
-def _infer_param_type(val):
-    """根据当前值推断适合的前端组件类型"""
+# 字段语义 → 组件类型（优先于按值推断，保证对应关系正确）
+_FIELD_TYPE_HINTS = {
+    "seed": "number", "noise_seed": "number",
+    "steps": "slider", "cfg": "slider", "denoise": "slider", "guidance": "slider",
+    "strength": "slider", "strength_model": "slider", "strength_1": "slider", "strength_2": "slider",
+    "batch_size": "slider", "width": "slider", "height": "slider",
+    "sampler_name": "select", "scheduler": "select",
+    "lora_name": "select_file", "ckpt_name": "select_file", "unet_name": "select_file",
+    "vae_name": "select_file", "clip_name1": "select_file", "clip_name2": "select_file",
+}
+
+
+def _infer_param_type(val, field=""):
+    """根据字段语义 + 当前值推断前端组件类型"""
+    hint = _FIELD_TYPE_HINTS.get(field)
+    if hint:
+        return hint
     if isinstance(val, bool):
         return "checkbox"
     if isinstance(val, (int, float)):
@@ -556,8 +571,30 @@ def _infer_param_type(val):
     return "text"
 
 
-def _analyze_workflow_params(wf) -> list:
-    """自动分析工作流可参数化节点：遍历所有节点的非链接输入"""
+def _field_enum_options(object_info: dict, class_type: str, field: str) -> list:
+    """从 object_info 取枚举字段（sampler_name/scheduler 等）的合法选项"""
+    try:
+        info = (object_info or {}).get(class_type, {})
+        defs = (info.get("input", {}) or {})
+        conf = (defs.get("required", {}) or {}).get(field) or (defs.get("optional", {}) or {}).get(field)
+        if not conf or not isinstance(conf, list) or not conf:
+            return []
+        if isinstance(conf[0], list):
+            return conf[0]
+        if conf[0] == "COMBO" and len(conf) > 1:
+            meta = conf[1]
+            if isinstance(meta, list):
+                return meta
+            if isinstance(meta, dict) and isinstance(meta.get("options"), list):
+                return meta["options"]
+    except Exception:
+        pass
+    return []
+
+
+def _analyze_workflow_params(wf, object_info: dict = None) -> list:
+    """自动分析工作流可参数化节点：遍历所有节点的非链接输入
+    传入 object_info 时先清洗占位符值（randomize/normal 等），并携带枚举选项"""
     try:
         if isinstance(wf, str):
             wf = json.loads(wf)
@@ -565,6 +602,9 @@ def _analyze_workflow_params(wf) -> list:
         return []
     if not isinstance(wf, dict):
         return []
+    if object_info:
+        # 清洗占位符：steps=randomize / denoise=normal / 枚举位置数字 → 合法值，类型推断才正确
+        _sanitize_workflow_inputs(wf, object_info)
     candidates = []
     seen = set()
     pos_node = _find_positive_node(wf)
@@ -584,11 +624,13 @@ def _analyze_workflow_params(wf) -> list:
                 continue
             seen.add(key)
             label_map = {
-                "text": "提示词", "seed": "随机种子", "steps": "步数",
-                "cfg": "CFG", "denoise": "重绘幅度", "width": "宽度",
-                "height": "高度", "batch_size": "批量数",
+                "text": "提示词", "seed": "随机种子", "noise_seed": "随机种子",
+                "steps": "步数", "cfg": "CFG", "denoise": "重绘幅度", "guidance": "引导强度",
+                "width": "宽度", "height": "高度", "batch_size": "批量数",
                 "sampler_name": "采样器", "scheduler": "调度器",
                 "filename_prefix": "输出文件名前缀", "strength_model": "LoRA强度",
+                "lora_name": "模型文件", "ckpt_name": "模型文件", "unet_name": "模型文件", "vae_name": "模型文件",
+                "clip_name1": "CLIP模型1", "clip_name2": "CLIP模型2",
             }
             role = ""
             if ct == "CLIPTextEncode" and field == "text":
@@ -603,9 +645,10 @@ def _analyze_workflow_params(wf) -> list:
                 "key": key,
                 "label": label_map.get(field, f"{ct}.{field}"),
                 "value": val,
-                "type": _infer_param_type(val),
+                "type": _infer_param_type(val, field),
                 "default": val,
                 "role": role,
+                "options": _field_enum_options(object_info, ct, field),
             })
     return candidates
 
@@ -699,7 +742,7 @@ def analyze_workflow_params(wf_id: str):
     wf, err = _find_workflow_v2(wf_id)
     if not wf:
         return {"ok": False, "error": err or "工作流不存在"}
-    candidates = _analyze_workflow_params(wf["workflow_json"])
+    candidates = _analyze_workflow_params(wf["workflow_json"], _get_object_info((_get_config().get("server_url") or "").rstrip("/")))
     db = get_db()
     presets = db.execute("SELECT * FROM comfyui_workflow_presets WHERE workflow_id=? ORDER BY id", [wf_id]).fetchall()
     return {"ok": True, "candidates": candidates, "presets": [dict(r) for r in presets],

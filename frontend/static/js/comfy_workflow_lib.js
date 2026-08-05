@@ -688,6 +688,18 @@ App.comfyLib._renderParamForm = function() {
             '</div>';
         } else if (p.type === 'checkbox') {
             html += '<input type="checkbox" class="cwl-pv" data-key="' + App._escape(p.key) + '" ' + (val ? 'checked' : '') + ' style="width:18px;height:18px;">';
+        } else if (p.type === 'number') {
+            // 数字输入（大整数 seed 等，不适合滑块）
+            html += '<input type="number" class="cwl-pv" data-key="' + App._escape(p.key) + '" value="' + App._escape(String(val === undefined ? '' : val)) + '" step="any" style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
+        } else if (p.type === 'select') {
+            // 枚举下拉（采样器/调度器等）
+            var opts = p.options || [];
+            if (opts.length === 0) opts = [String(val === undefined ? '' : val)];
+            html += '<select class="cwl-pv" data-key="' + App._escape(p.key) + '" style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
+            opts.forEach(function(o) {
+                html += '<option value="' + App._escape(o) + '"' + (String(val) === String(o) ? ' selected' : '') + '>' + App._escape(o) + '</option>';
+            });
+            html += '</select>';
         } else if (p.type === 'select_file') {
             html += '<input type="text" class="cwl-pv" data-key="' + App._escape(p.key) + '" value="' + App._escape(String(val)) + '" style="width:100%;font-size:11px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);" title="模型文件名">';
         } else {
@@ -827,6 +839,7 @@ App.comfyLib.openParamEditor = function() {
               '<option value="text" ' + (type === 'text' ? 'selected' : '') + '>文本框</option>' +
               '<option value="checkbox" ' + (type === 'checkbox' ? 'selected' : '') + '>开关</option>' +
               '<option value="number" ' + (type === 'number' ? 'selected' : '') + '>数字输入</option>' +
+              '<option value="select" ' + (type === 'select' ? 'selected' : '') + '>下拉选择</option>' +
             '</select></label>' +
             '<label style="font-size:10px;color:var(--text-muted);">范围 <input type="number" class="cpe-min" data-key="' + App._escape(c.key) + '" value="' + min + '" style="width:56px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);"> ~ <input type="number" class="cpe-max" data-key="' + App._escape(c.key) + '" value="' + max + '" style="width:56px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);"> 步长 <input type="number" class="cpe-step" data-key="' + App._escape(c.key) + '" value="' + step + '" style="width:56px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);"></label>' +
           '</div>' +
@@ -968,6 +981,7 @@ App.comfyLib.savePreset = async function() {
             min: parseFloat((document.querySelector('.cpe-min[data-key="' + key + '"]') || {}).value) || 0,
             max: parseFloat((document.querySelector('.cpe-max[data-key="' + key + '"]') || {}).value) || 100,
             step: parseFloat((document.querySelector('.cpe-step[data-key="' + key + '"]') || {}).value) || 1,
+            options: cand.options || [],
         };
         params.push(p);
     });
