@@ -1367,6 +1367,8 @@ class BatchGenerateRequest(BaseModel):
     workflow_id: str = ""
     preset_id: int = 0           # 可选：参数预设（应用到全部卡片）
     param_values: dict = {}      # 可选：参数值（步数/CFG/尺寸/采样器等）
+    style_suffix: str = ""      # 可选：品质后缀（空=不加后缀，省略=默认后缀）
+    use_module_preset: int = 1   # 0=忽略模块主体预设
 
 
 @router.post("/batch-generate")
@@ -1434,11 +1436,15 @@ async def batch_generate_thumbnail(data: BatchGenerateRequest):
             card_text = row["content"]
             module_name = row["module"] or ""
             preset_text = ""
-            if module_name:
+            if data.use_module_preset != 0 and module_name:
                 pm = presets.get(module_name, {})
                 if pm.get("enabled") and pm.get("preset"):
                     preset_text = pm["preset"]
-            final_prompt = _compose_prompt(preset_text, card_text, DEFAULT_STYLE_SUFFIX)
+            # 品质后缀：显式传空=不加；未传字段默认使用 DEFAULT_STYLE_SUFFIX
+            suffix = DEFAULT_STYLE_SUFFIX
+            if data.style_suffix is not None:
+                suffix = data.style_suffix
+            final_prompt = _compose_prompt(preset_text, card_text, suffix)
 
             wf = copy.deepcopy(workflow_template)
             # 参数预设注入（与单张生成一致）
@@ -1938,10 +1944,16 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
         workflow = _strip_ui_nodes(workflow)
         # 清洗 UI 占位符输入值（steps=randomize / denoise=normal / 枚举位置数字）
         _sanitize_workflow_inputs(workflow, _get_object_info(server_url))
-        node_id = workflow_cfg.get("prompt_node_id", "6")
+        node_id = workflow_cfg.get("prompt_node_id") or _find_positive_node(workflow) or "6"
         field = workflow_cfg.get("prompt_field", "text")
         if node_id in workflow and field in workflow[node_id]["inputs"]:
             workflow[node_id]["inputs"][field] = prompt_text
+        else:
+            # 兜底：遍历找任意文本节点注入（防止节点定位失效导致提示词不生效）
+            for _nid, _node in workflow.items():
+                if isinstance(_node, dict) and field in (_node.get("inputs", {}) or {}) and isinstance(_node["inputs"].get(field), str):
+                    _node["inputs"][field] = prompt_text
+                    break
         # 随机 seed：每次生成结果不同
         # 覆盖所有 seed 类字段（KSampler.seed / RandomNoise.noise_seed / SamplerCustomAdvanced.seed 等），
         # 避免 FLUX 等工作流 seed 固定 → 相同提示词命中 ComfyUI 结果缓存 → 无输出 → 超时失败

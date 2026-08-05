@@ -274,6 +274,15 @@ Object.assign(App, {
                 '</div>' +
                 // 工作流信息卡
                 '<div id="bgenWfInfo" style="border:1px dashed var(--border-color);border-radius:10px;padding:8px 10px;display:none;font-size:10px;color:var(--text-muted);line-height:1.7;"></div>' +
+                // 提示词组合
+                '<div id="bgenCompose" style="border:1px solid var(--border-color);border-radius:10px;padding:8px 10px;">' +
+                  '<div style="font-size:12px;font-weight:600;margin-bottom:6px;"><i class="bi bi-fonts"></i> 提示词组合 <span style="font-size:10px;color:var(--text-muted);font-weight:400;">词卡内容 + 模块预设 + 品质后缀 → 注入工作流正面提示词</span></div>' +
+                  '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">' +
+                    '<label style="font-size:10px;color:var(--text-muted);">品质后缀 <input id="bgenSuffix" value="cinematic lighting, high quality, 4k, detailed" oninput="App._renderBatchComposePreview()" style="width:220px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);" title="留空则不添加后缀"></label>' +
+                    '<label style="font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:4px;"><input type="checkbox" id="bgenUsePreset" checked onchange="App._renderBatchComposePreview()" style="width:14px;height:14px;"> 叠加模块主体预设</label>' +
+                  '</div>' +
+                  '<div id="bgenComposePreview" style="font-size:10px;color:var(--text-muted);background:var(--bg-card);border:1px dashed var(--border-color);border-radius:6px;padding:6px 8px;max-height:64px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"></div>' +
+                '</div>' +
                 // 参数预设
                 '<div id="bgenPresetArea" style="display:none;">' +
                   '<div style="font-size:12px;font-weight:600;margin-bottom:4px;"><i class="bi bi-sliders"></i> 参数预设</div>' +
@@ -331,6 +340,52 @@ Object.assign(App, {
         }
         // 加载工作流库
         this._loadBatchWorkflows();
+        // 加载模块主体预设（供提示词组合预览）
+        var self = this;
+        this.fetchJSON('/api/v2/comfyui/module-presets').then(function(d) {
+            if (d && d.ok) self._modulePresets = d.presets || {};
+            self._renderBatchComposePreview();
+        }).catch(function() { self._modulePresets = {}; self._renderBatchComposePreview(); });
+    },
+
+    // 提示词组合预览：词卡内容 + 模块预设 + 品质后缀（复刻后端 _compose_prompt 的简化规则）
+    _renderBatchComposePreview() {
+        var el = document.getElementById('bgenComposePreview');
+        if (!el) return;
+        var self = this;
+        var suffix = ((document.getElementById('bgenSuffix') || {}).value || '').trim();
+        var usePreset = !!(document.getElementById('bgenUsePreset') || {}).checked;
+        var cards = [];
+        (this.state.prompts || []).forEach(function(p) {
+            if (self._batchIds.indexOf(p.id) > -1 && cards.length < 3) cards.push(p);
+        });
+        var lines = cards.map(function(p) {
+            var preset = '';
+            if (usePreset && self._modulePresets) {
+                var pm = self._modulePresets[p.module] || {};
+                if (pm.enabled && pm.preset) preset = pm.preset;
+            }
+            return App._composePromptPreview(preset, p.content || '', suffix);
+        });
+        if (lines.length === 0) {
+            el.innerHTML = '<span style="color:var(--text-muted);">（无法预览，请确认已选中词条）</span>';
+            return;
+        }
+        var html = lines.map(function(l) { return '· ' + App._escape(l); }).join('<br>');
+        if ((self._batchIds || []).length > 3) html += '<br><span style="color:var(--text-muted);">…等共 ' + self._batchIds.length + ' 条（每条按各自模块预设组合）</span>';
+        el.innerHTML = html;
+    },
+
+    // 组合规则（简化复刻后端 _compose_prompt）：预设 + 卡片，尾部加后缀，逗号拼接
+    _composePromptPreview(preset, card, suffix) {
+        preset = (preset || '').trim().replace(/,\s*$/, '');
+        card = (card || '').trim().replace(/,\s*$/, '');
+        suffix = (suffix || '').trim().replace(/,\s*$/, '');
+        var parts = [];
+        if (preset) { parts.push(preset); if (card) parts.push(card); }
+        else if (card) parts.push(card);
+        if (suffix) parts.push(suffix);
+        return parts.join(', ');
     },
 
     async _loadBatchWorkflows() {
@@ -604,7 +659,9 @@ Object.assign(App, {
             prompt_ids: this._batchIds,
             workflow_id: wfId,
             preset_id: this._batchPresetId || 0,
-            param_values: paramValues
+            param_values: paramValues,
+            style_suffix: (document.getElementById('bgenSuffix') || {}).value,
+            use_module_preset: (document.getElementById('bgenUsePreset') || {}).checked ? 1 : 0
         };
         var success = 0, errors = 0, total = this._batchIds.length;
         try {
