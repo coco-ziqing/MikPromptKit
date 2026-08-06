@@ -11,8 +11,9 @@ import httpx
 
 router = APIRouter(prefix="/api/v2/libtv", tags=["libtv"])
 
-# CLI 路径可配置：环境变量 LIBTV_BIN 优先，fallback 用户目录（2026-08-06 封装部署优化）
-LIBTV_BIN = os.environ.get("LIBTV_BIN") or os.path.join(os.path.expanduser("~"), ".libtv", "libtv.exe")
+from api.cli_paths import find_libtv_bin  # 位置无关探测（2026-08-06）
+
+LIBTV_BIN = find_libtv_bin()
 
 # 免费模型优先（积分不足时仍可用）；付费模型前端需明确提示
 DEFAULT_MODEL = "Z-image Turbo"

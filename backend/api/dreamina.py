@@ -12,8 +12,9 @@ router = APIRouter(prefix="/api/v2/dreamina", tags=["dreamina"])
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# CLI 路径可配置：环境变量 DREAMINA_BIN 优先，fallback 用户目录（2026-08-06 封装部署优化）
-DREAMINA_BIN = os.environ.get("DREAMINA_BIN") or os.path.join(os.path.expanduser("~"), "bin", "dreamina.exe")
+from api.cli_paths import find_dreamina_bin  # 位置无关探测（2026-08-06）
+
+DREAMINA_BIN = find_dreamina_bin()
 
 # 即梦支持的参数集合（供前端渲染）
 MODEL_VERSIONS = ["3.0", "3.1", "4.0", "4.1", "4.5", "4.6", "4.7", "5.0", "5.0Pro"]

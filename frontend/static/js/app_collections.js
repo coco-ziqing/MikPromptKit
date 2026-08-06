@@ -482,13 +482,17 @@ Object.assign(App, {
             var d = await this.fetchJSON('/api/v2/libtv/status');
             if (!d || !d.ok) throw new Error('查询失败');
             if (!d.cli_available) {
-                st.textContent = '○ LibTV CLI 未安装';
+                st.textContent = '○ CLI 未安装（点右上「授权中心」查看）';
                 st.style.color = '#ef4444';
+                st.style.cursor = 'pointer';
+                st.onclick = function() { App.openEngineAuth(); };
                 return;
             }
             if (!d.logged_in) {
-                st.textContent = '○ 未登录（请先执行 libtv login web）';
+                st.textContent = '○ 未授权（点右上「授权中心」一键登录）';
                 st.style.color = '#f59e0b';
+                st.style.cursor = 'pointer';
+                st.onclick = function() { App.openEngineAuth(); };
                 return;
             }
             st.textContent = '● 已登录';
@@ -539,11 +543,15 @@ Object.assign(App, {
                 st.textContent = '● 已登录' + (d.vip_level ? ' · ' + d.vip_level : '');
                 st.style.color = '#10b981';
             } else if (d.cli_available) {
-                st.textContent = '○ 未登录（请先在终端执行 dreamina login）';
+                st.textContent = '○ 未授权（点右上「授权中心」一键登录）';
                 st.style.color = '#f59e0b';
+                st.style.cursor = 'pointer';
+                st.onclick = function() { App.openEngineAuth(); };
             } else {
-                st.textContent = '○ 即梦 CLI 未安装';
+                st.textContent = '○ CLI 未安装（点右上「授权中心」查看）';
                 st.style.color = '#ef4444';
+                st.style.cursor = 'pointer';
+                st.onclick = function() { App.openEngineAuth(); };
             }
         } catch(e) {
             st.textContent = '○ 状态检测失败';
@@ -1051,7 +1059,27 @@ Object.assign(App, {
                 return;
             }
         }
+        if (engine === 'dreamina') {
+            // 懒授权：未授权时引导去授权中心，不阻塞其他功能
+            var dStatus = document.getElementById('bgenDreaminaStatus');
+            var needAuth = !dStatus || dStatus.textContent.indexOf('已登录') === -1;
+            if (needAuth) {
+                if (confirm('即梦引擎未授权。\n点击「确定」打开授权中心完成登录，或「取消」返回。')) {
+                    this.openEngineAuth();
+                }
+                return;
+            }
+        }
         if (engine === 'libtv') {
+            // 懒授权：未授权时引导去授权中心，不阻塞其他功能
+            var ltStatus = document.getElementById('bgenLibtvStatus');
+            var ltNeedAuth = !ltStatus || ltStatus.textContent.indexOf('已登录') === -1;
+            if (ltNeedAuth) {
+                if (confirm('LibTV 引擎未授权。\n点击「确定」打开授权中心完成登录，或「取消」返回。')) {
+                    this.openEngineAuth();
+                }
+                return;
+            }
             var ltProj = (document.getElementById('bgenLibtvProject') || {}).value || '';
             if (!ltProj) { this.showToast('请先选择 LibTV 画布', 'warning'); return; }
             var ltModel = (document.getElementById('bgenLibtvModel') || {}).value || '';
