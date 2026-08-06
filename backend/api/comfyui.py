@@ -1494,7 +1494,7 @@ class BatchTaskCreate(BaseModel):
     use_module_preset: int = 1
     prompt_overrides: dict = {}   # {prompt_id: 优化后提示词}（Ollama 优化结果覆盖）
     card_type_map: dict = {}     # {prompt_id: 'word_card'|'prompts'} 前端按数据源显式标注，避免 id 重叠猜错表
-    engine: str = "comfyui"      # comfyui / dreamina
+    engine: str = "comfyui"      # comfyui / dreamina / libtv
     manual_text: str = ""         # 手动附加文本（追加到每条组合提示词末尾）
     # dreamina 引擎参数
     model_version: str = "5.0"
@@ -1502,6 +1502,10 @@ class BatchTaskCreate(BaseModel):
     resolution_type: str = "2k"
     width: int = 0
     height: int = 0
+    # libtv 引擎参数
+    project_uuid: str = ""        # LibTV 目标画布
+    libtv_model: str = "Z-image Turbo"
+    libtv_ratio: str = "1:1"
 
 
 def _ensure_batch_task_table():
@@ -1533,6 +1537,9 @@ def _ensure_batch_task_table():
         width INTEGER DEFAULT 0,
         height INTEGER DEFAULT 0,
         card_type_map TEXT DEFAULT '{}',
+        project_uuid TEXT DEFAULT '',
+        libtv_model TEXT DEFAULT 'Z-image Turbo',
+        libtv_ratio TEXT DEFAULT '1:1',
         created_at TEXT DEFAULT (datetime('now','localtime')),
         started_at TEXT DEFAULT '',
         finished_at TEXT DEFAULT ''
@@ -1547,7 +1554,10 @@ def _ensure_batch_task_table():
                        ("resolution_type", "resolution_type TEXT DEFAULT '2k'"),
                        ("width", "width INTEGER DEFAULT 0"),
                        ("height", "height INTEGER DEFAULT 0"),
-                       ("card_type_map", "card_type_map TEXT DEFAULT '{}'")]:
+                       ("card_type_map", "card_type_map TEXT DEFAULT '{}'"),
+                       ("project_uuid", "project_uuid TEXT DEFAULT ''"),
+                       ("libtv_model", "libtv_model TEXT DEFAULT 'Z-image Turbo'"),
+                       ("libtv_ratio", "libtv_ratio TEXT DEFAULT '1:1'")]:
         if _col not in cols:
             db.execute(f"ALTER TABLE comfyui_batch_tasks ADD COLUMN {_ddl}")
     safe_commit()
@@ -1670,7 +1680,8 @@ def _batch_worker(task_id: int):
                 try:
                     if engine == "dreamina":
                         # 即梦引擎：CLI 文生图 → 下载 → 缩略图落库
-                        from api.dreamina import dreamina_text2image, save_generated_image
+                        from api.dreamina import dreamina_text2image
+                        from api.thumb_gen import save_generated_image
                         dr = dreamina_text2image(final_prompt,
                                                  d.get("model_version") or "5.0",
                                                  d.get("ratio") or "1:1",
@@ -1685,6 +1696,27 @@ def _batch_worker(task_id: int):
                                     result = {"ok": False, "error": f"图片下载失败 HTTP {_rr.status_code}"}
                                 else:
                                     saved = save_generated_image(_rr.content, pid, src_table, "dreamina", dr.get("submit_id", ""))
+                                    if saved.get("ok"):
+                                        result = {"ok": True, "thumbnail": saved["thumbnail"], "thumbnail_url": saved["thumbnail_url"]}
+                                    else:
+                                        result = {"ok": False, "error": saved.get("error", "落库失败")}
+                    elif engine == "libtv":
+                        # LibTV 引擎：CLI 文生图（node create --run）→ 下载 → 缩略图落库
+                        from api.libtv import libtv_text2image
+                        from api.thumb_gen import save_generated_image
+                        lt = libtv_text2image(final_prompt,
+                                              d.get("project_uuid") or "",
+                                              d.get("libtv_model") or "Z-image Turbo",
+                                              d.get("libtv_ratio") or "1:1")
+                        if not lt.get("ok"):
+                            result = {"ok": False, "error": lt.get("error", "LibTV 生成失败")}
+                        else:
+                            with httpx.Client(timeout=120) as _cl:
+                                _rr = _cl.get(lt["image_url"])
+                                if _rr.status_code != 200:
+                                    result = {"ok": False, "error": f"图片下载失败 HTTP {_rr.status_code}"}
+                                else:
+                                    saved = save_generated_image(_rr.content, pid, src_table, "libtv", lt.get("node_key", ""))
                                     if saved.get("ok"):
                                         result = {"ok": True, "thumbnail": saved["thumbnail"], "thumbnail_url": saved["thumbnail_url"]}
                                     else:
@@ -1756,15 +1788,17 @@ def create_batch_task(data: BatchTaskCreate):
         """INSERT INTO comfyui_batch_tasks
            (workflow_id, workflow_name, model_type, prompt_ids, total, status,
             style_suffix, use_module_preset, preset_id, param_values, prompt_overrides,
-            engine, manual_text, model_version, ratio, resolution_type, width, height, card_type_map)
-           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            engine, manual_text, model_version, ratio, resolution_type, width, height, card_type_map,
+            project_uuid, libtv_model, libtv_ratio)
+           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         [data.workflow_id, wf_name, model_type, json.dumps(data.prompt_ids), len(data.prompt_ids),
          data.style_suffix, data.use_module_preset, data.preset_id,
          json.dumps(data.param_values or {}, ensure_ascii=False),
          json.dumps(data.prompt_overrides or {}, ensure_ascii=False),
          engine, data.manual_text or "", data.model_version or "5.0", data.ratio or "1:1",
          data.resolution_type or "2k", data.width or 0, data.height or 0,
-         json.dumps(data.card_type_map or {}, ensure_ascii=False)])
+         json.dumps(data.card_type_map or {}, ensure_ascii=False),
+         data.project_uuid or "", data.libtv_model or "Z-image Turbo", data.libtv_ratio or "1:1"])
     safe_commit()
     task_id = cur.lastrowid
     threading.Thread(target=_batch_worker, args=(task_id,), daemon=True).start()
@@ -1848,8 +1882,9 @@ def retry_batch_failed(task_id: int):
         """INSERT INTO comfyui_batch_tasks
            (workflow_id, workflow_name, model_type, prompt_ids, total, status,
             style_suffix, use_module_preset, preset_id, param_values, prompt_overrides,
-            engine, manual_text, model_version, ratio, resolution_type, width, height, card_type_map)
-           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            engine, manual_text, model_version, ratio, resolution_type, width, height, card_type_map,
+            project_uuid, libtv_model, libtv_ratio)
+           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         [d["workflow_id"], d["workflow_name"] + " (重试)", d["model_type"],
          json.dumps(failed_ids), len(failed_ids),
          d["style_suffix"], d["use_module_preset"], d["preset_id"], d["param_values"],
@@ -1857,7 +1892,8 @@ def retry_batch_failed(task_id: int):
          d.get("engine") or "comfyui", d.get("manual_text") or "", d.get("model_version") or "5.0",
          d.get("ratio") or "1:1", d.get("resolution_type") or "2k",
          int(d.get("width") or 0), int(d.get("height") or 0),
-         d.get("card_type_map") or "{}"])
+         d.get("card_type_map") or "{}",
+         d.get("project_uuid") or "", d.get("libtv_model") or "Z-image Turbo", d.get("libtv_ratio") or "1:1"])
     safe_commit()
     new_id = cur.lastrowid
     threading.Thread(target=_batch_worker, args=(new_id,), daemon=True).start()

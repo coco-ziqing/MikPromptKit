@@ -270,6 +270,7 @@ Object.assign(App, {
                   '<span style="display:flex;gap:2px;border:1px solid var(--border-color);border-radius:8px;padding:2px;">' +
                     '<button id="bgenEngineComfy" class="cwl-logview-btn active" onclick="App._batchEngine(\'comfyui\')" title="本地 ComfyUI 工作流生成"><i class="bi bi-cpu"></i> ComfyUI</button>' +
                     '<button id="bgenEngineDreamina" class="cwl-logview-btn" onclick="App._batchEngine(\'dreamina\')" title="即梦 AI 在线生成"><i class="bi bi-stars"></i> 即梦</button>' +
+                    '<button id="bgenEngineLibtv" class="cwl-logview-btn" onclick="App._batchEngine(\'libtv\')" title="LibTV 在线生成"><i class="bi bi-collection"></i> LibTV</button>' +
                   '</span>' +
                   '<span id="bgenDreaminaStatus" style="font-size:10px;color:var(--text-muted);"></span>' +
                 '</div>' +
@@ -287,6 +288,18 @@ Object.assign(App, {
                       '<option value="1k">1k</option><option value="2k" selected>2k</option><option value="4k">4k</option>' +
                     '</select></label>' +
                   '</div>' +
+                '</div>' +
+                // LibTV 参数区
+                '<div id="bgenLibtvArea" style="display:none;border:1px solid #8b5cf6;border-radius:10px;padding:8px 10px;margin-bottom:10px;">' +
+                  '<div style="font-size:12px;font-weight:600;margin-bottom:6px;"><i class="bi bi-collection"></i> LibTV 参数 <span style="font-size:10px;color:var(--text-muted);font-weight:400;">在线生成，免费模型免积分</span></div>' +
+                  '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">' +
+                    '<label style="font-size:10px;color:var(--text-muted);">画布 <select id="bgenLibtvProject" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);min-width:140px;"><option value="">加载中...</option></select></label>' +
+                    '<label style="font-size:10px;color:var(--text-muted);">模型 <select id="bgenLibtvModel" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);min-width:160px;"><option value="">加载中...</option></select></label>' +
+                    '<label style="font-size:10px;color:var(--text-muted);">比例 <select id="bgenLibtvRatio" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
+                      '<option value="1:1" selected>1:1</option><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="4:3">4:3</option><option value="3:4">3:4</option><option value="21:9">21:9</option>' +
+                    '</select></label>' +
+                  '</div>' +
+                  '<div id="bgenLibtvStatus" style="font-size:10px;color:var(--text-muted);margin-top:6px;"></div>' +
                 '</div>' +
                 // ComfyUI 模式区域（工作流选择 + 参数预设）
                 '<div id="bgenComfyArea">' +
@@ -437,20 +450,81 @@ Object.assign(App, {
         el.innerHTML = html;
     },
 
-    // 生成引擎切换（ComfyUI / 即梦）
+    // 生成引擎切换（ComfyUI / 即梦 / LibTV）
     _batchEngine(mode) {
         this._batchEngineMode = mode;
         var cb = document.getElementById('bgenEngineComfy');
         var db2 = document.getElementById('bgenEngineDreamina');
+        var lb = document.getElementById('bgenEngineLibtv');
         if (cb) cb.className = 'cwl-logview-btn' + (mode === 'comfyui' ? ' active' : '');
         if (db2) db2.className = 'cwl-logview-btn' + (mode === 'dreamina' ? ' active' : '');
+        if (lb) lb.className = 'cwl-logview-btn' + (mode === 'libtv' ? ' active' : '');
         var comfyArea = document.getElementById('bgenComfyArea');
         var dreaminaArea = document.getElementById('bgenDreaminaArea');
+        var libtvArea = document.getElementById('bgenLibtvArea');
         if (comfyArea) comfyArea.style.display = mode === 'comfyui' ? 'block' : 'none';
         if (dreaminaArea) dreaminaArea.style.display = mode === 'dreamina' ? 'block' : 'none';
+        if (libtvArea) libtvArea.style.display = mode === 'libtv' ? 'block' : 'none';
         if (mode === 'dreamina') this._initDreaminaStatus();
+        if (mode === 'libtv') this._initLibtv();
         // 保存设置
         this._saveBatchSettings();
+    },
+
+    // LibTV 状态检测 + 画布/模型列表加载
+    async _initLibtv() {
+        var st = document.getElementById('bgenLibtvStatus');
+        var projSel = document.getElementById('bgenLibtvProject');
+        var modelSel = document.getElementById('bgenLibtvModel');
+        if (!st) return;
+        try {
+            var d = await this.fetchJSON('/api/v2/libtv/status');
+            if (!d || !d.ok) throw new Error('查询失败');
+            if (!d.cli_available) {
+                st.textContent = '○ LibTV CLI 未安装';
+                st.style.color = '#ef4444';
+                return;
+            }
+            if (!d.logged_in) {
+                st.textContent = '○ 未登录（请先执行 libtv login web）';
+                st.style.color = '#f59e0b';
+                return;
+            }
+            st.textContent = '● 已登录';
+            st.style.color = '#10b981';
+            // 画布下拉
+            if (projSel) {
+                var ph = '';
+                (d.projects || []).forEach(function(p) {
+                    ph += '<option value="' + App._escape(p.uuid) + '">' + App._escape(p.name || '未命名') + '</option>';
+                });
+                projSel.innerHTML = ph || '<option value="">无可用画布</option>';
+                // 恢复上次选择
+                if (this._batchSavedSettings && this._batchSavedSettings() && this._batchSavedSettings().libtv_project) {
+                    projSel.value = this._batchSavedSettings().libtv_project;
+                }
+                if (!projSel.value && d.projects && d.projects.length > 0) projSel.value = d.projects[0].uuid;
+            }
+            // 模型下拉（免费优先，付费标注）
+            if (modelSel) {
+                var mh = '';
+                var models = d.models || [];
+                var free = models.filter(function(m) { return m.free; });
+                var paid = models.filter(function(m) { return !m.free; });
+                free.concat(paid).forEach(function(m) {
+                    mh += '<option value="' + App._escape(m.modelName) + '">' + App._escape(m.modelName) + (m.free ? ' 🆓' : ' 💎') + (m.estimatedTime ? ' · ' + m.estimatedTime : '') + '</option>';
+                });
+                modelSel.innerHTML = mh || '<option value="">无可用模型</option>';
+                // 恢复上次选择
+                if (this._batchSavedSettings && this._batchSavedSettings() && this._batchSavedSettings().libtv_model) {
+                    modelSel.value = this._batchSavedSettings().libtv_model;
+                }
+                if (!modelSel.value) modelSel.value = d.default_model || '';
+            }
+        } catch(e) {
+            st.textContent = '○ 状态检测失败';
+            st.style.color = '#94a3b8';
+        }
     },
 
     // 即梦状态检测（CLI 可用 + 登录）
@@ -686,7 +760,10 @@ Object.assign(App, {
                 param_values: this._collectBatchParams(),
                 dreamina_model: (document.getElementById('bgenDreaminaModel') || {}).value || '5.0',
                 dreamina_ratio: (document.getElementById('bgenDreaminaRatio') || {}).value || '1:1',
-                dreamina_res: (document.getElementById('bgenDreaminaRes') || {}).value || '2k'
+                dreamina_res: (document.getElementById('bgenDreaminaRes') || {}).value || '2k',
+                libtv_project: (document.getElementById('bgenLibtvProject') || {}).value || '',
+                libtv_model: (document.getElementById('bgenLibtvModel') || {}).value || 'Z-image Turbo',
+                libtv_ratio: (document.getElementById('bgenLibtvRatio') || {}).value || '1:1'
             };
             localStorage.setItem('cwl_batch_settings', JSON.stringify(s));
         } catch(e) {}
@@ -708,6 +785,9 @@ Object.assign(App, {
         if (s.dreamina_model) document.getElementById('bgenDreaminaModel').value = s.dreamina_model;
         if (s.dreamina_ratio) document.getElementById('bgenDreaminaRatio').value = s.dreamina_ratio;
         if (s.dreamina_res) document.getElementById('bgenDreaminaRes').value = s.dreamina_res;
+        if (s.libtv_project) document.getElementById('bgenLibtvProject').value = s.libtv_project;
+        if (s.libtv_model) document.getElementById('bgenLibtvModel').value = s.libtv_model;
+        if (s.libtv_ratio) document.getElementById('bgenLibtvRatio').value = s.libtv_ratio;
         var vm = null;
         try { vm = localStorage.getItem('cwl_batch_wf_view'); } catch(e) {}
         this._batchViewMode = vm === 'list' ? 'list' : 'grid';
@@ -715,6 +795,9 @@ Object.assign(App, {
         if (s.engine === 'dreamina') {
             this._batchEngineMode = 'dreamina';
             setTimeout(function() { App._batchEngine('dreamina'); }, 50);
+        } else if (s.engine === 'libtv') {
+            this._batchEngineMode = 'libtv';
+            setTimeout(function() { App._batchEngine('libtv'); }, 50);
         } else {
             this._batchEngineMode = 'comfyui';
         }
@@ -967,6 +1050,18 @@ Object.assign(App, {
                 return;
             }
         }
+        if (engine === 'libtv') {
+            var ltProj = (document.getElementById('bgenLibtvProject') || {}).value || '';
+            if (!ltProj) { this.showToast('请先选择 LibTV 画布', 'warning'); return; }
+            var ltModel = (document.getElementById('bgenLibtvModel') || {}).value || '';
+            if (!ltModel) { this.showToast('请先选择 LibTV 模型', 'warning'); return; }
+            // 积分保护：付费模型提示（免费模型跳过）
+            var ltOpt = document.querySelector('#bgenLibtvModel option:checked');
+            var isPaid = ltOpt && /💎/.test(ltOpt.textContent);
+            if (isPaid && !confirm('「' + ltModel + '」为付费模型（消耗积分）。\n当前账号基础 VIP 未生效，可能报「算力不足」导致整批失败。\n\n确认继续？')) {
+                return;
+            }
+        }
         // 展示进度区
         var pa = document.getElementById('bgenProgressArea');
         if (pa) pa.style.display = 'block';
@@ -1010,7 +1105,10 @@ Object.assign(App, {
             manual_text: (document.getElementById('bgenManualText') || {}).value || '',
             model_version: (document.getElementById('bgenDreaminaModel') || {}).value || '5.0',
             ratio: (document.getElementById('bgenDreaminaRatio') || {}).value || '1:1',
-            resolution_type: (document.getElementById('bgenDreaminaRes') || {}).value || '2k'
+            resolution_type: (document.getElementById('bgenDreaminaRes') || {}).value || '2k',
+            project_uuid: (document.getElementById('bgenLibtvProject') || {}).value || '',
+            libtv_model: (document.getElementById('bgenLibtvModel') || {}).value || 'Z-image Turbo',
+            libtv_ratio: (document.getElementById('bgenLibtvRatio') || {}).value || '1:1'
         };
         try {
             var d = await this.fetchJSON('/api/v2/comfyui/batch-tasks', {
