@@ -19,6 +19,36 @@ App.aiTools = {
     _streamContent: '',
 };
 
+// ============ 优化器设置持久化（localStorage） ============
+
+App.aiTools._loadOptSettings = function() {
+    try {
+        var s = JSON.parse(localStorage.getItem('ai_optimizer_settings') || '{}');
+        this._mode = s.mode || 'polish';
+        this._targetFormat = s.format || 'sdxl';
+        this._model = s.model || '';
+        this._maxChars = s.max_chars || 0;
+        return s;
+    } catch(e) { return {}; }
+};
+
+App.aiTools._saveOptSettings = function() {
+    try {
+        var mc = document.getElementById('aiOptMaxChars');
+        var maxChars = this._maxChars || 0;
+        if (mc && mc.value) {
+            var n = parseInt(mc.value, 10);
+            if (!isNaN(n) && n > 0) maxChars = Math.min(Math.max(n, 50), 3000);
+        }
+        localStorage.setItem('ai_optimizer_settings', JSON.stringify({
+            mode: this._mode || 'polish',
+            format: this._targetFormat || 'sdxl',
+            model: this._model || '',
+            max_chars: maxChars
+        }));
+    } catch(e) {}
+};
+
 // ============ AI 工具栏初始化 ============
 
 App.aiTools.renderToolbar = function() {
@@ -62,7 +92,8 @@ App.aiTools.hideToolbar = function() {
 // ============================================================
 
 App.aiTools.openOptimizer = function(mode) {
-    mode = mode || 'polish';
+    var saved = this._loadOptSettings();
+    mode = mode || saved.mode || 'polish';
     this._mode = mode;
 
     // 获取选中词条的内容
@@ -90,6 +121,13 @@ App.aiTools.openOptimizer = function(mode) {
     // 显示/隐藏格式选择
     var fmtRow = document.getElementById('aiOptFormatRow');
     if (fmtRow) fmtRow.style.display = mode === 'adapt' ? 'flex' : 'none';
+    var fmtSel = document.getElementById('aiOptFormat');
+    if (fmtSel && saved.format) fmtSel.value = saved.format;
+
+    // 恢复目标字数
+    var mcEl = document.getElementById('aiOptMaxChars');
+    if (mcEl && saved.max_chars) mcEl.value = saved.max_chars;
+    this._maxChars = saved.max_chars || 0;
 
     // 清空输出
     var output = document.getElementById('aiOptOutput');
@@ -163,7 +201,7 @@ App.aiTools._ensureOptimizerModal = function() {
     // 格式选择（adapt模式下显示）
     '<div id="aiOptFormatRow" style="display:none;margin-bottom:10px;gap:6px;align-items:center;">' +
     '<span style="font-size:11px;color:var(--text-muted);">目标格式:</span>' +
-    '<select id="aiOptFormat" onchange="App.aiTools._targetFormat=this.value" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-main);">' +
+    '<select id="aiOptFormat" onchange="App.aiTools._targetFormat=this.value;App.aiTools._saveOptSettings()" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-main);">' +
     '<option value="sdxl">SDXL</option><option value="flux">Flux</option><option value="midjourney">Midjourney</option><option value="dalle">DALL-E 3</option>' +
     '</select>' +
     '</div>' +
@@ -171,7 +209,7 @@ App.aiTools._ensureOptimizerModal = function() {
     // 模型选择
     '<div id="aiOptModelRow" style="display:none;margin-bottom:10px;gap:6px;align-items:center;">' +
     '<span style="font-size:11px;color:var(--text-muted);">模型:</span>' +
-    '<select id="aiOptModel" onchange="App.aiTools._model=this.value" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-main);"></select>' +
+    '<select id="aiOptModel" onchange="App.aiTools._model=this.value;App.aiTools._saveOptSettings()" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-main);"></select>' +
     '<span id="aiOptModelHint" style="font-size:10px;color:var(--text-muted);"></span>' +
     '</div>' +
 
@@ -182,7 +220,7 @@ App.aiTools._ensureOptimizerModal = function() {
     // 目标字数
     '<div id="aiOptMaxCharsRow" style="display:flex;gap:6px;align-items:center;margin-bottom:10px;">' +
     '<span style="font-size:11px;color:var(--text-muted);">目标字数:</span>' +
-    '<input id="aiOptMaxChars" type="number" min="50" max="3000" step="10" placeholder="不限" style="width:90px;font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-main);">' +
+    '<input id="aiOptMaxChars" type="number" min="50" max="3000" step="10" placeholder="不限" onchange="App.aiTools._saveOptSettings()" style="width:90px;font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-main);">' +
     '<span style="font-size:10px;color:var(--text-muted);">优化时控制输出长度（50-3000，留空不限）</span>' +
     '</div>' +
 
@@ -252,6 +290,7 @@ App.aiTools._switchMode = function(mode) {
     }
     var fmtRow = document.getElementById('aiOptFormatRow');
     if (fmtRow) fmtRow.style.display = mode === 'adapt' ? 'flex' : 'none';
+    this._saveOptSettings();
 };
 
 // ============ 执行优化 ============

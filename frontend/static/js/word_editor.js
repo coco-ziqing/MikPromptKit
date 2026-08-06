@@ -471,10 +471,13 @@ App.wordEditor._loadCard = async function() {
         document.getElementById('wcEditGroup').value = c.group_id || '';
         this._updateGroupPickerBtn();  // Phase17.3: 同步分组选择按钮
         document.getElementById('wcEditName').value = c.name || '';
-        // 三档内容：简易/普通/详细（content 为普通档），默认显示普通档
+        // 三档内容：简易/普通/详细（content 为普通档），默认显示上次编辑档位
         this._tiers = { simple: c.content_simple || '', normal: c.content || '', detailed: c.content_detailed || '' };
-        this._tier = 'normal';
-        document.getElementById('wcEditContent').value = this._tiers.normal;
+        var lastTier = 'normal';
+        try { lastTier = localStorage.getItem('wc_edit_tier') || 'normal'; } catch(e) {}
+        if (lastTier !== 'simple' && lastTier !== 'detailed') lastTier = 'normal';
+        this._tier = lastTier;
+        document.getElementById('wcEditContent').value = this._tiers[this._tier] || '';
         this._updateTierUI();
         document.getElementById('wcEditMeaning').value = c.meaning || '';
         document.getElementById('wcEditModule').value = c.module || 'custom';
@@ -638,6 +641,8 @@ App.wordEditor._switchTier = function(tier) {
     this._tier = tier;
     if (ta) ta.value = (this._tiers && this._tiers[tier]) || '';
     this._updateTierUI();
+    // 记住档位（再次打开词卡保持上次档位）
+    try { localStorage.setItem('wc_edit_tier', tier); } catch(e) {}
 };
 
 App.wordEditor._updateTierUI = function() {
