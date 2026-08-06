@@ -285,7 +285,7 @@ App._showShowcase = function() {
                     var grp = subLeaves[g];
                     if (grp.group_type === 'sub' || grp.group_type === 'root') continue;
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
-                    html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
+                    html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;line-height:1.5;"';
                     html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'rgba(59,130,246,0.12)\';this.style.boxShadow=\'0 0 0 2px rgba(59,130,246,0.15)\'" onmouseleave="this.style.borderColor=\'\';this.style.background=\'\';this.style.boxShadow=\'\'"';
                     html += '>';
                     html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
@@ -318,7 +318,7 @@ App._showShowcase = function() {
                 for (var sl2 = 0; sl2 < selfLeafSubs.length; sl2++) {
                     var sub = selfLeafSubs[sl2];
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + sub.id + ',\'' + (sub.name||'').replace(/'/g,"\\'") + '\')" ';
-                    html += 'class="showcase-leaf-btn" style="font-size:12px;padding:3px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.6;"';
+                    html += 'class="showcase-leaf-btn" style="font-size:12px;padding:3px 10px;line-height:1.6;"';
                     html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'rgba(59,130,246,0.12)\';this.style.boxShadow=\'0 0 0 2px rgba(59,130,246,0.15)\'" onmouseleave="this.style.borderColor=\'\';this.style.background=\'\';this.style.boxShadow=\'\'"';
                     html += '>';
                     html += (sub.icon||'📋') + ' ' + App._escape(sub.name.replace(sub.icon||'','').trim());
@@ -343,7 +343,7 @@ App._showShowcase = function() {
                 for (var g = 0; g < atomLeaves.length; g++) {
                     var grp = atomLeaves[g];
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
-                    html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
+                    html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;line-height:1.5;"';
                     html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'rgba(59,130,246,0.12)\';this.style.boxShadow=\'0 0 0 2px rgba(59,130,246,0.15)\'" onmouseleave="this.style.borderColor=\'\';this.style.background=\'\';this.style.boxShadow=\'\'"';
                     html += '>';
                     html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
@@ -372,7 +372,7 @@ App._showShowcase = function() {
                 for (var g2 = 0; g2 < uwLeaves.length; g2++) {
                     var grp = uwLeaves[g2];
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
-                    html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
+                    html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;line-height:1.5;"';
                     html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'rgba(59,130,246,0.12)\';this.style.boxShadow=\'0 0 0 2px rgba(59,130,246,0.15)\'" onmouseleave="this.style.borderColor=\'\';this.style.background=\'\';this.style.boxShadow=\'\'"';
                     html += '>';
                     html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
