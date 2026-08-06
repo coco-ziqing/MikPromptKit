@@ -288,7 +288,7 @@ def libtv_login_phone(data: LibtvPhoneRequest):
     reason = ""
     if ejson:
         reason = str(ejson.get("msg") or ejson.get("extra_msg") or "")[:200]
-    m_captcha = re.search(r"(?i)captcha|人机验证|验证码", out + err)
+    m_captcha = re.search(r"(?i)captcha|人机验证|图形验证", out + err)
     return {"ok": False, "error": reason or (err or out)[-200:],
             "need_captcha": bool(m_captcha), "step": "code" if data.code else "send"}
 
