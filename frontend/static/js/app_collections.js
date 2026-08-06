@@ -1627,8 +1627,7 @@ Object.assign(App, {
                             <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>
                             ${(p.thumbnail || videoFile2) ? '<span class="coll-add-btn" onclick="event.stopPropagation();App._downloadPreview(\'' + (videoFile2 ? 'video' : 'image') + '\', \'' + (p.original_ref || p.thumbnail || '') + '\', \'' + (videoFile2 || '') + '\', \'' + (p.content || '').replace(/'/g,"\\'").substring(0,12) + '\')" title="下载' + (videoFile2 ? '视频' : '原图') + '到本地" style="background:rgba(34,197,94,0.1);color:#22c55e;">⬇</span>' : ''}
                             <span class="card-tier-group" style="display:inline-flex;gap:2px;align-items:center;margin-left:2px;" onclick="event.stopPropagation()">
-                                <span class="coll-add-btn card-tier-btn" data-tier="simple" data-pid="${p.id}" onclick="App._switchCardTier(${p.id},'simple',this)" title="简易档" style="font-size:9px;padding:0 4px;">📄</span>
-                                <span class="coll-add-btn card-tier-btn" data-tier="normal" data-pid="${p.id}" onclick="App._switchCardTier(${p.id},'normal',this)" title="普通档" style="font-size:9px;padding:0 4px;">📋</span>
+                                <span class="coll-add-btn card-tier-btn" data-tier="simple" data-pid="${p.id}" onclick="App._switchCardTier(${p.id},'simple',this)" title="精简档" style="font-size:9px;padding:0 4px;">📄</span>
                                 <span class="coll-add-btn card-tier-btn" data-tier="detailed" data-pid="${p.id}" onclick="App._switchCardTier(${p.id},'detailed',this)" title="详细档" style="font-size:9px;padding:0 4px;">📚</span>
                             </span>
                             <div class="card-collections">

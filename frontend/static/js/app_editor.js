@@ -318,7 +318,10 @@ Object.assign(App, {
                         <div class="card-add-row">
                             <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>
                             ${(p.thumbnail || videoFile) ? '<span class="coll-add-btn" onclick="event.stopPropagation();App._downloadPreview(\'' + (videoFile ? 'video' : 'image') + '\', \'' + (origFile || p.thumbnail || '') + '\', \'' + (videoFile || '') + '\', \'' + (p.content || '').replace(/'/g,"\\'").substring(0,12) + '\')" title="下载' + (videoFile ? '视频' : '原图') + '到本地" style="background:rgba(34,197,94,0.1);color:#22c55e;">⬇</span>' : ''}
-                            ${App.state.editMode ? '' : ''}
+                            <span class="card-tier-group" style="display:inline-flex;gap:2px;align-items:center;margin-left:2px;" onclick="event.stopPropagation()">
+                                <span class="coll-add-btn card-tier-btn" data-tier="simple" data-pid="${p.id}" onclick="App._switchCardTier(${p.id},'simple',this)" title="精简档" style="font-size:9px;padding:0 4px;">📄</span>
+                                <span class="coll-add-btn card-tier-btn" data-tier="detailed" data-pid="${p.id}" onclick="App._switchCardTier(${p.id},'detailed',this)" title="详细档" style="font-size:9px;padding:0 4px;">📚</span>
+                            </span>
                             <div class="card-collections">
                                 <div class="card-checkbox">
                                     <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="App.toggleSelect(${p.id})">
@@ -331,7 +334,7 @@ Object.assign(App, {
                                 <span class="card-badge">${this._escape(p.category)}</span>
                                 ${p.subcategory ? `<span style="font-size:10px;color:#94a3b8;">${this._escape(p.subcategory)}</span>` : ''}
                             </div>
-                            <div class="card-content" id="cc_${p.id}">${this._escape(App._transContent(p))}</div>
+                            <div class="card-content" id="cc_${p.id}">${this._escape(App._cardDisplayContent ? App._cardDisplayContent(p) : App._transContent(p))}</div>
                             ${p.meaning ? `<div class="card-meaning">${this._escape(p.meaning)}</div>` : ''}
                             ${p.scene ? `<div class="card-scene">🎯 ${this._escape(p.scene)}</div>` : ''}
                             <div style="font-size:10px;color:#cbd5e1;margin-bottom:6px;">${tagHtml}</div>
@@ -353,6 +356,8 @@ Object.assign(App, {
         html += '</div>';
         container.innerHTML = html;
         this.applyColumns();
+        // 初始化三档按钮状态
+        if (typeof App._initCardTierBtns === 'function') App._initCardTierBtns();
         // 绑定视频悬停播放（app_media.js提供，可能未加载）
         if (typeof this.bindVideoHover === 'function') this.bindVideoHover();
         // 编辑模式下应用客户端筛选

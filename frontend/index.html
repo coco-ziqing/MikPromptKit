@@ -397,6 +397,11 @@
                 </div>
                 <div class="viewer-right-body">
                     <div class="viewer-badge" id="vidViewerModule">-</div>
+                    <div id="vidViewerTierBar" style="display:none;gap:4px;align-items:center;margin-bottom:6px;">
+                        <span style="font-size:10px;color:#94a3b8;">档位:</span>
+                        <button type="button" class="viewer-tier-btn" data-tier="simple" onclick="App._switchViewerTier('vidViewer','simple')" style="font-size:10px;padding:1px 8px;border-radius:6px;border:1px solid var(--border-color);background:transparent;color:#cbd5e1;cursor:pointer;">📄 精简</button>
+                        <button type="button" class="viewer-tier-btn" data-tier="detailed" onclick="App._switchViewerTier('vidViewer','detailed')" style="font-size:10px;padding:1px 8px;border-radius:6px;border:1px solid var(--border-color);background:transparent;color:#cbd5e1;cursor:pointer;">📚 详细</button>
+                    </div>
                     <div class="viewer-content" id="vidViewerContent">-</div>
                     <div class="viewer-meaning" id="vidViewerMeaning"></div>
                     <div class="viewer-tags" id="vidViewerTags"></div>
@@ -469,6 +474,11 @@
                 </div>
                 <div class="viewer-right-body">
                     <div class="viewer-badge" id="imgViewerModule">-</div>
+                    <div id="imgViewerTierBar" style="display:none;gap:4px;align-items:center;margin-bottom:6px;">
+                        <span style="font-size:10px;color:#94a3b8;">档位:</span>
+                        <button type="button" class="viewer-tier-btn" data-tier="simple" onclick="App._switchViewerTier('imgViewer','simple')" style="font-size:10px;padding:1px 8px;border-radius:6px;border:1px solid var(--border-color);background:transparent;color:#cbd5e1;cursor:pointer;">📄 精简</button>
+                        <button type="button" class="viewer-tier-btn" data-tier="detailed" onclick="App._switchViewerTier('imgViewer','detailed')" style="font-size:10px;padding:1px 8px;border-radius:6px;border:1px solid var(--border-color);background:transparent;color:#cbd5e1;cursor:pointer;">📚 详细</button>
+                    </div>
                     <div class="viewer-content" id="imgViewerContent">-</div>
                     <div class="viewer-meaning" id="imgViewerMeaning"></div>
                     <div class="viewer-tags" id="imgViewerTags"></div>
@@ -1085,8 +1095,8 @@
     <!-- #6 预加载大模块，提前发起请求 -->
     <link rel="preload" href="/static/js/seedance_v2_composer.js?v=101" as="script">
     <link rel="preload" href="/static/js/app_tools.js?v=9.14" as="script">
-    <link rel="preload" href="/static/js/app_collections.js?v=10.41" as="script">
-    <link rel="preload" href="/static/js/app_media.js?v=14" as="script">
+    <link rel="preload" href="/static/js/app_collections.js?v=10.42" as="script">
+    <link rel="preload" href="/static/js/app_media.js?v=15" as="script">
     <link rel="preload" href="/static/js/word_editor.js?v=12.7" as="script">
     <!-- Phase15: wc_bridge 必须在 app_core 之前加载，分组导航交互重构 -->
                             <script src="/static/js/wc_bridge.js?v=14.56"></script>
@@ -1112,11 +1122,11 @@
     <script defer src="/static/js/comfy_workflow_lib.js?v=25"></script>
     <script defer src="/static/js/health_check.js?v=5"></script>
     <script defer src="/static/js/app_sync.js?v=9.3"></script>
-    <script defer src="/static/js/app_editor.js?v=11.21"></script>                
-    <script defer src="/static/js/app_collections.js?v=10.41"></script>
+    <script defer src="/static/js/app_editor.js?v=11.22"></script>                
+    <script defer src="/static/js/app_collections.js?v=10.42"></script>
     <script defer src="/static/js/app_tools.js?v=9.14"></script>
 <script defer src="/static/js/app_import_export.js?v=2"></script>
-    <script defer src="/static/js/app_media.js?v=14"></script>
+    <script defer src="/static/js/app_media.js?v=15"></script>
 <script defer src="/static/js/app_media_viewer.js?v=13"></script>
     <script defer src="/static/js/ai_tools.js?v=13"></script>
     <script defer src="/static/js/word_picker.js?v=5"></script>

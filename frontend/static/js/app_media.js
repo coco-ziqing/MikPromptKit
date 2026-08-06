@@ -1417,7 +1417,15 @@ Object.assign(App, {
                 self._fillViewerPanel(prefix, {
                     id: card.id, content: card.content || '', meaning: card.meaning || '',
                     scene: card.scene || '', module: card.module || '', category: card.category || '',
-                    tags: JSON.stringify(card.tags || []), collections: []
+                    tags: JSON.stringify(card.tags || []), collections: [],
+                    content_simple: card.content_simple || '',
+                    content_simple_en: card.content_simple_en || '',
+                    content_simple_zh: card.content_simple_zh || '',
+                    content_detailed: card.content_detailed || '',
+                    content_detailed_en: card.content_detailed_en || '',
+                    content_detailed_zh: card.content_detailed_zh || '',
+                    content_en: card.content_en || '',
+                    content_zh: card.content_zh || ''
                 });
             }).catch(function() {
                 self.fetchJSON('/api/prompts/' + promptId).then(function(d) { if (d) self._fillViewerPanel(prefix, d); });
@@ -1434,8 +1442,21 @@ Object.assign(App, {
         var mnEl = document.getElementById(prefix + 'Meaning');
         var tEl = document.getElementById(prefix + 'Tags');
         if (mEl) mEl.textContent = moduleNames[p.module] || p.module;
+        // 档位切换：查看器内显示 精简/详细（默认普通档）
+        this._viewerCard = p;
+        this._viewerTier = this._viewerTier || 'normal';
+        var tierBar = document.getElementById(prefix + 'TierBar');
+        var hasTier = !!(p.content_simple || p.content_detailed);
+        if (tierBar) {
+            tierBar.style.display = hasTier ? 'flex' : 'none';
+            if (hasTier) {
+                var btn1 = tierBar.querySelector('[data-tier="simple"]');
+                var btn2 = tierBar.querySelector('[data-tier="detailed"]');
+                this._applyViewerTierBtns(btn1, btn2);
+            }
+        }
         if (cEl) {
-            cEl.textContent = p.content || '';
+            cEl.textContent = this._viewerTierText(p) || '';
             cEl.setAttribute('data-prompt-id', p.id || '');
             cEl.setAttribute('data-content', p.content || '');
         }
@@ -1451,6 +1472,41 @@ Object.assign(App, {
             collDiv.innerHTML = '<div style="font-size:12px;color:#94a3b8;">收藏分组加载中...</div>';
             this._loadViewerCollections(prefix, p.id, collDiv);
         }
+    },
+
+    // 查看器档位文本（精简/详细，空则回退普通档）
+    _viewerTierText(p) {
+        if (!p) return '';
+        var tier = this._viewerTier || 'normal';
+        if (tier === 'simple') return p.content_simple || p.content || '';
+        if (tier === 'detailed') return p.content_detailed || p.content || '';
+        return p.content || '';
+    },
+
+    // 查看器档位切换（图片/视频查看器右侧面板）
+    _switchViewerTier(prefix, tier) {
+        var p = this._viewerCard;
+        if (!p) return;
+        this._viewerTier = this._viewerTier === tier ? 'normal' : tier;
+        var cEl = document.getElementById(prefix + 'Content');
+        if (cEl) cEl.textContent = this._viewerTierText(p);
+        var tierBar = document.getElementById(prefix + 'TierBar');
+        if (tierBar) {
+            var btn1 = tierBar.querySelector('[data-tier="simple"]');
+            var btn2 = tierBar.querySelector('[data-tier="detailed"]');
+            this._applyViewerTierBtns(btn1, btn2);
+        }
+    },
+
+    _applyViewerTierBtns(btn1, btn2) {
+        var tier = this._viewerTier || 'normal';
+        [btn1, btn2].forEach(function(b) {
+            if (!b) return;
+            var active = b.getAttribute('data-tier') === tier;
+            b.style.background = active ? 'var(--primary)' : 'transparent';
+            b.style.color = active ? '#fff' : '#cbd5e1';
+            b.style.borderColor = active ? 'var(--primary)' : 'var(--border-color)';
+        });
     },
 
     // 独立异步加载查看器收藏勾选列表（不依赖 p.collections，兼容 prompts/word_card 双源）
