@@ -90,6 +90,17 @@ class OptimizeRequest(BaseModel):
     prompt_id: int = None  # 关联提示词ID（可选）
     apply: bool = False  # 是否直接应用到提示词
     model: str = ""  # 显式指定模型（空则自动路由）
+    max_chars: int = 0  # 目标字数限制（0=不限）
+
+
+def _build_user_msg(content: str, extra_context: str = "", max_chars: int = 0) -> str:
+    """构建用户消息：追加上下文 + 目标字数约束"""
+    msg = content
+    if extra_context:
+        msg = f"上下文: {extra_context}\n\n提示词:\n{content}"
+    if max_chars and max_chars > 0:
+        msg += f"\n\n【长度要求】请将输出的提示词总长度控制在 {max_chars} 字以内（当前内容 {len(content)} 字）。"
+    return msg
 
 
 class OptimizeBatchRequest(BaseModel):
@@ -142,9 +153,7 @@ async def optimize(data: OptimizeRequest):
     else:
         system = mode_cfg["system"]
 
-    user_msg = data.content
-    if data.extra_context:
-        user_msg = f"上下文: {data.extra_context}\n\n提示词:\n{data.content}"
+    user_msg = _build_user_msg(data.content, data.extra_context, data.max_chars)
 
     messages = [
         {"role": "system", "content": system},
@@ -153,7 +162,7 @@ async def optimize(data: OptimizeRequest):
 
     result = await ollama_chat(
         messages=messages, function="optimize", model=data.model or None,
-        temperature=0.3, max_tokens=4096, timeout_s=180
+        temperature=0.3, max_tokens=4096, timeout_s=180, think=False
     )
 
     if not result.get("ok"):
@@ -192,6 +201,7 @@ async def optimize_stream(request: Request):
     target_format = body.get("target_format", "")
     extra_context = body.get("extra_context", "")
     model = body.get("model", "") or None  # 显式模型优先，None 走自动路由
+    max_chars = int(body.get("max_chars", 0) or 0)  # 目标字数限制（0=不限）
 
     if mode not in OPTIMIZE_MODES:
         async def _err():
@@ -209,9 +219,7 @@ async def optimize_stream(request: Request):
     else:
         system = mode_cfg["system"]
 
-    user_msg = content
-    if extra_context:
-        user_msg = f"上下文: {extra_context}\n\n提示词:\n{content}"
+    user_msg = _build_user_msg(content, extra_context, max_chars)
 
     messages = [
         {"role": "system", "content": system},
@@ -223,7 +231,7 @@ async def optimize_stream(request: Request):
         model_used = ""
         async for line in ollama_stream(
             messages=messages, function="optimize", model=model,
-            temperature=0.3, max_tokens=4096, timeout_s=300
+            temperature=0.3, max_tokens=4096, timeout_s=300, think=False
         ):
             # 累积内容（用于收尾结构化解析）
             try:

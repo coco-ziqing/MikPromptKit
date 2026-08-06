@@ -281,6 +281,7 @@ async def _ollama_chat_impl(
     temperature: float = 0.1,
     max_tokens: int = 2048,
     timeout_s: float = 120.0,
+    think: bool = None,
 ) -> dict:
     """Ollama Chat 实现"""
     server_url = get_server_url()
@@ -293,6 +294,8 @@ async def _ollama_chat_impl(
             "num_predict": max_tokens,
         }
     }
+    if think is not None:
+        payload["think"] = think
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s, connect=10.0)) as client:
             resp = await client.post(f"{server_url}/api/chat", json=payload)
@@ -330,12 +333,14 @@ async def ollama_chat(
     max_tokens: int = 2048,
     timeout_s: float = 120.0,
     stream: bool = False,
+    think: bool = None,
 ) -> dict:
     """
     统一 AI Chat API（多提供商路由）
     - model: 指定模型，不传则按 function + provider 自动路由
     - function: 功能名（用于自动路由，决定 tier）
     - provider: 提供商（ollama/kimi），不传走全局配置
+    - think: 关闭思考模式（qwen3 等 thinking 模型，False 时直接输出答案更快）
     - 返回 {"ok": True, "content": "...", "model": "...", "provider": "...", "usage": {...}}
     """
     prov = get_effective_provider(provider)
@@ -347,7 +352,7 @@ async def ollama_chat(
     if prov == "kimi":
         return await _kimi_chat(messages, model, temperature, max_tokens, timeout_s)
     else:
-        return await _ollama_chat_impl(messages, model, temperature, max_tokens, timeout_s)
+        return await _ollama_chat_impl(messages, model, temperature, max_tokens, timeout_s, think)
 
 
 async def ollama_generate(
@@ -455,11 +460,13 @@ async def ollama_stream(
     temperature: float = 0.7,
     max_tokens: int = 2048,
     timeout_s: float = 300.0,
+    think: bool = None,
 ):
     """
     SSE 流式输出生成器 — 多提供商路由
     返回 AsyncGenerator，yield 每个 token 的 JSON 字符串
     Phase38: ollama/kimi 双通道流式
+    think: 关闭思考模式（qwen3 等 thinking 模型）
     """
     prov = get_effective_provider(provider)
     if not model and function:
@@ -511,6 +518,8 @@ async def ollama_stream(
             "num_predict": max_tokens,
         }
     }
+    if think is not None:
+        payload["think"] = think
     async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s, connect=10.0)) as client:
         async with client.stream("POST", f"{server_url}/api/chat", json=payload) as resp:
             if resp.status_code != 200:

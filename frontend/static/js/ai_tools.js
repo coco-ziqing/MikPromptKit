@@ -93,7 +93,9 @@ App.aiTools.openOptimizer = function(mode) {
 
     // 清空输出
     var output = document.getElementById('aiOptOutput');
-    if (output) output.textContent = '';
+    if (output) output.value = '';
+    this._updateCharCount('aiOptOutput', 'aiOptOutputCount', 8000);
+    this._updateCharCount('aiOptInput', 'aiOptInputCount', 3000);
     var preview = document.getElementById('aiOptPreview');
     if (preview) preview.innerHTML = '<span style="color:var(--text-muted);">点击"开始优化"查看结果</span>';
 
@@ -167,8 +169,15 @@ App.aiTools._ensureOptimizerModal = function() {
     '</div>' +
 
     // 输入区
-    '<label style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px;display:block;">输入提示词</label>' +
-    '<textarea id="aiOptInput" class="modal-input" rows="3" placeholder="在此粘贴或修改提示词..." style="font-size:12px;margin-bottom:10px;"></textarea>' +
+    '<label style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px;display:block;">输入提示词 <span id="aiOptInputCount" style="float:right;font-weight:400;font-size:10px;color:var(--text-muted);">0 / 3000</span></label>' +
+    '<textarea id="aiOptInput" class="modal-input" rows="3" placeholder="在此粘贴或修改提示词..." style="font-size:12px;margin-bottom:6px;" oninput="App.aiTools._updateCharCount(\'aiOptInput\',\'aiOptInputCount\',3000)"></textarea>' +
+
+    // 目标字数
+    '<div id="aiOptMaxCharsRow" style="display:flex;gap:6px;align-items:center;margin-bottom:10px;">' +
+    '<span style="font-size:11px;color:var(--text-muted);">目标字数:</span>' +
+    '<input id="aiOptMaxChars" type="number" min="50" max="3000" step="10" placeholder="不限" style="width:90px;font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-main);">' +
+    '<span style="font-size:10px;color:var(--text-muted);">优化时控制输出长度（50-3000，留空不限）</span>' +
+    '</div>' +
 
     // 按钮行
     '<div style="display:flex;gap:8px;margin-bottom:12px;">' +
@@ -190,10 +199,10 @@ App.aiTools._ensureOptimizerModal = function() {
     // 输出区
     '<div style="border:1px solid var(--border-color);border-radius:8px;overflow:hidden;">' +
     '<div style="background:var(--hover-bg);padding:8px 12px;display:flex;justify-content:space-between;align-items:center;">' +
-    '<span style="font-size:11px;font-weight:600;">📝 优化结果</span>' +
+    '<span style="font-size:11px;font-weight:600;">📝 优化结果 <span id="aiOptOutputCount" style="font-weight:400;font-size:10px;color:var(--text-muted);margin-left:6px;">0 / 8000</span></span>' +
     '<button class="btn btn-xs" onclick="App.aiTools._copyOutput()" style="font-size:10px;padding:2px 8px;">📋 复制</button>' +
     '</div>' +
-    '<div id="aiOptOutput" style="padding:10px 14px;font-size:12px;line-height:1.6;min-height:80px;max-height:200px;overflow-y:auto;white-space:pre-wrap;font-family:system-ui;color:var(--text-main);"></div>' +
+    '<textarea id="aiOptOutput" rows="6" spellcheck="false" placeholder="优化结果生成后可在此直接编辑调整，再复制/应用..." style="width:100%;box-sizing:border-box;padding:10px 14px;font-size:12px;line-height:1.6;min-height:120px;max-height:300px;overflow-y:auto;font-family:system-ui;color:var(--text-main);background:var(--bg-card);border:none;outline:none;resize:vertical;" oninput="App.aiTools._updateCharCount(\'aiOptOutput\',\'aiOptOutputCount\',8000)"></textarea>' +
     '</div>' +
 
     // 结果统计
@@ -244,6 +253,7 @@ App.aiTools._runOptimize = async function() {
     var input = document.getElementById('aiOptInput');
     var content = (input ? input.value : '').trim();
     if (!content) { App.showToast(App._t('editor.enter_content', '请输入提示词内容'), 'warning'); return; }
+    if (content.length > 3000) { App.showToast('提示词超过 3000 字上限，请精简后再优化', 'warning'); return; }
 
     var startBtn = document.getElementById('aiOptStartBtn');
     var stopBtn = document.getElementById('aiOptStopBtn');
@@ -264,7 +274,7 @@ App.aiTools._runOptimize = async function() {
     if (cmpEl) cmpEl.style.display = 'none';
     if (chgEl) { chgEl.style.display = 'none'; chgEl.innerHTML = ''; }
     if (statusEl) statusEl.textContent = App._t('auto.str_c67d8154', '⏳ 优化中...');
-    if (outputEl) outputEl.textContent = '';
+    if (outputEl) outputEl.value = '';
     if (rawEl) rawEl.textContent = '';
 
     // 使用流式输出
@@ -281,7 +291,8 @@ App.aiTools._runOptimize = async function() {
             mode: this._mode,
             target_format: this._targetFormat,
             extra_context: '',
-            model: this._model || ''
+            model: this._model || '',
+            max_chars: this._getMaxChars()
         });
 
         var resp = await fetch('/api/ai/optimize/stream', {
@@ -320,14 +331,15 @@ App.aiTools._runOptimize = async function() {
                         this._streamError = data.error;
                         var diag = this._diagnoseError(data.error);
                         if (statusEl) statusEl.textContent = diag;
-                        if (outputEl && !this._streamContent) outputEl.textContent = diag;
+                        if (outputEl && !this._streamContent) outputEl.value = diag;
                         continue;
                     }
                     if (data.message && data.message.content) {
                         this._streamContent += data.message.content;
                         // 模型被引导输出 JSON：实时提取 content 展示
                         var clean = this._extractContent(this._streamContent);
-                        if (outputEl) outputEl.textContent = clean || this._streamContent;
+                        if (outputEl) outputEl.value = clean || this._streamContent;
+                        this._updateCharCount('aiOptOutput', 'aiOptOutputCount', 8000);
                     }
                     this._streamRaw += line + '\n';
                 } catch(e) {
@@ -343,12 +355,13 @@ App.aiTools._runOptimize = async function() {
         if (doneMeta) {
             var display = doneMeta.display_content || this._streamContent;
             this._streamContent = display;
-            if (outputEl) outputEl.textContent = display;
+            if (outputEl) outputEl.value = display;
+            this._updateCharCount('aiOptOutput', 'aiOptOutputCount', 8000);
             this._renderResult(doneMeta, content);
         }
     } catch(e) {
         if (statusEl) statusEl.textContent = '❌ 请求未响应: ' + e.message;
-        if (outputEl && !this._streamContent) outputEl.textContent = App._t('auto.str_67411e24', '请求未响应: ') + e.message;
+        if (outputEl && !this._streamContent) outputEl.value = App._t('auto.str_67411e24', '请求未响应: ') + e.message;
     }
 
     // 完成
@@ -372,8 +385,12 @@ App.aiTools._stopStream = function() {
 
 App.aiTools._applyOptimize = function(type) {
     var pid = this._currentPromptId;
-    var optContent = this._streamContent;
+    // 优先取可编辑输出区（用户可先修改再应用）
+    var outEl = document.getElementById('aiOptOutput');
+    var optContent = (outEl && outEl.value) ? outEl.value.trim() : (this._streamContent || '');
     if (!optContent) { App.showToast(App._t('auto.str_c76a2753', '没有优化结果可应用'), 'warning'); return; }
+    if (optContent.length > 8000) { App.showToast('优化结果超过 8000 字上限，请精简', 'warning'); return; }
+    this._streamContent = optContent;
 
     if (type === 'edit') {
         // 填入编辑框
@@ -397,6 +414,25 @@ App.aiTools._applyOptimize = function(type) {
     }
     // 默认展开菜单
     this._toggleApplyMenu();
+};
+
+// 字数统计（input 事件回调）
+App.aiTools._updateCharCount = function(elId, countId, max) {
+    var el = document.getElementById(elId);
+    var cnt = document.getElementById(countId);
+    if (!el || !cnt) return;
+    var n = el.value ? el.value.length : 0;
+    cnt.textContent = n + ' / ' + max;
+    cnt.style.color = n > max ? '#ef4444' : 'var(--text-muted)';
+};
+
+// 读取目标字数（50-3000，空=0 不限）
+App.aiTools._getMaxChars = function() {
+    var el = document.getElementById('aiOptMaxChars');
+    if (!el || !el.value) return 0;
+    var n = parseInt(el.value, 10);
+    if (isNaN(n) || n <= 0) return 0;
+    return Math.min(Math.max(n, 50), 3000);
 };
 
 // 展开/收起应用菜单
@@ -606,7 +642,8 @@ App.aiTools._renderResult = function(meta, original) {
 };
 
 App.aiTools._copyOutput = function() {
-    var text = this._streamContent || '';
+    var outEl = document.getElementById('aiOptOutput');
+    var text = (outEl && outEl.value) ? outEl.value : (this._streamContent || '');
     if (!text) { App.showToast(App._t('auto.str_cd2e83b1', '没有内容可复制'), 'warning'); return; }
     App.copyText(text, App._t('common.copied', '已复制优化结果'));
 };
