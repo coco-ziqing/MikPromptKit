@@ -102,6 +102,19 @@ App.aiTools.openOptimizer = function(mode) {
     if (startBtn) { startBtn.disabled = false; startBtn.innerHTML = App._t('auto.str_bce5366e', '<span>✨</span> 开始优化'); }
     var applyBtn = document.getElementById('aiOptApplyBtn');
     if (applyBtn) applyBtn.style.display = 'none';
+    var applyMenu = document.getElementById('aiOptApplyMenu');
+    if (applyMenu) applyMenu.style.display = 'none';
+    var stats = document.getElementById('aiOptStats');
+    if (stats) stats.style.display = 'none';
+    var cmp = document.getElementById('aiOptCompare');
+    if (cmp) cmp.style.display = 'none';
+    var chg = document.getElementById('aiOptChanges');
+    if (chg) { chg.style.display = 'none'; chg.innerHTML = ''; }
+
+    // Ollama 状态检测（异步不阻塞）
+    this._checkOllamaStatus();
+    // 模型列表加载
+    this._loadModels();
 
     m.style.display = 'flex';
 };
@@ -127,6 +140,9 @@ App.aiTools._ensureOptimizerModal = function() {
     // Body
     '<div style="padding:14px 18px;">' +
 
+    // Ollama 状态条
+    '<div id="aiOptOllamaStatus" style="display:flex;align-items:center;gap:6px;font-size:11px;margin-bottom:10px;padding:6px 10px;border-radius:8px;background:var(--hover-bg);color:var(--text-muted);">检测 Ollama 服务...</div>' +
+
     // 模式选择
     '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;" id="aiOptModes">' +
     '<button id="aiOptMode_polish" class="ai-mode-btn" onclick="App.aiTools._switchMode(\'polish\')">✨ 润色增强</button>' +
@@ -143,6 +159,13 @@ App.aiTools._ensureOptimizerModal = function() {
     '</select>' +
     '</div>' +
 
+    // 模型选择
+    '<div id="aiOptModelRow" style="display:none;margin-bottom:10px;gap:6px;align-items:center;">' +
+    '<span style="font-size:11px;color:var(--text-muted);">模型:</span>' +
+    '<select id="aiOptModel" onchange="App.aiTools._model=this.value" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-main);"></select>' +
+    '<span id="aiOptModelHint" style="font-size:10px;color:var(--text-muted);"></span>' +
+    '</div>' +
+
     // 输入区
     '<label style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px;display:block;">输入提示词</label>' +
     '<textarea id="aiOptInput" class="modal-input" rows="3" placeholder="在此粘贴或修改提示词..." style="font-size:12px;margin-bottom:10px;"></textarea>' +
@@ -151,8 +174,17 @@ App.aiTools._ensureOptimizerModal = function() {
     '<div style="display:flex;gap:8px;margin-bottom:12px;">' +
     '<button id="aiOptStartBtn" class="btn btn-primary btn-sm" onclick="App.aiTools._runOptimize()" style="flex-shrink:0;"><span>✨</span> 开始优化</button>' +
     '<button id="aiOptStopBtn" class="btn btn-sm btn-outline" onclick="App.aiTools._stopStream()" style="display:none;flex-shrink:0;">⏹ 停止</button>' +
-    '<button id="aiOptApplyBtn" class="btn btn-sm" onclick="App.aiTools._applyOptimize()" style="display:none;flex-shrink:0;background:#10b981;color:#fff;border-color:#059669;">✅ 应用到词条</button>' +
+    '<button id="aiOptApplyBtn" class="btn btn-sm" onclick="App.aiTools._toggleApplyMenu()" style="display:none;flex-shrink:0;background:#10b981;color:#fff;border-color:#059669;">✅ 应用结果 ▾</button>' +
     '<span id="aiOptStatus" style="font-size:11px;color:var(--text-muted);align-self:center;"></span>' +
+    '</div>' +
+
+    // 应用菜单（三选一）
+    '<div id="aiOptApplyMenu" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px dashed var(--border-color);border-radius:8px;gap:6px;flex-wrap:wrap;">' +
+    '<span style="font-size:11px;color:var(--text-muted);align-self:center;">应用方式:</span>' +
+    '<button class="btn btn-sm" onclick="App.aiTools._applyOptimize(\'edit\')" style="border:1px solid #6366f1;color:#6366f1;">📝 填入编辑框</button>' +
+    '<button class="btn btn-sm" onclick="App.aiTools._applyOptimize(\'save\')" style="border:1px solid #10b981;color:#10b981;">💾 保存到当前词条</button>' +
+    '<button class="btn btn-sm" onclick="App.aiTools._applyOptimize(\'new\')" style="border:1px solid #f59e0b;color:#f59e0b;">➕ 另存为新词条</button>' +
+    '<button class="btn btn-sm" onclick="App.aiTools._toggleApplyMenu()" style="border:1px solid var(--border-color);color:var(--text-muted);">取消</button>' +
     '</div>' +
 
     // 输出区
@@ -163,6 +195,21 @@ App.aiTools._ensureOptimizerModal = function() {
     '</div>' +
     '<div id="aiOptOutput" style="padding:10px 14px;font-size:12px;line-height:1.6;min-height:80px;max-height:200px;overflow-y:auto;white-space:pre-wrap;font-family:system-ui;color:var(--text-main);"></div>' +
     '</div>' +
+
+    // 结果统计
+    '<div id="aiOptStats" style="display:none;margin-top:8px;font-size:11px;color:var(--text-muted);"></div>' +
+
+    // 前后对比面板
+    '<div id="aiOptCompare" style="display:none;margin-top:8px;border:1px solid var(--border-color);border-radius:8px;overflow:hidden;">' +
+    '<div style="background:var(--hover-bg);padding:6px 12px;font-size:11px;font-weight:600;">📊 前后对比</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">' +
+    '<div style="padding:8px 12px;border-right:1px solid var(--border-color);"><div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">原始提示词</div><div id="aiOptOrigText" style="font-size:11px;line-height:1.5;max-height:110px;overflow-y:auto;white-space:pre-wrap;color:var(--text-muted);"></div></div>' +
+    '<div style="padding:8px 12px;"><div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">优化后</div><div id="aiOptNewText" style="font-size:11px;line-height:1.5;max-height:110px;overflow-y:auto;white-space:pre-wrap;color:var(--text-main);"></div></div>' +
+    '</div>' +
+    '</div>' +
+
+    // 改动点
+    '<div id="aiOptChanges" style="display:none;margin-top:8px;"></div>' +
 
     // 原始响应区
     '<details style="margin-top:8px;font-size:11px;">' +
@@ -204,10 +251,18 @@ App.aiTools._runOptimize = async function() {
     var outputEl = document.getElementById('aiOptOutput');
     var rawEl = document.getElementById('aiOptRaw');
     var applyBtn = document.getElementById('aiOptApplyBtn');
+    var applyMenu = document.getElementById('aiOptApplyMenu');
+    var statsEl = document.getElementById('aiOptStats');
+    var cmpEl = document.getElementById('aiOptCompare');
+    var chgEl = document.getElementById('aiOptChanges');
 
     if (startBtn) { startBtn.style.display = 'none'; }
     if (stopBtn) { stopBtn.style.display = 'inline-block'; }
     if (applyBtn) applyBtn.style.display = 'none';
+    if (applyMenu) applyMenu.style.display = 'none';
+    if (statsEl) statsEl.style.display = 'none';
+    if (cmpEl) cmpEl.style.display = 'none';
+    if (chgEl) { chgEl.style.display = 'none'; chgEl.innerHTML = ''; }
     if (statusEl) statusEl.textContent = App._t('auto.str_c67d8154', '⏳ 优化中...');
     if (outputEl) outputEl.textContent = '';
     if (rawEl) rawEl.textContent = '';
@@ -217,13 +272,16 @@ App.aiTools._runOptimize = async function() {
     this._abortStream = false;
     this._streamContent = '';
     this._streamRaw = '';
+    this._streamError = '';
+    this._lastResult = null;
 
     try {
         var body = JSON.stringify({
             content: content,
             mode: this._mode,
             target_format: this._targetFormat,
-            extra_context: ''
+            extra_context: '',
+            model: this._model || ''
         });
 
         var resp = await fetch('/api/ai/optimize/stream', {
@@ -235,6 +293,7 @@ App.aiTools._runOptimize = async function() {
         var reader = resp.body.getReader();
         var decoder = new TextDecoder();
         var buffer = '';
+        var doneMeta = null;
 
         while (true) {
             if (this._abortStream) break;
@@ -251,9 +310,24 @@ App.aiTools._runOptimize = async function() {
                 if (!line) continue;
                 try {
                     var data = JSON.parse(line);
+                    if (data.done) {
+                        // 收尾元数据（结构化/统计/模型名）
+                        doneMeta = data;
+                        this._lastResult = data;
+                        continue;
+                    }
+                    if (data.error) {
+                        this._streamError = data.error;
+                        var diag = this._diagnoseError(data.error);
+                        if (statusEl) statusEl.textContent = diag;
+                        if (outputEl && !this._streamContent) outputEl.textContent = diag;
+                        continue;
+                    }
                     if (data.message && data.message.content) {
                         this._streamContent += data.message.content;
-                        if (outputEl) outputEl.textContent = this._streamContent;
+                        // 模型被引导输出 JSON：实时提取 content 展示
+                        var clean = this._extractContent(this._streamContent);
+                        if (outputEl) outputEl.textContent = clean || this._streamContent;
                     }
                     this._streamRaw += line + '\n';
                 } catch(e) {
@@ -261,10 +335,16 @@ App.aiTools._runOptimize = async function() {
                 }
             }
 
-            if (outputEl) outputEl.textContent = this._streamContent;
-
             // 滚动到底部
             if (outputEl) outputEl.scrollTop = outputEl.scrollHeight;
+        }
+
+        // 收尾：用 done 元数据覆盖展示
+        if (doneMeta) {
+            var display = doneMeta.display_content || this._streamContent;
+            this._streamContent = display;
+            if (outputEl) outputEl.textContent = display;
+            this._renderResult(doneMeta, content);
         }
     } catch(e) {
         if (statusEl) statusEl.textContent = '❌ 请求未响应: ' + e.message;
@@ -276,11 +356,10 @@ App.aiTools._runOptimize = async function() {
     if (startBtn) { startBtn.style.display = 'inline-block'; startBtn.innerHTML = App._t('auto.str_fd0f4fc1', '<span>🔄</span> 重新优化'); }
     if (stopBtn) stopBtn.style.display = 'none';
 
-    if (this._streamContent) {
-        if (statusEl) statusEl.textContent = '✅ 优化完成 (' + this._streamContent.length + ' 字符)';
+    if (this._streamContent && !this._streamError) {
         if (rawEl) rawEl.textContent = this._streamRaw.substring(0, 2000);
         if (applyBtn) applyBtn.style.display = 'inline-block';
-    } else {
+    } else if (!this._streamContent && !this._streamError && !doneMeta) {
         if (statusEl) statusEl.textContent = App._t('auto.str_049aada2', '⚠️ 未获得有效输出，请重试');
     }
 };
@@ -291,27 +370,239 @@ App.aiTools._stopStream = function() {
 
 // ============ 应用优化结果 ============
 
-App.aiTools._applyOptimize = function() {
+App.aiTools._applyOptimize = function(type) {
     var pid = this._currentPromptId;
     var optContent = this._streamContent;
     if (!optContent) { App.showToast(App._t('auto.str_c76a2753', '没有优化结果可应用'), 'warning'); return; }
 
-    // 如果有编辑中的提示词ID，更新编辑弹窗内容
-    var editInput = document.getElementById('editContent');
-    if (editInput && pid) {
-        editInput.value = optContent;
-        App.showToast(App._t('auto.str_a1fa07b2', '已填入编辑框，请保存'), 'success');
+    if (type === 'edit') {
+        // 填入编辑框
+        var editInput = document.getElementById('editContent');
+        if (editInput && pid) {
+            editInput.value = optContent;
+            App.showToast(App._t('auto.str_a1fa07b2', '已填入编辑框，请保存'), 'success');
+        } else {
+            App.copyText(optContent, '已复制优化结果 (无关联编辑框)');
+        }
+        this._toggleApplyMenu();
         return;
     }
-
-    // 否则直接更新到词条
-    if (!pid) {
-        // 仅复制到剪贴板
-        App.copyText(optContent, App._t('common.copied', '已复制优化结果 (无关联词条)'));
+    if (type === 'save') {
+        this._saveToCurrent(optContent);
         return;
     }
+    if (type === 'new') {
+        this._saveAsNew(optContent);
+        return;
+    }
+    // 默认展开菜单
+    this._toggleApplyMenu();
+};
 
-    App.showToast(App._t('auto.str_c9de9d53', '请通过编辑弹窗保存'), 'info');
+// 展开/收起应用菜单
+App.aiTools._toggleApplyMenu = function() {
+    var menu = document.getElementById('aiOptApplyMenu');
+    if (!menu) return;
+    menu.style.display = menu.style.display === 'none' ? 'flex' : 'none';
+};
+
+// 保存到当前词条（PUT 更新，系统保留版本快照可回滚）
+App.aiTools._saveToCurrent = async function(content) {
+    var pid = this._currentPromptId;
+    if (!pid) { App.showToast('当前没有关联词条，请用「另存为新词条」', 'warning'); this._toggleApplyMenu(); return; }
+    if (!confirm('将优化结果保存到当前词条 #' + pid + '？\n原内容会被替换（系统保留版本快照，可回滚）。')) return;
+    try {
+        var resp = await fetch('/api/v4/word-cards/' + pid, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content })
+        });
+        var d = await resp.json();
+        if (d && d.ok) {
+            App.showToast('已保存到词条 #' + pid, 'success');
+            this._toggleApplyMenu();
+            if (App.state.currentView === 'home') App.loadPrompts();
+            if (typeof App.loadWordCards === 'function') App.loadWordCards();
+        } else {
+            App.showToast('保存失败: ' + ((d && (d.detail || d.error)) || '未知错误'), 'error');
+        }
+    } catch(e) {
+        App.showToast('保存异常: ' + e.message, 'error');
+    }
+};
+
+// 另存为新词条（POST 创建，默认当前分组）
+App.aiTools._saveAsNew = async function(content) {
+    var gid = null;
+    try {
+        var prompts = App.state.prompts || [];
+        var pid = this._currentPromptId;
+        for (var i = 0; i < prompts.length; i++) {
+            if (prompts[i].id === pid && prompts[i].group_id != null) { gid = prompts[i].group_id; break; }
+        }
+    } catch(e) {}
+    var name = prompt('新词条名称（留空取内容前 60 字）：') || '';
+    try {
+        var resp = await fetch('/api/v4/word-cards', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content, group_id: gid, name: name })
+        });
+        var d = await resp.json();
+        if (d && d.ok) {
+            App.showToast('已另存为新词条 #' + d.id, 'success');
+            this._toggleApplyMenu();
+            if (App.state.currentView === 'home') App.loadPrompts();
+            if (typeof App.loadWordCards === 'function') App.loadWordCards();
+        } else {
+            App.showToast('创建失败: ' + ((d && (d.detail || d.error)) || '未知错误'), 'error');
+        }
+    } catch(e) {
+        App.showToast('创建异常: ' + e.message, 'error');
+    }
+};
+
+// 加载可用模型列表（/modes 返回 models + default + fast）
+App.aiTools._loadModels = async function() {
+    var sel = document.getElementById('aiOptModel');
+    var row = document.getElementById('aiOptModelRow');
+    var hint = document.getElementById('aiOptModelHint');
+    if (!sel || !row) return;
+    try {
+        var resp = await fetch('/api/ai/optimize/modes', { headers: { 'Accept': 'application/json' } });
+        var d = await resp.json();
+        var models = (d && d.models) || [];
+        var def = (d && d.default_model) || '';
+        var fast = (d && d.fast_model) || '';
+        if (!models.length) { row.style.display = 'none'; return; }
+        var html = '<option value="">自动（' + App._escape(def) + '）</option>';
+        var seen = {};
+        models.forEach(function(m) {
+            if (seen[m]) return;
+            seen[m] = 1;
+            var label = App._escape(m);
+            if (m === fast) label += ' ⚡快';
+            if (m === def) label += ' (默认)';
+            html += '<option value="' + App._escape(m) + '">' + label + '</option>';
+        });
+        sel.innerHTML = html;
+        sel.value = this._model || '';
+        row.style.display = 'flex';
+        if (hint) {
+            var fastNote = fast ? ' · ⚡' + App._escape(fast) + ' 最快' : '';
+            hint.textContent = '自动=' + App._escape(def) + '（高质量）' + fastNote;
+        }
+    } catch(e) {
+        row.style.display = 'none';
+    }
+};
+
+// Ollama 状态检测（复用 /api/health/status watcher 缓存）
+App.aiTools._checkOllamaStatus = async function() {
+    var el = document.getElementById('aiOptOllamaStatus');
+    var startBtn = document.getElementById('aiOptStartBtn');
+    if (!el) return;
+    try {
+        var resp = await fetch('/api/health/status', { headers: { 'Accept': 'application/json' } });
+        var d = await resp.json();
+        var ol = (d && d.ollama) || {};
+        if (ol.ok) {
+            el.innerHTML = '<span style="color:#10b981;">●</span> Ollama 可用' + (ol.url ? ' · ' + App._escape(ol.url) : '') + (ol.latency_ms ? ' · ' + ol.latency_ms + 'ms' : '');
+            el.style.color = 'var(--text-muted)';
+            if (startBtn) { startBtn.disabled = false; startBtn.style.opacity = ''; }
+        } else {
+            el.innerHTML = '<span style="color:#ef4444;">●</span> Ollama 离线 — 请先启动 Ollama 服务（默认端口 11434）' + (ol.error ? ' · ' + App._escape(ol.error) : '');
+            el.style.color = '#ef4444';
+            if (startBtn) { startBtn.disabled = true; startBtn.style.opacity = '0.5'; }
+        }
+    } catch(e) {
+        el.innerHTML = '<span style="color:#f59e0b;">?</span> 无法检测 Ollama 状态';
+    }
+};
+
+// 从流式缓冲中实时提取 JSON content（模型被引导输出 JSON）
+App.aiTools._extractContent = function(buf) {
+    if (!buf) return null;
+    var t = buf.trim();
+    if (t.charAt(0) !== '{') return null;
+    try {
+        var obj = JSON.parse(t);
+        if (obj && typeof obj.content === 'string') return obj.content;
+    } catch(e) {}
+    var m = t.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+    if (m) {
+        try {
+            var obj2 = JSON.parse(m[1]);
+            if (obj2 && typeof obj2.content === 'string') return obj2.content;
+        } catch(e2) {}
+    }
+    var cm = t.match(/"content"\s*:\s*"([^"]*)$/);
+    if (cm) return cm[1];
+    return null;
+};
+
+// 错误诊断分级
+App.aiTools._diagnoseError = function(err) {
+    var s = String(err || '');
+    if (/not found|does not exist|pull|model not found/i.test(s)) return '❌ 模型未安装：请先在终端运行 ollama pull <model> 安装对应模型';
+    if (/connect|refused|ECONN|timed? ?out|111/i.test(s)) return '❌ Ollama 服务未启动或无法连接（默认端口 11434）';
+    if (/401|403/i.test(s)) return '❌ Ollama 认证失败，请检查服务配置';
+    if (/HTTP 5\d\d|500|502|503|internal/i.test(s)) return '❌ Ollama 服务异常: ' + s;
+    return '❌ ' + s;
+};
+
+// 收尾渲染：统计/对比/改动点/评分
+App.aiTools._renderResult = function(meta, original) {
+    var statusEl = document.getElementById('aiOptStatus');
+    var statsEl = document.getElementById('aiOptStats');
+    var cmpEl = document.getElementById('aiOptCompare');
+    var chgEl = document.getElementById('aiOptChanges');
+
+    var model = meta.model || '';
+    var st = meta.structured || {};
+    var before = meta.chars_before != null ? meta.chars_before : (original || '').length;
+    var after = meta.chars_after != null ? meta.chars_after : (meta.display_content || '').length;
+
+    // 状态条：模型 + 评分
+    var parts = [];
+    if (model) parts.push('模型: ' + model);
+    if (st.score_before != null && st.score_after != null) parts.push('评分 ' + st.score_before + ' → ' + st.score_after);
+    if (statusEl) statusEl.textContent = '✅ 优化完成 (' + after + ' 字符)' + (parts.length ? ' · ' + parts.join(' · ') : '');
+
+    // 统计
+    if (statsEl) {
+        var pct = before > 0 ? Math.round((after - before) / before * 100) : 0;
+        var sign = pct > 0 ? '+' : '';
+        var compress = (st.original_length && st.compressed_length) ? ' · 精简率 ' + Math.round((1 - st.compressed_length / st.original_length) * 100) + '%' : '';
+        var styleKeep = st.style_preserved ? ' · 风格保持 ✓' : '';
+        statsEl.innerHTML = '原 ' + before + ' 字 → 优化后 ' + after + ' 字 (' + sign + pct + '%)' + compress + styleKeep;
+        statsEl.style.display = 'block';
+    }
+
+    // 对比面板
+    if (cmpEl) {
+        var origEl = document.getElementById('aiOptOrigText');
+        var newEl = document.getElementById('aiOptNewText');
+        if (origEl) origEl.textContent = original || '';
+        if (newEl) newEl.textContent = meta.display_content || '';
+        cmpEl.style.display = 'block';
+    }
+
+    // 改动点
+    if (chgEl) {
+        var changes = st.changes;
+        if (Array.isArray(changes) && changes.length) {
+            var html = '<div style="background:var(--hover-bg);border-radius:8px;padding:8px 12px;font-size:11px;">' +
+                '<div style="font-weight:600;margin-bottom:4px;">✏️ 改动说明</div>' +
+                '<ul style="margin:0;padding-left:16px;color:var(--text-muted);">';
+            changes.forEach(function(c) { html += '<li style="margin:2px 0;">' + App._escape(String(c)) + '</li>'; });
+            html += '</ul></div>';
+            chgEl.innerHTML = html;
+            chgEl.style.display = 'block';
+        } else {
+            chgEl.style.display = 'none';
+        }
+    }
 };
 
 App.aiTools._copyOutput = function() {

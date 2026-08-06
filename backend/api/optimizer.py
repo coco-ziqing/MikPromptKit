@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from database import get_db
 from ollama_client import (
-    ollama_chat, ollama_stream, get_model_for, extract_json
+    ollama_chat, ollama_stream, get_model_for, extract_json, _get_cached_models
 )
 
 router = APIRouter(prefix="/api/ai/optimize", tags=["ai_optimizer"])
@@ -89,6 +89,7 @@ class OptimizeRequest(BaseModel):
     extra_context: str = ""  # 额外上下文（原提示词的模块/场景等）
     prompt_id: int = None  # 关联提示词ID（可选）
     apply: bool = False  # 是否直接应用到提示词
+    model: str = ""  # 显式指定模型（空则自动路由）
 
 
 class OptimizeBatchRequest(BaseModel):
@@ -101,7 +102,12 @@ class OptimizeBatchRequest(BaseModel):
 
 @router.get("/modes")
 def get_modes():
-    """返回所有优化模式"""
+    """返回所有优化模式 + 可用模型列表"""
+    # 可用 chat 模型（过滤 embedding 专用）
+    try:
+        models = [m for m in _get_cached_models() if "bge" not in m.lower() and "embed" not in m.lower()]
+    except Exception:
+        models = []
     return {
         "ok": True,
         "modes": [
@@ -111,7 +117,10 @@ def get_modes():
         "formats": [
             {"key": k, "name": {"sdxl":"SDXL","flux":"Flux","midjourney":"Midjourney","dalle":"DALL-E 3"}[k]}
             for k in FORMAT_TEMPLATES
-        ]
+        ],
+        "models": models,
+        "default_model": get_model_for("optimize"),
+        "fast_model": get_model_for("optimize_fast"),
     }
 
 
@@ -143,7 +152,7 @@ async def optimize(data: OptimizeRequest):
     ]
 
     result = await ollama_chat(
-        messages=messages, function="optimize",
+        messages=messages, function="optimize", model=data.model or None,
         temperature=0.3, max_tokens=4096, timeout_s=180
     )
 
@@ -176,12 +185,13 @@ async def optimize(data: OptimizeRequest):
 
 @router.post("/stream")
 async def optimize_stream(request: Request):
-    """流式优化 — SSE 输出"""
+    """流式优化 — SSE 输出（支持 model 显式指定，空则自动路由）"""
     body = await request.json()
     mode = body.get("mode", "polish")
     content = body.get("content", "")
     target_format = body.get("target_format", "")
     extra_context = body.get("extra_context", "")
+    model = body.get("model", "") or None  # 显式模型优先，None 走自动路由
 
     if mode not in OPTIMIZE_MODES:
         async def _err():
@@ -209,11 +219,34 @@ async def optimize_stream(request: Request):
     ]
 
     async def _stream():
+        content_buf = ""
+        model_used = ""
         async for line in ollama_stream(
-            messages=messages, function="optimize",
+            messages=messages, function="optimize", model=model,
             temperature=0.3, max_tokens=4096, timeout_s=300
         ):
+            # 累积内容（用于收尾结构化解析）
+            try:
+                obj = json.loads(line)
+                if obj.get("message", {}).get("content"):
+                    content_buf += obj["message"]["content"]
+                if obj.get("model"):
+                    model_used = obj["model"]
+            except Exception:
+                pass
             yield line
+        # 收尾：结构化信息（改动点/评分/统计）+ 干净展示内容
+        structured = extract_json(content_buf) if content_buf else {}
+        display = (structured.get("content") or "").strip() or content_buf
+        yield json.dumps({
+            "done": True,
+            "structured": structured if structured else None,
+            "display_content": display,
+            "model": model_used or "",
+            "original": content,
+            "chars_before": len(content),
+            "chars_after": len(display),
+        }, ensure_ascii=False) + "\n"
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
 
