@@ -340,6 +340,8 @@ Object.assign(App, {
                     '<button type="button" class="bgen-btn" id="bgenOllamaBtn" onclick="App._enhanceBatchPrompts()" style="border-color:#10b981;color:#10b981;"><i class="bi bi-magic"></i> 优化选中卡提示词</button>' +
                     '<span id="bgenOllamaHint" style="font-size:10px;color:var(--text-muted);"></span>' +
                   '</div>' +
+                  // Ollama 优化结果（可编辑）
+                  '<div id="bgenOllamaResults" style="display:none;margin-bottom:6px;gap:6px;flex-direction:column;max-height:240px;overflow-y:auto;padding:2px;"></div>' +
                   '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">' +
                     '<label style="font-size:10px;color:var(--text-muted);">品质后缀 <input id="bgenSuffix" value="cinematic lighting, high quality, 4k, detailed" oninput="App._renderBatchComposePreview()" style="width:220px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);" title="留空则不添加后缀"></label>' +
                     '<label style="font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:4px;"><input type="checkbox" id="bgenUsePreset" checked onchange="App._renderBatchComposePreview()" style="width:14px;height:14px;"> 叠加模块主体预设</label>' +
@@ -413,6 +415,9 @@ Object.assign(App, {
         // Ollama 状态检测（模型列表/语言恢复）
         this._initOllamaBar();
         this._batchPromptOverrides = this._batchPromptOverrides || {};
+        // 重置优化结果区（新打开弹窗不带旧结果）
+        var resBox = document.getElementById('bgenOllamaResults');
+        if (resBox) { resBox.style.display = 'none'; resBox.innerHTML = ''; }
     },
 
     // 提示词组合预览：模块预设 + 词卡 + 品质后缀 + 手动附加文本（复刻后端组合规则）
@@ -629,7 +634,9 @@ Object.assign(App, {
         var ids = this._batchIds || [];
         var total = ids.length;
         var self = this;
-        this._batchPromptOverrides = this._batchPromptOverrides || {};
+        this._batchPromptOverrides = {};
+        var resultsBox = document.getElementById('bgenOllamaResults');
+        if (resultsBox) { resultsBox.style.display = 'none'; resultsBox.innerHTML = ''; }
         var done = 0, err = 0;
         for (var i = 0; i < ids.length; i++) {
             var pid = ids[i];
@@ -655,10 +662,54 @@ Object.assign(App, {
         }
         if (btn) btn.disabled = false;
         if (hint) hint.textContent = '';
+        // 渲染可编辑优化结果
+        this._renderOllamaResults();
         // 更新组合预览 + 保存设置
         this._renderBatchComposePreview();
         this._saveBatchSettings();
         this.showToast('Ollama 优化完成：' + done + ' 条成功 / ' + err + ' 条失败' + (err ? '（生成将使用优化后提示词）' : ''), err > 0 ? 'warning' : 'success');
+    },
+
+    // 渲染 Ollama 优化结果列表（可编辑，生成时使用修改后文本）
+    _renderOllamaResults() {
+        var box = document.getElementById('bgenOllamaResults');
+        if (!box) return;
+        var overrides = this._batchPromptOverrides || {};
+        var keys = Object.keys(overrides);
+        if (!keys.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+        var self = this;
+        var html = '<div style="font-size:10px;color:var(--text-muted);">✨ 优化结果（可直接编辑，生成时使用修改后文本 · 带 ✨ 为已优化）：</div>';
+        keys.forEach(function(pid) {
+            var card = null;
+            (self.state.prompts || []).forEach(function(p) { if (String(p.id) === String(pid) && !card) card = p; });
+            var name = card ? ((card.name || card.content || '').slice(0, 24)) : ('#' + pid);
+            html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:6px 8px;background:var(--bg-card);">' +
+                '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">' +
+                '<span style="font-size:10px;font-weight:600;color:var(--text-main);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + App._escape(name) + '</span>' +
+                '<button type="button" class="bgen-btn" style="padding:1px 6px;font-size:10px;border-color:var(--border-color);color:var(--text-muted);" onclick="App._ollamaRevert(' + pid + ')">↩ 恢复原词</button>' +
+                '</div>' +
+                '<textarea data-pid="' + pid + '" rows="2" oninput="App._ollamaEdit(this)" placeholder="优化结果..." style="width:100%;box-sizing:border-box;font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);resize:vertical;">' + App._escape(overrides[pid] || '') + '</textarea>' +
+                '</div>';
+        });
+        box.innerHTML = html;
+        box.style.display = 'flex';
+    },
+
+    // 编辑优化结果：实时同步到 overrides + 刷新组合预览
+    _ollamaEdit(ta) {
+        var pid = ta.getAttribute('data-pid');
+        if (!pid) return;
+        this._batchPromptOverrides = this._batchPromptOverrides || {};
+        this._batchPromptOverrides[pid] = ta.value;
+        this._renderBatchComposePreview();
+    },
+
+    // 恢复原词：丢弃该条优化结果
+    _ollamaRevert(pid) {
+        if (!confirm('恢复该词条为原始提示词（丢弃优化结果）？')) return;
+        if (this._batchPromptOverrides) delete this._batchPromptOverrides[pid];
+        this._renderOllamaResults();
+        this._renderBatchComposePreview();
     },
 
     // 组合规则（简化复刻后端 _compose_prompt）：预设 + 卡片，尾部加后缀，逗号拼接
