@@ -103,6 +103,21 @@ def _build_user_msg(content: str, extra_context: str = "", max_chars: int = 0) -
     return msg
 
 
+PURE_TEXT_RULE = "\n\n【输出要求】输出内容必须为纯文本，禁止包含任何 emoji、表情符号、图标或装饰字符（如 ✨ ✅ 🎯 📏 ➕ 等），只输出提示词文本本身。"
+
+
+def _build_system(mode: str, target_format: str = "") -> str:
+    """构建 system 消息：模式模板 + 纯文本输出约束"""
+    if mode == "adapt":
+        fmt = target_format or "sdxl"
+        if fmt not in FORMAT_TEMPLATES:
+            raise ValueError(f"不支持的目标格式: {fmt}")
+        system = FORMAT_TEMPLATES[fmt]
+    else:
+        system = OPTIMIZE_MODES[mode]["system"]
+    return system + PURE_TEXT_RULE
+
+
 class OptimizeBatchRequest(BaseModel):
     items: list  # [{"content": "...", "id": 1}, ...]
     mode: str = "polish"
@@ -144,14 +159,11 @@ async def optimize(data: OptimizeRequest):
 
     mode_cfg = OPTIMIZE_MODES[mode]
 
-    # 构建消息
-    if mode == "adapt":
-        fmt = data.target_format or "sdxl"
-        if fmt not in FORMAT_TEMPLATES:
-            return {"ok": False, "error": f"不支持的目标格式: {fmt}"}
-        system = FORMAT_TEMPLATES[fmt]
-    else:
-        system = mode_cfg["system"]
+    # 构建消息（含纯文本输出约束）
+    try:
+        system = _build_system(mode, data.target_format)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
 
     user_msg = _build_user_msg(data.content, data.extra_context, data.max_chars)
 
@@ -209,15 +221,12 @@ async def optimize_stream(request: Request):
         return StreamingResponse(_err(), media_type="text/event-stream")
 
     mode_cfg = OPTIMIZE_MODES[mode]
-    if mode == "adapt":
-        fmt = target_format or "sdxl"
-        if fmt not in FORMAT_TEMPLATES:
-            async def _err2():
-                yield json.dumps({"error": f"不支持的目标格式: {fmt}"}) + "\n"
-            return StreamingResponse(_err2(), media_type="text/event-stream")
-        system = FORMAT_TEMPLATES[fmt]
-    else:
-        system = mode_cfg["system"]
+    try:
+        system = _build_system(mode, target_format)
+    except ValueError as e:
+        async def _err2():
+            yield json.dumps({"error": str(e)}) + "\n"
+        return StreamingResponse(_err2(), media_type="text/event-stream")
 
     user_msg = _build_user_msg(content, extra_context, max_chars)
 
