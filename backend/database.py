@@ -703,6 +703,11 @@ def init_db():
             # 2026-08-06: 词卡三档内容（简易/普通/详细），content 为普通档
             "ALTER TABLE word_card ADD COLUMN content_simple TEXT DEFAULT ''",
             "ALTER TABLE word_card ADD COLUMN content_detailed TEXT DEFAULT ''",
+            # 2026-08-06: 三档各自中英文（简易/详细档）
+            "ALTER TABLE word_card ADD COLUMN content_simple_en TEXT DEFAULT ''",
+            "ALTER TABLE word_card ADD COLUMN content_simple_zh TEXT DEFAULT ''",
+            "ALTER TABLE word_card ADD COLUMN content_detailed_en TEXT DEFAULT ''",
+            "ALTER TABLE word_card ADD COLUMN content_detailed_zh TEXT DEFAULT ''",
         ]:
             try:
                 conn.execute(sql)

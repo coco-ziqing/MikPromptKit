@@ -39,13 +39,19 @@ def _init_table():
             lang TEXT NOT NULL DEFAULT 'zh',
             content TEXT NOT NULL DEFAULT '',
             quality_score REAL DEFAULT 0,
+            tier TEXT NOT NULL DEFAULT 'normal',
             created_at TEXT DEFAULT (datetime('now','localtime')),
-            UNIQUE(prompt_id, lang)
+            UNIQUE(prompt_id, lang, tier)
         )
     """)
     # 兼容旧表：补 quality_score 列
     try:
         db.execute("ALTER TABLE translations ADD COLUMN quality_score REAL DEFAULT 0")
+    except Exception:
+        pass
+    # 兼容旧表：补 tier 列（三档各自翻译缓存）
+    try:
+        db.execute("ALTER TABLE translations ADD COLUMN tier TEXT NOT NULL DEFAULT 'normal'")
     except Exception:
         pass
     db.commit()
@@ -104,17 +110,30 @@ def update_config(data: ConfigUpdate):
     return {"ok": True, "model": cfg.get("translate_model") or get_model_for("translate")}
 
 
+# 三档内容列映射（content 为主列，en/zh 为翻译列）
+TIER_COLS = {
+    "normal":   ("content",           "content_en",           "content_zh"),
+    "simple":   ("content_simple",    "content_simple_en",    "content_simple_zh"),
+    "detailed": ("content_detailed",  "content_detailed_en",  "content_detailed_zh"),
+}
+
+
 @router.get("/{prompt_id}")
-async def translate_single(prompt_id: int, target_lang: str = "zh"):
-    """翻译单条提示词（兼容 prompts 和 word_card 两表）— Ollama 调用期间不持 DB 锁"""
+async def translate_single(prompt_id: int, target_lang: str = "zh", tier: str = "normal"):
+    """翻译单条提示词（兼容 prompts 和 word_card 两表 + 三档内容）— Ollama 调用期间不持 DB 锁"""
     import sqlite3, os
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data', 'prompts.db')
+
+    tier = tier if tier in TIER_COLS else "normal"
+    col_main, col_en, col_zh = TIER_COLS[tier]
+    col_lang = col_en if target_lang == "en" else col_zh
+    col_other = col_zh if target_lang == "en" else col_en
 
     # 第一步：读原文 + 查缓存（短连接，立即释放）
     conn = sqlite3.connect(db_path, timeout=5)
     conn.row_factory = sqlite3.Row
     try:
-        row = conn.execute("SELECT id, content FROM word_card WHERE id=? AND is_deleted=0", [prompt_id]).fetchone()
+        row = conn.execute(f"SELECT id, {col_main} AS content FROM word_card WHERE id=? AND is_deleted=0", [prompt_id]).fetchone()
         table = "word_card"
         if not row:
             row = conn.execute("SELECT id, content FROM prompts WHERE id=?", [prompt_id]).fetchone()
@@ -124,26 +143,34 @@ async def translate_single(prompt_id: int, target_lang: str = "zh"):
 
         original = row["content"]
         if not original or not original.strip():
-            raise HTTPException(400, "提示词内容为空")
+            # 该档无内容 → 回退普通档
+            if table == "word_card" and tier != "normal":
+                r2 = conn.execute("SELECT content FROM word_card WHERE id=?", [prompt_id]).fetchone()
+                if r2 and r2["content"]:
+                    original = r2["content"]
+                    col_lang = "content_zh" if target_lang == "zh" else "content_en"
+                    col_other = "content_en" if target_lang == "zh" else "content_zh"
+                    tier = "normal"
+            if not original or not original.strip():
+                raise HTTPException(400, "提示词内容为空")
 
         if target_lang not in ("zh", "en"):
             raise HTTPException(400, "仅支持 zh/en")
 
-        # 查缓存
+        # 查缓存（按 tier 区分）
         cache = conn.execute(
-            "SELECT content, quality_score, created_at FROM translations WHERE prompt_id=? AND lang=?",
-            [prompt_id, target_lang]
+            "SELECT content, quality_score, created_at FROM translations WHERE prompt_id=? AND lang=? AND tier=?",
+            [prompt_id, target_lang, tier]
         ).fetchone()
     finally:
         conn.close()
 
     if cache:
-        # 缓存命中 → 确保词卡双语字段已同步（可能因历史原因缺失）
-        col = f"content_{target_lang}"
+        # 缓存命中 → 确保词卡对应档位双语字段已同步
         if table == "word_card":
             try:
                 _conn = sqlite3.connect(db_path, timeout=3)
-                _conn.execute(f"UPDATE word_card SET {col}=? WHERE id=? AND ({col}='' OR {col} IS NULL)", [cache["content"], prompt_id])
+                _conn.execute(f"UPDATE word_card SET {col_lang}=? WHERE id=? AND ({col_lang}='' OR {col_lang} IS NULL)", [cache["content"], prompt_id])
                 _conn.commit()
                 _conn.close()
             except (sqlite3.Error, Exception):
@@ -185,13 +212,12 @@ async def translate_single(prompt_id: int, target_lang: str = "zh"):
         conn2 = sqlite3.connect(db_path, timeout=10)
         conn2.execute("PRAGMA busy_timeout=5000")
         conn2.execute(
-            "INSERT OR REPLACE INTO translations (prompt_id, lang, content, quality_score, created_at) VALUES (?, ?, ?, 0, datetime('now','localtime'))",
-            [prompt_id, target_lang, translated]
+            "INSERT OR REPLACE INTO translations (prompt_id, lang, tier, content, quality_score, created_at) VALUES (?, ?, ?, ?, 0, datetime('now','localtime'))",
+            [prompt_id, target_lang, tier, translated]
         )
-        # 写回词卡双语字段（content_en 或 content_zh）
-        col = f"content_{target_lang}"
+        # 写回词卡对应档位双语字段
         if table == "word_card":
-            conn2.execute(f"UPDATE word_card SET {col}=? WHERE id=?", [translated, prompt_id])
+            conn2.execute(f"UPDATE word_card SET {col_lang}=? WHERE id=?", [translated, prompt_id])
         conn2.commit()
     except sqlite3.Error as e:
         pass
@@ -205,13 +231,12 @@ async def translate_single(prompt_id: int, target_lang: str = "zh"):
     other_trans = None
     if table == "word_card":
         try:
-            other_col = f"content_{other_lang}"
             conn3 = sqlite3.connect(db_path, timeout=3)
             conn3.row_factory = sqlite3.Row
-            ow = conn3.execute(f"SELECT {other_col} FROM word_card WHERE id=?", [prompt_id]).fetchone()
+            ow = conn3.execute(f"SELECT {col_other} FROM word_card WHERE id=?", [prompt_id]).fetchone()
             conn3.close()
-            if ow and ow[other_col]:
-                other_trans = ow[other_col]
+            if ow and ow[col_other]:
+                other_trans = ow[col_other]
         except:
             pass
 

@@ -1626,6 +1626,11 @@ Object.assign(App, {
                         <div class="card-add-row">
                             <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>
                             ${(p.thumbnail || videoFile2) ? '<span class="coll-add-btn" onclick="event.stopPropagation();App._downloadPreview(\'' + (videoFile2 ? 'video' : 'image') + '\', \'' + (p.original_ref || p.thumbnail || '') + '\', \'' + (videoFile2 || '') + '\', \'' + (p.content || '').replace(/'/g,"\\'").substring(0,12) + '\')" title="下载' + (videoFile2 ? '视频' : '原图') + '到本地" style="background:rgba(34,197,94,0.1);color:#22c55e;">⬇</span>' : ''}
+                            <span class="card-tier-group" style="display:inline-flex;gap:2px;align-items:center;margin-left:2px;" onclick="event.stopPropagation()">
+                                <span class="coll-add-btn card-tier-btn" data-tier="simple" data-pid="${p.id}" onclick="App._switchCardTier(${p.id},'simple',this)" title="简易档" style="font-size:9px;padding:0 4px;">📄</span>
+                                <span class="coll-add-btn card-tier-btn" data-tier="normal" data-pid="${p.id}" onclick="App._switchCardTier(${p.id},'normal',this)" title="普通档" style="font-size:9px;padding:0 4px;">📋</span>
+                                <span class="coll-add-btn card-tier-btn" data-tier="detailed" data-pid="${p.id}" onclick="App._switchCardTier(${p.id},'detailed',this)" title="详细档" style="font-size:9px;padding:0 4px;">📚</span>
+                            </span>
                             <div class="card-collections">
                                 <div class="card-checkbox">
                                     <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="App.toggleSelect(${p.id})">
@@ -1638,7 +1643,7 @@ Object.assign(App, {
                                 <span class="card-badge">${this._escape(p.category)}</span>
                                 ${p.subcategory ? `<span style="font-size:10px;color:#94a3b8;">${this._escape(p.subcategory)}</span>` : ''}
                             </div>
-                            <div class="card-content" id="cc_${p.id}">${this._escape(App._transContent ? App._transContent(p) : p.content)}</div>
+                            <div class="card-content" id="cc_${p.id}">${this._escape(App._cardDisplayContent ? App._cardDisplayContent(p) : p.content)}</div>
                             ${p.meaning ? `<div class="card-meaning">${this._escape(p.meaning)}</div>` : ''}
                             ${p.scene ? `<div class="card-scene">🎯 ${this._escape(p.scene)}</div>` : ''}
                             <div style="font-size:10px;color:#cbd5e1;margin-bottom:6px;">${tagHtml}</div>
@@ -1660,6 +1665,7 @@ Object.assign(App, {
         html += '</div>';
         container.innerHTML = html;
         App.applyColumns();
+        if (typeof this._initCardTierBtns === 'function') this._initCardTierBtns();
         if (typeof this.bindVideoHover === 'function') this.bindVideoHover();
     },
 
@@ -1712,23 +1718,92 @@ Object.assign(App, {
         return this.fetchJSON('/api/translate/' + promptId + '?target_lang=' + (this.state._cardTranslations[promptId] ? 'en' : 'zh'));
     },
 
-    // ============ 语言切换（双向中英 + 手动切换显示）============
+    // ============ 三档切换（简易/普通/详细，卡片上下载按钮右侧） ============
+
+    _cardTierFor(pid) {
+        var s = this._cardTierState || {};
+        if (s[pid]) return s[pid];
+        try { var t = localStorage.getItem('wc_card_tier'); if (t === 'simple' || t === 'detailed') return t; } catch(e) {}
+        return 'normal';
+    },
+
+    // 按档位取内容字段（空档回退普通档）
+    _tierFields(card, tier) {
+        if (!card) return { main: '', en: '', zh: '' };
+        if (tier === 'simple') return { main: card.content_simple || card.content, en: card.content_simple_en || '', zh: card.content_simple_zh || '' };
+        if (tier === 'detailed') return { main: card.content_detailed || card.content, en: card.content_detailed_en || '', zh: card.content_detailed_zh || '' };
+        return { main: card.content, en: card.content_en || '', zh: card.content_zh || '' };
+    },
+
+    // 卡片内容展示（档位 + 语言感知）
+    _cardDisplayContent(p) {
+        var tier = this._cardTierFor(p.id);
+        var tf = this._tierFields(p, tier);
+        var lang = (this.state._cardLang && this.state._cardLang[p.id]) || 'original';
+        if (lang === 'en' && tf.en) return tf.en;
+        if (lang === 'zh' && tf.zh) return tf.zh;
+        return tf.main || p.content;
+    },
+
+    // 切换卡片档位（下载按钮右侧 📄/📋/📚）
+    _switchCardTier(pid, tier, btn) {
+        this._cardTierState = this._cardTierState || {};
+        this._cardTierState[pid] = tier;
+        try { localStorage.setItem('wc_card_tier', tier); } catch(e) {}
+        var card = this._findCardData(pid);
+        var el = document.getElementById('cc_' + pid);
+        if (card && el) {
+            var lang = (this.state._cardLang && this.state._cardLang[pid]) || 'original';
+            var tf = this._tierFields(card, tier);
+            var text = lang === 'en' && tf.en ? tf.en : (lang === 'zh' && tf.zh ? tf.zh : (tf.main || card.content));
+            el.textContent = text;
+        }
+        this._updateCardTierBtns(pid);
+        if (this._updateTranslateBtn) this._updateTranslateBtn(pid);
+    },
+
+    // 更新某卡三档按钮激活态
+    _updateCardTierBtns(pid) {
+        var tier = this._cardTierFor(pid);
+        document.querySelectorAll('.card-tier-btn[data-pid="' + pid + '"]').forEach(function(b) {
+            var active = b.getAttribute('data-tier') === tier;
+            b.style.background = active ? 'var(--primary)' : 'var(--bg-card)';
+            b.style.color = active ? '#fff' : 'var(--text-muted)';
+            b.style.borderColor = active ? 'var(--primary)' : 'var(--border-color)';
+        });
+    },
+
+    // 渲染后初始化所有三档按钮态
+    _initCardTierBtns() {
+        var self = this;
+        document.querySelectorAll('.card-tier-btn').forEach(function(b) {
+            var pid = b.getAttribute('data-pid');
+            var tier = self._cardTierFor(pid);
+            var active = b.getAttribute('data-tier') === tier;
+            b.style.background = active ? 'var(--primary)' : 'var(--bg-card)';
+            b.style.color = active ? '#fff' : 'var(--text-muted)';
+            b.style.borderColor = active ? 'var(--primary)' : 'var(--border-color)';
+        });
+    },
+
+    // ============ 语言切换（双向中英 + 手动切换显示，按档位分别对应） ============
     async toggleTranslation(promptId) {
         var el = document.getElementById('cc_' + promptId);
         if (!el) { this.showToast('卡片元素未找到，请刷新', 'error'); return; }
+        var tier = this._cardTierFor(promptId);
         // 优先读 _cardLang（切换分组后 DOM 丢失，_cardLang 存活）
         var currentLang = (this.state._cardLang && this.state._cardLang[promptId]) || el.getAttribute('data-lang') || 'original';
         var cardData = this._findCardData(promptId);
-        var original = cardData ? cardData.content : (el.getAttribute('data-original') || el.textContent);
-        var zh = cardData ? (cardData.content_zh || '') : '';
-        var en = cardData ? (cardData.content_en || '') : '';
+        var tf = this._tierFields(cardData, tier);
+        var original = tf.main || (cardData ? cardData.content : (el.getAttribute('data-original') || el.textContent));
+        var zh = tf.zh, en = tf.en;
         var isCN = /[\u4e00-\u9fff]/.test(original);
 
         if (currentLang === 'original') {
             // 原文→翻译：如果原文中文且有英文翻译 → 显示英文；原文英文且有中文翻译 → 显示中文
             if (isCN && en) { this._setCardLang(el, promptId, 'en', en, original); }
             else if (!isCN && zh) { this._setCardLang(el, promptId, 'zh', zh, original); }
-            else { await this._doTranslateCard(el, promptId, original, isCN ? 'en' : 'zh'); }
+            else { await this._doTranslateCard(el, promptId, original, isCN ? 'en' : 'zh', tier); }
         } else if (currentLang === 'zh') {
             // 当前显示中文翻译 → 切到英文或原文
             if (en) { this._setCardLang(el, promptId, 'en', en, original); }
@@ -1749,13 +1824,20 @@ Object.assign(App, {
         this.state._cardLang[promptId] = lang;
     },
 
-    async _doTranslateCard(el, promptId, original, targetLang) {
+    async _doTranslateCard(el, promptId, original, targetLang, tier) {
         el.innerHTML = original + '<div class="card-translation" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-color);color:#6366f1;font-size:13px;">翻译中...</div>';
         try {
-            var data = await this.fetchJSON('/api/translate/' + promptId + '?target_lang=' + targetLang);
+            var url = '/api/translate/' + promptId + '?target_lang=' + targetLang;
+            if (tier && tier !== 'normal') url += '&tier=' + tier;
+            var data = await this.fetchJSON(url);
             if (data && data.ok && data.translated && data.translated !== data.original) {
                 var card = this._findCardData(promptId);
-                if (card) { if (targetLang === 'zh') card.content_zh = data.translated; else card.content_en = data.translated; }
+                if (card) {
+                    // 写回对应档位翻译字段
+                    if (tier === 'simple') { if (targetLang === 'zh') card.content_simple_zh = data.translated; else card.content_simple_en = data.translated; }
+                    else if (tier === 'detailed') { if (targetLang === 'zh') card.content_detailed_zh = data.translated; else card.content_detailed_en = data.translated; }
+                    else { if (targetLang === 'zh') card.content_zh = data.translated; else card.content_en = data.translated; }
+                }
                 this._setCardLang(el, promptId, targetLang, data.translated, original);
                 this.showToast('翻译完成(' + (targetLang === 'zh' ? '英→中' : '中→英') + ')', 'success');
             } else if (data && data.note) {
@@ -1777,10 +1859,12 @@ Object.assign(App, {
 
     getCardDisplayContent(promptId) {
         var card = this._findCardData(promptId); if (!card) return null;
+        var tier = this._cardTierFor(promptId);
+        var tf = this._tierFields(card, tier);
         var lang = (this.state._cardLang && this.state._cardLang[promptId]) || 'original';
-        if (lang === 'zh' && card.content_zh) return { text: card.content_zh, lang: 'zh' };
-        if (lang === 'en' && card.content_en) return { text: card.content_en, lang: 'en' };
-        return { text: card.content, lang: 'original' };
+        if (lang === 'zh' && tf.zh) return { text: tf.zh, lang: 'zh' };
+        if (lang === 'en' && tf.en) return { text: tf.en, lang: 'en' };
+        return { text: tf.main || card.content, lang: 'original' };
     },
 
     // 复制当前语言版本（语言感知复制）
