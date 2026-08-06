@@ -122,7 +122,14 @@ App.aiTools.openOptimizer = function(mode) {
 };
 
 App.aiTools._ensureOptimizerModal = function() {
-    if (document.getElementById('modalAiOptimizer')) return;
+    var existing = document.getElementById('modalAiOptimizer');
+    if (existing) {
+        // 版本检测：旧结构缺少字数限制/可编辑输出 → 强制重建
+        if (document.getElementById('aiOptMaxChars') && document.getElementById('aiOptOutputCount')) {
+            return;
+        }
+        existing.parentNode.removeChild(existing);
+    }
 
     var overlay = document.createElement('div');
     overlay.id = 'modalAiOptimizer';
