@@ -635,6 +635,7 @@ Object.assign(App, {
         var total = ids.length;
         var self = this;
         this._batchPromptOverrides = {};
+        this._ollamaSaved = {};
         var resultsBox = document.getElementById('bgenOllamaResults');
         if (resultsBox) { resultsBox.style.display = 'none'; resultsBox.innerHTML = ''; }
         var done = 0, err = 0;
@@ -678,15 +679,30 @@ Object.assign(App, {
         var keys = Object.keys(overrides);
         if (!keys.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
         var self = this;
-        var html = '<div style="font-size:10px;color:var(--text-muted);">✨ 优化结果（可直接编辑，生成时使用修改后文本 · 带 ✨ 为已优化）：</div>';
+        var saved = this._ollamaSaved || {};
+        var savedCount = keys.filter(function(k) { return saved[k] === true; }).length;
+        var html = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">' +
+            '<span style="font-size:10px;color:var(--text-muted);">✨ 优化结果（可直接编辑后存词卡 · 带 ✨ 为已优化）</span>' +
+            '<span style="margin-left:auto;display:flex;gap:4px;">' +
+            '<button type="button" class="bgen-btn" id="bgenSaveAllBtn" onclick="App._ollamaSaveAll()" style="padding:1px 8px;font-size:10px;border-color:#10b981;color:#10b981;" title="所有优化结果一键存入对应词卡详细档">💾 全部存词卡</button>' +
+            '<button type="button" class="bgen-btn" onclick="App._ollamaRevertAll()" style="padding:1px 8px;font-size:10px;border-color:var(--border-color);color:var(--text-muted);" title="丢弃全部优化结果，恢复原始提示词">↩ 全部恢复</button>' +
+            '</span></div>' +
+            '<div id="bgenOllamaBatchHint" style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">' + (savedCount ? '已存 ' + savedCount + ' / ' + keys.length + ' 条' : '共 ' + keys.length + ' 条待保存') + '</div>';
         keys.forEach(function(pid) {
             var card = null;
             (self.state.prompts || []).forEach(function(p) { if (String(p.id) === String(pid) && !card) card = p; });
             var name = card ? ((card.name || card.content || '').slice(0, 24)) : ('#' + pid);
+            var st = saved[pid];
+            var stHtml = st === true ? '<span style="font-size:9px;color:#10b981;">✓ 已存</span>'
+                : (st === false ? '<span style="font-size:9px;color:#ef4444;">✗ 失败</span>' : '');
+            var btnHtml = st === true
+                ? '<button type="button" class="bgen-btn" disabled style="padding:1px 6px;font-size:10px;border-color:#10b981;color:#10b981;opacity:0.7;" title="已存入词卡详细档">✓ 已存</button>'
+                : '<button type="button" class="bgen-btn" style="padding:1px 6px;font-size:10px;border-color:#10b981;color:#10b981;" onclick="App._ollamaSaveToCard(' + pid + ')" title="优化结果存入词卡详细档">💾 存词卡</button>';
             html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:6px 8px;background:var(--bg-card);">' +
                 '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">' +
                 '<span style="font-size:10px;font-weight:600;color:var(--text-main);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + App._escape(name) + '</span>' +
-                '<button type="button" class="bgen-btn" style="padding:1px 6px;font-size:10px;border-color:#10b981;color:#10b981;" onclick="App._ollamaSaveToCard(' + pid + ')" title="优化结果存入词卡详细档">💾 存词卡</button>' +
+                stHtml +
+                btnHtml +
                 '<button type="button" class="bgen-btn" style="padding:1px 6px;font-size:10px;border-color:var(--border-color);color:var(--text-muted);" onclick="App._ollamaRevert(' + pid + ')">↩ 恢复原词</button>' +
                 '</div>' +
                 '<textarea data-pid="' + pid + '" rows="2" oninput="App._ollamaEdit(this)" placeholder="优化结果..." style="width:100%;box-sizing:border-box;font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);resize:vertical;">' + App._escape(overrides[pid] || '') + '</textarea>' +
@@ -709,25 +725,73 @@ Object.assign(App, {
     _ollamaRevert(pid) {
         if (!confirm('恢复该词条为原始提示词（丢弃优化结果）？')) return;
         if (this._batchPromptOverrides) delete this._batchPromptOverrides[pid];
+        if (this._ollamaSaved) delete this._ollamaSaved[pid];
         this._renderOllamaResults();
         this._renderBatchComposePreview();
+    },
+
+    // 全部恢复原词：丢弃所有优化结果（二次确认）
+    _ollamaRevertAll() {
+        var keys = Object.keys(this._batchPromptOverrides || {});
+        if (!keys.length) return;
+        if (!confirm('恢复全部 ' + keys.length + ' 条为原始提示词（丢弃所有优化结果）？')) return;
+        this._batchPromptOverrides = {};
+        this._ollamaSaved = {};
+        this._renderOllamaResults();
+        this._renderBatchComposePreview();
+    },
+
+    // 全部存词卡：串行逐条 PUT content_detailed（避免并发写锁）
+    async _ollamaSaveAll() {
+        var overrides = this._batchPromptOverrides || {};
+        var keys = Object.keys(overrides);
+        if (!keys.length) { this.showToast('没有可保存的优化结果', 'warning'); return; }
+        this._ollamaSaved = this._ollamaSaved || {};
+        var btn = document.getElementById('bgenSaveAllBtn');
+        var hint = document.getElementById('bgenOllamaBatchHint');
+        if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 保存中...'; }
+        var ok = 0, fail = 0;
+        for (var i = 0; i < keys.length; i++) {
+            var pid = keys[i];
+            var text = overrides[pid];
+            if (!text) { this._ollamaSaved[pid] = false; fail++; continue; }
+            if (hint) hint.textContent = '正在保存 ' + (i + 1) + ' / ' + keys.length + '...';
+            try {
+                var d = await this.fetchJSON('/api/v4/word-cards/' + pid, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content_detailed: text })
+                });
+                if (d && d.ok) { this._ollamaSaved[pid] = true; ok++; }
+                else { this._ollamaSaved[pid] = false; fail++; }
+            } catch(e) { this._ollamaSaved[pid] = false; fail++; }
+        }
+        if (btn) { btn.disabled = false; btn.innerHTML = '💾 全部存词卡'; }
+        this._renderOllamaResults();
+        this.showToast('全部存词卡完成：' + ok + ' 条成功 / ' + fail + ' 条失败' + (fail > 0 ? '（失败的可单条重试）' : '（已存词卡详细档）'), fail > 0 ? 'warning' : 'success');
     },
 
     // 优化结果存入词卡详细档（content_detailed），可在编辑弹窗切换简易/普通/详细
     async _ollamaSaveToCard(pid) {
         var text = (this._batchPromptOverrides || {})[pid];
         if (!text) { this.showToast('该条没有优化结果', 'warning'); return; }
+        this._ollamaSaved = this._ollamaSaved || {};
         try {
             var d = await this.fetchJSON('/api/v4/word-cards/' + pid, {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content_detailed: text })
             });
             if (d && d.ok) {
-                this.showToast('已存入词卡 #' + pid + ' 详细档 — 编辑词卡可切换 简易/普通/详细', 'success');
+                this._ollamaSaved[pid] = true;
+                this._renderOllamaResults();
+                this.showToast('已存入词卡 #' + pid + ' 详细档', 'success');
             } else {
+                this._ollamaSaved[pid] = false;
+                this._renderOllamaResults();
                 this.showToast('保存失败: ' + ((d && (d.detail || d.error)) || '未知错误'), 'error');
             }
         } catch(e) {
+            this._ollamaSaved[pid] = false;
+            this._renderOllamaResults();
             this.showToast('保存异常: ' + e.message, 'error');
         }
     },
