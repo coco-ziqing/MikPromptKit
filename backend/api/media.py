@@ -138,6 +138,10 @@ def media_library(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, l
 
 # ============ API: 提供原图文件 ============
 
+# 原图文件名是 UUID 内容寻址，内容不变即可长缓存（查看器切换秒开）
+_IMG_CACHE_HDR = {"Cache-Control": "public, max-age=86400"}
+
+
 @router.get("/original/{filename}")
 def serve_original(filename: str):
     """提供原图文件，优先 from originals/，回退到 thumbnails/"""
@@ -149,32 +153,32 @@ def serve_original(filename: str):
         # 尝试 originals/
         fpath = os.path.join(ORIGINAL_DIR, orig_name)
         if os.path.exists(fpath):
-            return FileResponse(fpath, media_type=_get_mime_type(orig_name))
+            return FileResponse(fpath, media_type=_get_mime_type(orig_name), headers=_IMG_CACHE_HDR)
         # 尝试 wc_media/originals/
         wc_fpath = os.path.join(WC_ORIGINAL_DIR, orig_name)
         if os.path.exists(wc_fpath):
-            return FileResponse(wc_fpath, media_type=_get_mime_type(orig_name))
+            return FileResponse(wc_fpath, media_type=_get_mime_type(orig_name), headers=_IMG_CACHE_HDR)
         # 尝试 ComfyUI 生成存档 comfyui_outputs/（AI 生成词卡原图所在）
         co_fpath = os.path.join(COMFYUI_OUTPUTS_DIR, orig_name)
         if os.path.exists(co_fpath):
-            return FileResponse(co_fpath, media_type=_get_mime_type(orig_name))
+            return FileResponse(co_fpath, media_type=_get_mime_type(orig_name), headers=_IMG_CACHE_HDR)
         # 尝试 videos/
         if asset["media_type"] == "video":
             fpath = os.path.join(VIDEO_DIR, orig_name)
             if os.path.exists(fpath):
-                return FileResponse(fpath, media_type="video/mp4")
+                return FileResponse(fpath, media_type="video/mp4", headers=_IMG_CACHE_HDR)
     # 回退 thumbnails/
     fpath = os.path.join(THUMB_DIR, safe)
     if os.path.exists(fpath):
-        return FileResponse(fpath, media_type="image/jpeg")
+        return FileResponse(fpath, media_type="image/jpeg", headers=_IMG_CACHE_HDR)
     # 回退 wc_media/originals/
     wc_fpath = os.path.join(WC_ORIGINAL_DIR, safe)
     if os.path.exists(wc_fpath):
-        return FileResponse(wc_fpath, media_type=_get_mime_type(safe))
+        return FileResponse(wc_fpath, media_type=_get_mime_type(safe), headers=_IMG_CACHE_HDR)
     # 回退 ComfyUI 生成存档
     co_fpath = os.path.join(COMFYUI_OUTPUTS_DIR, safe)
     if os.path.exists(co_fpath):
-        return FileResponse(co_fpath, media_type=_get_mime_type(safe))
+        return FileResponse(co_fpath, media_type=_get_mime_type(safe), headers=_IMG_CACHE_HDR)
     return JSONResponse({"error": "文件不存在"}, status_code=404)
 
 

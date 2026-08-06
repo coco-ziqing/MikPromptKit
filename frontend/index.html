@@ -461,6 +461,7 @@
                 <div id="imgViewerNavCount" style="position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.55);color:#fff;font-size:12px;padding:3px 10px;border-radius:12px;display:none;z-index:10;">1 / 1</div>
                 <div id="imageViewerContainer" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;user-select:none;cursor:grab;">
                     <img id="imageViewerImg" src="" style="max-width:100%;max-height:100%;transition:transform 0.05s;transform-origin:center;">
+                    <div id="imgViewerLoading" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.65);color:#fff;font-size:12px;padding:6px 14px;border-radius:16px;align-items:center;gap:6px;z-index:9;pointer-events:none;"><span class="spinner-border spinner-border-sm" style="width:12px;height:12px;"></span> 加载中...</div>
                 </div>
                 <!-- 缩放工具栏 -->
                 <div style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:6px;background:rgba(0,0,0,0.7);border-radius:8px;padding:4px;z-index:10;">
@@ -1130,7 +1131,7 @@
     <script defer src="/static/js/app_tools.js?v=9.14"></script>
 <script defer src="/static/js/app_import_export.js?v=2"></script>
     <script defer src="/static/js/app_media.js?v=15"></script>
-<script defer src="/static/js/app_media_viewer.js?v=14"></script>
+<script defer src="/static/js/app_media_viewer.js?v=15"></script>
     <script defer src="/static/js/ai_tools.js?v=13"></script>
     <script defer src="/static/js/word_picker.js?v=5"></script>
     <script defer src="/static/js/word_editor.js?v=12.8"></script>

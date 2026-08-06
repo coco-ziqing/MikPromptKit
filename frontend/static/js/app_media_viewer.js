@@ -21,12 +21,20 @@ Object.assign(App, {
         modal.style.display = 'flex';
         modal.setAttribute('data-filename', filename);
 
-        // 构建可切换导航列表（当前列表中有原图的词卡）+ 更新箭头/计数
+        // 竞态保护序号：快速切换时旧请求的 onload 不再覆盖新图（防卡死/错图）
+        var seq = (this._viewerLoadSeq = (this._viewerLoadSeq || 0) + 1);
+        var self = this;
+
+        // 构建可切换导航列表 + 更新箭头/计数
         this._buildViewerNav(promptId);
         this._updateViewerNavUI();
 
-        // 加载新图片
-        img.src = '/api/media/original/' + filename + '?t=' + Date.now();
+        // 加载指示（大图切换时反馈）
+        var loading = document.getElementById('imgViewerLoading');
+        if (loading) loading.style.display = 'flex';
+
+        // 加载图片：去时间戳，利用 HTTP 缓存（原图 UUID 内容寻址，缓存 1 天）
+        img.src = '/api/media/original/' + filename;
         img.style.maxWidth = '100%';
         img.style.maxHeight = '100%';
         img.style.transform = 'scale(1)';
@@ -38,6 +46,8 @@ Object.assign(App, {
         img._scale = 1;
         // 图片加载完成后计算适配比例，首次缩放以当前显示为基准（避免跳到原始尺寸）
         img.onload = function() {
+            if (self._viewerLoadSeq !== seq) return;  // 已被更新的切换取代，丢弃
+            if (loading) loading.style.display = 'none';
             if (img.naturalWidth > 0 && img.clientWidth > 0) {
                 img._fitScale = img.clientWidth / img.naturalWidth;
             } else {
@@ -45,7 +55,11 @@ Object.assign(App, {
             }
             img._fitReady = true;
         };
-        img.onerror = function() { img._fitReady = true; img._fitScale = 1; };
+        img.onerror = function() {
+            if (self._viewerLoadSeq !== seq) return;
+            if (loading) loading.style.display = 'none';
+            img._fitReady = true; img._fitScale = 1;
+        };
         // 统一应用当前缩放（maxWidth 解除后按 适配比例×视图倍数 连续缩放）
         img._applyViewScale = function() {
             var s = (img._fitScale || 1) * (img._viewScale || 1);
@@ -104,22 +118,42 @@ Object.assign(App, {
             e.preventDefault();
         };
 
-        // 键盘 ESC 关闭 + 左右箭头切换上一张/下一张
-        var _khandler = function(e) {
-            if (e.key === 'Escape') {
-                modal.style.display = 'none';
-                document.removeEventListener('keydown', _khandler);
-                document.removeEventListener('mousemove', img._mmove);
-                document.removeEventListener('mouseup', img._mup);
-            } else if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                App._viewerNavGo(-1);
-            } else if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                App._viewerNavGo(1);
-            }
-        };
-        document.addEventListener('keydown', _khandler);
+        // 键盘单例（左右箭头/ESC 只注册一次，避免快速切换累积监听器导致卡死）
+        if (!this._viewerKeysBound) {
+            this._viewerKeysBound = true;
+            document.addEventListener('keydown', function(e) {
+                var m = document.getElementById('modalImageViewer');
+                if (!m || m.style.display !== 'flex') return;
+                if (e.key === 'Escape') {
+                    App.closeImageViewer();
+                } else if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    App._viewerNavGo(-1);
+                } else if (e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    App._viewerNavGo(1);
+                }
+            });
+        }
+
+        // 预加载相邻两张（切到下一张时已缓存，秒开）
+        this._preloadAdjacent();
+    },
+
+    // 预加载相邻两张原图
+    _preloadAdjacent() {
+        var nav = this._viewerNav;
+        if (!nav || !nav.list || nav.list.length <= 1) return;
+        var n = nav.list.length;
+        var self = this;
+        [nav.list[(nav.idx - 1 + n) % n], nav.list[(nav.idx + 1) % n]].forEach(function(en) {
+            if (!en.file) return;
+            if (self._imgPrefetched && self._imgPrefetched[en.file]) return;
+            var im = new Image();
+            im.src = '/api/media/original/' + en.file;
+            if (!self._imgPrefetched) self._imgPrefetched = {};
+            self._imgPrefetched[en.file] = true;
+        });
     },
 
     // ============ 查看器左右切换（上一张/下一张原图） ============
@@ -140,8 +174,11 @@ Object.assign(App, {
         this._viewerNav = { list: list, idx: idx };
     },
 
-    // 上一张/下一张（dir: -1 上一张，1 下一张）
+    // 上一张/下一张（dir: -1 上一张，1 下一张）— 节流防快速连按风暴
     _viewerNavGo(dir) {
+        var now = Date.now();
+        if (this._viewerNavThrottle && now - this._viewerNavThrottle < 120) return;
+        this._viewerNavThrottle = now;
         var nav = this._viewerNav;
         if (!nav || !nav.list || nav.list.length <= 1) return;
         nav.idx = (nav.idx + dir + nav.list.length) % nav.list.length;
