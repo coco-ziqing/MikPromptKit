@@ -1493,6 +1493,7 @@ class BatchTaskCreate(BaseModel):
     style_suffix: str = ""
     use_module_preset: int = 1
     prompt_overrides: dict = {}   # {prompt_id: 优化后提示词}（Ollama 优化结果覆盖）
+    card_type_map: dict = {}     # {prompt_id: 'word_card'|'prompts'} 前端按数据源显式标注，避免 id 重叠猜错表
     engine: str = "comfyui"      # comfyui / dreamina
     manual_text: str = ""         # 手动附加文本（追加到每条组合提示词末尾）
     # dreamina 引擎参数
@@ -1531,6 +1532,7 @@ def _ensure_batch_task_table():
         resolution_type TEXT DEFAULT '2k',
         width INTEGER DEFAULT 0,
         height INTEGER DEFAULT 0,
+        card_type_map TEXT DEFAULT '{}',
         created_at TEXT DEFAULT (datetime('now','localtime')),
         started_at TEXT DEFAULT '',
         finished_at TEXT DEFAULT ''
@@ -1544,7 +1546,8 @@ def _ensure_batch_task_table():
                        ("ratio", "ratio TEXT DEFAULT '1:1'"),
                        ("resolution_type", "resolution_type TEXT DEFAULT '2k'"),
                        ("width", "width INTEGER DEFAULT 0"),
-                       ("height", "height INTEGER DEFAULT 0")]:
+                       ("height", "height INTEGER DEFAULT 0"),
+                       ("card_type_map", "card_type_map TEXT DEFAULT '{}'")]:
         if _col not in cols:
             db.execute(f"ALTER TABLE comfyui_batch_tasks ADD COLUMN {_ddl}")
     safe_commit()
@@ -1577,6 +1580,13 @@ def _batch_worker(task_id: int):
             prompt_ids = json.loads(d["prompt_ids"] or "[]")
             total = len(prompt_ids)
             engine = d.get("engine") or "comfyui"
+            # 前端显式标注的数据源类型映射（{prompt_id: 'word_card'|'prompts'}）
+            # 2026-08-06 修复：id 在 prompts/word_card 两表重叠时（如旧数据 id 81-130），
+            # 不能再靠"先查 prompts 猜表"——用户从词卡视图勾选会被误写进 prompts 链路
+            try:
+                card_type_map = json.loads(d.get("card_type_map") or "{}")
+            except Exception:
+                card_type_map = {}
             cfg = _get_config()
             server_url = ""
             workflow_cfg = None
@@ -1617,11 +1627,21 @@ def _batch_worker(task_id: int):
                     _batch_update(task_id, status="cancelled", finished_at=_now_str())
                     return
                 # 兼容两种数据源：prompts / word_card
-                row2 = db.execute("SELECT content, module FROM prompts WHERE id=?", [pid]).fetchone()
-                src_table = "prompts"
-                if not row2:
+                # 优先使用前端显式标注的类型（解决 id 跨表重叠时猜错表）
+                _ct = card_type_map.get(str(pid)) or card_type_map.get(pid) or ""
+                if _ct == "word_card":
                     row2 = db.execute("SELECT content, module FROM word_card WHERE id=? AND is_deleted=0", [pid]).fetchone()
                     src_table = "word_card"
+                elif _ct == "prompts":
+                    row2 = db.execute("SELECT content, module FROM prompts WHERE id=?", [pid]).fetchone()
+                    src_table = "prompts"
+                else:
+                    # 旧任务/未标注：保持原猜测逻辑
+                    row2 = db.execute("SELECT content, module FROM prompts WHERE id=?", [pid]).fetchone()
+                    src_table = "prompts"
+                    if not row2:
+                        row2 = db.execute("SELECT content, module FROM word_card WHERE id=? AND is_deleted=0", [pid]).fetchone()
+                        src_table = "word_card"
                 if not row2:
                     failed += 1
                     results.append({"prompt_id": pid, "ok": False, "error": "提示词不存在", "prompt_text": ""})
@@ -1682,7 +1702,7 @@ def _batch_worker(task_id: int):
                                         _ins["width"] = 512
                                         _ins["height"] = 512
                                         break
-                        result = asyncio.run(_run_comfyui(server_url, wf, workflow_cfg, final_prompt, pid))
+                        result = asyncio.run(_run_comfyui(server_url, wf, workflow_cfg, final_prompt, pid, src_table))
                     if result.get("ok"):
                         success += 1
                     else:
@@ -1736,14 +1756,15 @@ def create_batch_task(data: BatchTaskCreate):
         """INSERT INTO comfyui_batch_tasks
            (workflow_id, workflow_name, model_type, prompt_ids, total, status,
             style_suffix, use_module_preset, preset_id, param_values, prompt_overrides,
-            engine, manual_text, model_version, ratio, resolution_type, width, height)
-           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?,?)""",
+            engine, manual_text, model_version, ratio, resolution_type, width, height, card_type_map)
+           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         [data.workflow_id, wf_name, model_type, json.dumps(data.prompt_ids), len(data.prompt_ids),
          data.style_suffix, data.use_module_preset, data.preset_id,
          json.dumps(data.param_values or {}, ensure_ascii=False),
          json.dumps(data.prompt_overrides or {}, ensure_ascii=False),
          engine, data.manual_text or "", data.model_version or "5.0", data.ratio or "1:1",
-         data.resolution_type or "2k", data.width or 0, data.height or 0])
+         data.resolution_type or "2k", data.width or 0, data.height or 0,
+         json.dumps(data.card_type_map or {}, ensure_ascii=False)])
     safe_commit()
     task_id = cur.lastrowid
     threading.Thread(target=_batch_worker, args=(task_id,), daemon=True).start()
@@ -1827,15 +1848,16 @@ def retry_batch_failed(task_id: int):
         """INSERT INTO comfyui_batch_tasks
            (workflow_id, workflow_name, model_type, prompt_ids, total, status,
             style_suffix, use_module_preset, preset_id, param_values, prompt_overrides,
-            engine, manual_text, model_version, ratio, resolution_type, width, height)
-           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?,?)""",
+            engine, manual_text, model_version, ratio, resolution_type, width, height, card_type_map)
+           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         [d["workflow_id"], d["workflow_name"] + " (重试)", d["model_type"],
          json.dumps(failed_ids), len(failed_ids),
          d["style_suffix"], d["use_module_preset"], d["preset_id"], d["param_values"],
          d.get("prompt_overrides") or "{}",
          d.get("engine") or "comfyui", d.get("manual_text") or "", d.get("model_version") or "5.0",
          d.get("ratio") or "1:1", d.get("resolution_type") or "2k",
-         int(d.get("width") or 0), int(d.get("height") or 0)])
+         int(d.get("width") or 0), int(d.get("height") or 0),
+         d.get("card_type_map") or "{}"])
     safe_commit()
     new_id = cur.lastrowid
     threading.Thread(target=_batch_worker, args=(new_id,), daemon=True).start()
@@ -2408,8 +2430,9 @@ def list_generation_logs(limit: int = Query(50, ge=1, le=200), status: str = "")
 
 
 
-async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_id):
-    """执行 ComfyUI 生成流程（同步 httpx + 线程池，避免异步死锁）"""
+async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_id, card_type_hint: str = ""):
+    """执行 ComfyUI 生成流程（同步 httpx + 线程池，避免异步死锁）
+    card_type_hint: word_card|prompts 显式指定数据源表（2026-08-06 修复 id 跨表重叠猜错）"""
     loop = asyncio.get_event_loop()
     import time as _time, uuid, io as _io
 
@@ -2548,9 +2571,13 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
         src_table = ""
         if prompt_id > 0:
             # 数据源分派：旧词条 prompts / 新词卡 word_card
-            src_table = "prompts"
-            if not db.execute("SELECT 1 FROM prompts WHERE id=?", [prompt_id]).fetchone():
-                src_table = "word_card"
+            # 2026-08-06 修复：优先使用调用方显式标注的类型（id 在两张表重叠时猜表必错）
+            if card_type_hint in ("word_card", "prompts"):
+                src_table = card_type_hint
+            else:
+                src_table = "prompts"
+                if not db.execute("SELECT 1 FROM prompts WHERE id=?", [prompt_id]).fetchone():
+                    src_table = "word_card"
             if src_table == "prompts":
                 db.execute("DELETE FROM prompt_videos WHERE prompt_id=?", [prompt_id])
                 db.execute("INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) VALUES (?,?,'image',datetime('now','localtime'))", [prompt_id, tf])

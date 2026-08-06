@@ -983,6 +983,20 @@ Object.assign(App, {
         startBtn.disabled = true;
         this._batchGenRunning = true;
         var paramValues = this._collectBatchParams();
+        // 构建卡片类型映射（{prompt_id: 'word_card'|'prompts'}）
+        // 2026-08-06 修复：id 在 prompts/word_card 两表可能重叠（旧数据），
+        // 必须按当前列表数据源显式标注，避免后端猜表把词卡图写进 prompts 链路
+        var cardTypeMap = {};
+        var typeSrc = this.state.prompts || [];
+        if ((this.state.currentView === 'collections' || this.state.currentCollection) && (this.state.collectionItems || []).length > 0) {
+            typeSrc = this.state.collectionItems;
+        }
+        for (var _ti = 0; _ti < typeSrc.length; _ti++) {
+            var _it = typeSrc[_ti];
+            if (this._batchIds.indexOf(_it.id) > -1) {
+                cardTypeMap[_it.id] = (_it._source === 'word_card') ? 'word_card' : 'prompts';
+            }
+        }
         var body = {
             prompt_ids: this._batchIds,
             workflow_id: wfId,
@@ -991,6 +1005,7 @@ Object.assign(App, {
             style_suffix: (document.getElementById('bgenSuffix') || {}).value,
             use_module_preset: (document.getElementById('bgenUsePreset') || {}).checked ? 1 : 0,
             prompt_overrides: this._batchPromptOverrides || {},
+            card_type_map: cardTypeMap,
             engine: engine,
             manual_text: (document.getElementById('bgenManualText') || {}).value || '',
             model_version: (document.getElementById('bgenDreaminaModel') || {}).value || '5.0',
