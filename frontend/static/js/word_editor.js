@@ -102,6 +102,12 @@ App.wordEditor._ensureModal = function() {
     '<label>词卡名称</label>' +
     '<input id="wcEditName" class="modal-input" placeholder="简短名称(选填,留空取内容前60字)">' +
     '<label>核心内容 <span style="color:#ef4444;">*</span></label>' +
+    '<div style="display:flex;gap:4px;margin-bottom:4px;flex-wrap:wrap;align-items:center;">' +
+    '<button type="button" id="wcTierSimple" class="wc-tier-btn" onclick="App.wordEditor._switchTier(\'simple\')" style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-muted);">📄 简易</button>' +
+    '<button type="button" id="wcTierNormal" class="wc-tier-btn" onclick="App.wordEditor._switchTier(\'normal\')" style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid var(--primary);background:var(--primary);color:#fff;">📋 普通</button>' +
+    '<button type="button" id="wcTierDetailed" class="wc-tier-btn" onclick="App.wordEditor._switchTier(\'detailed\')" style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-muted);">📚 详细</button>' +
+    '<span id="wcTierHint" style="font-size:9px;color:var(--text-muted);"></span>' +
+    '</div>' +
     '<textarea id="wcEditContent" class="modal-input" rows="4" placeholder="提示词片段 / 关键词 / 描述文本..."></textarea>' +
     '<label>释义/说明</label>' +
     '<input id="wcEditMeaning" class="modal-input" placeholder="中文释义或补充说明">' +
@@ -465,7 +471,11 @@ App.wordEditor._loadCard = async function() {
         document.getElementById('wcEditGroup').value = c.group_id || '';
         this._updateGroupPickerBtn();  // Phase17.3: 同步分组选择按钮
         document.getElementById('wcEditName').value = c.name || '';
-        document.getElementById('wcEditContent').value = c.content || '';
+        // 三档内容：简易/普通/详细（content 为普通档），默认显示普通档
+        this._tiers = { simple: c.content_simple || '', normal: c.content || '', detailed: c.content_detailed || '' };
+        this._tier = 'normal';
+        document.getElementById('wcEditContent').value = this._tiers.normal;
+        this._updateTierUI();
         document.getElementById('wcEditMeaning').value = c.meaning || '';
         document.getElementById('wcEditModule').value = c.module || 'custom';
         document.getElementById('wcEditCategory').value = c.category || '';
@@ -611,20 +621,54 @@ App.wordEditor._resetContentForBatchAdd = function() {
     if (title) title.textContent = '➕ 新建词卡';
     var saveBtn = document.getElementById('wcEditSaveBtn');
     if (saveBtn) saveBtn.innerHTML = '➕ 添加';
+    // 重置三档
+    this._tiers = { simple: '', normal: '', detailed: '' };
+    this._tier = 'normal';
+    this._updateTierUI();
     // 聚焦到内容输入框，方便继续输入
     var contentEl = document.getElementById('wcEditContent');
     if (contentEl) setTimeout(function() { contentEl.focus(); }, 100);
 };
 
+// ============ 三档切换 ============
+
+App.wordEditor._switchTier = function(tier) {
+    var ta = document.getElementById('wcEditContent');
+    if (ta && this._tiers) this._tiers[this._tier] = ta.value;
+    this._tier = tier;
+    if (ta) ta.value = (this._tiers && this._tiers[tier]) || '';
+    this._updateTierUI();
+};
+
+App.wordEditor._updateTierUI = function() {
+    var hint = document.getElementById('wcTierHint');
+    if (hint) hint.textContent = this._tier === 'simple' ? '精简短版' : (this._tier === 'detailed' ? '丰富详细版' : '标准版');
+    var map = { simple: 'wcTierSimple', normal: 'wcTierNormal', detailed: 'wcTierDetailed' };
+    for (var k in map) {
+        var b = document.getElementById(map[k]);
+        if (!b) continue;
+        var active = k === this._tier;
+        b.style.background = active ? 'var(--primary)' : 'var(--bg-card)';
+        b.style.color = active ? '#fff' : 'var(--text-muted)';
+        b.style.borderColor = active ? 'var(--primary)' : 'var(--border-color)';
+    }
+};
+
 // ============ 保存/删除 ============
 
 App.wordEditor._save = async function() {
-    var content = document.getElementById('wcEditContent').value.trim();
+    var ta = document.getElementById('wcEditContent');
+    var content = ta.value.trim();
     if (!content) { App.showToast('核心内容不能为空', 'warning'); return; }
+    // 保存当前档位值，三档全部提交（未编辑档保留原值）
+    if (this._tiers) this._tiers[this._tier] = ta.value;
+    var tiers = this._tiers || { simple: '', normal: content, detailed: '' };
 
     var data = {
         name: document.getElementById('wcEditName').value.trim(),
         content: content,
+        content_simple: (tiers.simple || '').trim(),
+        content_detailed: (tiers.detailed || '').trim(),
         meaning: document.getElementById('wcEditMeaning').value.trim(),
         scene: document.getElementById('wcEditScene').value.trim(),
         module: document.getElementById('wcEditModule').value,

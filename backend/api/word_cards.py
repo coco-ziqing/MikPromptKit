@@ -999,7 +999,7 @@ def update_card(card_id: int, data: dict):
         raise HTTPException(404,"词卡不存在")
     _save_version_snapshot(db, card_id)
     fields = []; params = []
-    for k in ["name","content","meaning","scene","module","category","icon","thumbnail","preview_media","media_type","group_id","sort_order","card_role"]:
+    for k in ["name","content","meaning","scene","module","category","icon","thumbnail","preview_media","media_type","group_id","sort_order","card_role","content_simple","content_detailed"]:
         if data.get(k) is not None: fields.append(f"{k}=?"); params.append(data[k])
     if data.get("tags") is not None: fields.append("tags=?"); params.append(json.dumps(data["tags"], ensure_ascii=False))
     if data.get("structured") is not None: fields.append("structured=?"); params.append(json.dumps(data["structured"], ensure_ascii=False))
@@ -1087,8 +1087,8 @@ def create_card(data: dict):
     if not content: raise HTTPException(400,"词卡内容不能为空")
     db = get_db(); gid = data.get("group_id")
     card_role = data.get('card_role', 'custom')
-    db.execute("INSERT INTO word_card (group_id,name,content,meaning,scene,module,category,tags,icon,thumbnail,preview_media,media_type,structured,card_role,sort_order,is_builtin,source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'{}',?,(SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),0,'manual')",
-               [gid,(data.get("name") or content)[:60],content,data.get("meaning",""),data.get("scene",""),data.get("module","custom"),data.get("category",""),json.dumps(data.get("tags",[]),ensure_ascii=False),data.get("icon",""),data.get("thumbnail",""),data.get("preview_media",""),data.get("media_type","image"),card_role,gid])
+    db.execute("INSERT INTO word_card (group_id,name,content,meaning,scene,module,category,tags,icon,thumbnail,preview_media,media_type,structured,card_role,sort_order,is_builtin,source,content_simple,content_detailed) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'{}',?,(SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),0,'manual',?,?)",
+               [gid,(data.get("name") or content)[:60],content,data.get("meaning",""),data.get("scene",""),data.get("module","custom"),data.get("category",""),json.dumps(data.get("tags",[]),ensure_ascii=False),data.get("icon",""),data.get("thumbnail",""),data.get("preview_media",""),data.get("media_type","image"),card_role,gid,data.get("content_simple",""),data.get("content_detailed","")])
     safe_commit()
     cid = safe_count("SELECT last_insert_rowid()")
     info(f"创建词卡 #{cid} (gid={gid}, 内容长度={len(content)})", source="word-cards", path="/api/v4/word-cards")

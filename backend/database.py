@@ -700,6 +700,9 @@ def init_db():
             # Phase17: 词卡双语翻译字段
             "ALTER TABLE word_card ADD COLUMN content_en TEXT DEFAULT ''",
             "ALTER TABLE word_card ADD COLUMN content_zh TEXT DEFAULT ''",
+            # 2026-08-06: 词卡三档内容（简易/普通/详细），content 为普通档
+            "ALTER TABLE word_card ADD COLUMN content_simple TEXT DEFAULT ''",
+            "ALTER TABLE word_card ADD COLUMN content_detailed TEXT DEFAULT ''",
         ]:
             try:
                 conn.execute(sql)
