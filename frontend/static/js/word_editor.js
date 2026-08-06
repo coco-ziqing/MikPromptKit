@@ -239,7 +239,7 @@ App.wordEditor._showGroupPicker = async function() {
     
     // "无分组" 选项
     var noGroupActive = !currentVal ? 'border:2px solid #10b981;background:#ecfdf5;' : 'border:1px solid transparent;';
-    html += '<div onclick="App.wordEditor._selectGroupFromPicker(\'\')" style="padding:8px 10px;border-radius:8px;cursor:pointer;' + noGroupActive + 'transition:0.15s;margin-bottom:4px;font-size:13px;" onmouseenter="this.style.background=#f1f5f9" onmouseleave="this.style.background=\'\'">📭 无分组</div>';
+    html += '<div onclick="App.wordEditor._selectGroupFromPicker(\'\')" style="padding:8px 10px;border-radius:8px;cursor:pointer;' + noGroupActive + 'transition:0.15s;margin-bottom:4px;font-size:13px;" onmouseenter="this.style.background=\'#f1f5f9\'" onmouseleave="this.style.background=\'\'">📭 无分组</div>';
     html += '<div style="border-top:1px solid var(--border-color);margin:4px 0 8px;"></div>';
     
     // 构建分组树（扁平展示带缩进）
