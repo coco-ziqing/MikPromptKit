@@ -213,46 +213,86 @@ def libtv_generate(data: LibTVGenerateRequest):
 # ==================== 授权管理（2026-08-06 内嵌系统，封装版独立授权） ====================
 
 # login web 后台回调线程状态（libtv login web 起本地回调服务阻塞等待）
-_libtv_web_login = {"running": False, "lock": threading.Lock()}
+_libtv_web_login = {"running": False, "lock": threading.Lock(), "url": ""}
 
 
 @router.post("/auth/login-web-start")
 def libtv_login_web_start():
     """发起浏览器授权：后台线程执行 libtv login web（起本地回调服务），
-    返回登录链接；前端轮询 /auth/login-web-status 判断凭据文件是否生成"""
+    实时提取授权链接返回给前端；前端轮询 /auth/login-web-status 判断凭据文件是否更新"""
     if not os.path.exists(LIBTV_BIN):
         return {"ok": False, "error": f"未找到 libtv CLI: {LIBTV_BIN}"}
     with _libtv_web_login["lock"]:
         if _libtv_web_login["running"]:
             return {"ok": False, "error": "已有登录流程进行中，请先完成或等待超时"}
         _libtv_web_login["running"] = True
+        _libtv_web_login["url"] = ""
 
     cred_path = os.path.join(os.path.expanduser("~"), ".libtv", "credentials.json")
     # 备份旧凭据 mtime，用于判断是否更新
     old_mtime = os.path.getmtime(cred_path) if os.path.exists(cred_path) else 0
+    _libtv_web_login["old_mtime"] = old_mtime
 
     def _run():
+        """Popen 起 CLI，流式读 stdout 提取授权链接；5 分钟无回调则 kill 防悬挂"""
+        proc = None
         try:
-            _libtv_run(["login", "web"], timeout=300)
+            proc = subprocess.Popen([LIBTV_BIN, "login", "web"],
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, encoding="utf-8", errors="replace")
+            url_re = re.compile(r"https://[^\s]+?callback_url=[^\s]+")
+
+            def _read():
+                try:
+                    for line in proc.stdout:
+                        m = url_re.search(line)
+                        if m and not _libtv_web_login["url"]:
+                            _libtv_web_login["url"] = m.group(0)
+                except Exception:
+                    pass
+
+            threading.Thread(target=_read, daemon=True).start()
+            try:
+                proc.wait(timeout=300)  # 最多等 5 分钟回调
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[LibTV] login web 启动异常: {e}")
         finally:
+            if proc and proc.poll() is None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
             with _libtv_web_login["lock"]:
                 _libtv_web_login["running"] = False
 
     threading.Thread(target=_run, daemon=True).start()
 
-    # 尝试取登录链接：login web 会把链接打到 stderr，先探测一次短超时输出
-    # （线程已启动，链接由 CLI 打印；此处返回提示让前端轮询状态）
-    return {"ok": True, "started": True,
-            "hint": "请在浏览器完成登录，系统会自动检测授权结果"}
+    # 等授权链接出现（最多 10s）
+    deadline = _t.time() + 10
+    url = ""
+    while _t.time() < deadline:
+        with _libtv_web_login["lock"]:
+            url = _libtv_web_login["url"]
+        if url:
+            break
+        _t.sleep(0.2)
+
+    if not url:
+        return {"ok": True, "started": True, "url": "",
+                "hint": "授权服务已启动，但未能获取登录链接，请稍后重试"}
+    return {"ok": True, "started": True, "url": url,
+            "hint": "请打开链接完成登录，系统会自动检测授权结果"}
 
 
 @router.post("/auth/login-web-status")
 def libtv_login_web_status():
-    """查询 web 登录状态：凭据文件更新即成功"""
+    """查询 web 登录状态：凭据文件 mtime 在本流程启动后更新即成功"""
     cred_path = os.path.join(os.path.expanduser("~"), ".libtv", "credentials.json")
-    exists = os.path.exists(cred_path)
     running = _libtv_web_login["running"]
-    if exists:
+    old_mtime = _libtv_web_login.get("old_mtime", 0)
+    if os.path.exists(cred_path) and os.path.getmtime(cred_path) > old_mtime:
         return {"ok": True, "logged_in": True, "running": running, "credentials": True}
     if running:
         return {"ok": False, "pending": True, "running": True, "error": "等待浏览器授权..."}

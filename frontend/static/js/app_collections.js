@@ -2725,8 +2725,13 @@ Object.assign(App, {
                 flow.innerHTML = '<span style="color:#ef4444;">' + App._escape(d && d.error || '发起失败') + '</span>';
                 return;
             }
+            var urlHtml = d.url
+                ? '<div style="word-break:break-all;margin:6px 0;"><a href="' + App._escape(d.url) + '" target="_blank" rel="noopener" style="color:#8b5cf6;">' + App._escape(d.url) + '</a> <button class="btn btn-sm" style="margin-left:4px;border:1px solid #8b5cf6;color:#8b5cf6;" onclick="App._engineAuthCopy(\'' + d.url + '\')">复制</button></div>'
+                : '<div style="color:#f59e0b;margin:6px 0;">未能获取授权链接，请关闭后重试</div>';
             flow.innerHTML =
-                '<div style="margin-bottom:6px;"><b>请在浏览器中完成 LibTV 登录</b>，系统会自动检测结果：</div>' +
+                '<div style="margin-bottom:6px;"><b>请在浏览器中打开以下链接完成 LibTV 登录</b>（建议用运行本服务的电脑浏览器）：</div>' +
+                urlHtml +
+                '<div style="font-size:11px;color:var(--text-muted);">完成登录后本页会自动检测，无需手动操作</div>' +
                 '<div id="engineAuthLibtvPolling" style="margin-top:4px;font-size:11px;color:var(--text-muted);"></div>' +
                 '<div style="margin-top:8px;"><button class="btn btn-sm btn-secondary" onclick="App._engineAuthCancelWait(\'libtv\')">取消等待</button></div>';
             var self = this;
