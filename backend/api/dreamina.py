@@ -2,7 +2,7 @@
 Dreamina（即梦）图片生成集成 — 词卡缩略图第二生成引擎
 通过本地 dreamina CLI 提交文生图任务，下载原图并生成为词卡缩略图（与 ComfyUI 引擎同落库链路）
 """
-import os, json, uuid, re, subprocess
+import os, json, uuid, re, subprocess, time as _t, threading
 from fastapi import APIRouter
 from pydantic import BaseModel
 import httpx
@@ -12,7 +12,8 @@ router = APIRouter(prefix="/api/v2/dreamina", tags=["dreamina"])
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-DREAMINA_BIN = os.path.join(os.path.expanduser("~"), "bin", "dreamina.exe")
+# CLI 路径可配置：环境变量 DREAMINA_BIN 优先，fallback 用户目录（2026-08-06 封装部署优化）
+DREAMINA_BIN = os.environ.get("DREAMINA_BIN") or os.path.join(os.path.expanduser("~"), "bin", "dreamina.exe")
 
 # 即梦支持的参数集合（供前端渲染）
 MODEL_VERSIONS = ["3.0", "3.1", "4.0", "4.1", "4.5", "4.6", "4.7", "5.0", "5.0Pro"]
@@ -49,7 +50,8 @@ def dreamina_status():
             except Exception:
                 pass
     return {"ok": True, "cli_available": cli_available, "logged_in": logged_in, "vip_level": vip,
-            "model_versions": MODEL_VERSIONS, "ratios": RATIOS, "resolution_types": RESOLUTION_TYPES}
+            "model_versions": MODEL_VERSIONS, "ratios": RATIOS, "resolution_types": RESOLUTION_TYPES,
+            "bin": DREAMINA_BIN}
 
 
 class DreaminaGenerateRequest(BaseModel):
@@ -130,3 +132,83 @@ def dreamina_generate(data: DreaminaGenerateRequest):
         return {"ok": False, "error": saved.get("error", "落库失败")}
     return {"ok": True, "thumbnail": saved["thumbnail"], "thumbnail_url": saved["thumbnail_url"],
             "width": saved["width"], "height": saved["height"], "submit_id": res.get("submit_id")}
+# ==================== 授权管理（2026-08-06 内嵌系统，封装版独立授权） ====================
+
+@router.post("/auth/login-start")
+def dreamina_login_start():
+    """发起 OAuth Device Flow 授权，返回 verification_uri / user_code / device_code
+    前端展示验证码链接，用户浏览器授权后由 login-poll 轮询完成"""
+    if not os.path.exists(DREAMINA_BIN):
+        return {"ok": False, "error": f"未找到即梦 CLI: {DREAMINA_BIN}"}
+    out, err, code = _dreamina_run(["login", "--headless"], timeout=30)
+    m_uri = re.search(r"verification_uri:\s*(\S+)", out)
+    m_code = re.search(r"user_code:\s*(\S+)", out)
+    m_dev = re.search(r"device_code:\s*(\S+)", out)
+    m_int = re.search(r"poll_interval:\s*(\S+)", out)
+    m_exp = re.search(r"expires_at:\s*(\S+)", out)
+    if not (m_uri and m_code and m_dev):
+        # 可能已登录复用状态
+        if "已" in out or "reuse" in out.lower():
+            return {"ok": True, "already_logged_in": True}
+        return {"ok": False, "error": f"授权材料获取失败: {(err or out)[:200]}"}
+    return {"ok": True, "verification_uri": m_uri.group(1), "user_code": m_code.group(1),
+            "device_code": m_dev.group(1),
+            "poll_interval": int(m_int.group(1).rstrip("s") or 1) if m_int else 1,
+            "expires_at": m_exp.group(1) if m_exp else ""}
+
+
+class LoginPollRequest(BaseModel):
+    device_code: str = ""
+    poll: int = 60
+
+
+@router.post("/auth/login-poll")
+def dreamina_login_poll(data: LoginPollRequest):
+    """轮询 Device Flow 授权结果：checklogin --device_code --poll"""
+    if not data.device_code:
+        return {"ok": False, "error": "缺少 device_code"}
+    out, err, code = _dreamina_run(["login", "checklogin", "--device_code=" + data.device_code,
+                                    "--poll=" + str(data.poll)], timeout=int(data.poll) + 15)
+    if "success" in out.lower() or "已" in out or "登录成功" in out:
+        return {"ok": True, "logged_in": True}
+    m_fail = re.search(r"(?i)(?:fail|error|拒绝|失败|expired|过期)[^\n]*", out + "\n" + err)
+    return {"ok": False, "pending": True,
+            "error": (m_fail.group(0) if m_fail else "等待授权中...")[:200]}
+
+
+@router.post("/auth/logout")
+def dreamina_logout():
+    """退出登录：清除本地 OAuth 状态"""
+    out, err, code = _dreamina_run(["logout"], timeout=30)
+    if code == 0 and ("已清除" in out or "cleared" in out.lower() or "removed" in out.lower() or not out.strip()):
+        return {"ok": True}
+    return {"ok": True, "note": (err or out)[:150]}  # logout 无状态时也视为成功
+
+
+class AccountUseRequest(BaseModel):
+    account_id: int = 0
+
+
+@router.post("/auth/account-list")
+def dreamina_account_list():
+    """列出可切换账号（dreamina CLI 无多账号，返回当前用户信息）"""
+    out, err, code = _dreamina_run(["user_credit"], timeout=30)
+    logged_in = '"total_credit"' in out
+    info = {}
+    try:
+        m = re.search(r'"user"\s*:\s*\{([^}]*)\}', out)
+        if m:
+            for kv in re.findall(r'"(\w+)"\s*:\s*"([^"]*)"', m.group(1)):
+                info[kv[0]] = kv[1]
+    except Exception:
+        pass
+    return {"ok": True, "logged_in": logged_in,
+            "accounts": [{"accountId": 0, "accountName": info.get("name") or "当前账号",
+                          "isActive": True, "info": info}] if logged_in else []}
+
+
+@router.post("/auth/account-use")
+def dreamina_account_use(data: AccountUseRequest):
+    """切换账号：即梦 CLI 无多账号，重登即切换（logout + login-start 引导）"""
+    dreamina_logout()
+    return {"ok": True, "need_relogin": True}

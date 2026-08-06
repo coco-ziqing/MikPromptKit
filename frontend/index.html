@@ -411,6 +411,48 @@
         </div>
     </div>
 
+    <!-- 生成引擎授权中心（即梦/LibTV 登录·切换·退出，2026-08-06 内嵌） -->
+    <div class="modal-overlay" id="modalEngineAuth" style="display:none;z-index:2000;">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:560px;">
+            <div class="modal-header">
+                <h5 style="margin:0;"><i class="bi bi-key"></i> 生成引擎授权中心</h5>
+                <button class="header-btn-sm" onclick="document.getElementById('modalEngineAuth').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;padding:16px 20px;">
+                <!-- 即梦 -->
+                <div style="border:1px solid var(--border-color);border-radius:10px;padding:12px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <i class="bi bi-stars" style="color:#6366f1;"></i>
+                        <span style="font-weight:600;">即梦（Dreamina）</span>
+                        <span id="engineAuthDreaminaStatus" style="font-size:11px;color:var(--text-muted);margin-left:auto;">检测中...</span>
+                    </div>
+                    <div id="engineAuthDreaminaBody" style="font-size:12px;color:var(--text-muted);"></div>
+                    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+                        <button class="btn btn-sm" style="border:1px solid #6366f1;color:#6366f1;" onclick="App._engineAuthDreaminaLogin()">授权登录</button>
+                        <button class="btn btn-sm" style="border:1px solid #ef4444;color:#ef4444;" onclick="App._engineAuthDreaminaLogout()">退出登录</button>
+                    </div>
+                    <div id="engineAuthDreaminaFlow" style="display:none;margin-top:8px;background:var(--bg-card);border:1px dashed var(--border-color);border-radius:8px;padding:10px;font-size:12px;"></div>
+                </div>
+                <!-- LibTV -->
+                <div style="border:1px solid var(--border-color);border-radius:10px;padding:12px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <i class="bi bi-collection" style="color:#8b5cf6;"></i>
+                        <span style="font-weight:600;">LibTV</span>
+                        <span id="engineAuthLibtvStatus" style="font-size:11px;color:var(--text-muted);margin-left:auto;">检测中...</span>
+                    </div>
+                    <div id="engineAuthLibtvBody" style="font-size:12px;color:var(--text-muted);"></div>
+                    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+                        <button class="btn btn-sm" style="border:1px solid #8b5cf6;color:#8b5cf6;" onclick="App._engineAuthLibtvLogin()">浏览器授权</button>
+                        <button class="btn btn-sm" style="border:1px solid #8b5cf6;color:#8b5cf6;" onclick="App._engineAuthLibtvPhone()">手机验证码</button>
+                        <button class="btn btn-sm" style="border:1px solid #ef4444;color:#ef4444;" onclick="App._engineAuthLibtvLogout()">退出登录</button>
+                    </div>
+                    <div id="engineAuthLibtvAccounts" style="display:none;margin-top:8px;background:var(--bg-card);border:1px dashed var(--border-color);border-radius:8px;padding:10px;font-size:12px;"></div>
+                    <div id="engineAuthLibtvFlow" style="display:none;margin-top:8px;background:var(--bg-card);border:1px dashed var(--border-color);border-radius:8px;padding:10px;font-size:12px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay viewer-modal" id="modalImageViewer" style="display:none;z-index:3000;background:rgba(0,0,0,0.92);">
         <div class="viewer-split" style="height:96vh;margin:2vh;">
             <div class="viewer-left" style="flex:1;position:relative;">
@@ -1048,7 +1090,7 @@
     <!-- #6 预加载大模块，提前发起请求 -->
     <link rel="preload" href="/static/js/seedance_v2_composer.js?v=101" as="script">
     <link rel="preload" href="/static/js/app_tools.js?v=9.14" as="script">
-    <link rel="preload" href="/static/js/app_collections.js?v=10.33" as="script">
+    <link rel="preload" href="/static/js/app_collections.js?v=10.34" as="script">
     <link rel="preload" href="/static/js/app_media.js?v=14" as="script">
     <link rel="preload" href="/static/js/word_editor.js?v=12.6" as="script">
     <!-- Phase15: wc_bridge 必须在 app_core 之前加载，分组导航交互重构 -->
@@ -1076,7 +1118,7 @@
     <script defer src="/static/js/health_check.js?v=5"></script>
     <script defer src="/static/js/app_sync.js?v=9.3"></script>
     <script defer src="/static/js/app_editor.js?v=11.21"></script>                
-    <script defer src="/static/js/app_collections.js?v=10.33"></script>
+    <script defer src="/static/js/app_collections.js?v=10.34"></script>
     <script defer src="/static/js/app_tools.js?v=9.14"></script>
 <script defer src="/static/js/app_import_export.js?v=2"></script>
     <script defer src="/static/js/app_media.js?v=14"></script>

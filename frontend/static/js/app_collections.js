@@ -273,6 +273,7 @@ Object.assign(App, {
                     '<button id="bgenEngineLibtv" class="cwl-logview-btn" onclick="App._batchEngine(\'libtv\')" title="LibTV 在线生成"><i class="bi bi-collection"></i> LibTV</button>' +
                   '</span>' +
                   '<span id="bgenDreaminaStatus" style="font-size:10px;color:var(--text-muted);"></span>' +
+                  '<button class="bgen-btn" onclick="App.openEngineAuth()" title="管理即梦/LibTV 授权账号" style="margin-left:auto;border-color:var(--primary);color:var(--primary);"><i class="bi bi-key"></i> 授权中心</button>' +
                 '</div>' +
                 // 即梦参数区
                 '<div id="bgenDreaminaArea" style="display:none;border:1px solid #6366f1;border-radius:10px;padding:8px 10px;margin-bottom:10px;">' +
@@ -2427,6 +2428,284 @@ Object.assign(App, {
 
     // ============ 更新卡片上的收藏徽标 ============
     // 不再需要下拉刷新,因为收藏通过 +popover 操作后调用 loadPrompts 全量刷新
+
+    // ============ 生成引擎授权中心（即梦/LibTV 登录·切换·退出） ============
+
+    // 打开授权中心
+    openEngineAuth() {
+        var m = document.getElementById('modalEngineAuth');
+        if (m) m.style.display = 'flex';
+        this._engineAuthRefresh();
+    },
+
+    // 刷新授权中心状态
+    async _engineAuthRefresh() {
+        this._engineAuthDreamina();
+        this._engineAuthLibtv();
+    },
+
+    // ---- 即梦 ----
+    async _engineAuthDreamina() {
+        var st = document.getElementById('engineAuthDreaminaStatus');
+        var body = document.getElementById('engineAuthDreaminaBody');
+        if (!st) return;
+        try {
+            var d = await this.fetchJSON('/api/v2/dreamina/status');
+            if (!d || !d.ok) throw new Error('查询失败');
+            if (!d.cli_available) {
+                st.textContent = '○ CLI 未安装';
+                st.style.color = '#ef4444';
+                if (body) body.innerHTML = '未找到即梦 CLI：' + App._escape(d.bin || '~/bin/dreamina.exe') + '<br>请将 dreamina.exe 放到该路径';
+                return;
+            }
+            if (d.logged_in) {
+                st.textContent = '● 已登录' + (d.vip_level ? ' · ' + d.vip_level : '');
+                st.style.color = '#10b981';
+                if (body) body.innerHTML = '即梦 CLI 可用，可直接生成图片';
+            } else {
+                st.textContent = '○ 未登录';
+                st.style.color = '#f59e0b';
+                if (body) body.innerHTML = '点击「授权登录」完成 OAuth 授权';
+            }
+        } catch(e) {
+            st.textContent = '○ 检测失败';
+            st.style.color = '#94a3b8';
+        }
+    },
+
+    // 即梦授权登录：发起 Device Flow，展示验证码链接 + 轮询
+    async _engineAuthDreaminaLogin() {
+        var flow = document.getElementById('engineAuthDreaminaFlow');
+        if (!flow) return;
+        flow.style.display = 'block';
+        flow.innerHTML = '<span style="color:var(--text-muted);">正在获取授权材料...</span>';
+        try {
+            var d = await this.fetchJSON('/api/v2/dreamina/auth/login-start', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+            });
+            if (!d || !d.ok) {
+                flow.innerHTML = '<span style="color:#ef4444;">' + App._escape(d && d.error || '发起失败') + '</span>';
+                return;
+            }
+            if (d.already_logged_in) {
+                flow.innerHTML = '<span style="color:#10b981;">已登录，无需重复授权</span>';
+                this._engineAuthDreamina();
+                return;
+            }
+            flow.innerHTML =
+                '<div style="margin-bottom:6px;">1. 打开以下链接并输入验证码完成授权：</div>' +
+                '<div style="word-break:break-all;margin-bottom:6px;"><a href="' + App._escape(d.verification_uri) + '" target="_blank" style="color:#6366f1;">' + App._escape(d.verification_uri) + '</a></div>' +
+                '<div style="margin-bottom:6px;">2. 验证码（user_code）：<b style="font-family:monospace;font-size:14px;color:#6366f1;">' + App._escape(d.user_code) + '</b></div>' +
+                '<div style="font-size:11px;color:var(--text-muted);">有效期至 ' + App._escape(d.expires_at || '') + ' · 完成授权后自动检测</div>' +
+                '<div id="engineAuthDreaminaPolling" style="margin-top:8px;font-size:11px;color:var(--text-muted);"></div>';
+            // 轮询授权结果
+            var self = this;
+            var dev = d.device_code;
+            var pollTxt = document.getElementById('engineAuthDreaminaPolling');
+            var tries = 0;
+            var timer = setInterval(async function() {
+                tries++;
+                try {
+                    var r = await self.fetchJSON('/api/v2/dreamina/auth/login-poll', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ device_code: dev, poll: 5 })
+                    });
+                    if (r && r.ok && r.logged_in) {
+                        clearInterval(timer);
+                        if (pollTxt) pollTxt.innerHTML = '<span style="color:#10b981;">✓ 授权成功！</span>';
+                        self._engineAuthDreamina();
+                        self.showToast('即梦授权成功', 'success');
+                    } else if (tries > 60) {
+                        clearInterval(timer);
+                        if (pollTxt) pollTxt.innerHTML = '<span style="color:#f59e0b;">授权超时，请重新发起</span>';
+                    } else if (pollTxt) {
+                        pollTxt.textContent = '等待授权完成...（' + (tries * 5) + 's）' + (r && r.error ? ' ' + r.error : '');
+                    }
+                } catch(e) {
+                    if (pollTxt) pollTxt.textContent = '轮询异常: ' + e.message;
+                }
+            }, 5000);
+        } catch(e) {
+            flow.innerHTML = '<span style="color:#ef4444;">发起失败: ' + App._escape(e.message) + '</span>';
+        }
+    },
+
+    // 即梦退出登录
+    async _engineAuthDreaminaLogout() {
+        if (!confirm('确认退出即梦登录？')) return;
+        try {
+            await this.fetchJSON('/api/v2/dreamina/auth/logout', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+            });
+            this.showToast('已退出即梦登录', 'success');
+            this._engineAuthDreamina();
+        } catch(e) {
+            this.showToast('退出失败: ' + e.message, 'error');
+        }
+    },
+
+    // ---- LibTV ----
+    async _engineAuthLibtv() {
+        var st = document.getElementById('engineAuthLibtvStatus');
+        var body = document.getElementById('engineAuthLibtvBody');
+        if (!st) return;
+        try {
+            var d = await this.fetchJSON('/api/v2/libtv/status');
+            if (!d || !d.ok) throw new Error('查询失败');
+            if (!d.cli_available) {
+                st.textContent = '○ CLI 未安装';
+                st.style.color = '#ef4444';
+                if (body) body.innerHTML = '未找到 libtv CLI：' + App._escape(d.bin || '~/.libtv/libtv.exe') + '<br>请安装 libtv 后重试';
+                return;
+            }
+            if (d.logged_in) {
+                st.textContent = '● 已登录';
+                st.style.color = '#10b981';
+                if (body) body.innerHTML = 'LibTV CLI 可用 · ' + (d.projects || []).length + ' 张画布可用';
+                // 账号列表
+                var acc = await this.fetchJSON('/api/v2/libtv/auth/account-list', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+                });
+                var accBox = document.getElementById('engineAuthLibtvAccounts');
+                if (accBox && acc && acc.accounts && acc.accounts.length > 1) {
+                    var html = '<div style="margin-bottom:4px;color:var(--text-muted);">切换账号：</div>';
+                    acc.accounts.forEach(function(a) {
+                        html += '<button class="bgen-btn" style="margin:2px;' + (a.isActive ? 'border-color:#8b5cf6;color:#8b5cf6;' : '') + '" onclick="App._engineAuthLibtvUse(' + (a.accountId || 0) + ')">' + App._escape(a.accountName || ('#' + a.accountId)) + (a.isActive ? ' ✓' : '') + '</button>';
+                    });
+                    accBox.innerHTML = html;
+                    accBox.style.display = 'block';
+                } else if (accBox) {
+                    accBox.style.display = 'none';
+                }
+            } else {
+                st.textContent = '○ 未登录';
+                st.style.color = '#f59e0b';
+                if (body) body.innerHTML = '点击「浏览器授权」或「手机验证码」登录';
+                var accBox2 = document.getElementById('engineAuthLibtvAccounts');
+                if (accBox2) accBox2.style.display = 'none';
+            }
+        } catch(e) {
+            st.textContent = '○ 检测失败';
+            st.style.color = '#94a3b8';
+        }
+    },
+
+    // LibTV 浏览器授权
+    async _engineAuthLibtvLogin() {
+        var flow = document.getElementById('engineAuthLibtvFlow');
+        if (!flow) return;
+        flow.style.display = 'block';
+        flow.innerHTML = '<span style="color:var(--text-muted);">正在启动浏览器授权...</span>';
+        try {
+            var d = await this.fetchJSON('/api/v2/libtv/auth/login-web-start', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+            });
+            if (!d || !d.ok) {
+                flow.innerHTML = '<span style="color:#ef4444;">' + App._escape(d && d.error || '发起失败') + '</span>';
+                return;
+            }
+            flow.innerHTML = '<span style="color:var(--text-muted);">请在浏览器中完成 LibTV 登录授权，系统会自动检测结果...</span>';
+            // 轮询
+            var self = this;
+            var tries = 0;
+            var timer = setInterval(async function() {
+                tries++;
+                try {
+                    var r = await self.fetchJSON('/api/v2/libtv/auth/login-web-status', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+                    });
+                    if (r && r.ok && r.logged_in) {
+                        clearInterval(timer);
+                        flow.innerHTML = '<span style="color:#10b981;">✓ 授权成功！</span>';
+                        self._engineAuthLibtv();
+                        self.showToast('LibTV 授权成功', 'success');
+                    } else if (tries > 60) {
+                        clearInterval(timer);
+                        flow.innerHTML = '<span style="color:#f59e0b;">授权超时，请重新发起</span>';
+                    } else {
+                        flow.innerHTML = '<span style="color:var(--text-muted);">等待浏览器授权...（' + (tries * 5) + 's）</span>';
+                    }
+                } catch(e) {
+                    if (tries > 60) { clearInterval(timer); flow.innerHTML = '<span style="color:#ef4444;">检测异常</span>'; }
+                }
+            }, 5000);
+        } catch(e) {
+            flow.innerHTML = '<span style="color:#ef4444;">发起失败: ' + App._escape(e.message) + '</span>';
+        }
+    },
+
+    // LibTV 手机验证码登录
+    _engineAuthLibtvPhone() {
+        var flow = document.getElementById('engineAuthLibtvFlow');
+        if (!flow) return;
+        var phone = prompt('请输入 11 位手机号：');
+        if (!phone || !/^\d{11}$/.test(phone)) { this.showToast('手机号格式不正确', 'warning'); return; }
+        var self = this;
+        flow.style.display = 'block';
+        flow.innerHTML = '<span style="color:var(--text-muted);">正在发送验证码...</span>';
+        this.fetchJSON('/api/v2/libtv/auth/login-phone', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: phone })
+        }).then(function(d) {
+            if (d && d.ok && d.logged_in) {
+                flow.innerHTML = '<span style="color:#10b981;">✓ 登录成功！</span>';
+                self._engineAuthLibtv();
+                return;
+            }
+            if (d && d.need_captcha) {
+                flow.innerHTML = '<span style="color:#f59e0b;">需要人机验证，请在弹出的页面完成验证后重试</span>';
+                return;
+            }
+            var code = prompt('请输入收到的 6 位验证码：');
+            if (!code) return;
+            flow.innerHTML = '<span style="color:var(--text-muted);">正在验证...</span>';
+            return self.fetchJSON('/api/v2/libtv/auth/login-phone', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: phone, code: code })
+            }).then(function(d2) {
+                if (d2 && d2.ok && d2.logged_in) {
+                    flow.innerHTML = '<span style="color:#10b981;">✓ 登录成功！</span>';
+                    self._engineAuthLibtv();
+                } else {
+                    flow.innerHTML = '<span style="color:#ef4444;">登录失败: ' + App._escape(d2 && d2.error || '未知错误') + '</span>';
+                }
+            });
+        }).catch(function(e) {
+            flow.innerHTML = '<span style="color:#ef4444;">发送失败: ' + App._escape(e.message) + '</span>';
+        });
+    },
+
+    // LibTV 切换账号
+    async _engineAuthLibtvUse(accountId) {
+        try {
+            var d = await this.fetchJSON('/api/v2/libtv/auth/account-use', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ account_id: accountId })
+            });
+            if (d && d.ok) {
+                this.showToast('已切换账号: ' + (d.accountName || accountId), 'success');
+                this._engineAuthLibtv();
+            } else {
+                this.showToast('切换失败: ' + (d && d.error || ''), 'error');
+            }
+        } catch(e) {
+            this.showToast('切换异常: ' + e.message, 'error');
+        }
+    },
+
+    // LibTV 退出登录
+    async _engineAuthLibtvLogout() {
+        if (!confirm('确认退出 LibTV 登录？')) return;
+        try {
+            await this.fetchJSON('/api/v2/libtv/auth/logout', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+            });
+            this.showToast('已退出 LibTV 登录', 'success');
+            this._engineAuthLibtv();
+        } catch(e) {
+            this.showToast('退出失败: ' + e.message, 'error');
+        }
+    },
 
 });
 })();

@@ -3,7 +3,7 @@ LibTV 图片生成集成 — 词卡缩略图第三生成引擎
 通过本地 libtv CLI 提交文生图任务（node create -t image --run），
 产物 URL 从节点 JSON data.url[0] 提取，下载后走公共落库链路（thumb_gen）
 """
-import os, json, re, subprocess, time as _t
+import os, json, re, subprocess, time as _t, threading
 from fastapi import APIRouter
 from pydantic import BaseModel
 from api.thumb_gen import save_generated_image
@@ -11,7 +11,8 @@ import httpx
 
 router = APIRouter(prefix="/api/v2/libtv", tags=["libtv"])
 
-LIBTV_BIN = os.path.join(os.path.expanduser("~"), ".libtv", "libtv.exe")
+# CLI 路径可配置：环境变量 LIBTV_BIN 优先，fallback 用户目录（2026-08-06 封装部署优化）
+LIBTV_BIN = os.environ.get("LIBTV_BIN") or os.path.join(os.path.expanduser("~"), ".libtv", "libtv.exe")
 
 # 免费模型优先（积分不足时仍可用）；付费模型前端需明确提示
 DEFAULT_MODEL = "Z-image Turbo"
@@ -208,3 +209,124 @@ def libtv_generate(data: LibTVGenerateRequest):
         return {"ok": False, "error": saved.get("error", "落库失败")}
     return {"ok": True, "thumbnail": saved["thumbnail"], "thumbnail_url": saved["thumbnail_url"],
             "width": saved["width"], "height": saved["height"], "node_key": res.get("node_key")}
+# ==================== 授权管理（2026-08-06 内嵌系统，封装版独立授权） ====================
+
+# login web 后台回调线程状态（libtv login web 起本地回调服务阻塞等待）
+_libtv_web_login = {"running": False, "lock": threading.Lock()}
+
+
+@router.post("/auth/login-web-start")
+def libtv_login_web_start():
+    """发起浏览器授权：后台线程执行 libtv login web（起本地回调服务），
+    返回登录链接；前端轮询 /auth/login-web-status 判断凭据文件是否生成"""
+    if not os.path.exists(LIBTV_BIN):
+        return {"ok": False, "error": f"未找到 libtv CLI: {LIBTV_BIN}"}
+    with _libtv_web_login["lock"]:
+        if _libtv_web_login["running"]:
+            return {"ok": False, "error": "已有登录流程进行中，请先完成或等待超时"}
+        _libtv_web_login["running"] = True
+
+    cred_path = os.path.join(os.path.expanduser("~"), ".libtv", "credentials.json")
+    # 备份旧凭据 mtime，用于判断是否更新
+    old_mtime = os.path.getmtime(cred_path) if os.path.exists(cred_path) else 0
+
+    def _run():
+        try:
+            _libtv_run(["login", "web"], timeout=300)
+        finally:
+            with _libtv_web_login["lock"]:
+                _libtv_web_login["running"] = False
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    # 尝试取登录链接：login web 会把链接打到 stderr，先探测一次短超时输出
+    # （线程已启动，链接由 CLI 打印；此处返回提示让前端轮询状态）
+    return {"ok": True, "started": True,
+            "hint": "请在浏览器完成登录，系统会自动检测授权结果"}
+
+
+@router.post("/auth/login-web-status")
+def libtv_login_web_status():
+    """查询 web 登录状态：凭据文件更新即成功"""
+    cred_path = os.path.join(os.path.expanduser("~"), ".libtv", "credentials.json")
+    exists = os.path.exists(cred_path)
+    running = _libtv_web_login["running"]
+    if exists:
+        return {"ok": True, "logged_in": True, "running": running, "credentials": True}
+    if running:
+        return {"ok": False, "pending": True, "running": True, "error": "等待浏览器授权..."}
+    return {"ok": False, "pending": False, "running": False, "error": "登录未完成或已超时"}
+
+
+class LibtvAccountUseRequest(BaseModel):
+    account_id: int = 0
+    account_name: str = ""
+
+
+class LibtvPhoneRequest(BaseModel):
+    phone: str = ""
+    code: str = ""
+    captcha: str = ""
+
+
+@router.post("/auth/login-phone")
+def libtv_login_phone(data: LibtvPhoneRequest):
+    """手机两步登录：第一步发短信（无 code），第二步带验证码完成"""
+    if not data.phone or len(data.phone) != 11:
+        return {"ok": False, "error": "请输入 11 位手机号"}
+    args = ["login", "phone", "-p", data.phone]
+    if data.code:
+        args += ["-c", data.code]
+    if data.captcha:
+        args += ["--captcha", data.captcha]
+    out, err, code = _libtv_run(args, timeout=60)
+    # 成功：stdout 含凭据路径；失败：stderr 含原因
+    if code == 0 and ("credentials" in out.lower() or "登录成功" in out or "saved" in out.lower()):
+        return {"ok": True, "logged_in": True}
+    ejson = _parse_json(err)
+    reason = ""
+    if ejson:
+        reason = str(ejson.get("msg") or ejson.get("extra_msg") or "")[:200]
+    m_captcha = re.search(r"(?i)captcha|人机验证|验证码", out + err)
+    return {"ok": False, "error": reason or (err or out)[-200:],
+            "need_captcha": bool(m_captcha), "step": "code" if data.code else "send"}
+
+
+@router.post("/auth/logout")
+def libtv_logout():
+    """退出登录：清除本地凭据"""
+    out, err, code = _libtv_run(["logout"], timeout=30)
+    return {"ok": True, "note": (err or out)[:150]}
+
+
+@router.post("/auth/account-list")
+def libtv_account_list():
+    """列出可切换账号（个人 + 团队）"""
+    out, err, code = _libtv_run(["account", "list"], timeout=30)
+    d = _parse_json(out)
+    accounts = []
+    if d and d.get("accounts"):
+        for a in d["accounts"]:
+            accounts.append({"accountId": a.get("accountId"), "accountName": a.get("accountName"),
+                             "isActive": bool(a.get("isActive")), "teamId": a.get("teamId"),
+                             "memberName": ((a.get("memberAccount") or {}).get("memberName") or "")})
+    return {"ok": True, "accounts": accounts}
+
+
+@router.post("/auth/account-use")
+def libtv_account_use(data: LibtvAccountUseRequest):
+    """切换账号：按 accountId 或 accountName"""
+    if data.account_id:
+        target = str(data.account_id)
+    elif data.account_name:
+        target = data.account_name
+    else:
+        return {"ok": False, "error": "请提供 account_id 或 account_name"}
+    out, err, code = _libtv_run(["account", "use", target], timeout=30)
+    d = _parse_json(out)
+    if d and d.get("ok"):
+        return {"ok": True, "accountId": d.get("accountId"), "accountName": d.get("accountName"),
+                "alreadyActive": bool(d.get("alreadyActive"))}
+    ejson = _parse_json(err)
+    reason = str(ejson.get("msg") or "")[:200] if ejson else (err or out)[-200:]
+    return {"ok": False, "error": reason}
