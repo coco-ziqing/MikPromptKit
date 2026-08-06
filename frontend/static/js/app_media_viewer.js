@@ -21,6 +21,10 @@ Object.assign(App, {
         modal.style.display = 'flex';
         modal.setAttribute('data-filename', filename);
 
+        // 构建可切换导航列表（当前列表中有原图的词卡）+ 更新箭头/计数
+        this._buildViewerNav(promptId);
+        this._updateViewerNavUI();
+
         // 加载新图片
         img.src = '/api/media/original/' + filename + '?t=' + Date.now();
         img.style.maxWidth = '100%';
@@ -100,16 +104,67 @@ Object.assign(App, {
             e.preventDefault();
         };
 
-        // 键盘 ESC 关闭 + 清理
+        // 键盘 ESC 关闭 + 左右箭头切换上一张/下一张
         var _khandler = function(e) {
             if (e.key === 'Escape') {
                 modal.style.display = 'none';
                 document.removeEventListener('keydown', _khandler);
                 document.removeEventListener('mousemove', img._mmove);
                 document.removeEventListener('mouseup', img._mup);
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                App._viewerNavGo(-1);
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                App._viewerNavGo(1);
             }
         };
         document.addEventListener('keydown', _khandler);
+    },
+
+    // ============ 查看器左右切换（上一张/下一张原图） ============
+
+    // 构建可导航列表：当前 state.prompts 中有原图的词卡（word_card 用 original_ref）
+    _buildViewerNav(promptId) {
+        var list = [];
+        var idx = 0;
+        var ps = this.state.prompts || [];
+        for (var i = 0; i < ps.length; i++) {
+            var p = ps[i];
+            var isWordCard = p._source === 'word_card';
+            var file = (isWordCard && p.original_ref) ? p.original_ref : (p.thumbnail || '');
+            if (!file) continue;
+            if (p.id === promptId) idx = list.length;
+            list.push({ id: p.id, file: file });
+        }
+        this._viewerNav = { list: list, idx: idx };
+    },
+
+    // 上一张/下一张（dir: -1 上一张，1 下一张）
+    _viewerNavGo(dir) {
+        var nav = this._viewerNav;
+        if (!nav || !nav.list || nav.list.length <= 1) return;
+        nav.idx = (nav.idx + dir + nav.list.length) % nav.list.length;
+        var entry = nav.list[nav.idx];
+        // 重新打开该卡原图（openImageViewer 会重建导航并按 entry.id 定位）
+        this.openImageViewer(entry.file, entry.id);
+    },
+
+    // 更新箭头/计数器显隐与状态
+    _updateViewerNavUI() {
+        var nav = this._viewerNav;
+        var prev = document.getElementById('imgViewerNavPrev');
+        var next = document.getElementById('imgViewerNavNext');
+        var cnt = document.getElementById('imgViewerNavCount');
+        if (!nav || !nav.list || nav.list.length <= 1) {
+            if (prev) prev.style.display = 'none';
+            if (next) next.style.display = 'none';
+            if (cnt) cnt.style.display = 'none';
+            return;
+        }
+        if (prev) prev.style.display = 'flex';
+        if (next) next.style.display = 'flex';
+        if (cnt) { cnt.style.display = 'block'; cnt.textContent = (nav.idx + 1) + ' / ' + nav.list.length; }
     },
 
     zoomImageViewer: function(action) {

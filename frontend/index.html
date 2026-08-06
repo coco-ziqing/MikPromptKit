@@ -456,6 +456,9 @@
     <div class="modal-overlay viewer-modal" id="modalImageViewer" style="display:none;z-index:3000;background:rgba(0,0,0,0.92);">
         <div class="viewer-split" style="height:96vh;margin:2vh;">
             <div class="viewer-left" style="flex:1;position:relative;">
+                <div id="imgViewerNavPrev" onclick="App._viewerNavGo(-1)" title="上一张（←）" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;background:rgba(0,0,0,0.55);color:#fff;font-size:20px;display:none;align-items:center;justify-content:center;cursor:pointer;z-index:10;user-select:none;">◀</div>
+                <div id="imgViewerNavNext" onclick="App._viewerNavGo(1)" title="下一张（→）" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;background:rgba(0,0,0,0.55);color:#fff;font-size:20px;display:none;align-items:center;justify-content:center;cursor:pointer;z-index:10;user-select:none;">▶</div>
+                <div id="imgViewerNavCount" style="position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.55);color:#fff;font-size:12px;padding:3px 10px;border-radius:12px;display:none;z-index:10;">1 / 1</div>
                 <div id="imageViewerContainer" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;user-select:none;cursor:grab;">
                     <img id="imageViewerImg" src="" style="max-width:100%;max-height:100%;transition:transform 0.05s;transform-origin:center;">
                 </div>
@@ -1127,7 +1130,7 @@
     <script defer src="/static/js/app_tools.js?v=9.14"></script>
 <script defer src="/static/js/app_import_export.js?v=2"></script>
     <script defer src="/static/js/app_media.js?v=15"></script>
-<script defer src="/static/js/app_media_viewer.js?v=13"></script>
+<script defer src="/static/js/app_media_viewer.js?v=14"></script>
     <script defer src="/static/js/ai_tools.js?v=13"></script>
     <script defer src="/static/js/word_picker.js?v=5"></script>
     <script defer src="/static/js/word_editor.js?v=12.8"></script>
