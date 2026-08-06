@@ -58,13 +58,19 @@ App.loadGroupTree = async function() {
             // 延迟 Hook 搜索框（此时 DOM 已就绪）
             setTimeout(function() { App._wcHookSearchAndRestore(); }, 100);
             // 修复竞态：树到达后，若主区仍停在"加载分组中"占位且处于首页陈列架(无分组)，补渲染
+            // 2026-08-06 增强：无分组时若主区被旧版 loadPrompts 渲染成词卡网格(prompt-grid)也强制回陈列架
+            // （wc_bridge 200ms 重试晚于 init → init 降级走了 app_core 原始 loadPrompts → 词卡网格无分组按钮）
             try {
                 var pl = document.getElementById('promptList');
                 var vh = document.getElementById('viewHome');
                 var homeActive = vh && vh.classList.contains('active-view');
-                if (pl && homeActive && !App.state.currentGroupId &&
-                    /加载分组中|showcase\.loading|loading-spinner/.test(pl.innerHTML)) {
-                    if (typeof App._showShowcase === 'function') App._showShowcase();
+                var showHome = !App.state.currentGroupId && !App.state.currentModule && !App.state.searchQuery;
+                if (pl && homeActive && showHome) {
+                    var needShowcase = /加载分组中|showcase\.loading|loading-spinner|prompt-grid/.test(pl.innerHTML)
+                        || !/showcase_root_/.test(pl.innerHTML);
+                    if (needShowcase && typeof App._showShowcase === 'function') {
+                        App._showShowcase();
+                    }
                 }
             } catch(e2) {}
             return d;
@@ -280,7 +286,7 @@ App._showShowcase = function() {
                     if (grp.group_type === 'sub' || grp.group_type === 'root') continue;
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
                     html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
-                    html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'#f1f5f9\'" onmouseleave="this.style.borderColor=\'#cbd5e1\';this.style.background=\'#ffffff\'"';
+                    html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'rgba(59,130,246,0.12)\';this.style.boxShadow=\'0 0 0 2px rgba(59,130,246,0.15)\'" onmouseleave="this.style.borderColor=\'\';this.style.background=\'\';this.style.boxShadow=\'\'"';
                     html += '>';
                     html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
                     html += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
@@ -313,7 +319,7 @@ App._showShowcase = function() {
                     var sub = selfLeafSubs[sl2];
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + sub.id + ',\'' + (sub.name||'').replace(/'/g,"\\'") + '\')" ';
                     html += 'class="showcase-leaf-btn" style="font-size:12px;padding:3px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.6;"';
-                    html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'#f1f5f9\'" onmouseleave="this.style.borderColor=\'#cbd5e1\';this.style.background=\'#ffffff\'"';
+                    html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'rgba(59,130,246,0.12)\';this.style.boxShadow=\'0 0 0 2px rgba(59,130,246,0.15)\'" onmouseleave="this.style.borderColor=\'\';this.style.background=\'\';this.style.boxShadow=\'\'"';
                     html += '>';
                     html += (sub.icon||'📋') + ' ' + App._escape(sub.name.replace(sub.icon||'','').trim());
                     html += '<span style="font-size:10px;color:var(--text-muted);margin-left:3px;">' + (sub.card_count||0) + '</span>';
@@ -338,7 +344,7 @@ App._showShowcase = function() {
                     var grp = atomLeaves[g];
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
                     html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
-                    html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'#f1f5f9\'" onmouseleave="this.style.borderColor=\'#cbd5e1\';this.style.background=\'#ffffff\'"';
+                    html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'rgba(59,130,246,0.12)\';this.style.boxShadow=\'0 0 0 2px rgba(59,130,246,0.15)\'" onmouseleave="this.style.borderColor=\'\';this.style.background=\'\';this.style.boxShadow=\'\'"';
                     html += '>';
                     html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
                     html += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
@@ -367,7 +373,7 @@ App._showShowcase = function() {
                     var grp = uwLeaves[g2];
                     html += '<button onclick="event.stopPropagation();App.switchGroup(' + grp.id + ',\'' + (grp.name||'').replace(/'/g,"\\'") + '\')" ';
                     html += 'class="showcase-leaf-btn" style="font-size:13px;padding:6px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);cursor:pointer;white-space:nowrap;transition:all 0.15s;line-height:1.5;"';
-                    html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'#f1f5f9\'" onmouseleave="this.style.borderColor=\'#cbd5e1\';this.style.background=\'#ffffff\'"';
+                    html += ' onmouseenter="this.style.borderColor=\'#3b82f6\';this.style.background=\'rgba(59,130,246,0.12)\';this.style.boxShadow=\'0 0 0 2px rgba(59,130,246,0.15)\'" onmouseleave="this.style.borderColor=\'\';this.style.background=\'\';this.style.boxShadow=\'\'"';
                     html += '>';
                     html += (grp.icon||'📄') + ' ' + App._escape(grp.name.replace(grp.icon||'','').trim());
                     html += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">' + (grp.card_count||0) + '</span>';
