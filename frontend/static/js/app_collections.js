@@ -336,6 +336,7 @@ Object.assign(App, {
                       '<option value="en">English</option>' +
                       '<option value="zh">中文</option>' +
                     '</select>' +
+                    '<input id="bgenOllamaMaxChars" type="number" min="50" max="3000" step="10" placeholder="字数不限" onchange="App._saveOllamaBar()" title="优化后目标字数（50-3000，留空不限）" style="width:80px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
                     '<button type="button" class="bgen-btn" id="bgenOllamaBtn" onclick="App._enhanceBatchPrompts()" style="border-color:#10b981;color:#10b981;"><i class="bi bi-magic"></i> 优化选中卡提示词</button>' +
                     '<span id="bgenOllamaHint" style="font-size:10px;color:var(--text-muted);"></span>' +
                   '</div>' +
@@ -576,6 +577,8 @@ Object.assign(App, {
                 if (d.config && d.config.model) modelSel.value = d.config.model;
                 var langSel = document.getElementById('bgenOllamaLang');
                 if (langSel && d.config && d.config.language) langSel.value = d.config.language === 'zh' ? 'zh' : 'en';
+                var mcEl = document.getElementById('bgenOllamaMaxChars');
+                if (mcEl && d.config && d.config.max_chars) mcEl.value = d.config.max_chars;
                 var btn = document.getElementById('bgenOllamaBtn');
                 if (btn) btn.disabled = false;
             } else {
@@ -591,14 +594,20 @@ Object.assign(App, {
         }
     },
 
-    // 保存 Ollama 模型/语言选择
+    // 保存 Ollama 模型/语言/目标字数选择
     async _saveOllamaBar() {
         var model = (document.getElementById('bgenOllamaModel') || {}).value || '';
         var lang = (document.getElementById('bgenOllamaLang') || {}).value || 'en';
+        var mcEl = document.getElementById('bgenOllamaMaxChars');
+        var maxChars = 0;
+        if (mcEl && mcEl.value) {
+            var n = parseInt(mcEl.value, 10);
+            if (!isNaN(n) && n > 0) maxChars = Math.min(Math.max(n, 50), 3000);
+        }
         try {
             await this.fetchJSON('/api/v2/comfyui/ollama/config', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: model, language: lang })
+                body: JSON.stringify({ model: model, language: lang, max_chars: maxChars })
             });
         } catch(e) {}
     },
@@ -608,6 +617,12 @@ Object.assign(App, {
         var model = (document.getElementById('bgenOllamaModel') || {}).value;
         if (!model) { this.showToast('请先选择 Ollama 模型', 'warning'); return; }
         var lang = (document.getElementById('bgenOllamaLang') || {}).value || 'en';
+        var mcEl = document.getElementById('bgenOllamaMaxChars');
+        var maxChars = 0;
+        if (mcEl && mcEl.value) {
+            var n = parseInt(mcEl.value, 10);
+            if (!isNaN(n) && n > 0) maxChars = Math.min(Math.max(n, 50), 3000);
+        }
         var hint = document.getElementById('bgenOllamaHint');
         var btn = document.getElementById('bgenOllamaBtn');
         if (btn) btn.disabled = true;
@@ -626,7 +641,7 @@ Object.assign(App, {
             try {
                 var d = await this.fetchJSON('/api/v2/comfyui/ollama/enhance', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: text, model: model, language: lang })
+                    body: JSON.stringify({ text: text, model: model, language: lang, max_chars: maxChars })
                 });
                 if (d && d.ok && d.text) {
                     this._batchPromptOverrides[pid] = d.text;

@@ -1411,11 +1411,13 @@ def ollama_status():
 
 @router.post("/ollama/config")
 def save_ollama_config(data: dict):
-    """保存 Ollama 配置（地址/模型/语言）"""
+    """保存 Ollama 配置（地址/模型/语言/目标字数）"""
     cfg = _get_ollama_config()
     for k in ("url", "model", "language"):
         if data.get(k):
             cfg[k] = str(data[k])
+    if data.get("max_chars") is not None:
+        cfg["max_chars"] = int(data["max_chars"]) if int(data["max_chars"]) > 0 else 0
     db = get_db()
     db.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('ollama_config', ?)",
                [json.dumps(cfg, ensure_ascii=False)])
@@ -1427,6 +1429,7 @@ class OllamaEnhanceRequest(BaseModel):
     text: str = ""
     model: str = ""
     language: str = "en"   # en / zh
+    max_chars: int = 0      # 目标字数限制（0=不限）
 
 
 @router.post("/ollama/enhance")
@@ -1440,23 +1443,29 @@ def ollama_enhance(data: OllamaEnhanceRequest):
     if not model:
         return {"ok": False, "error": "未指定 Ollama 模型，请先在设置中选择"}
     lang = data.language or "en"
+    max_chars = data.max_chars or 0
     if lang == "zh":
         sys_prompt = ("你是 AI 图像提示词优化专家。请将给定提示词扩展优化为丰富的画面描述"
                       "（主体、环境、光线、风格、镜头角度、细节质感）。保持原意不变。"
-                      "只输出优化后的中文提示词本身，不要任何解释或前后缀。")
+                      "只输出优化后的中文提示词本身，不要任何解释或前后缀。"
+                      "输出内容必须为纯文本，禁止包含任何 emoji、表情符号、图标或装饰字符。")
     else:
         sys_prompt = ("You are an expert AI image prompt engineer. Expand and optimize the given prompt "
                       "with vivid visual details (subject, environment, lighting, style, camera angle, "
                       "texture quality). Keep the original intent. Output ONLY the enhanced prompt "
-                      "in English, no explanation, no quotes.")
+                      "in English, no explanation, no quotes, no emoji.")
+    user_msg = data.text
+    if max_chars and max_chars > 0:
+        user_msg += f"\n\n【长度要求】请将优化后的提示词总长度控制在 {max_chars} 字以内（当前内容 {len(data.text)} 字）。"
     try:
         r = httpx.post(f"{url}/api/chat", json={
             "model": model,
             "messages": [
                 {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": data.text},
+                {"role": "user", "content": user_msg},
             ],
             "stream": False,
+            "think": False,
             "options": {"temperature": 0.7},
         }, timeout=180)
         if r.status_code != 200:
