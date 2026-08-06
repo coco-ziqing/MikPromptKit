@@ -743,6 +743,11 @@ var App = window.App || {
                         if (typeof App._showShowcase === 'function') App._showShowcase();
                         if (typeof App.renderSidebar === 'function') App.renderSidebar();
                     } catch(e) {}
+                    // 2026-08-06 修复：超时后仍安排自动重试（wc_bridge 可能仅加载慢/瞬时失败）
+                    // 若 loadGroupTree 已恢复为真实实现，会真正请求树；若仍为桩则再等一轮
+                    setTimeout(function() {
+                        if (App && typeof App.loadGroupTree === 'function') App.loadGroupTree();
+                    }, 3000);
                     resolve();
                 }
             }, 200);

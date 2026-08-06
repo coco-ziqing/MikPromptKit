@@ -19,9 +19,14 @@ App.state._browserParentId = null; // 从子分组浏览器进入的父组ID, �
 // 1. loadGroupTree: 加载嵌套分组树
 // ============================================================
 App.loadGroupTree = async function() {
+    // 2026-08-06 修复：瞬时失败（网络抖动/服务重启/语义重建锁库）不再永久空白侧边栏
+    // 自动重试最多 4 次（2s/4s/8s/16s 退避），每次失败仍渲染占位 + 手动重试入口
+    var self = this;
+    if (!this._groupTreeRetry) this._groupTreeRetry = 0;
     try {
-        var d = await this.fetchJSON('/api/v4/word-cards/groups/tree');
+        var d = await this.fetchJSON('/api/v4/word-cards/groups/tree', { _timeoutMs: 15000 });
         if (d && d.tree) {
+            this._groupTreeRetry = 0;  // 成功重置重试计数
             // 保存旧树展开状态（防止排序/编辑后折叠）
             var expandState = {};
             var _saveExpand = function(nodes) {
@@ -62,15 +67,43 @@ App.loadGroupTree = async function() {
                     if (typeof App._showShowcase === 'function') App._showShowcase();
                 }
             } catch(e2) {}
+            return d;
         } else {
-            // 网络/API 异常：置空树 + 渲染错误提示
+            // 网络/API 异常：置空树 + 渲染错误提示 + 自动重试
             console.warn('[wc-bridge] loadGroupTree: API 返回空数据');
             this.state.groupTree = [];
             this.renderSidebar();
             var pl2 = document.getElementById('promptList');
-            if (pl2) pl2.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-muted);"><p>📡 词库数据加载失败</p><button class="btn btn-sm btn-outline-primary" onclick="App.loadGroupTree()" style="margin-top:12px;">🔄 重试</button></div>';
+            if (pl2 && pl2.innerHTML.indexOf('词库数据加载失败') === -1) {
+                pl2.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-muted);"><p>📡 词库数据加载失败</p><button class="btn btn-sm btn-outline-primary" onclick="App.loadGroupTree()" style="margin-top:12px;">🔄 重试</button></div>';
+            }
+            this._scheduleGroupTreeRetry('空数据');
         }
-    } catch(e) { console.warn('[wc-bridge] loadGroupTree error:', e.message); }
+    } catch(e) {
+        console.warn('[wc-bridge] loadGroupTree error:', e.message);
+        // 异常路径同样渲染侧边栏占位（防止 sidebar 完全空白），并自动重试
+        this.state.groupTree = this.state.groupTree || [];
+        try { if (typeof this.renderSidebar === 'function') this.renderSidebar(); } catch(e2) {}
+        this._scheduleGroupTreeRetry(e.message);
+    }
+    return null;
+};
+
+// 失败自动重试（指数退避 2/4/8/16s，最多 4 次；成功后重置）
+App._scheduleGroupTreeRetry = function(reason) {
+    var self = this;
+    if (this._groupTreeRetryTimer) { clearTimeout(this._groupTreeRetryTimer); }
+    if (this._groupTreeRetry >= 4) {
+        console.warn('[wc-bridge] loadGroupTree 重试耗尽，等待用户手动重试');
+        return;
+    }
+    this._groupTreeRetry = (this._groupTreeRetry || 0) + 1;
+    var delay = 2000 * Math.pow(2, this._groupTreeRetry - 1);  // 2/4/8/16s
+    console.warn('[wc-bridge] loadGroupTree 自动重试 #' + this._groupTreeRetry + ' (' + delay + 'ms) 原因: ' + reason);
+    this._groupTreeRetryTimer = setTimeout(function() {
+        self._groupTreeRetryTimer = null;
+        App.loadGroupTree();
+    }, delay);
 };
 
 // ============================================================
@@ -178,6 +211,10 @@ App._showShowcase = function() {
     var tree = this.state.groupTree;
     if (!tree || tree.length === 0) {
         container.innerHTML = '<div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div><p>' + App._t('showcase.loading', '加载分组中...') + '</p></div>';
+        // 2026-08-06 修复：树为空时触发自动重试（瞬时失败后自动恢复，不再无限转圈）
+        if (typeof App._scheduleGroupTreeRetry === 'function') {
+            App._scheduleGroupTreeRetry('showcase-empty');
+        }
         return;
     }
     
@@ -558,7 +595,11 @@ App._injectSidebarToggle = function(sidebar) {
 // 7. 重写 renderSidebar: 树形侧边栏（Phase15 交互重构）
 // ============================================================
 var _origRenderSidebar = App.renderSidebar;
-App.renderSidebar = function() {
+// 2026-08-06 修复：树形侧边栏实现保存为直接引用，供 app_editor 旧版 renderSidebar 检测转调
+// 竞态背景：wc_bridge(同步) 200ms 重试 vs app_editor(defer) 执行顺序不定，
+// 若 app_editor 后执行会覆盖树形 renderSidebar → modules 空 → return → 侧边栏空白
+// 保存直接函数引用（而非经 App.renderSidebar 间接调用），避免二次覆盖污染
+var _wcRenderSidebarImpl = function() {
     try {
     var sidebar = document.getElementById('sidebar');
     if (!sidebar) { console.warn('[wc-bridge] sidebar DOM 元素不存在'); return; }
@@ -618,6 +659,9 @@ App.renderSidebar = function() {
         if (sidebar2) sidebar2.innerHTML = '<div style="padding:20px;color:#ef4444;font-size:13px;">侧边栏渲染未完成: ' + e.message + '</div>';
     }
 };
+// 树形实现直接引用（供 app_editor 旧版检测转调，避免二次覆盖污染）
+App._renderSidebarTree = _wcRenderSidebarImpl;
+App.renderSidebar = _wcRenderSidebarImpl;
 
 // Phase44: 一键全部折叠/展开侧边栏树节点
 App._toggleAllTreeNodes = function() {

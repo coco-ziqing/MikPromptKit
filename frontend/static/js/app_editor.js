@@ -138,6 +138,12 @@ Object.assign(App, {
     },
     // ============ 渲染:侧边栏 ============
         renderSidebar() {
+        // 2026-08-06 修复：wc_bridge 树形侧边栏接管后，旧版「功能模块」侧边栏不再覆盖
+        // 竞态：wc_bridge(同步) 200ms 重试 vs defer 脚本执行顺序不定，旧版覆盖后因 modules 为空 return → 侧边栏空白
+        // 树形实现已保存直接引用时，直接转调树形版本（而非跳过渲染）
+        if (typeof App._renderSidebarTree === 'function') {
+            return App._renderSidebarTree();
+        }
         var sidebar = document.getElementById('sidebar');
         if (!sidebar) return;
         var modules = this.state.modules || [];
