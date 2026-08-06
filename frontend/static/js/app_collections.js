@@ -338,6 +338,8 @@ Object.assign(App, {
                     '</select>' +
                     '<input id="bgenOllamaMaxChars" type="number" min="50" max="3000" step="10" placeholder="字数不限" onchange="App._saveOllamaBar()" title="优化后目标字数（50-3000，留空不限）" style="width:80px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
                     '<button type="button" class="bgen-btn" id="bgenOllamaBtn" onclick="App._enhanceBatchPrompts()" style="border-color:#10b981;color:#10b981;"><i class="bi bi-magic"></i> 优化选中卡提示词</button>' +
+                    '<button type="button" class="bgen-btn" id="bgenUseDetailBtn" onclick="App._batchUseTier(\'detailed\')" style="border-color:#8b5cf6;color:#8b5cf6;" title="全部词条生成时使用详细档内容（含已存优化结果）">📚 全部使用详细</button>' +
+                    '<button type="button" class="bgen-btn" id="bgenUseStdBtn" onclick="App._batchUseTier(\'standard\')" style="border-color:#64748b;color:#64748b;" title="全部词条生成时使用标准档内容（原始）">📋 全部使用标准</button>' +
                     '<span id="bgenOllamaHint" style="font-size:10px;color:var(--text-muted);"></span>' +
                   '</div>' +
                   // Ollama 优化结果（可编辑）
@@ -415,9 +417,13 @@ Object.assign(App, {
         // Ollama 状态检测（模型列表/语言恢复）
         this._initOllamaBar();
         this._batchPromptOverrides = this._batchPromptOverrides || {};
-        // 重置优化结果区（新打开弹窗不带旧结果）
-        var resBox = document.getElementById('bgenOllamaResults');
-        if (resBox) { resBox.style.display = 'none'; resBox.innerHTML = ''; }
+        // 恢复临时存储的优化结果（自动识别已优化词条）
+        var hadRestored = this._loadOllamaOverrides();
+        // 重置优化结果区（新打开弹窗不带旧结果，但恢复的除外）
+        if (!hadRestored) {
+            var resBox = document.getElementById('bgenOllamaResults');
+            if (resBox) { resBox.style.display = 'none'; resBox.innerHTML = ''; }
+        }
     },
 
     // 提示词组合预览：模块预设 + 词卡 + 品质后缀 + 手动附加文本（复刻后端组合规则）
@@ -663,8 +669,9 @@ Object.assign(App, {
         }
         if (btn) btn.disabled = false;
         if (hint) hint.textContent = '';
-        // 渲染可编辑优化结果
+        // 渲染可编辑优化结果 + 临时存储
         this._renderOllamaResults();
+        this._saveOllamaOverrides();
         // 更新组合预览 + 保存设置
         this._renderBatchComposePreview();
         this._saveBatchSettings();
@@ -684,6 +691,7 @@ Object.assign(App, {
         var html = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">' +
             '<span style="font-size:10px;color:var(--text-muted);">✨ 优化结果（可直接编辑后存词卡 · 带 ✨ 为已优化）</span>' +
             '<span style="margin-left:auto;display:flex;gap:4px;">' +
+            '<button type="button" class="bgen-btn" id="bgenReoptAllBtn" onclick="App._ollamaReoptimizeAll()" style="padding:1px 8px;font-size:10px;border-color:#8b5cf6;color:#8b5cf6;" title="重新优化勾选的词条（未勾选则全部）">🔄 全部重新优化</button>' +
             '<button type="button" class="bgen-btn" id="bgenSaveAllBtn" onclick="App._ollamaSaveAll()" style="padding:1px 8px;font-size:10px;border-color:#10b981;color:#10b981;" title="所有优化结果一键存入对应词卡详细档">💾 全部存词卡</button>' +
             '<button type="button" class="bgen-btn" onclick="App._ollamaRevertAll()" style="padding:1px 8px;font-size:10px;border-color:var(--border-color);color:var(--text-muted);" title="丢弃全部优化结果，恢复原始提示词">↩ 全部恢复</button>' +
             '</span></div>' +
@@ -700,9 +708,11 @@ Object.assign(App, {
                 : '<button type="button" class="bgen-btn" style="padding:1px 6px;font-size:10px;border-color:#10b981;color:#10b981;" onclick="App._ollamaSaveToCard(' + pid + ')" title="优化结果存入词卡详细档">💾 存词卡</button>';
             html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:6px 8px;background:var(--bg-card);">' +
                 '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">' +
+                '<input type="checkbox" class="ollama-reopt-check" data-pid="' + pid + '" title="勾选参与「全部重新优化」" style="width:13px;height:13px;flex-shrink:0;">' +
                 '<span style="font-size:10px;font-weight:600;color:var(--text-main);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + App._escape(name) + '</span>' +
                 stHtml +
                 btnHtml +
+                '<button type="button" class="bgen-btn" style="padding:1px 6px;font-size:10px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App._ollamaReoptimize(' + pid + ', this)" title="用当前模型/语言/字数重新优化本条">🔄 重新优化</button>' +
                 '<button type="button" class="bgen-btn" style="padding:1px 6px;font-size:10px;border-color:var(--border-color);color:var(--text-muted);" onclick="App._ollamaRevert(' + pid + ')">↩ 恢复原词</button>' +
                 '</div>' +
                 '<textarea data-pid="' + pid + '" rows="2" oninput="App._ollamaEdit(this)" placeholder="优化结果..." style="width:100%;box-sizing:border-box;font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);resize:vertical;">' + App._escape(overrides[pid] || '') + '</textarea>' +
@@ -712,12 +722,13 @@ Object.assign(App, {
         box.style.display = 'flex';
     },
 
-    // 编辑优化结果：实时同步到 overrides + 刷新组合预览
+    // 编辑优化结果：实时同步到 overrides + 刷新组合预览 + 临时存储
     _ollamaEdit(ta) {
         var pid = ta.getAttribute('data-pid');
         if (!pid) return;
         this._batchPromptOverrides = this._batchPromptOverrides || {};
         this._batchPromptOverrides[pid] = ta.value;
+        this._saveOllamaOverrides();
         this._renderBatchComposePreview();
     },
 
@@ -726,6 +737,7 @@ Object.assign(App, {
         if (!confirm('恢复该词条为原始提示词（丢弃优化结果）？')) return;
         if (this._batchPromptOverrides) delete this._batchPromptOverrides[pid];
         if (this._ollamaSaved) delete this._ollamaSaved[pid];
+        this._saveOllamaOverrides();
         this._renderOllamaResults();
         this._renderBatchComposePreview();
     },
@@ -737,6 +749,7 @@ Object.assign(App, {
         if (!confirm('恢复全部 ' + keys.length + ' 条为原始提示词（丢弃所有优化结果）？')) return;
         this._batchPromptOverrides = {};
         this._ollamaSaved = {};
+        this._saveOllamaOverrides();
         this._renderOllamaResults();
         this._renderBatchComposePreview();
     },
@@ -766,6 +779,7 @@ Object.assign(App, {
             } catch(e) { this._ollamaSaved[pid] = false; fail++; }
         }
         if (btn) { btn.disabled = false; btn.innerHTML = '💾 全部存词卡'; }
+        this._saveOllamaOverrides();
         this._renderOllamaResults();
         this.showToast('全部存词卡完成：' + ok + ' 条成功 / ' + fail + ' 条失败' + (fail > 0 ? '（失败的可单条重试）' : '（已存词卡详细档）'), fail > 0 ? 'warning' : 'success');
     },
@@ -782,6 +796,7 @@ Object.assign(App, {
             });
             if (d && d.ok) {
                 this._ollamaSaved[pid] = true;
+                this._saveOllamaOverrides();
                 this._renderOllamaResults();
                 this.showToast('已存入词卡 #' + pid + ' 详细档', 'success');
             } else {
@@ -793,6 +808,138 @@ Object.assign(App, {
             this._ollamaSaved[pid] = false;
             this._renderOllamaResults();
             this.showToast('保存异常: ' + e.message, 'error');
+        }
+    },
+
+    // ============ 优化结果批处理（全部使用档位 / 临时存储 / 重新优化） ============
+
+    // 全部使用详细/标准：详细=overrides 填充详细档内容，标准=清空 overrides
+    _batchUseTier(tier) {
+        var ids = this._batchIds || [];
+        if (!ids.length) { this.showToast('请先选中词卡', 'warning'); return; }
+        this._batchPromptOverrides = this._batchPromptOverrides || {};
+        var self = this;
+        if (tier === 'detailed') {
+            var cnt = 0;
+            ids.forEach(function(pid) {
+                var card = null;
+                (self.state.prompts || []).forEach(function(p) { if (p.id === pid && !card) card = p; });
+                if (!card) return;
+                if (card.content_detailed) { self._batchPromptOverrides[pid] = card.content_detailed; cnt++; }
+                else if (!self._batchPromptOverrides[pid]) { self._batchPromptOverrides[pid] = card.content || ''; }
+            });
+            this.showToast('已切换全部使用详细档（' + cnt + ' 条有详细档内容）', 'success');
+        } else {
+            this._batchPromptOverrides = {};
+            this.showToast('已切换全部使用标准档（原始内容）', 'success');
+        }
+        this._saveOllamaOverrides();
+        this._renderOllamaResults();
+        this._renderBatchComposePreview();
+    },
+
+    // 优化结果临时存储（localStorage，弹窗重开自动恢复）
+    _saveOllamaOverrides() {
+        try {
+            localStorage.setItem('cwl_ollama_overrides', JSON.stringify({
+                overrides: this._batchPromptOverrides || {},
+                saved: this._ollamaSaved || {}
+            }));
+        } catch(e) {}
+    },
+
+    // 恢复临时存储的优化结果（自动识别已有优化结果的词条）
+    _loadOllamaOverrides() {
+        try {
+            var s = JSON.parse(localStorage.getItem('cwl_ollama_overrides') || '{}');
+            if (s.overrides && Object.keys(s.overrides).length) {
+                this._batchPromptOverrides = s.overrides;
+                this._ollamaSaved = s.saved || {};
+                this._renderOllamaResults();
+                this._renderBatchComposePreview();
+                return true;
+            }
+        } catch(e) {}
+        return false;
+    },
+
+    // 勾选的重新优化目标 pid
+    _ollamaSelectedPids() {
+        var out = [];
+        document.querySelectorAll('.ollama-reopt-check:checked').forEach(function(c) {
+            var pid = c.getAttribute('data-pid');
+            if (pid) out.push(parseInt(pid, 10));
+        });
+        return out;
+    },
+
+    // 单条重新优化（用当前模型/语言/字数，基于词卡原文）
+    async _ollamaReoptimize(pid, btn) {
+        var res = await this._ollamaReoptimizeInner(pid, btn);
+        if (res) {
+            this._saveOllamaOverrides();
+            this._renderOllamaResults();
+            this._renderBatchComposePreview();
+            this.showToast('词条 #' + pid + ' 重新优化完成', 'success');
+        } else if (btn) {
+            this.showToast('重新优化失败（模型未选或接口异常）', 'error');
+        }
+    },
+
+    // 全部重新优化（勾选的优先，无勾选则全部）
+    async _ollamaReoptimizeAll() {
+        var overrides = this._batchPromptOverrides || {};
+        var keys = Object.keys(overrides);
+        if (!keys.length) { this.showToast('没有可重新优化的结果', 'warning'); return; }
+        var sel = this._ollamaSelectedPids();
+        var targets = sel.length ? sel.filter(function(p) { return overrides[p]; }) : keys;
+        if (!targets.length) { this.showToast('勾选的词条没有优化结果', 'warning'); return; }
+        if (!confirm('重新优化 ' + targets.length + ' 条词条？（使用当前模型/语言/字数设置）')) return;
+        var btn = document.getElementById('bgenReoptAllBtn');
+        var hint = document.getElementById('bgenOllamaBatchHint');
+        if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 优化中...'; }
+        var ok = 0, fail = 0;
+        for (var i = 0; i < targets.length; i++) {
+            if (hint) hint.textContent = '正在重新优化 ' + (i + 1) + ' / ' + targets.length + '...';
+            if (await this._ollamaReoptimizeInner(targets[i])) ok++; else fail++;
+        }
+        if (btn) { btn.disabled = false; btn.innerHTML = '🔄 全部重新优化'; }
+        this._saveOllamaOverrides();
+        this._renderOllamaResults();
+        this._renderBatchComposePreview();
+        this.showToast('重新优化完成：' + ok + ' 条成功 / ' + fail + ' 条失败', fail > 0 ? 'warning' : 'success');
+    },
+
+    // 内部单条重新优化（共享给单条/全部，基于词卡原文重新生成）
+    async _ollamaReoptimizeInner(pid, btn) {
+        var model = (document.getElementById('bgenOllamaModel') || {}).value;
+        if (!model) { this.showToast('请先选择 Ollama 模型', 'warning'); return false; }
+        var lang = (document.getElementById('bgenOllamaLang') || {}).value || 'en';
+        var mcEl = document.getElementById('bgenOllamaMaxChars');
+        var maxChars = 0;
+        if (mcEl && mcEl.value) { var n = parseInt(mcEl.value, 10); if (!isNaN(n) && n > 0) maxChars = Math.min(Math.max(n, 50), 3000); }
+        var card = null;
+        (this.state.prompts || []).forEach(function(p) { if (p.id === pid && !card) card = p; });
+        var text = card ? (card.content || '') : '';
+        if (!text) return false;
+        var origHtml = btn ? btn.innerHTML : '';
+        if (btn) { btn.disabled = true; btn.innerHTML = '⏳'; }
+        try {
+            var d = await this.fetchJSON('/api/v2/comfyui/ollama/enhance', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: text, model: model, language: lang, max_chars: maxChars })
+            });
+            if (d && d.ok && d.text) {
+                this._batchPromptOverrides = this._batchPromptOverrides || {};
+                this._batchPromptOverrides[pid] = d.text;
+                if (this._ollamaSaved) delete this._ollamaSaved[pid];
+                return true;
+            }
+            return false;
+        } catch(e) {
+            return false;
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
         }
     },
 
