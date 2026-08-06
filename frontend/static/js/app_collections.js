@@ -1151,10 +1151,49 @@ Object.assign(App, {
         if (success.length === 0) { grid.style.display = 'none'; return; }
         var html = '';
         success.forEach(function(s) {
-            html += '<img src="' + s.thumb + '" style="width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:6px;cursor:zoom-in;border:1px solid var(--border-color);" title="' + App._escape(s.text || '') + '" onclick="App.openImageViewer(\'' + s.thumb.split('/').pop() + '\')" loading="lazy">';
+            var fname = s.thumb.split('/').pop();
+            html += '<img src="' + s.thumb + '" style="width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:6px;cursor:zoom-in;border:1px solid var(--border-color);" title="' + App._escape(s.text || '') + '" '
+              + 'onmouseenter="App._bgenHoverShow(this,\'' + fname + '\')" onmousemove="App._bgenHoverMove(event)" onmouseleave="App._bgenHoverHide()" '
+              + 'onclick="App.openImageViewer(\'' + fname + '\')" loading="lazy">';
         });
         items.innerHTML = html;
         grid.style.display = 'block';
+    },
+
+    // 悬停大图预览：跟随鼠标显示原图（不阻塞点击）
+    _bgenHoverShow(el, fname) {
+        var hp = document.getElementById('bgenHoverImg');
+        if (!hp) {
+            hp = document.createElement('img');
+            hp.id = 'bgenHoverImg';
+            hp.style.cssText = 'position:fixed;z-index:2000;pointer-events:none;max-width:360px;max-height:280px;object-fit:contain;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,0.45);border:2px solid rgba(99,102,241,0.6);background:#0f172a;display:none;';
+            document.body.appendChild(hp);
+        }
+        if (!fname) { hp.style.display = 'none'; return; }
+        if (hp.dataset.fname !== fname) {
+            hp.dataset.fname = fname;
+            hp.src = '/api/media/original/' + fname;
+        }
+        hp.style.display = 'block';
+    },
+
+    // 悬停跟随：原图左上角偏移鼠标 14px，越界时翻转到另一侧
+    _bgenHoverMove(e) {
+        var hp = document.getElementById('bgenHoverImg');
+        if (!hp || hp.style.display === 'none') return;
+        var off = 14;
+        var x = e.clientX + off;
+        var y = e.clientY + off;
+        if (x + 360 > window.innerWidth - 8) x = e.clientX - 360 - off;
+        if (y + 280 > window.innerHeight - 8) y = e.clientY - 280 - off;
+        hp.style.left = Math.max(4, x) + 'px';
+        hp.style.top = Math.max(4, y) + 'px';
+    },
+
+    // 隐藏悬停大图
+    _bgenHoverHide() {
+        var hp = document.getElementById('bgenHoverImg');
+        if (hp) hp.style.display = 'none';
     },
 
     // 重试失败项：创建新任务（仅失败词条）
