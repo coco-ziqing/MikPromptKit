@@ -19,7 +19,7 @@ jobs:
           python-version: "3.13"
 
       - name: Install ruff
-        run: pip install ruff
+        run: pip install ruff==0.16.1  # 与本地开发环境锁定一致
 
       - name: ruff check backend
         run: ruff check backend
@@ -94,5 +94,5 @@ jobs:
 
       - name: Run pytest smoke
         run: |
-          python -m pytest backend/tests/test_smoke.py -v --no-header -q
+          python -m pytest backend/tests/test_smoke.py -v
 
