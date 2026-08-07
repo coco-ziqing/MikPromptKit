@@ -4,8 +4,11 @@ v4.3.0-phase16: Log API — 日志查询/实时流/清除/统计 + Phase17 用�
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from logger import query, stats, clear_before, stream_generator
-from action_logger import record_action, query_actions, action_stream_generator
+import json
+
+from action_logger import action_stream_generator, query_actions, record_action
+from logger import clear_before, query, stats, stream_generator
+
 try:
     from jwt_auth import get_current_user
 except Exception:
@@ -73,8 +76,8 @@ class FrontendError(BaseModel):
 @router.post("/report")
 def report_frontend_error(data: FrontendError):
     """前端错误上报"""
+    from breadcrumb_logger import flush_breadcrumbs, record_breadcrumb
     from logger import error
-    from breadcrumb_logger import record_breadcrumb, flush_breadcrumbs
     detail_parts = [f"{data.url}:{data.line}:{data.col}"]
     # 记录面包屑
     sid = data.session_id or ""
@@ -96,7 +99,7 @@ def report_frontend_error(data: FrontendError):
 @router.post("/breadcrumbs")
 async def report_breadcrumbs(request: Request):
     """前端上报面包屑（错误上下文）— 兼容 sendBeacon text/plain"""
-    from breadcrumb_logger import record_breadcrumb, flush_breadcrumbs
+    from breadcrumb_logger import flush_breadcrumbs, record_breadcrumb
     try:
         # sendBeacon 发 text/plain，手动解析 JSON
         raw = await request.body()
@@ -106,7 +109,7 @@ async def report_breadcrumbs(request: Request):
         for c in crumbs:
             record_breadcrumb(sid, c.get("event", ""), c.get("data", ""))
         flush_breadcrumbs(sid)
-    except Exception as e:
+    except Exception:
         pass  # sendBeacon 不可重试，静默丢弃
     return {"ok": True}
 

@@ -6,8 +6,11 @@ Phase 14.1 重构:
   - 创建时调用 _recalculate 确保时间轴正确
 """
 import json
-from fastapi import APIRouter, Query, HTTPException
+
+from fastapi import APIRouter, HTTPException, Query
+
 from database import get_db, safe_commit
+
 from .composer_engine import compose_full
 
 router = APIRouter(prefix="/api/v4/composer", tags=["v4-composer"])
@@ -49,37 +52,37 @@ def create_composer_project(data: dict):
     card_ids = data.get('card_ids', [])
     if not card_ids:
         return {'ok': False, 'error': '请选择至少一张提示词卡'}
-    
+
     db = get_db()
-    
+
     # 1. 创建项目
     ar = data.get('aspect_ratio', '16:9')
     res = data.get('resolution', '1080p')
     dur = data.get('total_duration', 15)
     global_style = data.get('global_style', '')
     negative_prompt = data.get('negative_prompt', '')
-    
+
     cur = db.execute("""
         INSERT INTO user_project 
             (name, total_duration, aspect_ratio, resolution, global_style, negative_prompt)
         VALUES (?, ?, ?, ?, ?, ?)
     """, (name, dur, ar, res, global_style, negative_prompt))
     project_id = cur.lastrowid
-    
+
     # 2. 逐张卡片创建场景
     scene_duration = max(2, min(8, dur // max(len(card_ids), 1)))
     total_dur_input = 0
-    
+
     for order, card_id in enumerate(card_ids):
         card = db.execute(
             "SELECT * FROM prompt_cards WHERE id=? AND is_deleted=0", (card_id,)
         ).fetchone()
         if not card:
             continue
-        
+
         card = dict(card)
         sf = json.loads(card.get('structured_fields') or '{}')
-        
+
         # 3. 结构化字段映射到场景字段
         scene_data = {v: '' for v in [
             'camera_move','subject','scene_desc','shot_scale','composition','lighting','action',
@@ -87,20 +90,20 @@ def create_composer_project(data: dict):
             'particles','perspective','depth_of_field','filter','natural_force',
             'environment_detail','film_flaw','fantasy_physics'
         ]}
-        
+
         for sf_key, sf_val in sf.items():
             if sf_val and sf_key in FIELD_MAP:
                 target = FIELD_MAP[sf_key]
                 scene_data[target] = sf_val
-        
+
         start_time = total_dur_input
         end_time = total_dur_input + scene_duration
         total_dur_input = end_time
-        
+
         if order == len(card_ids) - 1 and total_dur_input < dur:
             end_time = dur
             total_dur_input = dur
-        
+
         db.execute("""
             INSERT INTO user_project_scene
                 (project_id, scene_order, start_time, end_time,
@@ -120,7 +123,7 @@ def create_composer_project(data: dict):
             scene_data['filter'], scene_data['natural_force'], scene_data['environment_detail'],
             scene_data['film_flaw'], scene_data['fantasy_physics']
         ))
-    
+
     # 创建后重算时间轴
     from .seedance_v2 import _recalculate_scene_times
     _recalculate_scene_times(project_id)
@@ -139,7 +142,7 @@ def list_composer_cards(
     db = get_db()
     where = ['is_deleted=0']
     params = []
-    
+
     if card_type:
         where.append('card_type=?')
         params.append(card_type)
@@ -147,7 +150,7 @@ def list_composer_cards(
         where.append('(content LIKE ? OR meaning LIKE ? OR name LIKE ?)')
         s = f'%{search}%'
         params.extend([s, s, s])
-    
+
     w = ' AND '.join(where)
     offset = (page - 1) * page_size
     total = db.execute(f'SELECT COUNT(*) as c FROM prompt_cards WHERE {w}', params).fetchone()['c']
@@ -157,13 +160,13 @@ def list_composer_cards(
         f"ORDER BY usage_count DESC, id DESC LIMIT ? OFFSET ?",
         params + [page_size, offset]
     ).fetchall()
-    
+
     items = []
     for r in rows:
         item = dict(r)
         item['structured_fields'] = json.loads(item.get('structured_fields') or '{}')
         items.append(item)
-    
+
     return {'ok': True, 'items': items, 'total': total, 'page': page, 'page_size': page_size}
 
 
@@ -184,19 +187,19 @@ def compose_project(project_id: int,
     proj = db.execute("SELECT * FROM user_project WHERE id=?", (project_id,)).fetchone()
     if not proj:
         raise HTTPException(status_code=404, detail='项目未找到')
-    
+
     scenes = db.execute(
         "SELECT * FROM user_project_scene WHERE project_id=? ORDER BY scene_order",
         (project_id,)
     ).fetchall()
-    
+
     if not scenes:
         return {'ok': True, 'output': '', 'output_json': {'header': '', 'scenes': []}}
-    
+
     # 使用共享组装引擎
     result = compose_full(scenes, dict(proj), fmt=format, density=density,
                           include_audio=include_audio, db=db)
-    
+
     # 向后兼容的字段映射
     return {
         'ok': True,

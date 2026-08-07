@@ -1,12 +1,17 @@
-# -*- coding: utf-8 -*-
 """
 AI 自动标签引擎
 - 图片/视频/3D缩略图 → Ollama vision 模型分析 → 中文标签
 - 音频 → ffprobe 元数据提取
 - 文件类型/格式 → 自动标记
 """
-import os, json, time, hashlib, subprocess, threading, sqlite3, urllib.request, base64
-from pathlib import Path
+import base64
+import json
+import os
+import sqlite3
+import subprocess
+import threading
+import time
+import urllib.request
 from io import BytesIO
 
 try:

@@ -2,13 +2,21 @@
 ComfyUI 集成 — 发送提示词生成图片并自动收录为缩略图
 包含：模块主体预设提示词组合、工作流同步、自动轮询生成
 """
-import os, json, uuid, time, io, base64, asyncio, threading, copy
-from fastapi import APIRouter, UploadFile, File, Query
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from database import get_db, safe_commit
+import asyncio
+import copy
+import json
+import os
+import threading
+import time
+import uuid
+
 import httpx
+from fastapi import APIRouter, File, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from PIL import Image
+from pydantic import BaseModel
+
+from database import get_db, safe_commit
 
 router = APIRouter(prefix="/api/v2/comfyui", tags=["comfyui"])
 
@@ -1074,7 +1082,7 @@ def list_available_sources():
                     continue
                 fp = os.path.join(wf_dir, fn)
                 try:
-                    with open(fp, "r", encoding="utf-8") as f:
+                    with open(fp, encoding="utf-8") as f:
                         ui = json.load(f)
                     n_nodes = len(ui.get("nodes", []))
                     mtime = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(fp)))
@@ -1586,7 +1594,6 @@ def _batch_update(task_id: int, **kw):
 
 def _batch_worker(task_id: int):
     """后台执行批量任务：全局锁串行，逐条生成并写入进度（不依赖 SSE 连接存活）"""
-    import time as _t
     with _BATCH_GLOBAL_LOCK:
         try:
             db = get_db()
@@ -2080,7 +2087,7 @@ def sync_workflow(data: SyncRequest = None):
             if not fp or not os.path.exists(fp):
                 return {"ok": False, "error": f"模板文件不存在: {fname}"}
             try:
-                with open(fp, "r", encoding="utf-8") as f:
+                with open(fp, encoding="utf-8") as f:
                     ui = json.load(f)
                 obj_info = _get_object_info(server_url)
                 workflow = _ui_to_api_wf(ui, obj_info)
@@ -2479,7 +2486,9 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
     """执行 ComfyUI 生成流程（同步 httpx + 线程池，避免异步死锁）
     card_type_hint: word_card|prompts 显式指定数据源表（2026-08-06 修复 id 跨表重叠猜错）"""
     loop = asyncio.get_event_loop()
-    import time as _time, uuid, io as _io
+    import io as _io
+    import time as _time
+    import uuid
 
     def _sync_run():
         nonlocal workflow
@@ -2511,9 +2520,11 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
             for _k, _v in _ins.items():
                 if _k in ("seed", "noise_seed") and isinstance(_v, (int, float)) and not isinstance(_v, bool):
                     _ins[_k] = random.randint(0, 2**53 - 1)
-        from database import get_db
-        from PIL import Image as PILImage
         import os
+
+        from PIL import Image as PILImage
+
+        from database import get_db
 
         # Step 1: submit to ComfyUI
         with httpx.Client(timeout=httpx.Timeout(120.0, connect=15.0)) as cl:

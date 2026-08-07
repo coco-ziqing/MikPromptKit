@@ -1,19 +1,22 @@
-# -*- coding: utf-8 -*-
 """
 api/atoms_import.py — Phase15 原子批量导入中间件
   支持 CSV / JSON / TXT 三种格式一键导入
   自动调用 atoms.py 的 decompose 引擎完成原子拆解
 """
 from __future__ import annotations
-import json, csv, io, hashlib, asyncio
-from fastapi import APIRouter, HTTPException, UploadFile, File
-from fastapi.responses import StreamingResponse
+
+import csv
+import hashlib
+import io
+import json
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v4/atoms/import", tags=["atoms-import"])
 
-from database import get_db, safe_fetch_one, safe_count_dict
-from api.atoms import decompose, DecomposeReq, ATOM_TYPE_TO_MODULE
+from api.atoms import DecomposeReq, decompose
+from database import get_db, safe_fetch_one
 
 
 class ImportOptions(BaseModel):

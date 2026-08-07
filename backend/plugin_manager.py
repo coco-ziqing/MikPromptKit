@@ -8,21 +8,21 @@ Phase18: 插件框架核心 v5.1.0
         详见 docs/REPO_ISOLATION.md
 """
 
-import os
-import sys
-import json
-import hashlib
 import importlib
 import importlib.util
+import json
+import sys
 import traceback
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Callable, Any
 from enum import Enum
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
 
 # 日志：优先用项目 logger，不可用时回退 print
 try:
-    from logger import info as log_info, warn as log_warn, error as log_error
+    from logger import error as log_error
+    from logger import info as log_info
+    from logger import warn as log_warn
 except ImportError:
     import builtins
     log_info = lambda msg: builtins.print(f"[INFO] {msg}")
@@ -61,15 +61,15 @@ class PluginManifest:
     description: str = ""
     license_tier: str = "free"     # free / personal / team
     dependencies: List[str] = field(default_factory=list)
-    
+
     # 后端注入
     api_router_module: str = ""    # 相对路径，如 "api"
     db_migrations: List[str] = field(default_factory=list)  # SQL文件列表
-    
+
     # 前端注入
     frontend_modules: List[dict] = field(default_factory=list)
     # [{name, url, nav_button: {slot, icon, label, view}, panel_slot: {id}}]
-    
+
     # 钩子注册
     hooks: Dict[str, str] = field(default_factory=dict)
     # {"on_db_init": "hooks.on_db_init", "on_startup": "hooks.on_startup"}
@@ -99,7 +99,7 @@ class PluginInstance:
     error_message: str = ""
     license_active: bool = False
     config: dict = field(default_factory=dict)
-    
+
     # 前端注入数据（插件提供的）
     nav_buttons: List[dict] = field(default_factory=list)
     panel_slots: List[dict] = field(default_factory=list)
@@ -113,55 +113,55 @@ class PluginInstance:
 
 class PromptKitPlugin:
     """所有插件必须继承此基类"""
-    
+
     plugin_id: str = ""
     manifest: Optional[PluginManifest] = None
-    
+
     def __init__(self):
         self._hooks: Dict[str, Callable] = {}
-    
+
     # ----- 生命周期 -----
-    
+
     def on_load(self, app, db) -> bool:
         """
         插件加载时调用。返回 True 表示加载成功。
         此时数据库已就绪、FastAPI app 已创建但未启动。
         """
         return True
-    
+
     def on_enable(self) -> bool:
         """插件启用时调用。返回 True 表示启用成功。"""
         return True
-    
+
     def on_disable(self) -> bool:
         """插件禁用时调用。返回 True 表示禁用成功。"""
         return True
-    
+
     def on_unload(self):
         """插件卸载时调用。清理资源。"""
         pass
-    
+
     # ----- Hook 注册 -----
-    
+
     def register_hook(self, name: str, callback: Callable):
         """注册一个钩子回调"""
         self._hooks[name] = callback
-    
+
     def get_hook(self, name: str) -> Optional[Callable]:
         """获取钩子回调"""
         return self._hooks.get(name)
-    
+
     # ----- API 路由 -----
-    
+
     def get_api_router(self):
         """
         返回 FastAPI APIRouter 实例，或 None。
         路由会自动挂载到 /api/plugins/{plugin_id}/ 前缀。
         """
         return None
-    
+
     # ----- 前端资源 -----
-    
+
     def get_frontend_injections(self) -> dict:
         """
         返回前端注入描述:
@@ -175,18 +175,18 @@ class PromptKitPlugin:
         }
         """
         return {}
-    
+
     # ----- 数据库迁移 -----
-    
+
     def get_migrations(self) -> List[dict]:
         """
         返回迁移列表:
         [{"name": "001_init", "sql": "CREATE TABLE ...", "rollback_sql": "DROP TABLE ..."}]
         """
         return []
-    
+
     # ----- 配置 -----
-    
+
     def get_default_config(self) -> dict:
         """返回默认配置"""
         return {}
@@ -198,19 +198,19 @@ class PromptKitPlugin:
 
 class PluginManager:
     """插件管理器单例"""
-    
+
     _instance: Optional["PluginManager"] = None
-    
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
         return cls._instance
-    
+
     def __init__(self):
         if self._initialized:
             return
-        
+
         # 插件目录基于工作区根目录（而非 backend/ 子目录），兼容从 backend/ 启动
         try:
             from paths import get_base_dir, get_resource_dir
@@ -225,54 +225,54 @@ class PluginManager:
         self.plugins_dir: Path = _resource_root / "plugins"
         self.disabled_dir: Path = _resource_root / "plugins" / "_disabled"
         self._initialized = True
-        
+
         # 确保目录存在（打包环境下跳过写入）
         try:
             self.plugins_dir.mkdir(parents=True, exist_ok=True)
             self.disabled_dir.mkdir(parents=True, exist_ok=True)
         except (OSError, PermissionError):
             pass  # frozen 环境下 _internal/ 只读
-    
+
     # ================================================================
     # 插件发现
     # ================================================================
-    
+
     def discover(self) -> List[str]:
         """
         扫描 plugins/ 目录，发现所有有效插件。
         返回发现的 plugin_id 列表。
         """
         discovered = []
-        
+
         if not self.plugins_dir.exists():
             log_warn(f"[PluginManager] 插件目录不存在: {self.plugins_dir}")
             return discovered
-        
+
         for entry in self.plugins_dir.iterdir():
             if not entry.is_dir():
                 continue
             if entry.name.startswith("_") or entry.name.startswith("."):
                 continue
-            
+
             manifest_path = entry / "plugin.json"
             if not manifest_path.exists():
                 log_warn(f"[PluginManager] 跳过 {entry.name}: 缺少 plugin.json")
                 continue
-            
+
             try:
                 manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
                 manifest = self._parse_manifest(manifest_data)
-                
+
                 if manifest.plugin_id in self.plugins:
                     log_warn(f"[PluginManager] 插件 {manifest.plugin_id} 已存在，跳过重复发现")
                     continue
-                
+
                 # 检查依赖
                 missing = self._check_dependencies(manifest)
                 if missing:
                     log_warn(f"[PluginManager] {manifest.plugin_id} 缺少依赖: {missing}")
                     continue
-                
+
                 plugin = PluginInstance(
                     manifest=manifest,
                     status=PluginStatus.DISCOVERED,
@@ -281,19 +281,19 @@ class PluginManager:
                 )
                 self.plugins[manifest.plugin_id] = plugin
                 discovered.append(manifest.plugin_id)
-                
+
                 log_info(f"[PluginManager] 发现插件: {manifest.name} v{manifest.version}")
-                
+
             except Exception as e:
                 log_error(f"[PluginManager] 解析 {entry.name}/plugin.json 失败: {e}")
                 continue
-        
+
         return discovered
-    
+
     # ================================================================
     # 插件加载
     # ================================================================
-    
+
     def load(self, plugin_id: str, app=None, db=None) -> bool:
         """
         加载指定插件。
@@ -303,18 +303,18 @@ class PluginManager:
         if not plugin:
             log_error(f"[PluginManager] 插件不存在: {plugin_id}")
             return False
-        
+
         if plugin.status in (PluginStatus.ENABLED, PluginStatus.LOADED):
             log_info(f"[PluginManager] 插件 {plugin_id} 已加载，跳过")
             return True
-        
+
         try:
             plugin_dir = self.plugins_dir / plugin.dir_name
-            
+
             # 1. 动态导入插件模块
             # 确保插件能 import PromptKitPlugin：将当前模块注入为 'promptkit_plugin_base'
             sys.modules.setdefault('promptkit_plugin_base', sys.modules[__name__])
-            
+
             module_path = str(plugin_dir / "__init__.py")
             spec = importlib.util.spec_from_file_location(
                 f"promptkit_plugin_{plugin_id}",
@@ -322,41 +322,41 @@ class PluginManager:
             )
             if spec is None or spec.loader is None:
                 raise ImportError(f"无法加载模块: {module_path}")
-            
+
             module = importlib.util.module_from_spec(spec)
             sys.modules[f"promptkit_plugin_{plugin_id}"] = module
             spec.loader.exec_module(module)
             plugin.module = module
-            
+
             # 2. 查找插件类（继承 PromptKitPlugin）
             plugin_cls = self._find_plugin_class(module)
             if plugin_cls is None:
                 raise ValueError(f"插件 {plugin_id} 未找到继承 PromptKitPlugin 的类")
-            
+
             # 3. 实例化
             instance = plugin_cls()
             instance.plugin_id = plugin_id
             instance.manifest = plugin.manifest
             plugin.instance = instance
-            
+
             # 4. 调用 on_load
             if app is not None and db is not None:
                 if not instance.on_load(app, db):
                     plugin.status = PluginStatus.ERROR
                     plugin.error_message = "on_load() 返回 False"
                     return False
-            
+
             plugin.status = PluginStatus.LOADED
             log_info(f"[PluginManager] 插件已加载: {plugin.manifest.name} v{plugin.manifest.version}")
             return True
-            
+
         except Exception as e:
             plugin.status = PluginStatus.ERROR
             plugin.error_message = str(e)
             log_error(f"[PluginManager] 加载插件 {plugin_id} 失败: {e}")
             traceback.print_exc()
             return False
-    
+
     def load_all(self, app=None, db=None) -> Dict[str, bool]:
         """
         加载所有发现的插件。
@@ -366,82 +366,82 @@ class PluginManager:
         for plugin_id in list(self.plugins.keys()):
             results[plugin_id] = self.load(plugin_id, app, db)
         return results
-    
+
     # ================================================================
     # 插件启用/禁用
     # ================================================================
-    
+
     def enable(self, plugin_id: str) -> bool:
         """启用插件"""
         plugin = self.plugins.get(plugin_id)
         if not plugin:
             return False
-        
+
         if plugin.status == PluginStatus.ERROR:
             log_error(f"[PluginManager] 无法启用错误状态的插件: {plugin_id}")
             return False
-        
+
         if plugin.instance and hasattr(plugin.instance, 'on_enable'):
             if not plugin.instance.on_enable():
                 return False
-        
+
         plugin.status = PluginStatus.ENABLED
         log_info(f"[PluginManager] 插件已启用: {plugin_id}")
         return True
-    
+
     def disable(self, plugin_id: str) -> bool:
         """禁用插件"""
         plugin = self.plugins.get(plugin_id)
         if not plugin:
             return False
-        
+
         if plugin.instance and hasattr(plugin.instance, 'on_disable'):
             plugin.instance.on_disable()
-        
+
         plugin.status = PluginStatus.DISABLED
         log_info(f"[PluginManager] 插件已禁用: {plugin_id}")
         return True
-    
+
     def unload(self, plugin_id: str) -> bool:
         """卸载插件并清理资源"""
         plugin = self.plugins.get(plugin_id)
         if not plugin:
             return False
-        
+
         # 先禁用
         if plugin.status == PluginStatus.ENABLED:
             self.disable(plugin_id)
-        
+
         # 调用卸载
         if plugin.instance and hasattr(plugin.instance, 'on_unload'):
             plugin.instance.on_unload()
-        
+
         # 从 sys.modules 移除
         module_name = f"promptkit_plugin_{plugin.dir_name}"
         if module_name in sys.modules:
             del sys.modules[module_name]
-        
+
         plugin.instance = None
         plugin.module = None
         plugin.status = PluginStatus.DISCOVERED
         log_info(f"[PluginManager] 插件已卸载: {plugin_id}")
         return True
-    
+
     def reload(self, plugin_id: str, app=None, db=None) -> bool:
         """重载插件（开发用）"""
         self.unload(plugin_id)
         return self.load(plugin_id, app, db)
-    
+
     # ================================================================
     # Hook 系统
     # ================================================================
-    
+
     def register_hook(self, hook_name: str, callback: Callable):
         """注册全局钩子"""
         if hook_name not in self.hook_registry:
             self.hook_registry[hook_name] = []
         self.hook_registry[hook_name].append(callback)
-    
+
     def trigger_hook(self, hook_name: str, *args, **kwargs) -> List[Any]:
         """
         触发全局钩子，返回所有回调结果。
@@ -455,7 +455,7 @@ class PluginManager:
             except Exception as e:
                 log_error(f"[PluginManager] Hook '{hook_name}' 回调异常: {e}")
         return results
-    
+
     def collect_injections(self) -> dict:
         """
         收集所有已启用插件的前端注入数据。
@@ -477,13 +477,13 @@ class PluginManager:
             "styles": [],
             "scripts": [],
         }
-        
+
         for plugin_id, plugin in self.plugins.items():
             if plugin.status != PluginStatus.ENABLED:
                 continue
             if not plugin.instance:
                 continue
-            
+
             try:
                 injections = plugin.instance.get_frontend_injections()
                 for key in result:
@@ -491,9 +491,9 @@ class PluginManager:
                         result[key].extend(injections[key])
             except Exception as e:
                 log_error(f"[PluginManager] 收集 {plugin_id} 前端注入失败: {e}")
-        
+
         return result
-    
+
     def get_api_routers(self):
         """
         收集所有已启用插件的 API 路由器。
@@ -505,24 +505,24 @@ class PluginManager:
                 continue
             if not plugin.instance:
                 continue
-            
+
             try:
                 router = plugin.instance.get_api_router()
                 if router is not None:
                     routers[plugin_id] = router
             except Exception as e:
                 log_error(f"[PluginManager] 获取 {plugin_id} API路由失败: {e}")
-        
+
         return routers
-    
+
     # ================================================================
     # 查询
     # ================================================================
-    
+
     def get_plugin(self, plugin_id: str) -> Optional[PluginInstance]:
         """获取插件实例"""
         return self.plugins.get(plugin_id)
-    
+
     def list_plugins(self) -> List[dict]:
         """列出所有插件（简要信息）"""
         result = []
@@ -539,7 +539,7 @@ class PluginManager:
                 "error": p.error_message if p.status == PluginStatus.ERROR else "",
             })
         return result
-    
+
     def get_frontend_manifest(self) -> dict:
         """返回前端需要的插件清单（供 plugin_host.js 消费）"""
         plugins_info = []
@@ -547,26 +547,26 @@ class PluginManager:
             if p.status != PluginStatus.ENABLED:
                 continue
             plugins_info.append(p.manifest.to_dict())
-        
+
         injections = self.collect_injections()
-        
+
         return {
             "core_version": "5.1.0",
             "plugins": plugins_info,
             "injections": injections,
         }
-    
+
     # ================================================================
     # 内部工具方法
     # ================================================================
-    
+
     def _parse_manifest(self, data: dict) -> PluginManifest:
         """从 JSON 数据解析清单"""
         required = ["plugin_id", "name", "version", "min_core_version"]
         for key in required:
             if key not in data:
                 raise ValueError(f"plugin.json 缺少必需字段: {key}")
-        
+
         return PluginManifest(
             plugin_id=data["plugin_id"],
             name=data["name"],
@@ -581,7 +581,7 @@ class PluginManager:
             frontend_modules=data.get("frontend_modules", []),
             hooks=data.get("hooks", {}),
         )
-    
+
     def _find_plugin_class(self, module) -> Optional[type]:
         """在模块中查找 PromptKitPlugin 子类"""
         for attr_name in dir(module):
@@ -593,7 +593,7 @@ class PluginManager:
             ):
                 return attr
         return None
-    
+
     def _check_dependencies(self, manifest: PluginManifest) -> List[str]:
         """检查依赖是否满足。返回缺少的依赖列表。"""
         missing = []
@@ -602,7 +602,7 @@ class PluginManager:
             if not dep or dep.status != PluginStatus.ENABLED:
                 missing.append(dep_id)
         return missing
-    
+
     def _get_db(self) -> Optional[Any]:
         """获取数据库连接（延迟导入避免循环依赖）"""
         try:
@@ -627,55 +627,55 @@ def init_plugin_system(app=None, db=None) -> PluginManager:
     在 main.py lifespan 中调用。
     """
     pm = get_plugin_manager()
-    
+
     log_info("[PluginManager] 开始初始化插件系统...")
-    
+
     # 1. 发现
     discovered = pm.discover()
     log_info(f"[PluginManager] 发现 {len(discovered)} 个插件: {discovered}")
-    
+
     if not discovered:
         log_info("[PluginManager] 无插件发现")
         return pm
-    
+
     # 2. 加载
     results = pm.load_all(app, db)
     for pid, ok in results.items():
         if not ok:
             log_warn(f"[PluginManager] 插件 {pid} 加载失败")
-    
+
     # 3. 启用所有已加载插件（付费插件前端License门控，后端API始终可用）
     for pid, plugin in pm.plugins.items():
         if plugin.status == PluginStatus.LOADED:
             pm.enable(pid)
-    
+
     # 4. 挂载 API 路由到 app
     if app is not None:
         for plugin_id, router in pm.get_api_routers().items():
             prefix = f"/api/plugins/{plugin_id}"
             app.include_router(router, prefix=prefix)
             log_info(f"[PluginManager] 挂载路由: {prefix}")
-        
+
         # 挂载插件静态文件（JS/CSS）
         _mount_plugin_statics(app, pm)
-        
+
         # 注册插件管理 API
         _register_plugin_api(app, pm)
-    
+
     enabled_count = sum(1 for p in pm.plugins.values() if p.status == PluginStatus.ENABLED)
     log_info(f"[PluginManager] 初始化完成: {len(discovered)} 发现, {enabled_count} 已启用")
-    
+
     return pm
 
 
 def _mount_plugin_statics(app, pm: PluginManager):
     """挂载插件静态文件目录"""
     from fastapi.staticfiles import StaticFiles
-    
+
     for plugin_id, plugin in pm.plugins.items():
         if plugin.status != PluginStatus.ENABLED:
             continue
-        
+
         static_dir = pm.plugins_dir / plugin.dir_name / "static"
         if static_dir.exists():
             mount_path = f"/plugins/{plugin_id}"
@@ -688,21 +688,20 @@ def _mount_plugin_statics(app, pm: PluginManager):
 
 def _register_plugin_api(app, pm: PluginManager):
     """注册插件管理 API 端点"""
-    from fastapi import APIRouter, Request
-    from fastapi.responses import JSONResponse
-    
+    from fastapi import APIRouter
+
     router = APIRouter(prefix="/api/plugin-system", tags=["插件系统"])
-    
+
     @router.get("/manifest")
     async def get_plugin_manifest():
         """返回前端插件清单"""
         return pm.get_frontend_manifest()
-    
+
     @router.get("/list")
     async def list_plugins():
         """列出所有插件"""
         return {"plugins": pm.list_plugins()}
-    
+
     @router.get("/status")
     async def plugin_status():
         """插件系统状态"""
@@ -714,7 +713,7 @@ def _register_plugin_api(app, pm: PluginManager):
             "disabled": sum(1 for p in pm.plugins.values() if p.status == PluginStatus.DISABLED),
             "errors": sum(1 for p in pm.plugins.values() if p.status == PluginStatus.ERROR),
         }
-    
+
     app.include_router(router)
     log_info("[PluginManager] 插件管理 API 已注册: /api/plugin-system/*")
 
@@ -728,8 +727,8 @@ def check_core_compatibility(manifest: PluginManifest, core_version: str) -> boo
     检查插件与核心版本的兼容性。
     简单比较: 插件的 min_core_version <= core_version
     """
-    from packaging.version import Version, InvalidVersion
-    
+    from packaging.version import InvalidVersion, Version
+
     try:
         min_ver = Version(manifest.min_core_version.lstrip("v"))
         core_ver = Version(core_version.lstrip("v"))

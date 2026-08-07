@@ -3,8 +3,9 @@ AI 工作流集成 API
 为 ComfyUI / AutoGPT / 外部脚本 提供简洁的提示词拉取接口
 """
 import json
-import random
+
 from fastapi import APIRouter, Query
+
 from database import get_db
 
 router = APIRouter(prefix="/api/v2/workflow", tags=["workflow"])
@@ -17,7 +18,7 @@ def _format_prompt(row, fmt="json"):
         tags = json.loads(p["tags"]) if p["tags"] else []
     except Exception:
         tags = []
-    
+
     result = {
         "id": p["id"],
         "content": p["content"],
@@ -27,7 +28,7 @@ def _format_prompt(row, fmt="json"):
         "tags": tags,
         "usage_count": p.get("usage_count", 0)
     }
-    
+
     if fmt == "text":
         # 纯文本格式，适合管道操作
         text = p["content"]
@@ -36,7 +37,7 @@ def _format_prompt(row, fmt="json"):
         if tags:
             text += "\n# tags: " + ", ".join(tags)
         return text
-    
+
     return result
 
 
@@ -110,7 +111,7 @@ def workflow_search(q: str = Query("", min_length=1), count: int = Query(10, ge=
             FROM prompts WHERE deleted_at IS NULL AND content LIKE ?
             ORDER BY usage_count DESC LIMIT ?
         """, [f"%{q}%", count]).fetchall()
-    
+
     return {"ok": True, "query": q, "prompts": [_format_prompt(r, fmt) for r in rows], "total": len(rows)}
 
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 种子数据 -- 内置提示词库，共 155+ 条
 五模块：emotion / color / tone / composition / seedance

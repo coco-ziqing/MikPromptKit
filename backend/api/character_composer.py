@@ -2,11 +2,14 @@
 v5.1.0: 角色设定提示词组装器 — 人物提示词工业化装配
 从 word_card 词库中各维度选取词条，自动拼接为完整角色提示词
 """
-import json, re, sqlite3
+import json
+import sqlite3
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+
 from database import get_db, safe_commit
-from typing import Optional
 
 router = APIRouter(prefix="/api/character-composer", tags=["character-composer"])
 

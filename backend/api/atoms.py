@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 api/atoms.py — V2 提示词原子化核心 API (Phase15 引擎加固)
   POST /decompose              — 原子拆解（LLM 语义 + MD5 缓存）
@@ -12,16 +11,20 @@ api/atoms.py — V2 提示词原子化核心 API (Phase15 引擎加固)
   GET  /stats                  — 资产溯源统计（热门Top10/死码检测）
 """
 from __future__ import annotations
-import hashlib, json, asyncio, time, re
-from typing import List
-from fastapi import APIRouter, HTTPException, Request
+
+import hashlib
+import json
+import re
+import time
+
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v4/atoms", tags=["atoms"])
 
-from database import get_db, safe_fetch_one, safe_count_dict
-from ollama_client import ollama_chat, ollama_generate, get_ollama_config, get_model_for
+from database import get_db, safe_fetch_one
+from ollama_client import ollama_chat
 
 
 # ============ 内部适配器（封装 ollama_chat → call_ollama） ============
@@ -34,12 +37,12 @@ async def call_ollama(function: str, prompt: str, system: str = "", temperature:
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
-    
+
     # decompose 系列用 qwen3.5:4b (小模型、快、thinking 开销低)
     model_name = None
     if function in ("decompose", "optimize_fast"):
         model_name = "qwen3.5:4b"
-    
+
     result = await ollama_chat(
         messages=messages,
         model=model_name,
@@ -361,8 +364,11 @@ async def extract_from_image(req: ImageExtractReq):
     """OCR 图片文字提取 → 自动原子拆解（P15.1 多端导入核心）
     图片识别：优先用内置 OCR 模块提取文本，再经 LLM 拆解为 PromptToken 数组
     """
+    import base64
+    import io
+    import os
+
     from PIL import Image
-    import base64, io, os
 
     # 1. 加载图片
     img = None
@@ -738,7 +744,7 @@ def _ensure_atom_group(db, atom_type: str, media_type: str = "image") -> int:
     root_key = "root_atom_video" if media_type == "video" else "root_atom_image"
     root = db.execute("SELECT id FROM word_card_group WHERE group_key=? AND is_active=1", [root_key]).fetchone()
     parent_id = root["id"] if root else None
-    
+
     name = f"[原子] {ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type)}"
     g = db.execute("SELECT id, parent_group_id FROM word_card_group WHERE name=? AND group_type='atom' AND is_active=1", [name]).fetchone()
     if g:
@@ -761,7 +767,7 @@ def _insert_atom_card(db, atom: dict, decompose_id: int, group_id: int) -> int:
     atom_type = atom.get("type", "creative")
     atom_text = atom.get("text", "")
     atom_hash = hashlib.md5(atom_text.encode()).hexdigest()
-    
+
     # 去重：同一 group 内相同 atom_text 只保留一条词卡
     existing = db.execute(
         "SELECT b.word_card_id FROM atom_word_bridge b JOIN word_card wc ON b.word_card_id=wc.id WHERE b.atom_hash=? AND wc.group_id=? AND wc.is_deleted=0",
@@ -769,7 +775,7 @@ def _insert_atom_card(db, atom: dict, decompose_id: int, group_id: int) -> int:
     ).fetchone()
     if existing:
         return existing[0]
-    
+
     module = ATOM_TYPE_TO_MODULE.get(atom_type, "composition")
     card_name = atom_text[:60]
     category = ATOM_TYPE_TO_CATEGORY.get(atom_type, atom_type)
@@ -1024,12 +1030,12 @@ async def track_atom_usage(req: StatTrackReq):
     """记录原子使用事件（每次复制/调用/导出时前端调用）"""
     db = get_db()
     text_hash = hashlib.md5(req.atom_text.encode()).hexdigest()
-    
+
     existing = db.execute(
         "SELECT atom_id, usage_count, combo_count, export_count FROM atom_stats WHERE text_hash=? AND atom_type=?",
         [text_hash, req.atom_type]
     ).fetchone()
-    
+
     if existing:
         # 增量更新
         extra = ""
@@ -1060,7 +1066,7 @@ async def track_atom_usage(req: StatTrackReq):
 async def get_usage_stats(days: int = 30, limit: int = 20):
     """获取使用统计详情（热门/冷门/趋势）"""
     db = get_db()
-    
+
     # 热门原子 Top N
     hot = db.execute("""
         SELECT atom_type, text_hash, usage_count, combo_count, export_count, last_used_at
@@ -1069,7 +1075,7 @@ async def get_usage_stats(days: int = 30, limit: int = 20):
         ORDER BY usage_count DESC
         LIMIT ?
     """, [f'-{days} days', limit]).fetchall()
-    
+
     # 从 bridge 表还原 atom_text
     hot_items = []
     for r in hot:
@@ -1085,14 +1091,14 @@ async def get_usage_stats(days: int = 30, limit: int = 20):
             "export_count": r["export_count"],
             "last_used_at": r["last_used_at"],
         })
-    
+
     # 冷门原子（usage_count=0 且创建 >7天）
     cold = db.execute("""
         SELECT COUNT(*) as c FROM atom_stats
         WHERE usage_count=0 AND last_used_at IS NULL
           AND created_at < datetime('now','localtime','-7 days')
     """).fetchone()
-    
+
     # 总览
     overview = db.execute("""
         SELECT
@@ -1103,7 +1109,7 @@ async def get_usage_stats(days: int = 30, limit: int = 20):
             COUNT(CASE WHEN usage_count > 0 THEN 1 END) as active_atoms
         FROM atom_stats
     """).fetchone()
-    
+
     return {
         "ok": True,
         "overview": {

@@ -1,9 +1,14 @@
-# -*- coding: utf-8 -*-
 """Phase36 回归组合测试：模版库 + 组装器维度 + 项目实例 + 版本/档案 + 审核 + 分镜联动。"""
-import sys, json, sqlite3, urllib.request, urllib.error
+import json
+import sqlite3
+import sys
+import urllib.error
+import urllib.request
+
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, "backend")
 from jwt_auth import generate_test_token
+
 ADMIN = generate_test_token(1, "admin", "admin")
 def call(method, path, body=None):
     data = json.dumps(body).encode() if body is not None else None

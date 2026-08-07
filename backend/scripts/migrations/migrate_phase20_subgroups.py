@@ -16,7 +16,7 @@ def migrate():
     conn = sqlite3.connect(DB, timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")
     db = conn.cursor()
-    
+
     # ============================================
     # 1. 全局画风 (parent_id=88) → 3 个子分组
     # ============================================
@@ -38,7 +38,7 @@ def migrate():
         print("[OK] 全局画风 3 个子分组已创建")
     else:
         print(f"[SKIP] 全局画风已有 {len(existing)} 个子分组")
-    
+
     # 归类画风卡片
     style_map = {
         # 写实风格 (parent=first sub of 88 after insert, sort_order=1)
@@ -53,12 +53,12 @@ def migrate():
         "水彩手绘": 3,
         "赛博朋克科幻": 3,
     }
-    
+
     style_subs = db.execute(
         "SELECT id,sort_order FROM word_card_group WHERE parent_group_id=88 AND is_active=1 ORDER BY sort_order"
     ).fetchall()
     style_sort_to_id = {row[1]: row[0] for row in style_subs}
-    
+
     moved_style = 0
     for content_str, sort_order in style_map.items():
         sub_id = style_sort_to_id.get(sort_order)
@@ -71,7 +71,7 @@ def migrate():
         for c in cards:
             db.execute("UPDATE word_card SET group_id=? WHERE id=?", [sub_id, c[0]])
             moved_style += 1
-    
+
     # 剩余未归类卡片移入第一个子组
     leftover = db.execute(
         "SELECT id FROM word_card WHERE group_id=88 AND is_deleted=0"
@@ -81,10 +81,10 @@ def migrate():
         for c in leftover:
             db.execute("UPDATE word_card SET group_id=? WHERE id=?", [first_sub, c[0]])
             moved_style += 1
-    
+
     conn.commit()
     print(f"[OK] 全局画风卡片归属: {moved_style} 条")
-    
+
     # ============================================
     # 2. 全局负面 (parent_id=89) → 3 个子分组
     # ============================================
@@ -105,7 +105,7 @@ def migrate():
         print("[OK] 全局负面 3 个子分组已创建")
     else:
         print(f"[SKIP] 全局负面已有 {len(existing_neg)} 个子分组")
-    
+
     # 归类负面卡片
     neg_map = {
         # 人物形态
@@ -121,12 +121,12 @@ def migrate():
         "抖动不稳": 3,
         "3D渲染感": 3,
     }
-    
+
     neg_subs = db.execute(
         "SELECT id,sort_order FROM word_card_group WHERE parent_group_id=89 AND is_active=1 ORDER BY sort_order"
     ).fetchall()
     neg_sort_to_id = {row[1]: row[0] for row in neg_subs}
-    
+
     moved_neg = 0
     for content_str, sort_order in neg_map.items():
         sub_id = neg_sort_to_id.get(sort_order)
@@ -138,7 +138,7 @@ def migrate():
         for c in cards:
             db.execute("UPDATE word_card SET group_id=? WHERE id=?", [sub_id, c[0]])
             moved_neg += 1
-    
+
     leftover_neg = db.execute(
         "SELECT id FROM word_card WHERE group_id=89 AND is_deleted=0"
     ).fetchall()
@@ -147,10 +147,10 @@ def migrate():
         for c in leftover_neg:
             db.execute("UPDATE word_card SET group_id=? WHERE id=?", [first_sub, c[0]])
             moved_neg += 1
-    
+
     conn.commit()
     print(f"[OK] 全局负面卡片归属: {moved_neg} 条")
-    
+
     conn.close()
     print("\n[Migration] Phase20 子分组迁移完成.")
 

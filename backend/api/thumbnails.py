@@ -3,9 +3,14 @@ API 路由 — 提示词缩略图管理
 上传 / 选取 / 取消关联 / 图库列表
 """
 import hashlib
-import os, uuid, json, subprocess
-from fastapi import APIRouter, Query, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse, JSONResponse
+import json
+import os
+import subprocess
+import uuid
+
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
+
 from database import get_db
 
 router = APIRouter(prefix="/api/thumbnails", tags=["thumbnails"])
@@ -36,8 +41,9 @@ COMFYUI_OUTPUTS_DIR = os.path.join(
 def _resize_and_save(file_bytes, dest_path):
     """用 Pillow 缩放裁剪并保存为质量 85 的 JPEG"""
     try:
-        from PIL import Image
         import io
+
+        from PIL import Image
         img = Image.open(io.BytesIO(file_bytes))
         # 统一转为 RGB
         if img.mode in ('RGBA', 'P'):
@@ -147,8 +153,9 @@ async def upload_thumbnail(file: UploadFile = File(...)):
 
     # 同步写入媒体资产管理库
     try:
-        from PIL import Image as PILImage
         import io
+
+        from PIL import Image as PILImage
         _img = PILImage.open(io.BytesIO(file_bytes))
         _w, _h = _img.size
         db.execute("""
@@ -366,7 +373,8 @@ def _probe_video_info(filepath):
     """用 ffprobe 探测视频 fps、分辨率、时长"""
     info = {"fps": 0, "width": 0, "height": 0, "duration": 0}
     try:
-        import subprocess, json
+        import json
+        import subprocess
         probe = subprocess.run(
             ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', filepath],
             capture_output=True, timeout=15, text=True
@@ -422,7 +430,7 @@ async def upload_video(file: UploadFile = File(...)):
     vinfo = {}
     try:
         poster_path_full = os.path.join(THUMB_DIR, poster_name)
-        import subprocess, json
+        import subprocess
         subprocess.run(
             ['ffmpeg', '-ss', '0.1', '-i', video_path, '-vframes', '1',
              '-q:v', '2', poster_path_full, '-y'],
@@ -436,7 +444,8 @@ async def upload_video(file: UploadFile = File(...)):
     import threading
     def _post_process_thread():
         try:
-            import subprocess, json
+            import json
+            import subprocess
             probe = subprocess.run(
                 ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', video_path],
                 capture_output=True, timeout=10, text=True
@@ -1160,7 +1169,7 @@ def repair_missing_posters():
                     "prompt_id": r["prompt_id"], "video": vname,
                     "poster": poster_name, "size": os.path.getsize(poster_path)
                 })
-        except Exception as e:
+        except Exception:
             pass  # 单条失败不影响其余
 
     # ---- 2. 修复 word_card: 有 preview_media 但 thumbnail 为空 -------

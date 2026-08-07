@@ -1,14 +1,17 @@
-# -*- coding: utf-8 -*-
 """
 用户管理 API - admin 权限
 端点: /api/auth/users (列表+创建) / PUT /:id (编辑+启停+重置密码) / DELETE /:id
 """
-import json, os, sqlite3, time
-from fastapi import APIRouter, HTTPException, Body, Request, Query
+import json
+import os
+import sqlite3
 from typing import Optional
 
-from password import hash_pw, check_pw
-from jwt_auth import get_current_user, create_jwt, require_role
+from fastapi import APIRouter, Body, HTTPException, Query, Request
+
+from jwt_auth import require_role
+from password import hash_pw
+
 try:
     from audit import record_audit
 except Exception:

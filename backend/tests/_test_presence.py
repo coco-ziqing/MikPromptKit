@@ -1,6 +1,8 @@
-# -*- coding: utf-8 -*-
 """Phase34 presence 端到端测试：模拟多账户 WS 在线，验证快照/广播/手动状态/离线。"""
-import asyncio, json, sys
+import asyncio
+import json
+import sys
+
 sys.path.insert(0, "backend")
 from jwt_auth import generate_test_token
 

@@ -1,7 +1,11 @@
-# -*- coding: utf-8 -*-
 """2026-07-15 遗留项回归：master_project 业务端点审计埋点 + 审计导出CSV + 保留期清理。
 运行：python backend\\_test_legacy_0715.py（需服务已启动 8080）"""
-import sys, json, urllib.request, urllib.error, time
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
 sys.path.insert(0, "backend")
 from jwt_auth import generate_test_token
 

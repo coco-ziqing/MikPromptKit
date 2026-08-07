@@ -4,11 +4,15 @@ v4.0.0-phase12.6: AI 缩略图智能生成
 - 摆脱 ComfyUI 离线依赖，纯 LLM 驱动的卡片封面
 - 支持: 单条生成 / 批量生成 / 配色预设
 """
-import io, os, uuid, json, base64, asyncio
+import asyncio
+import os
+import uuid
+
 from fastapi import APIRouter
 from pydantic import BaseModel
+
 from database import get_db, safe_commit
-from ollama_client import ollama_chat, extract_json, get_model_for
+from ollama_client import extract_json, get_model_for
 
 router = APIRouter(prefix="/api/ai/thumbnail", tags=["ai_thumbnail"])
 

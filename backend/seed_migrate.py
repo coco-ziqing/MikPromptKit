@@ -1,7 +1,6 @@
 """
 种子数据迁移 — 启动时将 prompts/prompt_library/prompt_word_card 同步到 v4 表
 """
-import json
 
 
 def migrate_all_seed_data(db):

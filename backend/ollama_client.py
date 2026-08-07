@@ -4,10 +4,15 @@ v4.0.0-phase12: 统一 AI 调用工具 — 多提供商路由
 Phase17.4: 连接池复用 + 自动重试(3次退避) + 保活探测
 Phase38: Kimi (Moonshot) 接入主模型路由 — ollama/kimi 双通道自动分发
 """
-import json, asyncio, time, os
-from typing import Optional, List, Tuple
-from database import get_db
+import asyncio
+import json
+import os
+import time
+from typing import List, Optional
+
 import httpx
+
+from database import get_db
 
 # ============ Phase17.4: 模块级连接池 ============
 # 复用 TCP 连接，避免每次调用建连导致 socket 耗尽
@@ -532,6 +537,7 @@ async def ollama_stream(
 
 # ============ 提取 JSON 工具 ============
 import re as _re
+
 
 def extract_json(raw: str) -> dict:
     """从 LLM 原始输出中提取 JSON"""

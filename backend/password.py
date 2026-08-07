@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 bcrypt 密码哈希 — 纯 Python 实现（零外部依赖）
 基于 bcrypt 2b 算法：Blowfish + 盐 + 多轮哈希
@@ -8,11 +7,9 @@ bcrypt 密码哈希 — 纯 Python 实现（零外部依赖）
 - 200行纯Python，安全等同于标准 bcrypt
 - 与标准 bcrypt $2b$ 格式完全兼容
 """
-import os
-import hmac
 import hashlib
-import base64
-import struct
+import hmac
+import os
 
 # ============================================================
 # Blowfish 实现（简化版，仅用于 bcrypt）
@@ -238,14 +235,14 @@ def _bcrypt_b64_encode(data: bytes) -> str:
 def _eks_blowfish_setup(cost: int, salt: bytes, key: bytes):
     """EksBlowfish 密钥扩展"""
     state = [_P[:], [row[:] for row in _S]]
-    
+
     # XOR P-array with key
     for i in range(18):
         k = 0
         for j in range(4):
             k = (k << 8) | key[(i * 4 + j) % len(key)]
         state[0][i] ^= k
-    
+
     # Encrypt with salt
     def _encrypt(lr, s):
         l, r = lr
@@ -258,7 +255,7 @@ def _eks_blowfish_setup(cost: int, salt: bytes, key: bytes):
         r ^= s[0][16]
         l ^= s[0][17]
         return l & 0xffffffff, r & 0xffffffff
-    
+
     # Simplified: use HMAC-SHA256 as bcrypt approximation
     # Real bcrypt uses EksBlowfish but for a self-contained implementation
     # we use a cryptographically equivalent iterative HMAC-based key derivation
@@ -288,25 +285,25 @@ def hash_password(password: str, rounds: int = 12) -> str:
         rounds = 4
     if rounds > 31:
         rounds = 31
-    
+
     # 生成盐
     salt_str = _generate_salt(rounds)
     # 提取纯盐字节（去掉 $2b$12$ 前缀）
     salt_part = salt_str.split("$")[3]  # e.g. "abcdefghijklmnopqrstuv"
-    
+
     # 使用 PBKDF2-HMAC-SHA256 + bcrypt-like 结构
     # 实际生产中直接调 bcrypt 库，这里是纯Python实现
     password_bytes = password.encode('utf-8')
     salt_bytes = salt_part.encode('utf-8')[:16].ljust(16, b'\x00')
-    
+
     # 多轮哈希
     derived = hashlib.pbkdf2_hmac('sha512', password_bytes, salt_bytes, rounds * 1024, dklen=32)
-    
+
     # 与 salt 混合后再次哈希（模拟 bcrypt 的 EksBlowfish 扩展）
     final = hashlib.pbkdf2_hmac('sha512', derived, salt_bytes + password_bytes, rounds * 256, dklen=24)
-    
+
     hash_part = _bcrypt_b64_encode(final)[:31]
-    
+
     return f"$2b${rounds:02d}${salt_part}${hash_part}"
 
 
@@ -324,31 +321,31 @@ def check_password(password: str, hashed: str) -> bool:
     try:
         if not hashed.startswith("$2"):
             return False
-        
+
         parts = hashed.split("$")
         if len(parts) < 5:
             return False
-        
+
         algorithm = parts[1]
         rounds = int(parts[2])
         salt_part = parts[3]  # 22-char bcrypt base64 salt
         stored_hash_part = parts[4]  # 31-char hash
-        
+
         if algorithm not in ("2b", "2a", "2y"):
             return False
-        
+
         # 用相同的 salt 和 rounds 重新计算密码哈希
         password_bytes = password.encode('utf-8')
         salt_bytes = salt_part.encode('utf-8')[:16].ljust(16, b'\x00')
-        
+
         derived = hashlib.pbkdf2_hmac('sha512', password_bytes, salt_bytes, rounds * 1024, dklen=32)
         final = hashlib.pbkdf2_hmac('sha512', derived, salt_bytes + password_bytes, rounds * 256, dklen=24)
-        
+
         computed_hash_part = _bcrypt_b64_encode(final)[:31]
-        
+
         # 恒定时间比较
         return hmac.compare_digest(computed_hash_part.encode(), stored_hash_part.encode())
-    
+
     except Exception:
         return False
 
@@ -373,9 +370,9 @@ def check_pw(password: str, hashed: str) -> bool:
 
 if __name__ == "__main__":
     import time
-    
+
     print("=== bcrypt 密码哈希测试 ===")
-    
+
     # 测试哈希
     pw = "admin123"
     start = time.time()
@@ -383,15 +380,15 @@ if __name__ == "__main__":
     elapsed = (time.time() - start) * 1000
     print(f"哈希: {pw} → {h[:50]}...")
     print(f"耗时: {elapsed:.1f}ms")
-    
+
     # 测试验证
     assert check_password(pw, h), "密码验证失败"
     print(f"验证通过: {pw} == {h[:30]}...")
-    
+
     # 测试错误密码
     assert not check_password("wrong", h), "错误密码不应通过"
     print(f"错误密码拒绝: wrong ≠ hash")
-    
+
     # 多轮测试
     for r in [4, 8, 12]:
         start = time.time()
@@ -399,5 +396,5 @@ if __name__ == "__main__":
         ms = (time.time() - start) * 1000
         ok = check_password("test", h2)
         print(f"  轮数={r:2d}: {ms:6.1f}ms {'✅' if ok else '❌'}")
-    
+
     print("\n全部测试通过 ✅")

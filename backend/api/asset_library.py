@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Phase35.1 项目内嵌模块化资产库 API（服务器托管上传模式）
 
@@ -10,13 +9,22 @@ Phase35.1 项目内嵌模块化资产库 API（服务器托管上传模式）
 - 私有隔离：owner 仅见自己私有项目 + 共享项目
 - 审计埋点：project_create/delete、asset_upload/delete
 """
-import os, sqlite3, hashlib, json, time, shutil, subprocess, re
-from typing import Optional
-from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form, Query, Body
+import hashlib
+import json
+import os
+import re
+import shutil
+import sqlite3
+import subprocess
+
+from fastapi import APIRouter, Body, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
+
 from jwt_auth import get_current_user
+
 # 2026-08-02 诊断升级: 接入日志引擎
 from logger import warn
+
 try:
     from audit import record_audit
 except Exception:

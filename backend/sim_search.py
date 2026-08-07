@@ -1,12 +1,14 @@
-# -*- coding: utf-8 -*-
 """
 感知哈希相似搜索 + 智能合集
 - pHash 图片感知哈希
 - 汉明距离去重/相似查找
 - 智能合集（保存搜索条件）
 """
-import os, json, time, sqlite3
-from pathlib import Path
+import json
+import os
+import sqlite3
+import time
+
 try:
     from PIL import Image
     HAS_PIL = True

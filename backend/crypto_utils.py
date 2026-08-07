@@ -3,11 +3,13 @@ Phase38-security: 加密工具 — AES-256-GCM 加解密
 与 license_manager.py 一致，供密钥管理模块复用。
 密钥派生: PBKDF2(机器指纹 + 固定盐) → 32 字节
 """
-import os, hashlib, base64
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+import base64
+import os
+
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 # 固定盐（不构成安全漏洞——此盐仅防止彩虹表，真正机密性靠派生密钥不可预测性）
 _SALT = b"promptkit-api-keys-2026-v1"
@@ -22,7 +24,8 @@ def _derive_secret() -> bytes:
     - 不同机器 → 不同密钥（复制 DB 无法解密）
     - 开源 / Git 共享代码 → 密钥不在代码中
     """
-    import platform, uuid
+    import platform
+    import uuid
     # 机器指纹（与 license_manager 一致）
     fp_parts = [str(uuid.getnode()), platform.node()]
     try:

@@ -1,10 +1,14 @@
-# -*- coding: utf-8 -*-
 """
 Phase35.3c API — 版本增量/冷热分层/三层自检/离机备份
 """
-import os, sys, json, time, sqlite3, threading
-from datetime import datetime
-from fastapi import APIRouter, Request, HTTPException, Query, Body
+import json
+import os
+import sqlite3
+import sys
+import time
+
+from fastapi import APIRouter, Body, HTTPException, Query, Request
+
 from jwt_auth import require_role
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -16,15 +20,19 @@ except Exception:
     DB = os.path.join(ROOT, "data", "prompts.db")
 sys.path.insert(0, os.path.join(HERE, ".."))
 
-from version_engine import (
-    store_version, restore_version, get_chain_depth,
-    compute_diff, apply_diff, CHAIN_DEPTH_LIMIT
-)
 from tier_engine import (
-    auto_tier_cascade, cleanup_stale_proxies, regenerate_proxy,
-    check_level_1, check_level_2, check_level_3, run_full_integrity,
-    run_external_backup, list_backups, start_background_cleanup
+    auto_tier_cascade,
+    check_level_1,
+    check_level_2,
+    check_level_3,
+    cleanup_stale_proxies,
+    list_backups,
+    regenerate_proxy,
+    run_external_backup,
+    run_full_integrity,
+    start_background_cleanup,
 )
+from version_engine import CHAIN_DEPTH_LIMIT, get_chain_depth, restore_version
 
 _req_admin = require_role("admin")
 router = APIRouter(prefix="/api/dam/vault", tags=["DAM版本&备份"])
@@ -51,7 +59,7 @@ def _safe_commit(c):
 
 def _get_user(request: Request):
     try:
-        from jwt_auth import get_current_user, require_role
+        from jwt_auth import get_current_user
         u = get_current_user(request)
         if u and u.get("authenticated"): return u
     except Exception: pass

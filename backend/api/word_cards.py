@@ -3,12 +3,20 @@ v4.1.0: 统一词卡 API
 /api/v4/word-cards — 词卡 CRUD + 分组管理 + 多端选取
 单一路由前缀，所有模块共享同一数据源
 """
-import json, re, hashlib, os, uuid, io
-from fastapi import APIRouter, Query, HTTPException, UploadFile, File
-from fastapi.responses import Response, FileResponse
-from database import get_db, safe_count, safe_count_dict, safe_fetch_one, safe_execute, safe_commit
+import hashlib
+import io
+import json
+import os
+import re
+import uuid
+
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, Response
+
+from database import get_db, safe_commit, safe_count, safe_count_dict, safe_execute, safe_fetch_one
+
 # 2026-08-02 诊断升级: 词库域接入统一日志引擎（此前为 0 覆盖）
-from logger import info, warn, error, debug
+from logger import debug, info, warn
 
 router = APIRouter(prefix="/api/v4/word-cards", tags=["word-cards"])
 
@@ -469,7 +477,7 @@ async def batch_create_from_text(data: dict):
     text = (data.get("text") or "").strip()
     target_group_id = data.get("group_id")  # 可选：强制指定分组
     auto_archive = data.get("auto_archive", True)  # 自动入库
-    
+
     if not text:
         raise HTTPException(400, "请输入文本")
     db = get_db()
@@ -735,7 +743,6 @@ def copy_video_from_library(card_id: int, data: dict):
     if not card:
         raise HTTPException(404, "词卡不存在")
     # 源路径: data/videos/ or data/thumbnails/video/ or data/wc_media/videos/
-    import shutil
     VIDEO_LIB_DIRS = [
         os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "videos"),
         os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "thumbnails", "videos"),
@@ -1123,7 +1130,8 @@ def export_cards(data: dict):
         except (json.JSONDecodeError, TypeError): it["tags"] = []
         items.append(it)
     if fmt == "csv":
-        import csv, io
+        import csv
+        import io
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(["id","group_id","group_name","name","content","meaning","tags","module"])
@@ -1162,7 +1170,8 @@ async def import_cards(file: UploadFile = File(...)):
             except Exception as e:
                 errors.append(f"第{count+1}条导入失败: {e}")
     elif ext == ".csv":
-        import csv, io
+        import csv
+        import io
         try:
             reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
             for row in reader:

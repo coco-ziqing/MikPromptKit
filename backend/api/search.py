@@ -4,12 +4,20 @@ v4.0.0-phase12.5: 语义搜索 API 升级
 - 词卡语义搜索独立端点
 - 保留原有语义搜索端点（兼容旧 prompts 表）
 """
+import json
+import threading
+
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
-import json, threading
-from database import get_db, safe_commit
-from semantic import search, rebuild_all_embeddings, get_status, update_embedding
-from semantic import search_word_cards, rebuild_wc_embeddings
+
+from database import get_db
+from semantic import (
+    get_status,
+    rebuild_all_embeddings,
+    rebuild_wc_embeddings,
+    search,
+    search_word_cards,
+)
 
 router = APIRouter(prefix="/api/v2/search", tags=["search"])
 

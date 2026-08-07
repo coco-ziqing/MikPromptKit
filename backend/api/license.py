@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 PromptKit 许可激活 API — 个人项目版 / 团队项目版 主机绑定+秘钥激活
 
@@ -10,18 +9,16 @@ PromptKit 许可激活 API — 个人项目版 / 团队项目版 主机绑定+�
 数据存放: data/licenses/<tier>.json（per-tier 一个许可文件）
 """
 
-import os
-import sys
-import json
-import uuid
 import hashlib
-import subprocess
+import json
+import os
 import platform
+import subprocess
+import sys
 import time
-import sqlite3
-from pathlib import Path
-from fastapi import APIRouter, Request, HTTPException, Body
 from typing import Optional
+
+from fastapi import APIRouter, Body, HTTPException
 
 router = APIRouter(tags=["许可管理"], prefix="/api/license")
 
@@ -79,7 +76,7 @@ def _read_license(tier: str) -> Optional[dict]:
     if not os.path.exists(p):
         return None
     try:
-        with open(p, "r", encoding="utf-8") as f:
+        with open(p, encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return None

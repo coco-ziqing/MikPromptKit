@@ -2,17 +2,26 @@
 PNG 提示词卡片 — 导出/导入引擎
 用 Pillow 生成含元数据的 PNG 图片，类似 ComfyUI 工作流图片方案
 """
-import os, json, io, uuid, base64, hashlib, zipfile
-from PIL import Image, ImageDraw, ImageFont, PngImagePlugin
-from database import get_db
+import base64
+import hashlib
+import io
+import json
+import os
+import uuid
+import zipfile
+
 from fastapi import HTTPException
+from PIL import Image, ImageDraw, ImageFont, PngImagePlugin
+
+from database import get_db
+
 
 # 2026-08-02 落地 7/31 未提交修复: 动态读取项目版本号（此前硬编码 PromptKit v3.5 / 3.0.0.1）
 def _read_version():
     """从项目根 VERSION 文件读取当前版本号（缺省回退 v5.29.2）"""
     try:
         v_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
-        with open(v_path, "r", encoding="utf-8") as f:
+        with open(v_path, encoding="utf-8") as f:
             v = f.read().strip()
         return v if v else "v5.29.2"
     except Exception:

@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 """Phase17: User Action Logger — 前端用户行为追踪 + 全局错误捕获"""
-import traceback, json, threading, asyncio
+import asyncio
+import json
+import threading
 from datetime import datetime
 
 _actions_buffer = []
@@ -148,7 +150,7 @@ async def action_stream_generator():
             try:
                 entry = await asyncio.wait_for(q.get(), timeout=15)
                 yield f"data: {json.dumps(entry, ensure_ascii=False)}\n\n"
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 yield ": heartbeat\n\n"
     except GeneratorExit:
         pass

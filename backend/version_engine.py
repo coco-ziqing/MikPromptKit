@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 版本增量存储引擎
 - v1 全量压缩存储
@@ -6,7 +5,12 @@
 - 链深 5 时自动全量快照重置
 - 任意版本还原
 """
-import os, sys, json, time, hashlib, sqlite3, shutil, struct
+import hashlib
+import os
+import shutil
+import sqlite3
+import struct
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")

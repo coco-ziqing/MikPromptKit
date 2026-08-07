@@ -27,11 +27,11 @@ def main():
             print(f"  删除 master_asset#{r[0]} ({r[1]}: {r[2]})")
         cur = c.execute("DELETE FROM master_asset WHERE asset_type IN ('character','scene')")
         print(f"[OK] 删除 {cur.rowcount} 条 residue")
-        
+
         # 2. project_role 确认无冲突
         pr_count = c.execute("SELECT COUNT(1) FROM project_role").fetchone()[0]
         print(f"[OK] project_role 现存 {pr_count} 个实例，不受影响")
-        
+
         # 3. 检查 project_role.master_project_id 列存在性（Phase36.2 迁移已加）
         has_mid = any(r[1]=='master_project_id' for r in c.execute("PRAGMA table_info(project_role)"))
         if has_mid:
@@ -40,7 +40,7 @@ def main():
             print(f"[OK] project_role.master_project_id 已关联 {linked}/{pr_count}")
         else:
             print("[INFO] project_role 无 master_project_id 列（旧部署），不影响运行")
-        
+
         c.commit()
         print("[OK] Phase36 清退迁移完成")
     finally: c.close()

@@ -4,9 +4,8 @@ Phase18 统一数据库迁移脚本 — 插件框架 + 多用户预埋 + 表骨�
 幂等性: 所有操作均可安全重复执行（IF NOT EXISTS / ALTER IGNORE）
 """
 
-import sys
 import os
-import hashlib
+import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -49,7 +48,7 @@ PLUGIN_TABLES = {
             updated_at      TEXT
         )
     """,
-    
+
     "plugin_migrations": """
         CREATE TABLE IF NOT EXISTS plugin_migrations (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,7 +59,7 @@ PLUGIN_TABLES = {
             UNIQUE(plugin_id, migration_name)
         )
     """,
-    
+
     "plugin_licenses": """
         CREATE TABLE IF NOT EXISTS plugin_licenses (
             plugin_id           TEXT PRIMARY KEY,
@@ -75,7 +74,7 @@ PLUGIN_TABLES = {
             verify_fail_count   INTEGER DEFAULT 0
         )
     """,
-    
+
     "plugin_configs": """
         CREATE TABLE IF NOT EXISTS plugin_configs (
             plugin_id   TEXT NOT NULL,
@@ -107,7 +106,7 @@ USER_TABLES = {
             last_login_at   TEXT
         )
     """,
-    
+
     "user_sessions": """
         CREATE TABLE IF NOT EXISTS user_sessions (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -145,7 +144,7 @@ PROJECT_TABLES = {
             updated_at      TEXT
         )
     """,
-    
+
     "project_columns": """
         CREATE TABLE IF NOT EXISTS project_columns (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -157,7 +156,7 @@ PROJECT_TABLES = {
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     """,
-    
+
     "project_tasks": """
         CREATE TABLE IF NOT EXISTS project_tasks (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -176,7 +175,7 @@ PROJECT_TABLES = {
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     """,
-    
+
     "task_prompt_refs": """
         CREATE TABLE IF NOT EXISTS task_prompt_refs (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -187,7 +186,7 @@ PROJECT_TABLES = {
             FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
         )
     """,
-    
+
     "project_templates": """
         CREATE TABLE IF NOT EXISTS project_templates (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,7 +198,7 @@ PROJECT_TABLES = {
             created_at      TEXT
         )
     """,
-    
+
     "project_milestones": """
         CREATE TABLE IF NOT EXISTS project_milestones (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -247,7 +246,7 @@ ASSET_TABLES = {
             updated_at      TEXT
         )
     """,
-    
+
     "asset_tags": """
         CREATE TABLE IF NOT EXISTS asset_tags (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -257,7 +256,7 @@ ASSET_TABLES = {
             FOREIGN KEY (asset_id) REFERENCES project_assets(id) ON DELETE CASCADE
         )
     """,
-    
+
     "asset_prompt_ref": """
         CREATE TABLE IF NOT EXISTS asset_prompt_ref (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -268,7 +267,7 @@ ASSET_TABLES = {
             FOREIGN KEY (asset_id) REFERENCES project_assets(id) ON DELETE CASCADE
         )
     """,
-    
+
     "asset_versions": """
         CREATE TABLE IF NOT EXISTS asset_versions (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -281,7 +280,7 @@ ASSET_TABLES = {
             FOREIGN KEY (asset_id) REFERENCES project_assets(id) ON DELETE CASCADE
         )
     """,
-    
+
     "asset_ratings": """
         CREATE TABLE IF NOT EXISTS asset_ratings (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -293,7 +292,7 @@ ASSET_TABLES = {
             FOREIGN KEY (asset_id) REFERENCES project_assets(id) ON DELETE CASCADE
         )
     """,
-    
+
     "asset_duplicates": """
         CREATE TABLE IF NOT EXISTS asset_duplicates (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -322,7 +321,7 @@ TEAM_TABLES = {
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     """,
-    
+
     "comments": """
         CREATE TABLE IF NOT EXISTS comments (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -336,7 +335,7 @@ TEAM_TABLES = {
             is_deleted      INTEGER DEFAULT 0
         )
     """,
-    
+
     "review_requests": """
         CREATE TABLE IF NOT EXISTS review_requests (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -352,7 +351,7 @@ TEAM_TABLES = {
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     """,
-    
+
     "activity_feed": """
         CREATE TABLE IF NOT EXISTS activity_feed (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -366,7 +365,7 @@ TEAM_TABLES = {
             created_at      TEXT
         )
     """,
-    
+
     "operation_log": """
         CREATE TABLE IF NOT EXISTS operation_log (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -380,7 +379,7 @@ TEAM_TABLES = {
             created_at      TEXT
         )
     """,
-    
+
     "notification_queue": """
         CREATE TABLE IF NOT EXISTS notification_queue (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -489,44 +488,44 @@ def run_migration(db=None):
     """
     if db is None:
         db = get_db()
-    
+
     print("[Phase18] 开始数据库迁移...")
     start_time = time.time()
-    
+
     tables_created = 0
     columns_altered = 0
     indexes_created = 0
-    
+
     # ---- 1. 插件系统表 ----
     print("\n  --- 插件系统表 ---")
     for name, sql in PLUGIN_TABLES.items():
         _execute_safe(db, sql, f"建表 {name}")
         tables_created += 1
-    
+
     # ---- 2. 用户系统表 ----
     print("\n  --- 用户系统表 ---")
     for name, sql in USER_TABLES.items():
         _execute_safe(db, sql, f"建表 {name}")
         tables_created += 1
-    
+
     # ---- 3. 项目管理表 ----
     print("\n  --- 项目管理表 ---")
     for name, sql in PROJECT_TABLES.items():
         _execute_safe(db, sql, f"建表 {name}")
         tables_created += 1
-    
+
     # ---- 4. 资产管理表 ----
     print("\n  --- 资产管理表 ---")
     for name, sql in ASSET_TABLES.items():
         _execute_safe(db, sql, f"建表 {name}")
         tables_created += 1
-    
+
     # ---- 5. 团队协作表 ----
     print("\n  --- 团队协作表 ---")
     for name, sql in TEAM_TABLES.items():
         _execute_safe(db, sql, f"建表 {name}")
         tables_created += 1
-    
+
     # ---- 6. ALTER 旧表加列 ----
     print("\n  --- 旧表字段扩展 ---")
     for sql in OWNER_COLUMN_ALTERS:
@@ -552,7 +551,7 @@ def run_migration(db=None):
                 print(f"  [OK] users 补列 {col}")
         except Exception:
             pass
-    
+
     # ---- 7. 索引 ----
     print("\n  --- 索引创建 ---")
     for sql in OWNER_INDEXES:
@@ -567,14 +566,14 @@ def run_migration(db=None):
                 continue  # 列不存在，跳过此索引
         _execute_safe(db, sql)
         indexes_created += 1
-    
+
     # ---- 8. 种子数据 ----
     print("\n  --- 种子数据 ---")
     seed_default_admin(db)
     seed_system_config(db)
-    
+
     safe_commit()
-    
+
     elapsed = time.time() - start_time
     result = {
         "tables_created": tables_created,

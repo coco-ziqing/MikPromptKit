@@ -1,8 +1,13 @@
-# -*- coding: utf-8 -*-
 """
 冷热分层存储引擎 + 代理生命周期 + 三层自检 + 离机备份
 """
-import os, sys, json, time, hashlib, sqlite3, shutil, subprocess, threading
+import hashlib
+import json
+import os
+import shutil
+import sqlite3
+import threading
+import time
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -136,7 +141,8 @@ def regenerate_proxy(catalog_id):
         if not ac: return None
 
         # 先还原到临时
-        from archive_engine import restore_from_blob, generate_proxy, PROXY_ROOT as ENG_PROXY
+        from archive_engine import PROXY_ROOT as ENG_PROXY
+        from archive_engine import generate_proxy, restore_from_blob
         tmp = os.path.join(ENG_PROXY, f"_reg_{int(time.time())}.tmp")
         restore_from_blob(ac["blob_hash"], tmp, ac["compression"] or "")
 
@@ -348,7 +354,7 @@ def list_backups(backup_root=None):
         meta = {}
         if os.path.exists(meta_path):
             try:
-                with open(meta_path, "r") as f:
+                with open(meta_path) as f:
                     meta = json.load(f)
             except Exception:
                 pass

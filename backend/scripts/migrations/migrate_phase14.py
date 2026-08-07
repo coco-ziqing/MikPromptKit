@@ -27,7 +27,7 @@ def migrate():
 
     conn = get_conn()
     print(f"[表状态] word_card_group 当前记录数:", conn.execute("SELECT COUNT(*) FROM word_card_group").fetchone()[0])
-    
+
     # ============================================================
     # 步骤1: 插入2个根组 (sort_order 极大值，排最后)
     # ============================================================
@@ -44,7 +44,7 @@ def migrate():
     root_image_id = conn.execute("SELECT id FROM word_card_group WHERE group_key='root_image'").fetchone()["id"]
     root_video_id = conn.execute("SELECT id FROM word_card_group WHERE group_key='root_video'").fetchone()["id"]
     print(f"[根组] root_image id={root_image_id}, root_video id={root_video_id}")
-    
+
     # ============================================================
     # 步骤2: 插入10个子类分组
     # ============================================================
@@ -73,7 +73,7 @@ def migrate():
         row = conn.execute("SELECT id FROM word_card_group WHERE group_key=?", [key]).fetchone()
         if row: sub_ids[key] = row["id"]
     print(f"[子类] 已创建 {len(sub_ids)} 个子类分组")
-    
+
     # ============================================================
     # 步骤3: 重新分配50个现有分组的 parent_group_id
     # ============================================================
@@ -102,7 +102,7 @@ def migrate():
         "人文环境细节词库": "sub_era_style",
         # 负面提示词
         "负面提示词库": "sub_negative",
-        
+
         # === 视频描述词库 ===
         # 运镜与构图
         "camera_move": "sub_camera",
@@ -129,10 +129,10 @@ def migrate():
         # 视频模板
         "seedance": "sub_video_template",
     }
-    
+
     # 查出所有现有分组
     all_groups = conn.execute("SELECT id, name, group_key, group_type FROM word_card_group WHERE group_type IN ('seedance','builtin','custom')").fetchall()
-    
+
     assigned = 0
     skipped = []
     for g in all_groups:
@@ -146,13 +146,13 @@ def migrate():
             assigned += 1
         else:
             skipped.append(f"  {g['group_key']} ({g['name']}) - type={g['group_type']}")
-    
+
     conn.commit()
     print(f"[分配] {assigned}/{len(all_groups)} 组已分配父级")
     if skipped:
         print(f"[跳过] {len(skipped)} 组未找到匹配:")
         for s in skipped: print(s)
-    
+
     # ============================================================
     # 步骤4: 清理空/重复自定义分组
     # ============================================================
@@ -163,7 +163,7 @@ def migrate():
         FROM word_card_group wg 
         WHERE wg.group_type='custom'
     """).fetchall()
-    
+
     # 去重逻辑: 保留每个名称中 card_count 最多的，删除其他空组
     to_delete = []
     name_map = {}  # name -> best_id
@@ -173,7 +173,7 @@ def migrate():
                 name_map[g["name"]] = g
         else:
             name_map.setdefault(g["name"], g)
-    
+
     # 找出可删除的空组
     for g in empty_custom:
         if g["card_count"] == 0:
@@ -182,12 +182,12 @@ def migrate():
             if best and best["id"] != g["id"]:
                 to_delete.append(g["id"])
                 print(f"[清理] 删除空重复组 id={g['id']} '{g['name']}' (保留 id={best['id']})")
-    
+
     for did in to_delete:
         conn.execute("UPDATE word_card_group SET is_active=0 WHERE id=?", [did])
     conn.commit()
     print(f"[清理] 共停用 {len(to_delete)} 个空/重复自定义分组")
-    
+
     # ============================================================
     # 步骤5: 验证
     # ============================================================

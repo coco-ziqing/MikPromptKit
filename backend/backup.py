@@ -4,14 +4,12 @@
 - 保留最近 7 天 + 每天的首次备份 (7+7=14 份上限)
 - 通过 /api/backup/info 和 /api/backup/now 对外暴露
 """
-import os
-import sys
-import shutil
-import time
 import json
+import os
 import threading
-from datetime import datetime, timedelta
-from pathlib import Path
+import time
+from datetime import datetime
+
 from paths import get_base_dir, get_data_dir, get_db_path
 
 BASE_DIR = get_base_dir()
@@ -195,7 +193,7 @@ class _BackupLock:
                 # 锁已存在：检查持有者进程是否存活 / 是否超时僵死
                 owner_dead = False
                 try:
-                    with open(LOCK_FILE, 'r', encoding='utf-8', errors='replace') as lf:
+                    with open(LOCK_FILE, encoding='utf-8', errors='replace') as lf:
                         content = lf.read().strip()
                     if content.isdigit():
                         owner_dead = not _pid_alive(int(content))
@@ -311,7 +309,7 @@ def do_backup() -> dict:
             history = []
             if os.path.exists(log_path):
                 try:
-                    with open(log_path, "r", encoding="utf-8") as f:
+                    with open(log_path, encoding="utf-8") as f:
                         history = json.load(f)
                 except Exception:
                     history = []

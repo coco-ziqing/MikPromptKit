@@ -1,0 +1,35 @@
+# ============================================================
+# PromptKit (MikPromptKit) — Python 工具链统一配置
+# 2026-08-07 Phase 2 引入：ruff (lint) + black (format)
+# 用法: ruff check . / ruff format . / black .
+# ============================================================
+[tool.black]
+line-length = 100
+target-version = ["py314"]
+skip-string-normalization = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+src = ["backend"]
+
+[tool.ruff.lint]
+# E=pycodestyle F=pyflakes W=pycodestyle-warning I=isort UP=pyupgrade
+select = ["E", "F", "W", "I", "UP"]
+# 历史债务暂缓项（Phase 2.2+ 分批修复后逐步收紧）
+ignore = [
+    "E501",   # 行超长：现状大量超长行，black 格式化前不强制
+    "E402",   # 模块级 import 非顶部：main.py 等需 sys.path 先行
+    "E731",   # lambda 赋值
+    "UP035",  # typing 导入现代化：批量替换风险高，后续处理
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 迁移/种子/诊断脚本为一次性历史脚本，不做严格规范
+"backend/scripts/**" = ["E", "F", "I", "UP"]
+"scripts/**" = ["E", "F"]
+"tools/**" = ["E", "F"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

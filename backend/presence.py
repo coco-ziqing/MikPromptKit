@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 实时在线状态（Presence）系统 — Phase34
 
@@ -17,9 +16,14 @@
   GET  /api/presence                        — 当前在线快照
   POST /api/presence/status {status}        — 手动设置自身状态(online/away/busy)
 """
-import json, time, asyncio, sqlite3, os
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Body, HTTPException
-from jwt_auth import verify_jwt, get_current_user
+import asyncio
+import os
+import sqlite3
+import time
+
+from fastapi import APIRouter, Body, HTTPException, Request, WebSocket, WebSocketDisconnect
+
+from jwt_auth import get_current_user, verify_jwt
 
 router = APIRouter(tags=["在线状态"])
 

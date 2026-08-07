@@ -2,15 +2,17 @@
 API 路由 — Seedance V2 多镜头结构化组装器 (全功能版)
 27套维度词库 / 分镜项目CRUD / 镜头管理 / 拼接引擎 / 联动
 """
-import json, math, os, uuid
-from fastapi import APIRouter, Query, Body, HTTPException, UploadFile, File
+import json
+import os
+import uuid
+
+from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
+
 from database import get_db, safe_commit
-from seedance_v2_seed import init_seedance_v2_seed
+
 from .composer_engine import (
-    make_structured_description, fmt_header, fmt_scene,
-    compose_full, _calc_pixel_res, _pick_non_empty,
-    RESOLUTION_MAP, ASPECT_MAX_MAP, AR_LABEL
+    compose_full,
 )
 
 router = APIRouter(prefix="/api/seedance/v2", tags=["seedance-v2"])
@@ -164,8 +166,9 @@ async def upload_word_card_thumbnail(card_id: int, file: UploadFile = File(...))
     if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"):
         raise HTTPException(400, "仅支持 jpg/png/gif/webp/bmp 格式")
     try:
-        from PIL import Image
         import io
+
+        from PIL import Image
         data = await file.read()
         img = Image.open(io.BytesIO(data))
         if img.mode in ("RGBA", "P"):
@@ -1581,7 +1584,6 @@ def import_from_template(data: dict = Body(...)):
     def _match_dim(desc, dim_key, cards):
         """在描述文本中匹配维度词卡
         策略: ①纯中文部分精确/子串匹配 ②2-gram交叉命中 ③拆词反向匹配"""
-        import unicodedata
         matched = []
         desc_no_punc = re.sub(r"[，。、；：！？\s·""''「」『』【】（）\\-]+", "", desc)
 

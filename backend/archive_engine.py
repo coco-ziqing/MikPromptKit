@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Phase35.3-DAM 归档引擎
 - 文件压缩（LZMA/WebP/FLAC 按类型自动选策略）
@@ -6,8 +5,12 @@ Phase35.3-DAM 归档引擎
 - 全局内容寻址去重（blob_store）
 - 还原（解压放回设备）
 """
-import os, sys, json, time, hashlib, shutil, subprocess, sqlite3
-from pathlib import Path
+import hashlib
+import os
+import shutil
+import sqlite3
+import subprocess
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")

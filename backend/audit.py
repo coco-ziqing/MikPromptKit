@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 用户活动审计日志（Audit Log）— Phase35-audit
 
@@ -17,10 +16,16 @@
   GET /api/audit/export                审计日志导出 CSV（支持 uid/分类/事件/天数筛选）
   GET/POST /api/audit/retention        保留期查看/设置（config: audit_retention_days，0=永久保留）
 """
-import os, sqlite3, time, threading, csv, io
+import csv
+import io
+import os
+import sqlite3
+import threading
 from datetime import datetime
-from fastapi import APIRouter, Request, HTTPException, Query
+
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+
 from jwt_auth import get_current_user, require_role
 
 router = APIRouter(prefix="/api/audit", tags=["审计日志"])

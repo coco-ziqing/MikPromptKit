@@ -12,8 +12,11 @@ WebSocket 实时协作端点 — Phase23.4
   - 消息类型: task_update / column_update / milestone_update / comment
   - 优雅断开 + 清理
 """
-import json, time, asyncio
+import asyncio
+import time
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
 from jwt_auth import verify_jwt
 
 router = APIRouter()
@@ -23,7 +26,6 @@ _rooms: dict = {}
 # 用户在线状态: {user_id: {"username": str, "projects": [project_ids]}}
 _online_users: dict = {}
 # 通知连接池: {user_id(int): set(WebSocket)} — 一个用户可多标签/多设备
-from typing import Set
 _notif_conns: dict = {}
 # 主事件循环引用（供同步请求处理器线程安全推送）
 _loop = None
@@ -52,7 +54,7 @@ async def ws_collab(websocket: WebSocket, master_id: str):
         payload = verify_jwt(token)
         if payload:
             user = {"id": payload.get("user_id", 0), "username": payload.get("username", "anon")}
-    
+
     if not user:
         await websocket.accept()
         await websocket.send_json({"type":"error","message":"需要登录","code":401})
@@ -266,7 +268,9 @@ def collab_status():
 @router.get("/ws/remote/check")
 def remote_check():
     """检测远程接入就绪状态"""
-    import socket, platform, subprocess
+    import platform
+    import socket
+    import subprocess
     result = {
         "hostname": socket.gethostname(),
         "platform": platform.platform(),
@@ -287,7 +291,7 @@ def remote_check():
 
     # 检测 Tailscale
     try:
-        ts = subprocess.run(["tailscale", "status"], capture_output=True, encoding='utf-8', errors='replace', timeout=5, 
+        ts = subprocess.run(["tailscale", "status"], capture_output=True, encoding='utf-8', errors='replace', timeout=5,
                            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess,'CREATE_NO_WINDOW') else 0)
         if ts.returncode == 0:
             result["tailscale"]["installed"] = True

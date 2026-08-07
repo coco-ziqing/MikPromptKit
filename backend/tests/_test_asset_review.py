@@ -1,6 +1,11 @@
-# -*- coding: utf-8 -*-
 """Phase35.2 版本/审核/团队成员 端到端测试。"""
-import sys, json, io, uuid, urllib.request, urllib.error
+import io
+import json
+import sys
+import urllib.error
+import urllib.request
+import uuid
+
 sys.path.insert(0, "backend")
 from jwt_auth import generate_test_token
 

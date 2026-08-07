@@ -1,12 +1,17 @@
 """
 主入口 — FastAPI 应用 + Uvicorn 启动（加固版）
 """
-import sys, os, socket, traceback, subprocess
+import os
+import socket
+import subprocess
+import sys
+import traceback
 from contextlib import asynccontextmanager
+
 import uvicorn
-from fastapi import FastAPI, Request, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 # 先把 backend 目录加入 sys.path，确保 paths 模块可导入（PowerShell 5.1 快捷方式可能不含工作目录）
@@ -22,12 +27,19 @@ ACTUAL_PORT = 8080
 BASE_DIR = get_base_dir()
 sys.path.insert(0, os.path.join(BASE_DIR, 'backend'))
 
-from database import init_db, rebuild_fts, get_db, safe_commit
-from seed_data import SEED_PROMPTS, get_builtin_count
-from backup import start_auto_backup, stop_auto_backup, do_backup, get_backup_info
-from logger import info as log_info, warn as log_warn, error as log_error, debug as log_debug
-from database import safe_fetch_one, safe_count, safe_count_dict
+from backup import do_backup, get_backup_info, start_auto_backup, stop_auto_backup
+from database import (
+    get_db,
+    init_db,
+    rebuild_fts,
+    safe_commit,
+    safe_count_dict,
+)
 from logger import api_log, capture_exception
+from logger import info as log_info
+from logger import warn as log_warn
+from seed_data import SEED_PROMPTS, get_builtin_count
+
 
 # 启动时读取版本号（单一来源：根目录 VERSION 文件）
 def _read_app_version() -> str:
@@ -37,7 +49,7 @@ def _read_app_version() -> str:
         ver_path = os.path.join(BASE_DIR, 'VERSION')
         if not os.path.exists(ver_path):
             ver_path = os.path.join(get_resource_dir(), 'VERSION')
-        with open(ver_path, 'r', encoding='utf-8-sig') as f:
+        with open(ver_path, encoding='utf-8-sig') as f:
             v = f.read().strip()
             if v:
                 return v
@@ -46,49 +58,54 @@ def _read_app_version() -> str:
     return 'v5.18.0-phase36'
 
 APP_VERSION = _read_app_version()
-from api.prompts import router as prompts_router
-from api.v2 import router as v2_router
-from api.seedance import router as seedance_router
-from api.thumbnails import router as thumbnails_router
-from api.exporter import router as exporter_router
-from api.versions import router as versions_router
-from api.search import router as search_router
-from api.playground import router as playground_router
-from api.tags import router as tags_router
-from api.stats import router as stats_router
-from api.templates import router as templates_router
-from api.workflow import router as workflow_router
-from api.comfyui import router as comfyui_router
-from api.dreamina import router as dreamina_router
-from api.libtv import router as libtv_router
-from api.ocr import router as ocr_router
-from api.cards import router as cards_v4_router
-from api.composer_v3 import router as composer_v3_router
-from api.translate import router as translate_router
-from api.media import router as media_router
-from api.seedance_v2 import router as seedance_v2_router
-from api.characters import router as characters_router
-from api.monitor import router as monitor_router
-from api.optimizer import router as optimizer_router
-from api.auto_tag import router as auto_tag_router
 from api.ai_thumbnail import router as ai_thumbnail_router
-from api.word_cards import router as word_card_router
-from health import router as health_router
-from api.logs import router as log_router
+from api.atom_filler import router as atom_filler_router
 from api.atoms import router as atoms_router
 from api.atoms_import import router as atoms_import_router
+from api.auto_tag import router as auto_tag_router
+from api.cards import router as cards_v4_router
 from api.character_composer import router as character_composer_router
-from api.scene_composer import router as scene_composer_router
-from api.atom_filler import router as atom_filler_router
+from api.characters import router as characters_router
+from api.comfyui import router as comfyui_router
+from api.composer_v3 import router as composer_v3_router
+from api.dreamina import router as dreamina_router
+from api.exporter import router as exporter_router
+from api.libtv import router as libtv_router
+from api.logs import router as log_router
+from api.media import router as media_router
+from api.monitor import router as monitor_router
+from api.ocr import router as ocr_router
+from api.optimizer import router as optimizer_router
+from api.playground import router as playground_router
 from api.plugins_api import router as plugins_api_router
-from plugin_manager import get_plugin_manager, init_plugin_system
-from ws_collab import router as ws_collab_router
-from presence import router as presence_router, presence_sweep_loop  # Phase34 实时在线状态
+from api.prompts import router as prompts_router
+from api.scene_composer import router as scene_composer_router
+from api.search import router as search_router
+from api.seedance import router as seedance_router
+from api.seedance_v2 import router as seedance_v2_router
+from api.stats import router as stats_router
+from api.tags import router as tags_router
+from api.templates import router as templates_router
+from api.thumbnails import router as thumbnails_router
+from api.translate import router as translate_router
+from api.v2 import router as v2_router
+from api.versions import router as versions_router
+from api.word_cards import router as word_card_router
+from api.workflow import router as workflow_router
+from health import router as health_router
+from plugin_manager import init_plugin_system
+from presence import presence_sweep_loop
+from presence import router as presence_router  # Phase34 实时在线状态
 from sync import (
-    export_package, restore_package, import_package,
-    list_packages, delete_package, get_package_info,
-    verify_package
+    delete_package,
+    export_package,
+    get_package_info,
+    import_package,
+    list_packages,
+    restore_package,
+    verify_package,
 )
+from ws_collab import router as ws_collab_router
 
 
 def _migrate_v4(db):
@@ -120,7 +137,6 @@ def _migrate_v4(db):
 
 def _seed_char_and_scene_groups(db):
     """Phase20: 角色/场景分组种子（幂等，兼容 frozen 环境）"""
-    import hashlib
     char_root = ("char_root", "🎭 角色设定", "🎭")
     scene_root = ("scene_root", "🏞 场景设定", "🏞")
     char_subs = [
@@ -206,7 +222,7 @@ async def lifespan(app: FastAPI):
             migrate_atom()
         except Exception as e:
             log_warn(f"[main] atoms 表迁移跳过: {e}")
-        
+
         # Phase18: 插件框架数据库迁移（幂等）
         try:
             from db_migrate_phase18 import run_migration as run_p18_migration
@@ -214,7 +230,7 @@ async def lifespan(app: FastAPI):
             log_info("[main] Phase18 迁移完成")
         except Exception as e:
             log_warn(f"[main] Phase18 迁移跳过: {e}")
-        
+
         existing = safe_count_dict("SELECT COUNT(*) as cnt FROM prompts")
         if existing == 0:
             print("[初始化] 导入 %d 条内置提示词..." % get_builtin_count())
@@ -240,8 +256,9 @@ async def lifespan(app: FastAPI):
     try:
         from semantic import _ML_OK
         if _ML_OK:
-            from semantic import rebuild_all_embeddings, rebuild_wc_embeddings
             import threading
+
+            from semantic import rebuild_all_embeddings, rebuild_wc_embeddings
             t = threading.Thread(target=rebuild_all_embeddings, daemon=True)
             t.start()
             t2 = threading.Thread(target=rebuild_wc_embeddings, daemon=True)
@@ -360,8 +377,8 @@ async def lifespan(app: FastAPI):
                         return int(str(r[0]).strip()) if r and str(r[0]).strip() else dv
                     except Exception:
                         return dv
-                import logger as _lg
                 import breadcrumb_logger as _bc
+                import logger as _lg
                 _ld = _cfg_int('log_retention_days', 30)
                 _bd = _cfg_int('breadcrumb_retention_days', 14)
                 _n1 = _lg.clear_before(_ld) if _ld > 0 else 0
@@ -435,7 +452,8 @@ async def cache_control_middleware(request: Request, call_next):
 # ============ HTTP 请求记录中间件（v17: request_id + breadcrumb + body capture）============
 @app.middleware("http")
 async def record_request_middleware(request: Request, call_next):
-    import time as _time, uuid
+    import time as _time
+    import uuid
     t0 = _time.time()
     # Phase17: 生成请求ID — 关联前端行为 + 后端日志 + 错误面包屑
     request_id = request.headers.get("X-Request-ID", "") or uuid.uuid4().hex[:12]
@@ -514,34 +532,46 @@ app.include_router(presence_router)  # Phase34 实时在线状态
 
 # Phase23: 团队协作 — 用户认证
 from auth import router as auth_router
+
 app.include_router(auth_router)
 from api.users import router as users_router
+
 app.include_router(users_router)
 from audit import router as audit_router  # Phase35 用户活动审计日志
+
 app.include_router(audit_router)
 from api.asset_library import router as asset_library_router  # Phase35.1 项目资产库
+
 app.include_router(asset_library_router)
 from api.asset_review import router as asset_review_router  # Phase35.2 版本/审核/成员
+
 app.include_router(asset_review_router)
 from api.project_roles import router as project_roles_router  # Phase36.2 项目角色/场景实例
+
 app.include_router(project_roles_router)
 # Phase35.3 设备盘索引（Agent通道 + 管理通道）
 from api.device_index import agent_router, mgmt_router
+
 app.include_router(agent_router)
 app.include_router(mgmt_router)
 from api.cover_api import router as cover_router
+
 app.include_router(cover_router)
 # Phase35.3-DAM 归档管理
 from api.dam_archive import router as dam_router
+
 app.include_router(dam_router)
 # Phase35.3-DAM 检索增强
 from api.dam_search import router as dam_search_router
+
 app.include_router(dam_search_router)
 # Phase35.3c 版本/分层/自检/备份
 from api.dam_vault import router as dam_vault_router
+
 app.include_router(dam_vault_router)
 # v5.22.1: 许可激活（主机绑定+秘钥）
 from api.license import router as license_router
+
 app.include_router(license_router)
 
 # Phase18: 插件系统由 lifespan 初始化（db/app 就绪后）
@@ -742,7 +772,8 @@ if os.path.exists(TOOLS_DIR):
 
 # 确保静态 JS/CSS 文件以 UTF-8 编码提供（修复中文乱码）
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+
+
 class _UTF8StaticMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)

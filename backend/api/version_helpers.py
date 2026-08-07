@@ -9,7 +9,6 @@
 """
 import json
 
-
 # prompt_versions 表存档时全部10字段
 ARCHIVE_FIELDS = [
     "content", "meaning", "scene", "module", "category",

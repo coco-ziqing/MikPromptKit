@@ -2,11 +2,14 @@
 v5.1.0: 场景设定组装器 — 环境/场景提示词工业化装配
 从 word_card 词库中各维度选取词条，自动拼接为完整场景提示词
 """
-import json, re
-from fastapi import APIRouter, HTTPException, Body
-from pydantic import BaseModel
-from database import get_db, safe_commit
+import json
 from typing import Optional
+
+from fastapi import APIRouter, Body, HTTPException
+from pydantic import BaseModel
+import sqlite3
+
+from database import get_db, safe_commit
 
 router = APIRouter(prefix="/api/scene-composer", tags=["scene-composer"])
 

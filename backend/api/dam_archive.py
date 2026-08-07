@@ -1,15 +1,17 @@
-# -*- coding: utf-8 -*-
 """
 Phase35.3-DAM 归档管理 API
 - 归档（拷贝+压缩+去重+代理）  - 还原  - 搜索
 - 项目快照  - 归档策略  - 存储统计  - 通知
 """
-import os, sys, json, time, shutil, sqlite3, hashlib
+import json
+import os
+import sqlite3
+import sys
+import time
 from datetime import datetime
-from fastapi import APIRouter, Request, HTTPException, Query, Body, Header, UploadFile, File
-from jwt_auth import require_role
-from fastapi.responses import JSONResponse, FileResponse
-from typing import Optional
+
+from fastapi import APIRouter, Body, File, Header, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..", "..")
@@ -23,11 +25,7 @@ PROXY_ROOT = os.path.join(ARCHIVE_ROOT, "proxy")
 os.makedirs(PROXY_ROOT, exist_ok=True)
 
 sys.path.insert(0, os.path.join(HERE, ".."))
-from archive_engine import (
-    do_full_archive, restore_from_blob, compute_fingerprint,
-    compress_file, generate_proxy, add_to_blob_store, remove_from_blob_store,
-    cleanup_temp, TEMP_ROOT
-)
+from archive_engine import TEMP_ROOT, do_full_archive, remove_from_blob_store, restore_from_blob
 
 router = APIRouter(prefix="/api/dam", tags=["DAM归档管理"])
 
@@ -56,11 +54,19 @@ def _safe_commit(c):
 
 def _get_user(request: Request):
     try:
-        from jwt_auth import get_current_user, require_role
+        from jwt_auth import get_current_user
         u = get_current_user(request)
         if u and u.get("authenticated"): return u
     except Exception: pass
     return None
+
+
+def _req_admin(request: Request):
+    """管理员权限校验（DAM 归档管理端点）"""
+    u = _get_user(request)
+    if not u or u.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    return u
 
 # ════════════════════════════════════════
 # 1. 归档上传（浏览器直接上传文件到资料库）

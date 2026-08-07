@@ -1,6 +1,11 @@
-# -*- coding: utf-8 -*-
 """Phase35.3b Agent集成测试：配对→IN→首扫上报→心跳→增量检测"""
-import os, sys, json, urllib.request, time, tempfile, shutil
+import json
+import os
+import shutil
+import sys
+import tempfile
+import urllib.request
+
 sys.path.insert(0, "backend")
 from jwt_auth import generate_test_token
 
@@ -47,6 +52,7 @@ chk("心跳", st==200)
 
 # 4. 模拟 Agent 首扫：扫描目录 → 算指纹 → batch 上报
 import hashlib
+
 items = []
 for fn in os.listdir(TMP):
     fp = os.path.join(TMP, fn)

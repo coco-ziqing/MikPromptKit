@@ -5,12 +5,12 @@
 - 管理：列表/删除/清理
 - 改进：智能压缩 / verify 端点 / 包列表快速扫描
 """
-import os
 import io
 import json
-import zipfile
+import os
 import shutil
 import time
+import zipfile
 from datetime import datetime
 from typing import Optional
 
@@ -348,7 +348,7 @@ def restore_package(pkg_name: str, backup_first: bool = True) -> dict:
 
             # 4. 重新初始化
             try:
-                from database import init_db, get_db
+                from database import init_db
                 init_db()
             except Exception:
                 pass

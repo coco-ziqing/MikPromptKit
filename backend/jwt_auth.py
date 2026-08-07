@@ -6,13 +6,13 @@ Phase21 团队版: 启用强制验证
 用法: 在 main.py 中 app.add_middleware(...)
 """
 
-import time
-import os
+import base64
 import hashlib
 import hmac
-import base64
 import json
-from typing import Optional, Dict
+import os
+import time
+from typing import Optional
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -20,7 +20,8 @@ from starlette.responses import JSONResponse
 
 # 日志
 try:
-    from logger import info as log_info, debug as log_debug
+    from logger import debug as log_debug
+    from logger import info as log_info
 except ImportError:
     log_info = lambda m: print(f"[JWT] {m}")
     log_debug = lambda m: None
@@ -33,6 +34,7 @@ except ImportError:
 # 服务端密钥 — 优先级: 环境变量 > 持久化文件(data/.jwt_secret) > 首次生成并落盘
 # (零配置体验不变, 且重启不会使已签发 token 失效)
 import secrets as _secrets
+
 
 def _load_or_create_secret() -> str:
     """环境变量优先; 其次 data/.jwt_secret; 都没有则生成并持久化"""
@@ -47,7 +49,7 @@ def _load_or_create_secret() -> str:
     secret_path = os.path.join(data_dir, ".jwt_secret")
     try:
         if os.path.exists(secret_path):
-            with open(secret_path, "r", encoding="utf-8") as f:
+            with open(secret_path, encoding="utf-8") as f:
                 v = f.read().strip()
             if v:
                 return v
@@ -103,15 +105,15 @@ def create_jwt(payload: dict, secret: str = None) -> str:
     """
     if secret is None:
         secret = _JWT_SECRET
-    
+
     header = {"alg": _JWT_ALGORITHM, "typ": "JWT"}
     header_b64 = _base64url_encode(json.dumps(header, separators=(",", ":")).encode())
     payload_b64 = _base64url_encode(json.dumps(payload, separators=(",", ":")).encode())
-    
+
     signing_input = f"{header_b64}.{payload_b64}"
     signature = hmac.new(secret.encode(), signing_input.encode(), hashlib.sha256).digest()
     sig_b64 = _base64url_encode(signature)
-    
+
     return f"{signing_input}.{sig_b64}"
 
 
@@ -121,33 +123,33 @@ def verify_jwt(token: str, secret: str = None) -> Optional[dict]:
     """
     if secret is None:
         secret = _JWT_SECRET
-    
+
     try:
         parts = token.split(".")
         if len(parts) != 3:
             return None
-        
+
         header_b64, payload_b64, sig_b64 = parts
-        
+
         # 验证签名
         signing_input = f"{header_b64}.{payload_b64}"
         expected_sig = hmac.new(secret.encode(), signing_input.encode(), hashlib.sha256).digest()
         actual_sig = _base64url_decode(sig_b64)
-        
+
         if not hmac.compare_digest(expected_sig, actual_sig):
             return None
-        
+
         # 解码 payload
         payload_json = _base64url_decode(payload_b64)
         payload = json.loads(payload_json)
-        
+
         # 验证过期
         exp = payload.get("exp", 0)
         if exp and exp < time.time():
             return None
-        
+
         return payload
-    
+
     except Exception:
         return None
 
@@ -166,13 +168,13 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     4. Phase18: 验证失败不拒绝请求（用户保持匿名）
     5. Phase21: _ENFORCE_AUTH=True → 验证失败返回 401
     """
-    
+
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        
+
         # 检查是否为公开路径
         is_public = path in _PUBLIC_EXACT or any(path.startswith(p) for p in _PUBLIC_PATHS)
-        
+
         # 初始化 user 状态
         user = {
             "id": 1,      # 默认管理员
@@ -180,7 +182,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             "role": "admin",
             "authenticated": False,
         }
-        
+
         # 提取 token
         token = None
         auth_header = request.headers.get("Authorization", "")
@@ -188,7 +190,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             token = auth_header[7:]
         else:
             token = request.cookies.get("pk_token", "")
-        
+
         # 验证 token
         if token:
             payload = verify_jwt(token)
@@ -206,11 +208,11 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
                         {"detail": "登录已过期，请重新登录"},
                         status_code=401
                     )
-        
+
         # 注入到 request.state
         request.state.user = user
         request.state.user_id = user["id"]
-        
+
         response = await call_next(request)
         return response
 
@@ -219,7 +221,8 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
 # FastAPI 依赖注入
 # ============================================================
 
-from fastapi import Depends, HTTPException
+from fastapi import HTTPException
+
 
 def require_role(*roles: str):
     """

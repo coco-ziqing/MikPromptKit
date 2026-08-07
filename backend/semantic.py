@@ -6,12 +6,11 @@
 - 余弦相似度搜索
 - 无 numpy/sentence-transformers 时优雅降级
 """
-import os
-import time
 import json
-import re
-import sqlite3
+import os
 import threading
+import time
+
 from database import get_db
 
 # ---- 网络加速：优先使用国内 HuggingFace 镜像 ----

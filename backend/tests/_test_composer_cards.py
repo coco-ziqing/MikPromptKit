@@ -1,6 +1,9 @@
-# -*- coding: utf-8 -*-
 """组装器词卡入口全面验证（父分组递归修复回归）"""
-import urllib.request, json, io, sys
+import io
+import json
+import sys
+import urllib.request
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 BASE = 'http://127.0.0.1:8080'
 PASS=[];FAIL=[]

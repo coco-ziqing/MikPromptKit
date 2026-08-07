@@ -14,11 +14,19 @@
      → LLM结构化解析 → 预览确认 → 保存缩略图+创建词条
 ================================================================================
 """
-import os, io, uuid, json, base64, datetime, re, asyncio
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from pydantic import BaseModel
-from database import get_db, safe_commit
+import asyncio
+import base64
+import datetime
+import json
+import os
+import re
+import uuid
+
 import httpx
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from pydantic import BaseModel
+
+from database import get_db
 
 router = APIRouter(prefix="/api/v2/ocr", tags=["ocr"])
 
@@ -103,8 +111,9 @@ def _layout_analysis(image_bytes: bytes):
 
     v3.10.25: 改用亮度梯度检测，支持深色背景截图
     """
-    from PIL import Image, ImageOps
     import io as _io
+
+    from PIL import Image, ImageOps
 
     img = Image.open(_io.BytesIO(image_bytes))
     try:
@@ -403,8 +412,9 @@ def _save_temp_file(data: bytes, prefix: str, ext: str = ".jpg") -> str:
 
 def _save_thumbnail(image_bytes: bytes) -> tuple:
     """保存缩略图 + 原图到媒体库，返回 (thumb_filename, orig_filename)"""
-    from PIL import Image
     import io as _io
+
+    from PIL import Image
     base_name = uuid.uuid4().hex
     # 原图
     orig_filename = f"ocr_{base_name}_orig.jpg"

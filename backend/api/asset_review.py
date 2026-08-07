@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Phase35.2 版本管理 + 验证审核 + 团队协作成员 API
 
@@ -10,14 +9,23 @@ Phase35.2 版本管理 + 验证审核 + 团队协作成员 API
   - can_manage : owner|admin（成员增删）
 审核状态流：draft → in_review →(approve) approved / (reject) rejected
 """
-import os, sqlite3, subprocess, json
-from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form, Body
+import json
+import os
+import subprocess
+
+from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from api.asset_library import (
-    _db, _auth, _project_abs, _fingerprint, _safe_name, _modules_map,
-    DATA_DIR, THUMB_DIR,
+    THUMB_DIR,
+    _auth,
+    _db,
+    _fingerprint,
+    _modules_map,
+    _project_abs,
+    _safe_name,
 )
+
 try:
     from audit import record_audit
 except Exception:

@@ -1,8 +1,12 @@
-# -*- coding: utf-8 -*-
 """PhaseB Presence增强回归"""
-import sys,json,urllib.request,urllib.error
+import json
+import sys
+import urllib.error
+import urllib.request
+
 sys.path.insert(0,"backend")
 from jwt_auth import generate_test_token
+
 BASE="http://127.0.0.1:8080"
 A=generate_test_token(1,"admin","admin")
 E=generate_test_token(2,"editor1","editor")

@@ -36,13 +36,13 @@ def run():
     db = get_db()
     total_new_libs = 0
     total_new_cards = 0
-    
+
     for lib_type, dim_key in DIM_MAP.items():
         # 检查 prompt_library 是否已有
         existing_lib = db.execute(
             "SELECT id FROM prompt_library WHERE dimension_key=?", (dim_key,)
         ).fetchone()
-        
+
         if existing_lib:
             lib_id = existing_lib['id']
             print(f'[已存在] prompt_library: {dim_key} (id={lib_id})')
@@ -56,19 +56,19 @@ def run():
             lib_id = cur.lastrowid
             total_new_libs += 1
             print(f'[新建] prompt_library: {dim_key} (id={lib_id})')
-        
+
         # 获取 library_assets 中该类型所有条目
         assets = db.execute(
             "SELECT name, prompt, definition FROM library_assets WHERE lib_type=? ORDER BY sort_order",
             (lib_type,)
         ).fetchall()
-        
+
         # 检查已存在哪些词卡
         existing_words = db.execute(
             "SELECT word_text FROM prompt_word_card WHERE library_id=?", (lib_id,)
         ).fetchall()
         existing_set = set(r['word_text'] for r in existing_words)
-        
+
         new_count = 0
         for a in assets:
             word = a['name']
@@ -80,17 +80,17 @@ def run():
                 VALUES (?, ?, ?, 1, 0)
             """, (lib_id, word, a['prompt']))
             new_count += 1
-        
+
         if new_count > 0:
             total_new_cards += new_count
             print(f'  -> 新增 {new_count} 个词卡')
         else:
             print(f'  -> 无新增词卡')
-        
+
         safe_commit()
-    
+
     print(f'\n[完成] 新建词库: {total_new_libs} 个, 新增词卡: {total_new_cards} 个')
-    
+
     # 打印所有 prompt_library
     rows = db.execute("SELECT id, dimension_key, dimension_name FROM prompt_library ORDER BY sort_order, id").fetchall()
     print(f'\n当前所有 Seedance 词库:')

@@ -3,10 +3,13 @@ API 路由 — 提示词 CRUD、搜索、统计（加固版）
 """
 import os
 import traceback
-from fastapi import APIRouter, Query, HTTPException
+
+from fastapi import APIRouter, HTTPException, Query
+
 from database import get_db
+
 # 2026-08-02 诊断升级: 接入日志引擎
-from logger import info, warn, debug
+from logger import debug, info, warn
 
 router = APIRouter(prefix="/api", tags=["prompts"])
 
@@ -184,8 +187,9 @@ def create_prompt(data: dict):
         info(f"创建提示词 #{new_id} (模块={data.get('module','custom')})", source="prompts", path="/api/prompts")
         # 新建提示词时异步更新语义搜索向量
         try:
-            from semantic import update_embedding
             import threading
+
+            from semantic import update_embedding
             threading.Thread(target=update_embedding, args=(new_id, content), daemon=True).start()
         except Exception as e:
             warn(f"提示词 #{new_id} embedding 线程启动失败: {e}", source="prompts")
@@ -233,8 +237,9 @@ def update_prompt(prompt_id: int, data: dict):
         info(f"更新提示词 #{prompt_id} (字段数={len(fields)})", source="prompts", path=f"/api/prompts/{{prompt_id}}")
         # 异步更新语义搜索向量（不阻塞保存响应）
         try:
-            from semantic import update_embedding
             import threading
+
+            from semantic import update_embedding
             threading.Thread(target=update_embedding, args=(prompt_id,), daemon=True).start()
         except Exception as e:
             warn(f"提示词 #{prompt_id} embedding 线程启动失败: {e}", source="prompts")

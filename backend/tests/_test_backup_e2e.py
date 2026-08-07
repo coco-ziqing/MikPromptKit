@@ -1,6 +1,14 @@
-# -*- coding: utf-8 -*-
 """Phase35.3c 备份端到端"""
-import os,sys,json,urllib.request,urllib.error,time,hashlib,tempfile,shutil
+import hashlib
+import json
+import os
+import shutil
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
 sys.path.insert(0,"backend")
 from jwt_auth import generate_test_token
 
@@ -53,6 +61,7 @@ ck("上报",st==200 and d.get("new")==1)
 st,d=call("GET","/api/devices/{}/files?state=new".format(DID))
 fid=d["items"][0]["id"]
 from database import get_db
+
 psid=(get_db().execute("SELECT id FROM project_space ORDER BY id LIMIT 1").fetchone()or{"id":1})["id"]
 st,d=call("POST","/api/devices/files/{}/archive".format(fid),
     {"project_space_id":psid,"module_key":"project_c4d","is_critical":1})

@@ -4,11 +4,14 @@ v4.0.0-phase12.3: AI 自动标签 & 分类
 - 新建/编辑词条时一键自动填充元数据
 - 支持批量分析
 """
-import json, asyncio
+import asyncio
+import json
+
 from fastapi import APIRouter
 from pydantic import BaseModel
+
 from database import get_db
-from ollama_client import ollama_chat, extract_json, get_model_for
+from ollama_client import extract_json, ollama_chat
 
 router = APIRouter(prefix="/api/ai/auto-tag", tags=["auto_tag"])
 

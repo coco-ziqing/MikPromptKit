@@ -1,9 +1,11 @@
 """
 标签管理 API
 """
-from fastapi import APIRouter
-from database import get_db, safe_commit
 import json
+
+from fastapi import APIRouter
+
+from database import get_db, safe_commit
 
 router = APIRouter(prefix="/api/v2/tags", tags=["tags"])
 

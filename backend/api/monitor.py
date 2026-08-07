@@ -2,7 +2,13 @@
 v4.0.0-phase12: Service Runtime Monitor API
 服务启动监测 — 实时运行时指标 + 健康状态 + 请求统计
 """
-import os, sys, time, json, asyncio, threading, datetime, socket
+import datetime
+import os
+import socket
+import sys
+import threading
+import time
+
 from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/api/monitor", tags=["monitor"])
@@ -178,8 +184,16 @@ def get_runtime():
 async def get_health_snapshot(timeout: float = Query(5.0, ge=1.0, le=10.0)):
     """快速健康快照（含后台监听状态 + 轻量自检）"""
     from health import (
-        _check_ollama, _check_comfyui, _check_semantic, _check_ffmpeg,
-        _check_pillow, _check_database, _check_disk, _check_self_reachable, _check_playground_llm, _check_wal_integrity,
+        _check_comfyui,
+        _check_database,
+        _check_disk,
+        _check_ffmpeg,
+        _check_ollama,
+        _check_pillow,
+        _check_playground_llm,
+        _check_self_reachable,
+        _check_semantic,
+        _check_wal_integrity,
     )
 
     # 并行检测（不阻塞）
@@ -250,8 +264,16 @@ async def get_dashboard(timeout: float = Query(5.0, ge=1.0, le=10.0)):
 
     # 健康状态
     try:
-        from health import _check_database, _check_pillow, _check_disk, _check_self_reachable, _check_ffmpeg, _check_wal_integrity
-        from health import _check_ollama, _check_comfyui
+        from health import (
+            _check_comfyui,
+            _check_database,
+            _check_disk,
+            _check_ffmpeg,
+            _check_ollama,
+            _check_pillow,
+            _check_self_reachable,
+            _check_wal_integrity,
+        )
 
         health_snapshot = {}
         for fn, key in [

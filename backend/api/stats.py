@@ -2,10 +2,12 @@
 统计仪表盘 API
 提供各模块使用频率 TOP、趋势、标签分布等数据聚合
 """
-from fastapi import APIRouter
-from database import get_db
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
+
+from fastapi import APIRouter
+
+from database import get_db
 
 router = APIRouter(prefix="/api/v2/stats", tags=["stats"])
 

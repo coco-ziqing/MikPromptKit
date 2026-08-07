@@ -1,12 +1,14 @@
-# -*- coding: utf-8 -*-
 """
 migrate_atom_tables.py — V2 提示词原子化全链路 · DB 建表 (2026-06-24)
 创建 3 张核心表 + 索引 + MD5 缓存支持
 幂等执行（IF NOT EXISTS），可重复运行
 """
-import sqlite3, os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(__file__))
-from database import get_db, safe_execute, safe_commit
+from database import get_db, safe_commit, safe_execute
+
 
 def migrate():
     db = get_db()

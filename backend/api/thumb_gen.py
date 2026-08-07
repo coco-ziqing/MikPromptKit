@@ -2,9 +2,12 @@
 公共图片落库模块 — 生成图片（即梦/LibTV/未来引擎）统一保存为词卡缩略图
 从 dreamina.py 提取（2026-08-06）：save_generated_image 为多引擎共用链路
 """
-import os, uuid
-from database import get_db, safe_commit
+import os
+import uuid
+
 from PIL import Image
+
+from database import get_db, safe_commit
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 THUMB_DIR = os.path.join(_PROJECT_ROOT, "data", "thumbnails")

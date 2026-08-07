@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Phase35.3 — 设备盘索引 API（Agent通道 + 管理通道）
 
@@ -8,11 +7,18 @@ Agent 通道：/api/device/* （X-Device-Token 鉴权，独立于 JWT）
 管理通道：/api/devices/* （JWT，owner 管自己 / admin 管全部）
   WebUI 管理面板：设备列表/配对码/监控路径/文件索引/归档/告警
 """
-import os, sys, sqlite3, json, time, threading, hashlib, random, string, shutil, socket
-from datetime import datetime
-from fastapi import APIRouter, Request, HTTPException, Query, Body, Header
-from fastapi.responses import JSONResponse
+import hashlib
+import json
+import os
+import random
+import socket
+import sqlite3
+import string
+import time
 from typing import Optional
+
+from fastapi import APIRouter, Body, Header, HTTPException, Query, Request
+
 from jwt_auth import require_role
 
 # ── 路径 ──
@@ -28,6 +34,7 @@ os.makedirs(BACKUP_ROOT, exist_ok=True)
 # ── 双路由 ──
 agent_router = APIRouter(prefix="/api/device", tags=["设备Agent"])
 from fastapi import Depends
+
 mgmt_router  = APIRouter(prefix="/api/devices", tags=["设备管理面板"], dependencies=[Depends(require_role("admin"))])
 
 # ── DB 辅助 ──

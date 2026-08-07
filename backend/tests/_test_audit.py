@@ -1,6 +1,10 @@
-# -*- coding: utf-8 -*-
 """Phase35 审计日志端到端测试：注册/登录/失败/管理操作 → 审计入库 → 管理员查询。"""
-import sys, json, urllib.request, urllib.error, time
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
 sys.path.insert(0, "backend")
 from jwt_auth import generate_test_token
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Phase16-v5.2.0: atom_filler — 原子化词卡智能填充引擎
 
@@ -11,10 +10,13 @@ Phase16-v5.2.0: atom_filler — 原子化词卡智能填充引擎
 
 数据源: atom_asset_library (Phase16-v5.2.0 统一资产表, 928条)
 """
-import json, re, hashlib
-from fastapi import APIRouter, Query, HTTPException, Body
+import json
+import re
+from typing import List, Optional
+
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional, List
+
 from database import get_db, safe_fetch_one
 
 router = APIRouter(prefix="/api/composer", tags=["atom-filler"])

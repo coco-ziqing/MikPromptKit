@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 DAM 统一搜索 & 检索增强 API
 - 跨项目/跨设备/跨文件类型的统一搜索
@@ -6,9 +5,13 @@ DAM 统一搜索 & 检索增强 API
 - 感知哈希相似搜索
 - 智能合集 CRUD
 """
-import os, sys, json, time, sqlite3
-from fastapi import APIRouter, Request, HTTPException, Query, Body
-from typing import Optional
+import json
+import os
+import sqlite3
+import sys
+import time
+
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..", "..")
@@ -19,11 +22,15 @@ except Exception:
     DB = os.path.join(ROOT, "data", "prompts.db")
 sys.path.insert(0, os.path.join(HERE, ".."))
 
-from ai_tagger import analyze_file, batch_tag_unlabeled, enqueue_tag_analysis
+from ai_tagger import batch_tag_unlabeled, enqueue_tag_analysis
 from sim_search import (
-    compute_phash, find_duplicates, find_exact_duplicate,
-    create_smart_collection, get_smart_collections, execute_smart_collection,
-    delete_smart_collection, ensure_smart_collection_table
+    compute_phash,
+    create_smart_collection,
+    delete_smart_collection,
+    ensure_smart_collection_table,
+    execute_smart_collection,
+    find_duplicates,
+    get_smart_collections,
 )
 
 router = APIRouter(prefix="/api/search", tags=["DAM检索增强"])

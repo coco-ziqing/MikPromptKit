@@ -3,7 +3,6 @@
 Phase 14.1: 从 seedance_v2.py 提取 6 个核心函数 + 2 个映射表
 Phase 16: 集成 atom_asset_library 智能原子填充
 """
-import re
 
 # ==================== 分辨率映射表 ====================
 RESOLUTION_MAP = {

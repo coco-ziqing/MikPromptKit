@@ -3,9 +3,11 @@ API 路由 — Phase 1: 统一提示词卡 + 词库资产 API
 兼容旧 prompts 表接口，逐步过渡到新 prompt_cards 表
 """
 import json
-from fastapi import APIRouter, Query, HTTPException
+
+from fastapi import APIRouter, HTTPException, Query
+
+from api.version_helpers import build_diff, compute_next_version
 from database import get_db, safe_commit
-from api.version_helpers import compute_next_version, archive_current, build_diff, parse_tags_safe
 
 router = APIRouter(prefix="/api/v4", tags=["v4-cards"])
 
@@ -27,7 +29,7 @@ def list_cards(
     db = get_db()
     where = ['pc.is_deleted=0']
     params = []
-    
+
     if card_type and card_type != 'all':
         where.append('pc.card_type=?')
         params.append(card_type)
@@ -41,19 +43,19 @@ def list_cards(
         where.append('(pc.content LIKE ? OR pc.meaning LIKE ? OR pc.name LIKE ? OR pc.tags LIKE ?)')
         s = f'%{search}%'
         params.extend([s, s, s, s])
-    
+
     w = ' AND '.join(where)
     sort_col = sort if sort in ['created_at','usage_count','updated_at','name'] else 'created_at'
     sort_dir = 'DESC' if order == 'desc' else 'ASC'
-    
+
     total = db.execute(f'SELECT COUNT(*) as c FROM prompt_cards pc WHERE {w}', params).fetchone()['c']
-    
+
     offset = (page - 1) * page_size
     rows = db.execute(
         f'SELECT * FROM prompt_cards pc WHERE {w} ORDER BY pc.{sort_col} {sort_dir} LIMIT ? OFFSET ?',
         params + [page_size, offset]
     ).fetchall()
-    
+
     # 批量预取关联数据（消除N+1: 50条卡片从150次查询→3次）
     card_ids = [r['id'] for r in rows]
     thumbs_map = {}; videos_map = {}; colls_map = {}
@@ -93,7 +95,7 @@ def list_cards(
             item['media_type'] = 'video'
         item['collections'] = colls_map.get(tid, [])
         items.append(item)
-    
+
     total_pages = max(1, -(-total // page_size))
     return {'ok': True, 'items': items, 'total': total, 'total_pages': total_pages, 'page': page, 'page_size': page_size}
 
@@ -110,7 +112,7 @@ def get_card(card_id: int):
     item['tags'] = item.get('tags') or '[]'
     lib_refs = json.loads(item.get('library_refs') or '[]')
     item['library_refs'] = lib_refs
-    
+
     # 批量1: media + versions + usage 合并查询
     # 2026-08-02 修复: UNION ALL 分量内不允许 ORDER BY/LIMIT（SQLite 语法错误），排序移到 Python 侧
     combined = db.execute("""
@@ -145,7 +147,7 @@ def get_card(card_id: int):
                 d['field'] = ref.get('field', '')
                 lib_details.append(d)
     item['library_details'] = lib_details
-    
+
     # 附加收藏信息
     item['collections'] = [dict(c) for c in db.execute(
         "SELECT c.id, c.name, c.icon FROM collections c "
@@ -162,7 +164,7 @@ def create_card(data: dict):
     sf = json.dumps(data.get('structured_fields', {}), ensure_ascii=False)
     tags = json.dumps(data.get('tags', []), ensure_ascii=False)
     lib_refs = json.dumps(data.get('library_refs', []), ensure_ascii=False)
-    
+
     cur = db.execute("""
         INSERT INTO prompt_cards 
             (card_type, name, content, meaning, scene, module, category,
@@ -268,7 +270,7 @@ def list_library(
     db = get_db()
     where = ['1=1']
     params = []
-    
+
     if lib_type:
         where.append('lib_type=?')
         params.append(lib_type)
@@ -279,10 +281,10 @@ def list_library(
         where.append('(name LIKE ? OR prompt LIKE ? OR definition LIKE ?)')
         s = f'%{search}%'
         params.extend([s, s, s])
-    
+
     w = ' AND '.join(where)
     rows = db.execute(f'SELECT * FROM library_assets WHERE {w} ORDER BY sort_order, id', params).fetchall()
-    
+
     items = [dict(r) for r in rows]
     return {'ok': True, 'items': items, 'total': len(items)}
 
@@ -309,7 +311,7 @@ def list_library_categories(lib_type: str = Query(None)):
     if lib_type:
         where.append('lib_type=?')
         params.append(lib_type)
-    
+
     rows = db.execute(f"""
         SELECT lib_type, category, icon, COUNT(*) as cnt 
         FROM library_assets WHERE {' AND '.join(where)}
@@ -357,13 +359,13 @@ def update_library_item(item_id: int, data: dict):
     if 'tags' in data:
         fields.append('tags=?')
         params.append(json.dumps(data['tags'], ensure_ascii=False))
-    
+
     if fields:
         fields.append("updated_at=datetime('now','localtime')")
         params.append(item_id)
         db.execute(f'UPDATE library_assets SET {",".join(fields)} WHERE id=?', params)
         safe_commit()
-    
+
     return {'ok': True}
 
 

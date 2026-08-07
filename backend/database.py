@@ -1,13 +1,13 @@
 """
 数据库模块 — SQLite 初始化与连接管理（加固版）
 """
-import sqlite3
 import os
-import sys
+import sqlite3
 import threading
 import time
+
+from logger import error as log_error
 from paths import get_data_dir, get_db_path
-from logger import info as log_info, warn as log_warn, error as log_error
 
 DB_DIR = get_data_dir()
 DB_PATH = get_db_path()

@@ -1,11 +1,14 @@
-# -*- coding: utf-8 -*-
 """
 T4 — DAM 归档层端到端验证（引擎级，直连 archive_engine，不走 HTTP 鉴权）。
 覆盖：压缩归档 -> 内容寻址去重 -> 还原字节校验 -> 引用计数 -> 清理归零。
 运行：从工作区根目录执行 python backend/tests/_test_dam_archive.py
 前置：不需要服务在线（引擎自持 DB 连接）。
 """
-import sys, os, io, hashlib
+import hashlib
+import io
+import os
+import sys
+
 sys.path.insert(0, "backend")
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
@@ -24,6 +27,7 @@ def sha(p):
     return h.hexdigest()
 
 import sqlite3
+
 DB = AE.DB
 def q(sql, p=()):
     c = sqlite3.connect(DB, timeout=5); c.row_factory = sqlite3.Row

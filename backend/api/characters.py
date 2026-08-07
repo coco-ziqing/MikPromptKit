@@ -2,9 +2,14 @@
 v4.0.0-phase10.1: Character Library API
 角色库 CRUD + 图片管理 + 镜头关联
 """
-import json, os, uuid, shutil
-from fastapi import APIRouter, Query, Body, HTTPException, UploadFile, File
+import json
+import os
+import shutil
+import uuid
+
+from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
+
 from database import get_db, safe_commit
 
 CHAR_IMG_DIR = os.path.join(

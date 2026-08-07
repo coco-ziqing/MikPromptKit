@@ -2,7 +2,9 @@
 API 路由 — Phase 3：Seedance 视频提示词组装器 + 画廊 + 模板引擎
 """
 import json
-from fastapi import APIRouter, Query, HTTPException, Body
+
+from fastapi import APIRouter, Body, HTTPException, Query
+
 from database import get_db
 
 router = APIRouter(prefix="/api/seedance", tags=["seedance"])

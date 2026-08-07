@@ -5,10 +5,12 @@
 - 恢复：回滚到指定版本
 - Diff：对比两个版本差异
 """
-from fastapi import APIRouter
-from database import get_db, safe_commit
 import json
-from api.version_helpers import compute_next_version, build_diff
+
+from fastapi import APIRouter
+
+from api.version_helpers import build_diff, compute_next_version
+from database import get_db, safe_commit
 
 router = APIRouter(prefix="/api/v2/versions", tags=["versions"])
 

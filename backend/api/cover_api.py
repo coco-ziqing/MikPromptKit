@@ -1,10 +1,15 @@
-# -*- coding: utf-8 -*-
 """
 封面内容管理 API — 首页封面页的标题/描述/图片可编辑存储
 表: app_cover_content
 """
-import json, os, sqlite3, time, shutil, uuid, base64, random
-from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File
+import base64
+import json
+import os
+import random
+import sqlite3
+import time
+
+from fastapi import APIRouter, Body, File, HTTPException, Request, UploadFile
 
 router = APIRouter(tags=["封面管理"], prefix="/api/cover")
 
@@ -231,7 +236,8 @@ def list_cover_gallery(media_type: str = ""):
 async def upload_cover_image(file: UploadFile = File(None)):
     """上传封面图片 — 复用 thumbnails 模块基础设施"""
     _ensure_table()
-    import shutil, uuid
+    import shutil
+    import uuid
     UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "frontend", "static", "img", "covers")
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 

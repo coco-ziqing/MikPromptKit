@@ -5,11 +5,13 @@ v4.0.0-phase12.1: 翻译引擎升级
 - 新增: 翻译列表管理 + 缓存清除
 - 统一 ollama_client 调用
 """
-import json, re
+import re
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+
 from database import get_db
-from ollama_client import ollama_generate, get_server_url, get_model_for, save_ollama_config
+from ollama_client import get_model_for, ollama_generate, save_ollama_config
 
 router = APIRouter(prefix="/api/translate", tags=["translate"])
 
@@ -121,7 +123,8 @@ TIER_COLS = {
 @router.get("/{prompt_id}")
 async def translate_single(prompt_id: int, target_lang: str = "zh", tier: str = "normal"):
     """翻译单条提示词（兼容 prompts 和 word_card 两表 + 三档内容）— Ollama 调用期间不持 DB 锁"""
-    import sqlite3, os
+    import os
+    import sqlite3
     db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data', 'prompts.db')
 
     tier = tier if tier in TIER_COLS else "normal"
@@ -219,7 +222,7 @@ async def translate_single(prompt_id: int, target_lang: str = "zh", tier: str = 
         if table == "word_card":
             conn2.execute(f"UPDATE word_card SET {col_lang}=? WHERE id=?", [translated, prompt_id])
         conn2.commit()
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         pass
     finally:
         if conn2:
@@ -255,7 +258,9 @@ async def translate_batch(data: BatchTranslateRequest):
     """
     批量翻译 — Phase17.4: Semaphore(2) 限流 + 总超时600s + 依赖 ollama_generate 内置重试
     """
-    import asyncio, sqlite3, os
+    import asyncio
+    import os
+    import sqlite3
 
     if not data.prompt_ids or len(data.prompt_ids) == 0:
         return {"ok": False, "error": "请提供待翻译的提示词ID列表"}
@@ -361,7 +366,7 @@ async def translate_batch(data: BatchTranslateRequest):
     async def _wrap_with_timeout(pid):
         try:
             return await asyncio.wait_for(_translate_one(pid), timeout=180.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return {"prompt_id": pid, "ok": False, "error": "翻译超时 (180s)"}
         except Exception as e:
             return {"prompt_id": pid, "ok": False, "error": str(e)[:200]}

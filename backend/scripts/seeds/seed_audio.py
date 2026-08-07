@@ -163,7 +163,7 @@ for dim_key, words in SEED_WORDS.items():
     if not lib_id:
         print(f"  [WARN] lib {dim_key} not found")
         continue
-    
+
     # 检查是否已有数据
     existing_count = db.execute(
         "SELECT COUNT(*) as cnt FROM prompt_word_card WHERE library_id=?", (lib_id,)
@@ -171,7 +171,7 @@ for dim_key, words in SEED_WORDS.items():
     if existing_count > 0:
         print(f"  [SKIP] {dim_key}: {existing_count} cards exist")
         continue
-    
+
     for i, (word_text, definition) in enumerate(words):
         db.execute(
             "INSERT INTO prompt_word_card (library_id, word_text, definition, heat_weight, is_system) VALUES (?,?,?,?,1)",

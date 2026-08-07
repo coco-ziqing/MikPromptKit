@@ -2,7 +2,8 @@
 Phase17: Breadcrumb Logger — 错误发生前的事件追溯
 在内存中保留最近 100 个事件，发生 error/fatal 时自动刷到 DB
 """
-import threading, json
+import json
+import threading
 from datetime import datetime
 
 _sessions = {}
@@ -77,5 +78,5 @@ def get_breadcrumbs(session_id: str, limit: int = 100):
             [session_id, limit]
         ).fetchall()
         return [dict(r) for r in rows]
-    except Exception as e:
+    except Exception:
         return []

@@ -1,17 +1,16 @@
 """
 API 路由 — Phase 2：收藏夹、词包、使用历史、导出、智能推荐、主题设置
 """
-import json
+import datetime
 import io
+import json
 import os
 import uuid
 import zipfile
-import datetime
-import sqlite3
-from fastapi import APIRouter, Query, HTTPException, Response, UploadFile, File, Form
-from pydantic import BaseModel
+
+from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
+
 from database import get_db, safe_commit
-import traceback
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
 
@@ -836,7 +835,11 @@ async def import_pt_package(
     """导入 .pt 包：解析元数据，写入数据库，还原缩略图/视频
     overrides: JSON 数组，按索引覆盖 metadata 中的 module/category/content
     """
-    import json, io, zipfile, os, uuid, shutil
+    import io
+    import json
+    import os
+    import uuid
+    import zipfile
 
     if conflict not in ("skip", "overwrite", "rename"):
         conflict = "skip"

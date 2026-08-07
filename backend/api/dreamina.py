@@ -2,10 +2,15 @@
 Dreamina（即梦）图片生成集成 — 词卡缩略图第二生成引擎
 通过本地 dreamina CLI 提交文生图任务，下载原图并生成为词卡缩略图（与 ComfyUI 引擎同落库链路）
 """
-import os, json, uuid, re, subprocess, time as _t, threading
+import json
+import os
+import re
+import subprocess
+
+import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
-import httpx
+
 from api.thumb_gen import save_generated_image  # 公共落库链路（2026-08-06 提取）
 
 router = APIRouter(prefix="/api/v2/dreamina", tags=["dreamina"])

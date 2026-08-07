@@ -2,8 +2,16 @@
 v4.0.0-phase11: Startup Health Check Engine
 服务启动自检 — 9项外部依赖检测 + 用户可配置跳过项
 """
-import json, os, sys, subprocess, asyncio, shutil, socket, re
+import asyncio
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
 from typing import Optional
+
 from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/api/health", tags=["health"])
@@ -151,7 +159,7 @@ async def _probe_comfy_url(url: str, timeout: float = 2.0):
                 }
     except Exception:
         pass
-    
+
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.get(f"{url}/")
@@ -163,7 +171,7 @@ async def _probe_comfy_url(url: str, timeout: float = 2.0):
                             "latency_ms": round(resp.elapsed.total_seconds() * 1000)}
     except Exception:
         pass
-    
+
     # 旧版兼容: /api/queue（仅 200 才算命中；404 不能证明是 ComfyUI，避免误判其他本地服务）
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -173,14 +181,14 @@ async def _probe_comfy_url(url: str, timeout: float = 2.0):
                         "latency_ms": round(resp.elapsed.total_seconds() * 1000)}
     except Exception:
         pass
-    
+
     return None
 
 
 async def _autodetect_comfyui(timeout: float = 2.0):
     """自动发现 ComfyUI 服务 — 支持桌面版（端口不固定）"""
     import subprocess
-    
+
     # ===== 方法1: netstat 扫描所有 127.0.0.1 监听端口 =====
     local_ports = []
     try:
@@ -199,13 +207,13 @@ async def _autodetect_comfyui(timeout: float = 2.0):
                         local_ports.append(port)
     except Exception:
         pass
-    
+
     # ===== 方法2: 补充已知 ComfyUI 端口 =====
     EXTRA = ['8188', '8189', '8190', '8191', '8000', '8001', '7860', '5000', '3000', '8088']
     for p in EXTRA:
         if p not in local_ports:
             local_ports.append(p)
-    
+
     # 逐个探测
     for port in local_ports:
         url = f"http://127.0.0.1:{port}"
@@ -271,7 +279,6 @@ def _check_semantic() -> dict:
         numpy_ver = None
 
     try:
-        from sentence_transformers import SentenceTransformer
         st_ok = True
         import importlib.metadata
         st_ver = importlib.metadata.version("sentence-transformers")
@@ -326,7 +333,8 @@ def _check_ffmpeg() -> dict:
 def _check_pillow() -> dict:
     """检测 Pillow 图片处理库"""
     try:
-        from PIL import Image, __version__ as pil_ver
+        from PIL import Image
+        from PIL import __version__ as pil_ver
         # 做一次基本操作验证
         img = Image.new("RGB", (16, 16), color="red")
         buf = img.tobytes()
@@ -339,7 +347,9 @@ def _check_pillow() -> dict:
 
 def _check_database() -> dict:
     """检测数据库读写 — 使用独立连接避免与主服务连接冲突"""
-    import sqlite3, time, os
+    import os
+    import sqlite3
+    import time
     try:
         from paths import get_db_path
         db_path = get_db_path()
@@ -469,7 +479,8 @@ def _check_self_reachable() -> dict:
 
 def _check_wal_integrity() -> dict:
     """检测 SQLite WAL 完整性 — 独立连接，避免与主服务锁冲突"""
-    import sqlite3, os
+    import os
+    import sqlite3
     try:
         from paths import get_db_path
         db_path = get_db_path()
@@ -511,8 +522,9 @@ def _check_playground_llm() -> dict:
         if not model:
             return {"ok": True, "skipped": True, "reason": "LLM Playground 未配置 Ollama 模型", "provider": "ollama"}
         try:
-            import httpx
             import asyncio
+
+            import httpx
             # 用 /api/show 检测特定模型是否存在
             async def _probe():
                 async with httpx.AsyncClient(timeout=5) as client:
@@ -632,7 +644,7 @@ async def health_check_single(
         "pillow": (lambda: _check_pillow(), False),
         "db": (lambda: _check_database(), False),
         "disk": (lambda: _check_disk(), False),
-        "port": (lambda: _check_port(), False),
+        "port": (lambda: _check_self_reachable(), False),
         "llm": (lambda: _check_playground_llm(), False),
     }
     if item not in mapping:
@@ -680,7 +692,9 @@ async def _ping_ollama() -> dict:
     """轻量 ping Ollama（只测连通性 + 延迟）"""
     cfg = _get_ollama_cfg()
     url = (cfg.get("server_url") or DEFAULT_OLLAMA_URL).rstrip("/")
-    import httpx, time as _time
+    import time as _time
+
+    import httpx
     t0 = _time.time()
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
@@ -701,7 +715,9 @@ async def _ping_comfyui() -> dict:
     if not cfg.get("enabled", True):
         return {"ok": True, "skipped": True, "url": "", "error": "已禁用", "latency_ms": 0}
     url = (cfg.get("server_url") or DEFAULT_COMFY_URL).rstrip("/")
-    import httpx, time as _time
+    import time as _time
+
+    import httpx
     t0 = _time.time()
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:

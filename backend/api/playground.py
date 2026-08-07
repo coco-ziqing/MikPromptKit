@@ -5,12 +5,15 @@ v4.2.2-phase15: Playground 深度升级 — 15模型预设×8优化方向
 - 优化方向: 格式转换/细节增强/精简压缩/负面提词/质量分析/多语言翻译/风格迁移/批量变体
 - 智能 system prompt 模板引擎 + 一键保存到词卡库
 """
-import json, time, hashlib
+import json
+import time
+
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
 from database import get_db
-from ollama_client import ollama_chat, ollama_stream, get_model_for, get_server_url
+from ollama_client import ollama_chat, ollama_stream
 
 router = APIRouter(prefix="/api/playground", tags=["playground"])
 
@@ -454,7 +457,7 @@ class APIKeyUpdate(BaseModel):
 @router.get("/ai-config")
 def get_ai_provider_config():
     """获取全局 AI 提供商配置（主模型选择，密钥已脱敏）"""
-    from ollama_client import get_ai_config, _get_decrypted_kimi_key
+    from ollama_client import _get_decrypted_kimi_key, get_ai_config
     cfg = get_ai_config()
     kimi_ready = bool(_get_decrypted_kimi_key())
     return {
@@ -595,7 +598,7 @@ def test_api_key(provider: str):
         return {"ok": False, "error": "解密失败"}
     url_row = db.execute("SELECT value FROM config WHERE key=?",[f"{provider}_base_url"]).fetchone()
     base = (url_row[0] if url_row else "https://api.openai.com/v1").rstrip('/')
-    
+
     try:
         import httpx
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
@@ -674,6 +677,7 @@ async def test_prompt(data: TestRequest):
         # OpenAI 兼容 API（含 Kimi/Moonshot 等兼容服务）
         try:
             import httpx
+
             from ollama_client import _get_decrypted_kimi_key
             if provider == "kimi":
                 base_url = cfg.get("kimi_url", "https://api.moonshot.cn/v1")

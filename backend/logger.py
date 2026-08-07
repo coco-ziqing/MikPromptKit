@@ -2,9 +2,10 @@
 v4.3.0-phase16: Runtime Logging Engine
 结构化日志 — SQLite 存储 + 级别过滤 + 来源标签 + 调用栈 + 前端实时流
 """
-import traceback, json, time, threading, asyncio
+import json
+import threading
+import traceback
 from datetime import datetime
-from typing import Optional
 
 LEVELS = {"debug": 0, "info": 1, "warn": 2, "error": 3, "fatal": 4}
 LEVEL_LABELS = {0: "DEBUG", 1: "INFO", 2: "WARN", 3: "ERROR", 4: "FATAL"}
@@ -221,7 +222,7 @@ async def stream_generator():
             try:
                 entry = await asyncio.wait_for(q.get(), timeout=15)
                 yield f"data: {json.dumps(entry, ensure_ascii=False)}\n\n"
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 yield ": heartbeat\n\n"
     except GeneratorExit:
         pass

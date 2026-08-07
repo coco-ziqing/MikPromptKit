@@ -1,6 +1,10 @@
-# -*- coding: utf-8 -*-
 """Phase35.3a 回归测试"""
-import sys, json, urllib.request, urllib.error, time
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
 sys.path.insert(0, "backend")
 from jwt_auth import generate_test_token
 
@@ -110,6 +114,7 @@ check("改名200", st==200)
 
 # === 9 归档 ===
 from database import get_db
+
 db = get_db()
 proj_space = db.execute("SELECT id FROM project_space ORDER BY id LIMIT 1").fetchone()
 psid = proj_space["id"] if proj_space else 1

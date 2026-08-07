@@ -4,10 +4,14 @@ v4.0.0-phase12.5: 语义搜索 LLM Rerank
 - 用 Ollama LLM 对 top20 候选做语义理解重排序
 - 线程池隔离: semantic search 跑在 executor 避免阻塞事件循环
 """
-import asyncio, json, re, time, threading
+import asyncio
+import json
+import re
+import time
 from typing import List
+
 from database import get_db
-from ollama_client import ollama_chat, get_model_for
+from ollama_client import ollama_chat
 
 # ============ LLM Rerank ============
 
@@ -116,7 +120,7 @@ async def hybrid_search_word_cards(query: str, top_k: int = 10, use_rerank: bool
                     loop.run_in_executor(None, search_word_cards, query, 30),
                     timeout=5.0
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 semantic_results = []
             for r in (semantic_results or []):
                 if r["id"] in merged:
@@ -239,7 +243,7 @@ async def hybrid_search(query: str, top_k: int = 10, use_rerank: bool = True) ->
                     loop.run_in_executor(None, search, query, 30),
                     timeout=5.0
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 semantic_results = []
             for r in (semantic_results or []):
                 if r["id"] in merged:

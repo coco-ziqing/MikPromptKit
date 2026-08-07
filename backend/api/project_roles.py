@@ -1,13 +1,18 @@
-# -*- coding: utf-8 -*-
 """
 Phase36.2 总项目 角色/场景 实例 API（统一 project_role，role_type 区分）
 能力：从公共库继承(adopt) / 新建 / 编辑(自动版本快照) / 版本历史 / 回滚 / 档案(参考图·三视图)上传 / 列表
 存储：data/role_assets/role{id}/ ; 缩略图 data/role_thumbs/{aid}.jpg
 """
-import os, sqlite3, json, time, re, hashlib
-from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form, Body
+import json
+import os
+import re
+import sqlite3
+
+from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+
 from jwt_auth import get_current_user
+
 try:
     from audit import record_audit
 except Exception:

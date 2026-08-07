@@ -3,11 +3,18 @@ LibTV 图片生成集成 — 词卡缩略图第三生成引擎
 通过本地 libtv CLI 提交文生图任务（node create -t image --run），
 产物 URL 从节点 JSON data.url[0] 提取，下载后走公共落库链路（thumb_gen）
 """
-import os, json, re, subprocess, time as _t, threading
+import json
+import os
+import re
+import subprocess
+import threading
+import time as _t
+
+import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
+
 from api.thumb_gen import save_generated_image
-import httpx
 
 router = APIRouter(prefix="/api/v2/libtv", tags=["libtv"])
 

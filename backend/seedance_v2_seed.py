@@ -1,9 +1,6 @@
 """
 Seedance V2 初始词库种子数据 — 27 套维度库 + 系统词卡
 """
-import sqlite3
-import json
-import os
 
 # ============ 27 套维度库定义 ============
 LIBRARIES = [

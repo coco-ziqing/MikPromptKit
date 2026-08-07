@@ -9,8 +9,9 @@ Phase18 v5.1.0
   GET  /api/plugin-system/licenses         所有插件 License 状态
 """
 
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from fastapi import APIRouter, Request
@@ -31,17 +32,17 @@ async def activate_license(plugin_id: str, request: Request):
         body = await request.json()
     except Exception:
         return JSONResponse({"success": False, "message": "请求体格式错误"}, status_code=400)
-    
+
     license_key = body.get("license_key", "").strip()
     tier = body.get("tier", "")
     auth_server_url = body.get("auth_server_url", "")
-    
+
     if not license_key:
         return JSONResponse({"success": False, "message": "请输入 License Key"}, status_code=400)
-    
+
     lm = get_license_manager()
     ok, msg = lm.activate(plugin_id, license_key, tier, auth_server_url)
-    
+
     if ok:
         return {"success": True, "message": msg, "plugin_id": plugin_id}
     else:
@@ -61,7 +62,7 @@ async def deactivate_license(plugin_id: str):
     """解除激活（生成注销码）"""
     lm = get_license_manager()
     ok, msg = lm.deactivate(plugin_id)
-    
+
     if ok:
         return {
             "success": True,
@@ -77,11 +78,11 @@ async def list_all_licenses():
     """列出所有插件 License 状态"""
     lm = get_license_manager()
     results = lm.check_all_plugins()
-    
+
     data = {}
     for pid, info in results.items():
         data[pid] = lm.get_status(pid)
-    
+
     return {"success": True, "data": data}
 
 
@@ -107,7 +108,7 @@ async def set_auth_server_config(request: Request):
     try:
         body = await request.json()
         url = body.get("auth_server_url", "").strip()
-        
+
         from database import get_db, safe_commit
         db = get_db()
         db.execute(

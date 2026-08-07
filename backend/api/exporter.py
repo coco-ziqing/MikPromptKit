@@ -1,11 +1,20 @@
 """
 API 路由 — PNG 提示词卡片导出/导入
 """
-import json, io, zipfile, os, uuid, datetime
-from fastapi import APIRouter, Query, HTTPException, UploadFile, File, Form
-from fastapi.responses import Response, StreamingResponse
+import datetime
+import io
+import uuid
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import Response
+
 from database import get_db
-from exporter import export_prompt_to_png, import_prompt_from_png, batch_export_prompts, batch_import_pngs
+from exporter import (
+    batch_export_prompts,
+    batch_import_pngs,
+    export_prompt_to_png,
+    import_prompt_from_png,
+)
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
@@ -45,8 +54,9 @@ async def preview_png_import(file: UploadFile = File(...)):
     """上传 PNG 预览元数据（仅解析，不导入）"""
     file_bytes = await file.read()
     try:
-        from PIL import Image
         import json
+
+        from PIL import Image
         img = Image.open(io.BytesIO(file_bytes))
         meta_str = img.info.get("prompt_kit")
         if not meta_str:

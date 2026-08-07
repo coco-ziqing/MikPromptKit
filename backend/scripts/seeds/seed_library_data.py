@@ -272,19 +272,19 @@ DATA = {
 def run():
     db = get_db()
     total = 0
-    
+
     for cat_key, cat_data in DATA.items():
         lib_type = cat_data["lib_type"]
         existing = db.execute(
             "SELECT COUNT(*) as c FROM library_assets WHERE lib_type=?", (lib_type,)
         ).fetchone()["c"]
-        
+
         if existing > 0:
             print(f"[跳过] {lib_type} 已有 {existing} 条")
             # 仍然打印统计但不重复插入
             total += existing
             continue
-        
+
         sort = 0
         for item in cat_data["items"]:
             db.execute("""
@@ -303,10 +303,10 @@ def run():
             ))
             sort += 1
             total += 1
-        
+
         safe_commit()
         print(f"[新增] {lib_type}: {len(cat_data['items'])} 条")
-    
+
     # 重新统计各类别
     rows = db.execute("""
         SELECT lib_type, COUNT(*) as cnt 
@@ -314,7 +314,7 @@ def run():
         GROUP BY lib_type 
         ORDER BY cnt DESC
     """).fetchall()
-    
+
     print(f"\n{'='*50}")
     print("词库总统计:")
     grand = 0

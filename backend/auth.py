@@ -1,14 +1,19 @@
-# -*- coding: utf-8 -*-
 """
 认证 API — 用户注册/登录/登出/Token刷新
 端点: /api/auth/login, /api/auth/register, /api/auth/logout, /api/auth/me, /api/auth/refresh
 """
-import json, os, sqlite3, time, hashlib, hmac, base64, uuid, shutil
-from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File, Form
-from typing import Optional
+import hashlib
+import os
+import shutil
+import sqlite3
+import time
+import uuid
 
-from password import hash_pw, check_pw
-from jwt_auth import create_jwt, verify_jwt, get_current_user, require_role
+from fastapi import APIRouter, Body, File, HTTPException, Request, UploadFile
+
+from jwt_auth import create_jwt, get_current_user, require_role, verify_jwt
+from password import check_pw, hash_pw
+
 try:
     from audit import record_audit
 except Exception:
@@ -247,7 +252,7 @@ def update_my_profile(data: dict = Body(...), request: Request = None):
     if not user.get("authenticated"):
         raise HTTPException(401, "请先登录")
     uid = user["id"]
-    
+
     # 密码修改需旧密码验证
     if "old_password" in data and "new_password" in data:
         if not data["old_password"] or not data["new_password"]:
@@ -261,13 +266,13 @@ def update_my_profile(data: dict = Body(...), request: Request = None):
             db_check.close()
         if not current or not check_pw(data["old_password"], current["password_hash"]):
             raise HTTPException(400, "旧密码不正确")
-    
+
     allowed = ["display_name", "bio", "website", "avatar_color", "phone", "email", "wechat"]
     updates = {k: data[k] for k in allowed if k in data}
     has_pw = "old_password" in data and "new_password" in data
     if not updates and not has_pw:
         return {"ok": True, "message": "没有需要更新的字段"}
-    
+
     db = _rw()
     try:
         if updates:
@@ -293,19 +298,19 @@ async def upload_avatar(request: Request, file: UploadFile = File(...)):
     if not user.get("authenticated"):
         raise HTTPException(401, "请先登录")
     uid = user["id"]
-    
+
     # 校验文件类型
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp"):
         raise HTTPException(400, "仅支持 JPG/PNG/GIF/WEBP 图片格式")
-    
+
     # 限制大小 5MB
     content = await file.read()
     if len(content) > 5 * 1024 * 1024:
         raise HTTPException(400, "图片不能超过 5MB")
-    
+
     os.makedirs(_AVATAR_DIR, exist_ok=True)
-    
+
     # 保存原图 + 缩略图
     raw_name = f"{uid}_{uuid.uuid4().hex[:8]}{ext}"
     thumb_name = f"{uid}_{uuid.uuid4().hex[:8]}_thumb{ext}"
@@ -322,7 +327,7 @@ async def upload_avatar(request: Request, file: UploadFile = File(...)):
 
     with open(raw_path, "wb") as f:
         f.write(content)
-    
+
     # 生成 200x200 正方形缩略图
     thumb_ok = False
     try:
@@ -346,17 +351,17 @@ async def upload_avatar(request: Request, file: UploadFile = File(...)):
     except Exception:
         # Pillow not available or failed — use raw as thumb
         shutil.copy2(raw_path, thumb_path)
-    
+
     # 更新数据库
     avatar_url = f"/api/auth/avatar/{uid}/{os.path.basename(thumb_path) if thumb_ok else os.path.basename(raw_path)}"
-    
+
     db = _rw()
     try:
         db.execute("UPDATE users SET avatar_url=? WHERE id=?", [avatar_url, uid])
         db.commit()
     finally:
         db.close()
-    
+
     return {"ok": True, "avatar_url": avatar_url}
 
 
@@ -386,6 +391,7 @@ def clear_avatar(request: Request):
 def serve_avatar(user_id: int, filename: str):
     """提供头像资源（公开访问，支持浏览器缓存）"""
     import re
+
     from fastapi.responses import FileResponse
     if not re.match(r'^[\w.\-_]+$', filename):
         raise HTTPException(400, "非法文件名")
@@ -402,7 +408,7 @@ def my_stats(request: Request):
     if not user.get("authenticated"):
         raise HTTPException(401, "请先登录")
     uid = user["id"]
-    
+
     db = _ro()
     try:
         cards = db.execute("SELECT COUNT(1) n FROM word_card").fetchone()["n"]

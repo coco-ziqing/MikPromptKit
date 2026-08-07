@@ -12,18 +12,18 @@ Phase18 v5.1.0
 团队版 (Team):   格式校验 + 定期联网 + 宽限期 + 降级策略 → 订阅制
 """
 
-import json
-import time
-import hashlib
 import base64
+import sys
+import hashlib
+import json
 import platform
+import time
 import uuid
-import subprocess
-from datetime import datetime
-from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional, Tuple, Dict
+from datetime import datetime
 from enum import Enum
+from pathlib import Path
+from typing import Dict, Optional, Tuple
 
 # ============================================================
 # 嵌入的公钥（验证用 — 与 tools/license_server.py 私钥配对）
@@ -42,7 +42,9 @@ eQIDAQAB
 
 # 日志（兼容独立使用）
 try:
-    from logger import info as log_info, warn as log_warn, error as log_error
+    from logger import error as log_error
+    from logger import info as log_info
+    from logger import warn as log_warn
 except ImportError:
     log_info = lambda m: print(f"[INFO] {m}")
     log_warn = lambda m: print(f"[WARN] {m}")

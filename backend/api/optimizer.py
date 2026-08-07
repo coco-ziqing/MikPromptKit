@@ -6,13 +6,18 @@ v4.0.0-phase12.2: AI 提示词优化器
 - 反向解析 (reverse): 从描述反推提示词
 - 流式输出 + 预览对比 + 应用替换
 """
-import json, asyncio
+import json
+
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from database import get_db
+
 from ollama_client import (
-    ollama_chat, ollama_stream, get_model_for, extract_json, _get_cached_models
+    _get_cached_models,
+    extract_json,
+    get_model_for,
+    ollama_chat,
+    ollama_stream,
 )
 
 router = APIRouter(prefix="/api/ai/optimize", tags=["ai_optimizer"])
@@ -223,9 +228,10 @@ async def optimize_stream(request: Request):
     mode_cfg = OPTIMIZE_MODES[mode]
     try:
         system = _build_system(mode, target_format)
-    except ValueError as e:
+    except ValueError as exc:
+        err_msg = str(exc)
         async def _err2():
-            yield json.dumps({"error": str(e)}) + "\n"
+            yield json.dumps({"error": err_msg}) + "\n"
         return StreamingResponse(_err2(), media_type="text/event-stream")
 
     user_msg = _build_user_msg(content, extra_context, max_chars)
