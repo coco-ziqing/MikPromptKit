@@ -1255,17 +1255,11 @@ with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as zf:
 ### 当前回归基线
 audit 18 + presence 11 + composer 18 + asset_library 20 + asset_review 21 + DAM 17 = 105/105
 
-## Promoted From Short-Term Memory (2026-07-18)
+## Promoted From Short-Term Memory (2026-08-07)
 
-<!-- openclaw-memory-promotion:memory:memory/2026-07-11.md:6:6 -->
-- 用户要求对项目管理插件进行深度优化补全功能缺口，随后进一步明确架构：项目管理为总层级父级，镜头分镜项目为其子级，总项目下还需包含文稿/角色/场景/词卡模板等资产。 [score=0.881 recalls=0 avg=0.620 source=memory/2026-07-11.md:6-6]
-<!-- openclaw-memory-promotion:memory:memory/2026-07-11.md:10:13 -->
-- 旧：user_project 被 PM插件 和 seedance 共用 → 平级混乱 新：master_project(总项目) → master_sub_project(子项目) → seedance user_project(分镜项目) ├── master_asset (资产池: script/character/scene/prompt_template/ref_image) ├── project_columns/tasks/milestones (扩展 master_project_id) [score=0.881 recalls=0 avg=0.620 source=memory/2026-07-11.md:10-13]
-<!-- openclaw-memory-promotion:memory:memory/2026-07-11.md:14:14 -->
-- └── project_members (扩展 master_project_id) [score=0.881 recalls=0 avg=0.620 source=memory/2026-07-11.md:14-14]
-<!-- openclaw-memory-promotion:memory:memory/2026-07-11.md:18:21 -->
-- | 表 | 用途 | 关键字段 | |---|------|---------| | master_project | 总项目容器 | name/description/project_type/aspect_ratio/resolution/status | | master_sub_project | 子项目↔seedance桥接 | master_project_id/seedance_project_id/name/sub_type/phase | [score=0.881 recalls=0 avg=0.620 source=memory/2026-07-11.md:18-21]
-<!-- openclaw-memory-promotion:memory:memory/2026-07-11.md:22:22 -->
-- | master_asset | 统一资产池 | master_project_id/sub_project_id/asset_type/name/content/image_path/tags/word_card_id | [score=0.881 recalls=0 avg=0.620 source=memory/2026-07-11.md:22-22]
-<!-- openclaw-memory-promotion:memory:memory/2026-06-15.md:91:103 -->
-- - `body.dark-theme` 补 8 个变量覆盖 - 12 处硬编码颜色改为 CSS 变量（`#ffffff`→`var(--bg-card)` 等） - 28 个 `body.dark-theme` 新选择器覆盖（覆盖导航栏/卡片/弹窗/收藏/Seedance V2/查看器等所有模块） - 1 处 HTML `bg-light text-dark` 的 CSS 覆盖 ### 校验规则 已写入 MEMORY.md 第八章「深色/亮色模式校验规则」，含： - CSS 变量架构铁律 4 条 - 禁止模式 7 条（含正确写法对照） - 核心选择器覆盖清单 12 大区域 - JS/HTML 内联样式规则 3 条 - 新增 UI 组件检查清单 6 项 [score=0.879 recalls=3 avg=1.000 source=memory/2026-06-15.md:91-103]
+<!-- openclaw-memory-promotion:memory:memory/2026-07-30-dev-report.md:35:36 -->
+- 卡片级别（⬇ 下载按钮）: 词卡收藏页 + 词卡编辑页，收藏按钮旁新增绿色 `⬇` 下载按钮; 有预览的直接下载原图/视频，无预览的不显示 [score=0.831 recalls=0 avg=0.620 source=memory/2026-07-30-dev-report.md:35-36]
+<!-- openclaw-memory-promotion:memory:memory/2026-07-30-dev-report.md:77:77 -->
+- 六、经验教训: **内联 onclick 中的引号转义**：在 JS 模板字符串中嵌入带 `onclick` 的 HTML，需要用 `\\'` 转义单引号，多层嵌套极易出错。 [score=0.831 recalls=0 avg=0.620 source=memory/2026-07-30-dev-report.md:77-77]
+<!-- openclaw-memory-promotion:memory:memory/2026-07-31-dev-report.md:74:76 -->
+- 经验教训: **树刷新必须保留状态**：`loadGroupTree()` 获取新数据后，旧树的 `_expanded`、`_selected` 等交互状态不能丢弃。解决方案：刷新前 `_saveExpand` 存 map→刷新后 `_restoreExpand` 恢复。; **弹出面板定位应坐标驱动**：通过 `getBoundingClientRect()` 获取位置时，如果源元素即将被 remove，必须先保存坐标再调用面板。重构为 `_gmShowIconPicker(x, y, id)` 坐标驱动模式。; **mouseleave 优于 click-outside**：emoji 选择器等 hover 类 UI，mouseleave 300ms 延迟关闭体验优于仅 click-outside 关闭。 [score=0.831 recalls=0 avg=0.620 source=memory/2026-07-31-dev-report.md:74-76]
