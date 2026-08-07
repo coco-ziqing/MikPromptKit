@@ -63,7 +63,7 @@ def create_composer_project(data: dict):
     negative_prompt = data.get('negative_prompt', '')
 
     cur = db.execute("""
-        INSERT INTO user_project 
+        INSERT INTO user_project
             (name, total_duration, aspect_ratio, resolution, global_style, negative_prompt)
         VALUES (?, ?, ?, ?, ?, ?)
     """, (name, dur, ar, res, global_style, negative_prompt))
@@ -177,7 +177,7 @@ def compose_project(project_id: int,
                     include_audio: bool = Query(False)):
     """
     生成项目的输出提示词文本（使用共享组装引擎）
-    
+
     参数:
       format: seedance|kling|minimax|comfyui|raw (default: seedance)
       density: compact|standard|detailed (default: standard)

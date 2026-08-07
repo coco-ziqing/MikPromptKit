@@ -19,7 +19,7 @@ def c(met,path,b=None,tk=A):
         with urllib.request.urlopen(r,timeout=10)as rr:return rr.status,json.loads(rr.read())
     except urllib.error.HTTPError as e:
         try:return e.code,json.loads(e.read())
-        except:return e.code,{}
+        except Exception:return e.code,{}
 
 P=[];F=[]
 def Ck(n,ok):(P if ok else F).append(n)
@@ -57,5 +57,5 @@ Ck("无效状态400",s==400)
 print()
 for p in P:print("PASS",p)
 for f in F:print("FAIL",f)
-print("\n{}/{} 通过".format(len(P),len(P)+len(F)))
+print(f"\n{len(P)}/{len(P)+len(F)} 通过")
 sys.exit(0 if not F else 1)

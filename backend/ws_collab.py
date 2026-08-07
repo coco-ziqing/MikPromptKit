@@ -286,7 +286,7 @@ def remote_check():
         s.connect(("8.8.8.8", 80))
         result["lan_ip"] = s.getsockname()[0]
         s.close()
-    except:
+    except Exception:
         pass
 
     # 检测 Tailscale

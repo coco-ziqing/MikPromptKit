@@ -3,11 +3,10 @@ v5.1.0: 场景设定组装器 — 环境/场景提示词工业化装配
 从 word_card 词库中各维度选取词条，自动拼接为完整场景提示词
 """
 import json
-from typing import Optional
+import sqlite3
 
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
-import sqlite3
 
 from database import get_db, safe_commit
 
@@ -35,12 +34,12 @@ SCENE_DIMENSIONS = {
 class SceneCreate(BaseModel):
     name: str = "新场景"
     settings: dict = {}
-    template_id: Optional[int] = None
+    template_id: int | None = None
 
 class SceneUpdate(BaseModel):
-    name: Optional[str] = None
-    settings: Optional[dict] = None
-    template_id: Optional[int] = None
+    name: str | None = None
+    settings: dict | None = None
+    template_id: int | None = None
 
 class SceneComposeReq(BaseModel):
     settings: dict = {}
@@ -139,7 +138,7 @@ def list_scenes(page: int = 1, page_size: int = 20):
     for r in rows:
         d = dict(r)
         try: d["settings"] = json.loads(d.get("settings_json") or "{}")
-        except: d["settings"] = {}
+        except Exception: d["settings"] = {}
         items.append(d)
     return {"ok": True, "items": items, "total": total}
 
@@ -153,7 +152,7 @@ def get_scene(scene_id: int):
         raise HTTPException(404, "场景不存在")
     d = dict(r)
     try: d["settings"] = json.loads(d.get("settings_json") or "{}")
-    except: d["settings"] = {}
+    except Exception: d["settings"] = {}
     return {"ok": True, "scene": d}
 
 
@@ -483,10 +482,10 @@ class STemplateCreate(BaseModel):
     default_settings: dict = {}
 
 class STemplateUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    structure: Optional[list] = None
-    default_settings: Optional[dict] = None
+    name: str | None = None
+    description: str | None = None
+    structure: list | None = None
+    default_settings: dict | None = None
 
 
 def _stpl_dict(r):
@@ -579,7 +578,7 @@ def apply_scene_to_shot(scene_id: int, data: dict = Body(...)):
 
     try:
         settings = json.loads(scene["settings_json"] or "{}")
-    except:
+    except Exception:
         settings = {}
 
     # 字段映射：scene_composer dimension key → user_project_scene column

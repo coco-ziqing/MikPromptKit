@@ -1,10 +1,11 @@
 """
 v4.3.0-phase16: Log API — 日志查询/实时流/清除/统计 + Phase17 用户行为追踪
 """
+import json
+
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import json
 
 from action_logger import action_stream_generator, query_actions, record_action
 from logger import clear_before, query, stats, stream_generator

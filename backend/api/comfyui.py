@@ -92,7 +92,7 @@ def _auto_populate_missing_presets(presets: dict) -> dict:
         m = r["module"]
         if m not in presets:
             presets[m] = {
-                "preset": f"",
+                "preset": "",
                 "enabled": False,
                 "note": "该模块的共性主体描述，将自动与提示词卡片内容组合"
             }
@@ -2142,7 +2142,7 @@ def sync_workflow(data: SyncRequest = None):
                 wf = prompt_data[2]
                 if isinstance(wf, dict) and len(wf) > 3:
                     workflow = wf
-                    source = f"history"
+                    source = "history"
 
     if not workflow:
         return {"ok": False, "error": "无法从 ComfyUI 获取工作流。请确保 ComfyUI 正在运行且队列/历史中有任务。"}
@@ -2547,7 +2547,7 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
                     pending = any(p[1] == pid for p in qd.get("queue_pending", []))
                     if not running and not pending:
                         _time.sleep(0.5)
-            except:
+            except Exception:
                 pass
             try:
                 with httpx.Client(timeout=8) as cl:

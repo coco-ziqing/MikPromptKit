@@ -4,7 +4,6 @@ v5.1.0: 角色设定提示词组装器 — 人物提示词工业化装配
 """
 import json
 import sqlite3
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -38,12 +37,12 @@ CHARACTER_DIMENSIONS = {
 class CharacterCreate(BaseModel):
     name: str = "新角色"
     settings: dict = {}
-    template_id: Optional[int] = None
+    template_id: int | None = None
 
 class CharacterUpdate(BaseModel):
-    name: Optional[str] = None
-    settings: Optional[dict] = None
-    template_id: Optional[int] = None
+    name: str | None = None
+    settings: dict | None = None
+    template_id: int | None = None
 
 class CharacterComposeReq(BaseModel):
     settings: dict = {}
@@ -63,7 +62,7 @@ _SETTINGS_FIELD_MAP = [
 
 def _derive_library_fields(settings: dict) -> dict:
     """从 Composer settings_json 派生 character_profiles 富字段
-    
+
     settings 示例:
       {gender:"女性", age:"20岁", hairstyle:"长发", facial:"大眼",
        expression:"微笑", clothing:"水手服", pose:"站立",
@@ -139,7 +138,7 @@ def list_characters(page: int = 1, page_size: int = 20):
     for r in rows:
         d = dict(r)
         try: d["settings"] = json.loads(d.get("settings_json") or "{}")
-        except: d["settings"] = {}
+        except Exception: d["settings"] = {}
         items.append(d)
     return {"ok": True, "items": items, "total": total}
 
@@ -152,7 +151,7 @@ def get_character(char_id: int):
         raise HTTPException(404, "角色不存在")
     d = dict(r)
     try: d["settings"] = json.loads(d.get("settings_json") or "{}")
-    except: d["settings"] = {}
+    except Exception: d["settings"] = {}
     return {"ok": True, "character": d}
 
 
@@ -440,10 +439,10 @@ class TemplateCreate(BaseModel):
     default_settings: dict = {}
 
 class TemplateUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    structure: Optional[list] = None
-    default_settings: Optional[dict] = None
+    name: str | None = None
+    description: str | None = None
+    structure: list | None = None
+    default_settings: dict | None = None
 
 
 def _tpl_dict(r):

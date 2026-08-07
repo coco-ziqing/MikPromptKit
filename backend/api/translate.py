@@ -227,7 +227,7 @@ async def translate_single(prompt_id: int, target_lang: str = "zh", tier: str = 
     finally:
         if conn2:
             try: conn2.close()
-            except: pass
+            except Exception: pass
 
     # 同时返回双向内容供前端语言切换
     other_lang = "en" if target_lang == "zh" else "zh"
@@ -240,7 +240,7 @@ async def translate_single(prompt_id: int, target_lang: str = "zh", tier: str = 
             conn3.close()
             if ow and ow[col_other]:
                 other_trans = ow[col_other]
-        except:
+        except Exception:
             pass
 
     return {
@@ -352,7 +352,7 @@ async def translate_batch(data: BatchTranslateRequest):
                             "db_error": str(e2)[:200]}  # 翻译成功但存档失败
                 finally:
                     try: conn3.close()
-                    except: pass
+                    except Exception: pass
 
                 return {"prompt_id": pid, "ok": True, "translated": translated, "model": model,
                         "direction": ("zh→en" if target_lang == "en" else "en→zh")}

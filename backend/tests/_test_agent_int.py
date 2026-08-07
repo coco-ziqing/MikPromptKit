@@ -24,7 +24,7 @@ def call(m, p, b=None, t=ADMIN, h=None):
             return rr.status, json.loads(rr.read())
     except urllib.error.HTTPError as e:
         try: return e.code, json.loads(e.read())
-        except: return e.code,{}
+        except Exception: return e.code,{}
 
 PASS = []; FAIL = []
 def chk(n, ok): (PASS if ok else FAIL).append(n)

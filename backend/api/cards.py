@@ -166,7 +166,7 @@ def create_card(data: dict):
     lib_refs = json.dumps(data.get('library_refs', []), ensure_ascii=False)
 
     cur = db.execute("""
-        INSERT INTO prompt_cards 
+        INSERT INTO prompt_cards
             (card_type, name, content, meaning, scene, module, category,
              tags, structured_fields, library_refs, is_builtin)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -294,9 +294,9 @@ def list_library_types():
     """获取词库类型列表（含各类的数量）"""
     db = get_db()
     rows = db.execute("""
-        SELECT lib_type, COUNT(*) as cnt 
-        FROM library_assets 
-        GROUP BY lib_type 
+        SELECT lib_type, COUNT(*) as cnt
+        FROM library_assets
+        GROUP BY lib_type
         ORDER BY cnt DESC
     """).fetchall()
     return {'ok': True, 'types': [dict(r) for r in rows]}
@@ -313,9 +313,9 @@ def list_library_categories(lib_type: str = Query(None)):
         params.append(lib_type)
 
     rows = db.execute(f"""
-        SELECT lib_type, category, icon, COUNT(*) as cnt 
+        SELECT lib_type, category, icon, COUNT(*) as cnt
         FROM library_assets WHERE {' AND '.join(where)}
-        GROUP BY lib_type, category 
+        GROUP BY lib_type, category
         ORDER BY cnt DESC
     """, params).fetchall()
     return {'ok': True, 'categories': [dict(r) for r in rows]}
@@ -332,7 +332,7 @@ def create_library_item(data: dict):
         raise HTTPException(status_code=400, detail='缺少 name')
     db = get_db()
     cur = db.execute("""
-        INSERT INTO library_assets 
+        INSERT INTO library_assets
             (lib_type, name, icon, category, prompt, definition, tags, is_builtin)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (

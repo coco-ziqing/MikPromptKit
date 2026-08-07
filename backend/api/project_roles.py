@@ -267,7 +267,8 @@ def delete_role(rid: int, request: Request):
         c.commit()
         rdir = os.path.join(ROLE_ASSET_DIR, "role%d" % rid)
         if os.path.isdir(rdir) and os.path.abspath(rdir).startswith(DATA_DIR):
-            import shutil; shutil.rmtree(rdir, ignore_errors=True)
+            import shutil
+            shutil.rmtree(rdir, ignore_errors=True)
         return {"ok": True}
     finally:
         c.close()

@@ -12,7 +12,6 @@ import shutil
 import time
 import zipfile
 from datetime import datetime
-from typing import Optional
 
 # 路径配置（开发/封装通用）
 try:
@@ -123,7 +122,7 @@ def _read_manifest_fast(pkg_path: str) -> dict:
 
 # ============ 打包 ============
 
-def export_package(name: Optional[str] = None, include_media: bool = True) -> dict:
+def export_package(name: str | None = None, include_media: bool = True) -> dict:
     """
     导出完整 .pkb 包
     :param name: 包名（不含扩展名），None 自动生成

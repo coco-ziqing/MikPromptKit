@@ -32,7 +32,7 @@ def call(method, path, body=None, token=None, raw=False):
 def feed_events(**kw):
     """取最近全局审计流的 (event_type, detail) 列表"""
     q = "&".join(f"{k}={v}" for k, v in kw.items())
-    st, d = call("GET", f"/api/audit/feed?limit=50" + ("&" + q if q else ""), token=ADMIN)
+    st, d = call("GET", "/api/audit/feed?limit=50" + ("&" + q if q else ""), token=ADMIN)
     return [(it["event_type"], it.get("detail", ""), it.get("target_id", "")) for it in d.get("items", [])]
 
 results = []

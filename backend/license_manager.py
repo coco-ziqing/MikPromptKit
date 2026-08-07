@@ -13,17 +13,16 @@ Phase18 v5.1.0
 """
 
 import base64
-import sys
 import hashlib
 import json
 import platform
+import sys
 import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional, Tuple
 
 # ============================================================
 # 嵌入的公钥（验证用 — 与 tools/license_server.py 私钥配对）
@@ -76,11 +75,11 @@ class LicenseInfo:
     plugin_id: str = ""
     tier: LicenseTier = LicenseTier.FREE
     status: LicenseStatus = LicenseStatus.UNACTIVATED
-    expires_at: Optional[str] = None
-    activated_at: Optional[str] = None
+    expires_at: str | None = None
+    activated_at: str | None = None
     seat_count: int = 1
     order_id: str = ""
-    last_verify_at: Optional[str] = None
+    last_verify_at: str | None = None
     verify_fail_count: int = 0
     message: str = ""
 
@@ -118,7 +117,7 @@ def _aes_encrypt(data: str, key: bytes) -> str:
     return base64.b64encode(nonce + ct).decode()
 
 
-def _aes_decrypt(encrypted_b64: str, key: bytes) -> Optional[str]:
+def _aes_decrypt(encrypted_b64: str, key: bytes) -> str | None:
     """AES-256-GCM 解密"""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     try:
@@ -160,7 +159,7 @@ def get_machine_fingerprint() -> str:
 # License Key 解码（公开算法）
 # ============================================================
 
-def decode_license_key(license_key: str) -> Optional[dict]:
+def decode_license_key(license_key: str) -> dict | None:
     """
     解码 License Key — 格式校验 + 载荷提取。
     完整的 RSA 签名验证由工具链或授权服务器执行。
@@ -235,7 +234,7 @@ def _get_db():
 # ============================================================
 
 class LicenseManager:
-    _instance: Optional["LicenseManager"] = None
+    _instance: LicenseManager | None = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -252,7 +251,7 @@ class LicenseManager:
 
     # --- 个人版 ---
 
-    def activate_personal(self, plugin_id: str, license_key: str) -> Tuple[bool, str]:
+    def activate_personal(self, plugin_id: str, license_key: str) -> tuple[bool, str]:
         db = _get_db()
         if db is None:
             return False, "数据库不可用"
@@ -314,7 +313,7 @@ class LicenseManager:
     # --- 团队版 ---
 
     def activate_team(self, plugin_id: str, license_key: str,
-                      auth_server_url: str = "") -> Tuple[bool, str]:
+                      auth_server_url: str = "") -> tuple[bool, str]:
         db = _get_db()
         if db is None:
             return False, "数据库不可用"
@@ -412,13 +411,13 @@ class LicenseManager:
     # --- 通用 ---
 
     def activate(self, plugin_id: str, license_key: str,
-                 tier: str = "", auth_server_url: str = "") -> Tuple[bool, str]:
+                 tier: str = "", auth_server_url: str = "") -> tuple[bool, str]:
         key_upper = license_key.strip().upper()
         if "PK-PERS" in key_upper or tier == "personal":
             return self.activate_personal(plugin_id, license_key)
         elif "PK-TEAM" in key_upper or tier == "team":
             return self.activate_team(plugin_id, license_key, auth_server_url)
-        return False, f"不支持的 License 类型"
+        return False, "不支持的 License 类型"
 
     def verify(self, plugin_id: str, auth_server_url: str = "") -> LicenseInfo:
         db = _get_db()
@@ -437,7 +436,7 @@ class LicenseManager:
         except Exception as e:
             return LicenseInfo(plugin_id=plugin_id, status=LicenseStatus.ERROR, message=str(e))
 
-    def deactivate(self, plugin_id: str) -> Tuple[bool, str]:
+    def deactivate(self, plugin_id: str) -> tuple[bool, str]:
         db = _get_db()
         if db is None:
             return False, "数据库不可用"
@@ -467,7 +466,7 @@ class LicenseManager:
             "seat_count": info.seat_count, "message": info.message,
         }
 
-    def check_all_plugins(self) -> Dict[str, LicenseInfo]:
+    def check_all_plugins(self) -> dict[str, LicenseInfo]:
         db = _get_db()
         if db is None:
             return {}
@@ -481,7 +480,7 @@ class LicenseManager:
 
     # --- 内部辅助 ---
 
-    def _verify_online(self, license_key: str, server_url: str) -> Tuple[bool, str]:
+    def _verify_online(self, license_key: str, server_url: str) -> tuple[bool, str]:
         try:
             import urllib.request
             url = f"{server_url.rstrip('/')}/api/license/activate"
@@ -503,12 +502,14 @@ class LicenseManager:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 result = json.loads(resp.read())
                 db.execute("UPDATE plugin_licenses SET last_verify_at=datetime('now'), verify_fail_count=0 WHERE plugin_id=?", (plugin_id,))
-                from database import safe_commit; safe_commit()
+                from database import safe_commit
+                safe_commit()
                 return result.get("success", False)
         except Exception:
             try:
                 db.execute("UPDATE plugin_licenses SET verify_fail_count=verify_fail_count+1 WHERE plugin_id=?", (plugin_id,))
-                from database import safe_commit; safe_commit()
+                from database import safe_commit
+                safe_commit()
             except Exception:
                 pass
             return False

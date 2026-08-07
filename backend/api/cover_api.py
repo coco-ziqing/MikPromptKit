@@ -109,7 +109,7 @@ def get_cover():
             k, v = r["config_key"], r["config_value"]
             if k in ("cover_images", "features"):
                 try: data[k] = json.loads(v)
-                except: data[k] = []
+                except Exception: data[k] = []
             else:
                 data[k] = v
         return {"ok": True, "cover": data}

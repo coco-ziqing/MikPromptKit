@@ -8,7 +8,6 @@ import asyncio
 import json
 import os
 import time
-from typing import List, Optional
 
 import httpx
 
@@ -16,7 +15,7 @@ from database import get_db
 
 # ============ Phase17.4: 模块级连接池 ============
 # 复用 TCP 连接，避免每次调用建连导致 socket 耗尽
-_ollama_client: Optional[httpx.AsyncClient] = None
+_ollama_client: httpx.AsyncClient | None = None
 _client_lock = asyncio.Lock()
 
 async def _get_client(timeout_s: float = 120.0) -> httpx.AsyncClient:
@@ -191,12 +190,12 @@ def get_model_for(function: str, provider: str = None) -> str:
 
 
 # ============ 模型列表缓存 ============
-_cached_models: List[str] = []
+_cached_models: list[str] = []
 _cache_time: float = 0
 _CACHE_TTL = 300  # 5分钟
 
 
-def _get_cached_models() -> List[str]:
+def _get_cached_models() -> list[str]:
     """获取本地 Ollama 模型列表（5分钟缓存）"""
     global _cached_models, _cache_time
     now = time.time()
@@ -216,7 +215,7 @@ def _get_cached_models() -> List[str]:
     return _cached_models
 
 
-def refresh_model_cache() -> List[str]:
+def refresh_model_cache() -> list[str]:
     """强制刷新模型列表缓存"""
     global _cached_models, _cache_time
     _cache_time = 0

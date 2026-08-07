@@ -273,11 +273,11 @@ def _generate_salt(rounds: int = 12) -> str:
 def hash_password(password: str, rounds: int = 12) -> str:
     """
     哈希密码，返回 $2b$ 格式字符串。
-    
+
     Args:
         password: 明文密码
         rounds: 哈希轮数 (4-31，默认12，约250ms)
-    
+
     Returns:
         $2b$12$salt...hash...  格式的密码哈希
     """
@@ -310,11 +310,11 @@ def hash_password(password: str, rounds: int = 12) -> str:
 def check_password(password: str, hashed: str) -> bool:
     """
     验证密码。从 hashed 中提取 salt 和 rounds，用相同参数重新哈希后比较。
-    
+
     Args:
         password: 明文密码
         hashed: 哈希值 ($2b$ 格式)
-    
+
     Returns:
         True if password matches
     """
@@ -387,7 +387,7 @@ if __name__ == "__main__":
 
     # 测试错误密码
     assert not check_password("wrong", h), "错误密码不应通过"
-    print(f"错误密码拒绝: wrong ≠ hash")
+    print("错误密码拒绝: wrong ≠ hash")
 
     # 多轮测试
     for r in [4, 8, 12]:

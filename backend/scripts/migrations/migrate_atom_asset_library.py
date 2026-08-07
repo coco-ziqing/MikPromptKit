@@ -158,7 +158,7 @@ def migrate():
         tags = row["tags"] or "[]"
         try:
             tags = json.loads(tags) if isinstance(tags, str) else (tags or [])
-        except:
+        except Exception:
             tags = []
 
         media_cat = _infer_media_category(ginfo["key"], ginfo["name"], atom_type)
@@ -217,7 +217,7 @@ def migrate():
     for ad in ad_rows:
         try:
             atoms = json.loads(ad["atoms_json"] or "[]")
-        except:
+        except Exception:
             atoms = []
 
         if not atoms:
@@ -333,7 +333,7 @@ def migrate():
     for sp in sp_rows:
         try:
             settings = json.loads(sp["settings_json"] or "{}")
-        except:
+        except Exception:
             settings = {}
 
         if not settings:

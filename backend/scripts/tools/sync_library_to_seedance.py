@@ -49,7 +49,7 @@ def run():
         else:
             # 创建新词库
             cur = db.execute("""
-                INSERT INTO prompt_library 
+                INSERT INTO prompt_library
                     (dimension_key, dimension_name, category, sort_order)
                 VALUES (?, ?, ?, ?)
             """, (dim_key, DIM_NAMES.get(lib_type, lib_type), 'basic', 100))
@@ -75,7 +75,7 @@ def run():
             if word in existing_set:
                 continue
             db.execute("""
-                INSERT INTO prompt_word_card 
+                INSERT INTO prompt_word_card
                     (library_id, word_text, definition, is_system, usage_count)
                 VALUES (?, ?, ?, 1, 0)
             """, (lib_id, word, a['prompt']))

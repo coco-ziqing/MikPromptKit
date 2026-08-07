@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api", tags=["prompts"])
 
 def _safe_int(val, default=0):
     try: return int(val)
-    except: return default
+    except Exception: return default
 
 def _module_name(module_id):
     names = {"emotion": "人物表情", "color": "场景色彩", "tone": "画面色调",
@@ -234,7 +234,7 @@ def update_prompt(prompt_id: int, data: dict):
         except Exception as e:
             warn(f"提示词 #{prompt_id} 翻译缓存清除失败: {e}", source="prompts")
 
-        info(f"更新提示词 #{prompt_id} (字段数={len(fields)})", source="prompts", path=f"/api/prompts/{{prompt_id}}")
+        info(f"更新提示词 #{prompt_id} (字段数={len(fields)})", source="prompts", path="/api/prompts/{prompt_id}")
         # 异步更新语义搜索向量（不阻塞保存响应）
         try:
             import threading

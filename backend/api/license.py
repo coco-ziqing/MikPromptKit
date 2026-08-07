@@ -16,7 +16,6 @@ import platform
 import subprocess
 import sys
 import time
-from typing import Optional
 
 from fastapi import APIRouter, Body, HTTPException
 
@@ -71,7 +70,7 @@ def _tier_path(tier: str) -> str:
     return os.path.join(LICENSE_DIR, f"{tier}.json")
 
 
-def _read_license(tier: str) -> Optional[dict]:
+def _read_license(tier: str) -> dict | None:
     p = _tier_path(tier)
     if not os.path.exists(p):
         return None

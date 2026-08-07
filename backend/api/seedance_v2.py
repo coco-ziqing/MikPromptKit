@@ -640,7 +640,7 @@ def _recalculate_scene_times(project_id: int, commit: bool = False):
       - 未锁定镜头均分剩余时长（最少 0.5s），从锁定镜头借时
       - 按 scene_order 顺序生成 start_time/end_time
       - 最后一个镜头吸收舍入误差
-    
+
     参数:
       commit: 为 True 时内部执行 safe_commit()，否则由调用者管理（推荐）
     """
@@ -750,7 +750,7 @@ def create_project(data: dict = Body(...)):
 
     db = get_db()
     cur = db.execute(
-        """INSERT INTO user_project 
+        """INSERT INTO user_project
             (name, total_duration, aspect_ratio, resolution,
              global_style, global_transition, negative_prompt, bgm, sfx, dialogue, template_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -1215,7 +1215,7 @@ def remove_scene_prompt(project_id: int, scene_id: int, sp_id: int):
 def compose_project(project_id: int, data: dict = Body({})):
     """
     核心拼接引擎 v2.0 — 5平台多格式输出（使用共享引擎 composer_engine）
-    
+
     参数:
       format: seedance|kling|minimax|comfyui|raw (default: seedance)
       density: compact|standard|detailed (default: standard)

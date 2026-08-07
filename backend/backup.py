@@ -120,7 +120,7 @@ def _wal_checkpoint():
     finally:
         if conn:
             try: conn.close()
-            except: pass
+            except Exception: pass
 
 
 def _backup_snapshot(backup_path):
@@ -151,10 +151,10 @@ def _backup_snapshot(backup_path):
     finally:
         if dst:
             try: dst.close()
-            except: pass
+            except Exception: pass
         if src:
             try: src.close()
-            except: pass
+            except Exception: pass
 
 
 def _pid_alive(pid: int) -> bool:
@@ -250,7 +250,7 @@ def _check_db_health(db_path=None, max_detail=200):
     finally:
         if conn:
             try: conn.close()
-            except: pass
+            except Exception: pass
 
 
 def do_backup() -> dict:

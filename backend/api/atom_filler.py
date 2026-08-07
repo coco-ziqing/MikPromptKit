@@ -12,7 +12,6 @@ Phase16-v5.2.0: atom_filler — 原子化词卡智能填充引擎
 """
 import json
 import re
-from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -41,9 +40,9 @@ class CameraFillReq(BaseModel):
     limit: int = 8
 
 class AssembleFillReq(BaseModel):
-    character_id: Optional[int] = None
-    scene_id: Optional[int] = None
-    camera_fields: Optional[dict] = None
+    character_id: int | None = None
+    scene_id: int | None = None
+    camera_fields: dict | None = None
     media_category: str = "image"
     limit_per_domain: int = 6
     density: str = "standard"  # compact|standard|detailed
@@ -52,12 +51,12 @@ class AssembleFillReq(BaseModel):
 # ==================== 核心查询函数 ====================
 
 def _query_atoms(db, linked_type: str = None, linked_id: int = None,
-                 media_category: str = "image", keywords: List[str] = None,
-                 atom_types: List[str] = None, limit: int = 10,
+                 media_category: str = "image", keywords: list[str] = None,
+                 atom_types: list[str] = None, limit: int = 10,
                  source: str = None) -> list:
     """
     统一原子资产查询引擎
-    
+
     参数:
       linked_type: character|scene|camera|audio|general
       linked_id:   character_profiles.id | scene_profiles.id
@@ -110,7 +109,7 @@ def _query_atoms(db, linked_type: str = None, linked_id: int = None,
     return [dict(r) for r in rows]
 
 
-def _extract_keywords(text: str, max_kw: int = 8) -> List[str]:
+def _extract_keywords(text: str, max_kw: int = 8) -> list[str]:
     """从文本中提取中文关键词（供原子库匹配用）"""
     if not text:
         return []
@@ -225,7 +224,7 @@ def fill_by_scene(req: SceneFillReq):
 
     try:
         settings = json.loads(scene["settings_json"] or "{}")
-    except:
+    except Exception:
         settings = {}
 
     # 提取关键词
@@ -413,7 +412,7 @@ def fill_assemble(req: AssembleFillReq):
         if scene:
             try:
                 settings = json.loads(scene["settings_json"] or "{}")
-            except:
+            except Exception:
                 settings = {}
             kw = _extract_keywords(json.dumps(settings, ensure_ascii=False))
             all_keywords.extend(kw)

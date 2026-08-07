@@ -23,12 +23,12 @@ db.row_factory = sqlite3.Row
 try:
     db.execute("ALTER TABLE prompt_word_card RENAME TO _old_prompt_word_card")
     print("Renamed: prompt_word_card -> _old_prompt_word_card")
-except: print("prompt_word_card already renamed or absent")
+except Exception: print("prompt_word_card already renamed or absent")
 
 try:
     db.execute("ALTER TABLE prompt_library RENAME TO _old_prompt_library")
     print("Renamed: prompt_library -> _old_prompt_library")
-except: print("prompt_library already renamed or absent")
+except Exception: print("prompt_library already renamed or absent")
 db.commit()
 
 # 确保 word_card_group 有 seedance_subtype 列
@@ -62,9 +62,9 @@ db.execute("""
 # 已存在的映射：通过 content 匹配 (同一 group 下同名)
 existing = {}
 for r in db.execute("""
-    SELECT wc.id, wc.content, wc.group_id 
-    FROM word_card wc 
-    JOIN word_card_group wg ON wg.id = wc.group_id 
+    SELECT wc.id, wc.content, wc.group_id
+    FROM word_card wc
+    JOIN word_card_group wg ON wg.id = wc.group_id
     WHERE wg.group_type = 'seedance' AND wc.is_deleted = 0
 """).fetchall():
     key = (r['group_id'], r['content'])
@@ -159,7 +159,7 @@ print("Imported: %d, Skipped: %d, File copies: %d" % (imported, skipped, file_co
 db.execute("DROP VIEW IF EXISTS prompt_word_card")
 db.execute("""
     CREATE VIEW prompt_word_card AS
-    SELECT 
+    SELECT
         COALESCE(sm.old_id, wc.id) AS id,
         wc.group_id AS library_id,
         wc.content AS word_text,
@@ -183,7 +183,7 @@ print("Created VIEW prompt_word_card (ID-bridged)")
 db.execute("DROP VIEW IF EXISTS prompt_library")
 db.execute("""
     CREATE VIEW prompt_library AS
-    SELECT 
+    SELECT
         id,
         group_key AS dimension_key,
         name AS dimension_name,

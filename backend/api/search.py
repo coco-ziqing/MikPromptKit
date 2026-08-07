@@ -212,7 +212,7 @@ def advanced_search(data: dict):
         for r in rows:
             it = dict(r)
             try: it["tags"] = json.loads(it["tags"]) if isinstance(it["tags"], str) else (it["tags"] or [])
-            except: it["tags"] = []
+            except Exception: it["tags"] = []
             items.append(it)
         return {"ok": True, "items": items, "total": total}
     except Exception as e:

@@ -116,7 +116,7 @@ def safe_commit():
             if 'locked' in err or 'busy' in err:
                 if attempt >= 5:
                     try: db.execute("PRAGMA wal_checkpoint(PASSIVE)")
-                    except: pass
+                    except Exception: pass
                 if attempt < 14:
                     time.sleep(0.5 * (attempt + 1))
                     continue
@@ -317,7 +317,7 @@ def init_db():
             pass
         try:
             conn.execute("ALTER TABLE user_project_scene ADD COLUMN shot_scale TEXT DEFAULT ''")
-        except:
+        except Exception:
             pass
         try:
             conn.execute("ALTER TABLE prompt_videos ADD COLUMN height INTEGER DEFAULT 0")

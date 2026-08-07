@@ -545,7 +545,7 @@ def list_api_keys():
             keys[prov]["models"] = v
         elif k == 'custom_providers':
             try: custom_providers = json.loads(v)
-            except: pass
+            except Exception: pass
     return {"ok": True, "keys": keys, "custom_providers": custom_providers}
 
 

@@ -160,7 +160,7 @@ def migrate():
     empty_custom = conn.execute("""
         SELECT wg.id, wg.group_key, wg.name,
                (SELECT COUNT(*) FROM word_card wc WHERE wc.group_id=wg.id AND wc.is_deleted=0) as card_count
-        FROM word_card_group wg 
+        FROM word_card_group wg
         WHERE wg.group_type='custom'
     """).fetchall()
 

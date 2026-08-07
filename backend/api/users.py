@@ -5,7 +5,6 @@
 import json
 import os
 import sqlite3
-from typing import Optional
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 
@@ -44,7 +43,7 @@ _require_admin = require_role("admin")
 # ============================================================
 
 @router.get("/users")
-def list_users(request: Request, q: Optional[str] = Query(None), role: Optional[str] = Query(None)):
+def list_users(request: Request, q: str | None = Query(None), role: str | None = Query(None)):
     _require_admin(request)
     db = _ro()
     try:

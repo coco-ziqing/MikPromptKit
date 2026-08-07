@@ -483,7 +483,7 @@ def run_migration(db=None):
     """
     执行所有 Phase18 迁移。
     幂等：可安全重复执行。
-    
+
     返回: dict {tables_created: int, columns_altered: int, indexes_created: int}
     """
     if db is None:

@@ -31,7 +31,7 @@ from ollama_client import ollama_chat
 async def call_ollama(function: str, prompt: str, system: str = "", temperature: float = 0.3,
                      max_tokens: int = 4000, image_base64: str = "") -> str:
     """统一 LLM 调用适配器 — 自动将 system 注入 messages
-    
+
     max_tokens 默认 4000：qwen3.5 思考模型需大预算（thinking ~3000 + content ~1000）"""
     messages = []
     if system:
@@ -187,7 +187,7 @@ async def decompose(req: DecomposeReq):
         # 鲁棒 JSON 提取：尝试多种格式
         atoms = _extract_json_array(text)
         if not atoms:
-            print(f"[ATOM-LOG] _extract_json_array returned None, falling back")
+            print("[ATOM-LOG] _extract_json_array returned None, falling back")
             raise ValueError("no valid JSON array found in LLM output")
     except Exception:
         # fallback: token 级别切分
@@ -627,7 +627,7 @@ async def match_model(req: MatchModelReq):
         score = max(0.1, min(1.0, score))
         reason_parts = []
         if req.duration <= m["ideal_duration"] * 1.5:
-            reason_parts.append(f"时长适配")
+            reason_parts.append("时长适配")
         if has_cn and "中文" in str(m["strengths"]):
             reason_parts.append("中文语义精准")
         if multi_shot and m["max_shot"] >= req.shot_count:

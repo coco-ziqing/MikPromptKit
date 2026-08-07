@@ -42,10 +42,10 @@ def _pick_non_empty(d: dict, keys: list) -> str:
 
 def make_structured_description(scene_data: dict, density: str) -> str:
     """将镜头维度字段拼接为自然语言描述（按标准公式）
-    
+
     拼接公式（行业标准）：
     运镜 → 主体 → 动作 → 场景 → 构图 → 光影 → 焦段 → 质感 → 速率 → 氛围 → 特效 → 细节
-  
+
     密度:
       compact  = 运镜+主体+场景 (Sora/Kling 模式，简洁有力)
       standard = 运镜+主体+动作+场景+构图+光影+氛围 (Midjourney/Seedance)
@@ -181,7 +181,7 @@ def compose_full(scenes: list, proj: dict, fmt: str = "seedance",
                  db=None) -> dict:
     """
     完整组装引擎 — 输入镜头列表和项目信息，输出多格式提示词
-    
+
     参数:
       scenes: list of scene dicts (from user_project_scene)
       proj: project dict (from user_project)
@@ -189,7 +189,7 @@ def compose_full(scenes: list, proj: dict, fmt: str = "seedance",
       density: compact|standard|detailed
       include_audio: 是否包含音频信息
       db: 数据库连接（音频需要查角色表）
-    
+
     返回:
       dict with text, json, shot_count, pixel_res, format, density, duration, length
     """

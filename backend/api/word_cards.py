@@ -630,7 +630,7 @@ def copy_thumbnail_from_library(card_id: int, data: dict):
         # 缩略图生成失败，清理已归档的原图
         if os.path.exists(orig_path):
             try: os.remove(orig_path)
-            except: pass
+            except Exception: pass
         raise HTTPException(500, f"文件处理失败: {str(e)}")
     _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
     safe_execute(
@@ -1014,9 +1014,11 @@ def update_card(card_id: int, data: dict):
         fields.append("updated_at=datetime('now','localtime')"); fields.append("version=version+1")
         params.append(card_id)
         db.execute(f"UPDATE word_card SET {', '.join(fields)} WHERE id=?", params); safe_commit()
-        info(f"更新词卡 #{card_id} (更新字段数={len(fields)-2})", source="word-cards", path=f"/api/v4/word-cards/{{card_id}}")
+        info(f"更新词卡 #{card_id} (更新字段数={len(fields)-2})", source="word-cards", path="/api/v4/word-cards/{card_id}")
         if data.get("content"):
-            try: from semantic import update_wc_embedding; update_wc_embedding(card_id, data["content"])
+            try:
+                from semantic import update_wc_embedding
+                update_wc_embedding(card_id, data["content"])
             except Exception as e: warn(f"词卡 #{card_id} embedding 更新失败: {e}", source="word-cards")
     return {"ok":True}
 
@@ -1028,7 +1030,7 @@ def delete_card(card_id: int):
     # Phase17: 统一软删除 — 非内置词卡也不物理删除，防止数据丢失
     db.execute("UPDATE word_card SET is_deleted=1,deleted_at=datetime('now','localtime') WHERE id=?", [card_id])
     safe_commit()
-    info(f"删除词卡 #{card_id} (软删除)", source="word-cards", path=f"/api/v4/word-cards/{{card_id}}")
+    info(f"删除词卡 #{card_id} (软删除)", source="word-cards", path="/api/v4/word-cards/{card_id}")
     return {"ok":True}
 
 # ==================== 列表 (根路径 — 必须放在最后) ====================
@@ -1099,7 +1101,9 @@ def create_card(data: dict):
     safe_commit()
     cid = safe_count("SELECT last_insert_rowid()")
     info(f"创建词卡 #{cid} (gid={gid}, 内容长度={len(content)})", source="word-cards", path="/api/v4/word-cards")
-    try: from semantic import update_wc_embedding; update_wc_embedding(cid, content)
+    try:
+        from semantic import update_wc_embedding
+        update_wc_embedding(cid, content)
     except Exception as e: warn(f"词卡 #{cid} embedding 更新失败: {e}", source="word-cards")
     return {"ok":True,"id":cid}
 

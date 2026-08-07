@@ -111,7 +111,7 @@ async def import_single_png(
             ov_gid = ov.get("group_id")
             if ov_gid is not None:
                 try: ov_gid = int(ov_gid)
-                except: ov_gid = None
+                except Exception: ov_gid = None
     except Exception:
         pass
     result = import_prompt_from_png(file_bytes, conflict=conflict,

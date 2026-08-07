@@ -46,7 +46,7 @@ def ensure_unified_media():
 
     def _size(p):
         try: return os.path.getsize(p)
-        except: return 0
+        except Exception: return 0
 
     def _add(fn, media_type, source, directory):
         nonlocal added

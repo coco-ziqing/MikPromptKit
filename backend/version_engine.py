@@ -256,7 +256,7 @@ def restore_version(catalog_id, version_no, dest_path):
             # 解压 base
             import lzma
             ver_dir = os.path.join(VERSION_STORE, str(catalog_id))
-            base_tmp = os.path.join(ver_dir, f"_restore_base.tmp")
+            base_tmp = os.path.join(ver_dir, "_restore_base.tmp")
             try:
                 with lzma.open(base_ver["storage_path"], "rb") as fin, open(base_tmp, "wb") as fout:
                     while True:

@@ -15,7 +15,6 @@ import socket
 import sqlite3
 import string
 import time
-from typing import Optional
 
 from fastapi import APIRouter, Body, Header, HTTPException, Query, Request
 
@@ -88,7 +87,7 @@ def _consume_pair_code(code) -> bool:
     finally: c.close()
 
 # ── Agent 鉴权 ──
-def _device_auth(device_token: Optional[str] = Header(None)):
+def _device_auth(device_token: str | None = Header(None)):
     if not device_token: raise HTTPException(401, "缺少 X-Device-Token")
     c = _ro()
     try:

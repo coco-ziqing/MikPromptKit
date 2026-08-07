@@ -22,6 +22,9 @@ ignore = [
     "E402",   # 模块级 import 非顶部：main.py 等需 sys.path 先行
     "E731",   # lambda 赋值
     "UP035",  # typing 导入现代化：批量替换风险高，后续处理
+    "E701",   # 一行多语句(:)：677处历史风格，Phase 3 分批人工拆行
+    "E702",   # 一行多语句(;)：同上
+    "UP031",  # printf风格格式化：44处，Phase 3 批量转 f-string
 ]
 
 [tool.ruff.lint.per-file-ignores]

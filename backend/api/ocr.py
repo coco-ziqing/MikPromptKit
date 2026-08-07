@@ -356,7 +356,7 @@ async def _ocr_pipeline(image_bytes: bytes, text_region_bytes: bytes = None) -> 
             return result3
 
     # === 全部失败 ===
-    print(f"[OCR] ALL models failed for this image")
+    print("[OCR] ALL models failed for this image")
     return {"error": "所有视觉模型均未能提取到内容"}
 
 
@@ -600,7 +600,7 @@ async def ocr_confirm(data: OcrConfirmInput):
             tmp_path = os.path.join(TEMP_DIR, data.temp_image)
             if os.path.exists(tmp_path):
                 try: os.remove(tmp_path)
-                except: pass
+                except Exception: pass
         return {"ok": True, "message": "✅ 已导入"}
     except Exception as e:
         return {"ok": False, "error": f"保存失败: {str(e)[:200]}"}

@@ -8,7 +8,6 @@ import asyncio
 import json
 import re
 import time
-from typing import List
 
 from database import get_db
 from ollama_client import ollama_chat
@@ -36,7 +35,7 @@ RERANK_SYSTEM = """你是提示词搜索排序专家。请对候选提示词按�
 严格按照相关性排序，Score越高越相关。只返回JSON数组，不要其它说明。"""
 
 
-async def llm_rerank(query: str, candidates: List[dict], top_k: int = 10) -> List[dict]:
+async def llm_rerank(query: str, candidates: list[dict], top_k: int = 10) -> list[dict]:
     """用 LLM 对候选进行语义重排"""
     if not candidates or len(candidates) <= 3:
         return candidates

@@ -288,7 +288,7 @@ def run():
         sort = 0
         for item in cat_data["items"]:
             db.execute("""
-                INSERT INTO library_assets 
+                INSERT INTO library_assets
                     (lib_type, name, icon, category, prompt, definition, tags, is_builtin, sort_order)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
             """, (
@@ -309,9 +309,9 @@ def run():
 
     # 重新统计各类别
     rows = db.execute("""
-        SELECT lib_type, COUNT(*) as cnt 
-        FROM library_assets 
-        GROUP BY lib_type 
+        SELECT lib_type, COUNT(*) as cnt
+        FROM library_assets
+        GROUP BY lib_type
         ORDER BY cnt DESC
     """).fetchall()
 

@@ -712,7 +712,7 @@ def batch_export(data: dict):
         return Response(content=content, media_type="application/json",
                         headers={"Content-Disposition": _dl_header(filename)})
     elif fmt == "md":
-        lines = [f"# 提示词批量导出\n",
+        lines = ["# 提示词批量导出\n",
                  f"导出时间: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')}  |  共 {len(rows)} 条\n",
                  "---\n"]
         for i, r in enumerate(rows, 1):

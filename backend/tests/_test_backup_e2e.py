@@ -28,7 +28,7 @@ def call(m,p,b=None,tk=ADMIN,h=None,dbytes=None):
         with urllib.request.urlopen(r,timeout=30)as rr:return rr.status,json.loads(rr.read())
     except urllib.error.HTTPError as e:
         try:return e.code,json.loads(e.read())
-        except:return e.code,{}
+        except Exception:return e.code,{}
 
 PASS=[];FAIL=[]
 def ck(n,ok):(PASS if ok else FAIL).append(n)
@@ -40,7 +40,7 @@ payload=os.urandom(12*1024*1024)
 with open(fpath,"wb")as f:f.write(payload)
 FP=hashlib.sha256(payload).hexdigest()
 SZ=len(payload)
-print("测试文件: {} ({}MB) fp={}".format(fpath,SZ//1048576,FP[:16]))
+print(f"测试文件: {fpath} ({SZ//1048576}MB) fp={FP[:16]}")
 
 # 2. 注册设备
 st,d=call("POST","/api/devices/pair-code")
@@ -58,12 +58,12 @@ st,d=call("POST","/api/device/index-batch",
 ck("上报",st==200 and d.get("new")==1)
 
 # 4. 归档 critical
-st,d=call("GET","/api/devices/{}/files?state=new".format(DID))
+st,d=call("GET",f"/api/devices/{DID}/files?state=new")
 fid=d["items"][0]["id"]
 from database import get_db
 
 psid=(get_db().execute("SELECT id FROM project_space ORDER BY id LIMIT 1").fetchone()or{"id":1})["id"]
-st,d=call("POST","/api/devices/files/{}/archive".format(fid),
+st,d=call("POST",f"/api/devices/files/{fid}/archive",
     {"project_space_id":psid,"module_key":"project_c4d","is_critical":1})
 ck("归档critical",st==200 and "catalog_id" in d)
 CAT=d.get("catalog_id")
@@ -84,10 +84,10 @@ with open(fpath,"rb")as f:
     for ci in range(total):
         chunk=f.read(CH)
         hd={**HA,"X-Chunk-Index":str(ci),"X-Chunk-Total":str(total),"X-Fingerprint":FP}
-        st,d=call("POST","/api/device/upload/{}".format(TID),h=hd,dbytes=chunk,tk=None)
-        if st!=200:ok=False;print(" chunk {} fail {}".format(ci,d))
-ck("分块上传{}块".format(total),ok)
-ck("最后块返回merged",d.get("merged")==True and d.get("size")==SZ)
+        st,d=call("POST",f"/api/device/upload/{TID}",h=hd,dbytes=chunk,tk=None)
+        if st!=200:ok=False;print(f" chunk {ci} fail {d}")
+ck(f"分块上传{total}块",ok)
+ck("最后块返回merged",d.get("merged") and d.get("size")==SZ)
 
 # 7. L1 落盘
 store=os.path.join("data","backup_store",FP[:2],FP)
@@ -110,11 +110,11 @@ td=next(x for x in d["devices"]if x["id"]==DID)
 ck("覆盖率=1.0",td.get("backup_ratio")==1.0)
 
 # 清理
-call("DELETE","/api/devices/{}".format(DID))
+call("DELETE",f"/api/devices/{DID}")
 shutil.rmtree(TMP,ignore_errors=True)
 
 print()
 for p in PASS:print("PASS",p)
 for f in FAIL:print("FAIL",f)
-print("\n{}/{} 通过".format(len(PASS),len(PASS)+len(FAIL)))
+print(f"\n{len(PASS)}/{len(PASS)+len(FAIL)} 通过")
 sys.exit(0 if not FAIL else 1)

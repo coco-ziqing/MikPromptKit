@@ -145,9 +145,9 @@ def query(level: str = None, source: str = None, search: str = None,
         db = get_db()
         where = []; params = []
         if level:
-            where.append(f"level=?"); params.append(level)
+            where.append("level=?"); params.append(level)
         if source:
-            where.append(f"source=?"); params.append(source)
+            where.append("source=?"); params.append(source)
         if search:
             where.append("(message LIKE ? OR detail LIKE ?)")
             params.extend([f"%{search}%", f"%{search}%"])

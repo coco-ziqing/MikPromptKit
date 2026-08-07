@@ -65,7 +65,7 @@ db.commit()
 db.execute("DROP VIEW IF EXISTS prompt_word_card")
 db.execute("""
     CREATE VIEW prompt_word_card AS
-    SELECT 
+    SELECT
         wc.id,
         wc.group_id AS library_id,
         wc.content AS word_text,
@@ -88,7 +88,7 @@ print("Created VIEW: prompt_word_card")
 db.execute("DROP VIEW IF EXISTS prompt_library")
 db.execute("""
     CREATE VIEW prompt_library AS
-    SELECT 
+    SELECT
         id,
         group_key AS dimension_key,
         name AS dimension_name,
@@ -175,7 +175,7 @@ db.execute("""
             NEW.dimension_name,
             'seedance',
             COALESCE(NEW.category, 'custom'),
-            COALESCE(NEW.sort_order, 
+            COALESCE(NEW.sort_order,
                 (SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card_group WHERE group_type='seedance')
             ),
             NEW.description

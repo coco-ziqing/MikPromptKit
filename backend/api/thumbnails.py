@@ -391,7 +391,7 @@ def _probe_video_info(filepath):
                     num, den = r_frame_rate.split('/')
                     try:
                         info['fps'] = round(float(num) / max(float(den), 1), 3)
-                    except:
+                    except Exception:
                         info['fps'] = 0
                 info['width'] = int(s.get('width', 0))
                 info['height'] = int(s.get('height', 0))
@@ -630,9 +630,9 @@ async def prepare_video_upload(file: UploadFile = File(...)):
     try:
         mid_time = duration * 0.25 if duration > 0 else 0
         subprocess.run(['ffmpeg', '-ss', '0', '-i', orig_path, '-vframes', '1',
-            '-vf', f'scale=480:-2', '-q:v', '2', poster1_path, '-y'], capture_output=True, timeout=15)
+            '-vf', 'scale=480:-2', '-q:v', '2', poster1_path, '-y'], capture_output=True, timeout=15)
         subprocess.run(['ffmpeg', '-ss', str(mid_time), '-i', orig_path, '-vframes', '1',
-            '-vf', f'scale=480:-2', '-q:v', '2', poster2_path, '-y'], capture_output=True, timeout=15)
+            '-vf', 'scale=480:-2', '-q:v', '2', poster2_path, '-y'], capture_output=True, timeout=15)
         poster_ok = True
     except Exception:
         poster_ok = False

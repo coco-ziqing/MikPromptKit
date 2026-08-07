@@ -10,7 +10,6 @@ import shutil
 import socket
 import subprocess
 import sys
-from typing import Optional
 
 from fastapi import APIRouter, Query
 
@@ -31,7 +30,7 @@ DEFAULT_COMFY_URL = "http://127.0.0.1:8188"
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 
-def _get_config(key: str) -> Optional[str]:
+def _get_config(key: str) -> str | None:
     """读取 config 表配置值"""
     try:
         from database import get_db
@@ -387,7 +386,7 @@ def _check_database() -> dict:
         finally:
             if conn:
                 try: conn.close()
-                except: pass
+                except Exception: pass
 
     return {"ok": False, "error": "数据库忙（重试3次后仍锁）", "hint": "数据库不可用，服务无法正常运行"}
 
@@ -500,7 +499,7 @@ def _check_wal_integrity() -> dict:
     finally:
         if conn:
             try: conn.close()
-            except: pass
+            except Exception: pass
 
 
 def _check_playground_llm() -> dict:

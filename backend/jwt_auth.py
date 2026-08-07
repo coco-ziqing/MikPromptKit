@@ -12,7 +12,6 @@ import hmac
 import json
 import os
 import time
-from typing import Optional
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -117,7 +116,7 @@ def create_jwt(payload: dict, secret: str = None) -> str:
     return f"{signing_input}.{sig_b64}"
 
 
-def verify_jwt(token: str, secret: str = None) -> Optional[dict]:
+def verify_jwt(token: str, secret: str = None) -> dict | None:
     """
     验证 JWT token，返回 payload 或 None。
     """
@@ -161,7 +160,7 @@ def verify_jwt(token: str, secret: str = None) -> Optional[dict]:
 class JWTAuthMiddleware(BaseHTTPMiddleware):
     """
     JWT 认证中间件（Phase18: 仅解析，不强制）。
-    
+
     1. 从 Authorization header 或 cookie 提取 token
     2. 验证 token → 解析 user_id, role
     3. 注入到 request.state.user
@@ -230,7 +229,7 @@ def require_role(*roles: str):
     用法：
         @router.get("/api/admin/secret")
         def secret(user: dict = Depends(require_role("admin"))): ...
-    
+
     与 JWTAuthMiddleware 配合：中间件将解析后的用户注入 request.state.user，
     此依赖从中读取并检查角色。
     """
@@ -263,7 +262,7 @@ def get_current_user(request: Request) -> dict:
     return {"id": 1, "username": "admin", "role": "admin", "authenticated": False}
 
 
-def login_user(db, username: str, password: str) -> Optional[str]:
+def login_user(db, username: str, password: str) -> str | None:
     """
     用户登录验证 — 通过 users 表校验密码，返回 JWT token 或 None。
     db: sqlite3 连接（需已设置 row_factory）

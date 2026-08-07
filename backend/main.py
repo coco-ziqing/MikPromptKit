@@ -468,7 +468,7 @@ async def record_request_middleware(request: Request, call_next):
             try:
                 if request.method in ("POST", "PUT", "PATCH") and hasattr(request, '_body'):
                     body = request._body.decode("utf-8", errors="replace")[:2000]
-            except: pass
+            except Exception: pass
             api_log(request.method, request.url.path, response.status_code, duration, request_body=body, request_id=request_id)
         response.headers["X-Request-ID"] = request_id
         return response
@@ -488,7 +488,7 @@ async def record_request_middleware(request: Request, call_next):
             if request.method in ("POST", "PUT", "PATCH"):
                 raw = await request.body()
                 body = raw.decode("utf-8", errors="replace")[:2000]
-        except: pass
+        except Exception: pass
         capture_exception(exc, source="api", path=request.url.path, status_code=500, request_body=body, request_id=request.state.request_id if hasattr(request.state,'request_id') else "")
         raise
 
@@ -570,6 +570,8 @@ from api.dam_vault import router as dam_vault_router
 
 app.include_router(dam_vault_router)
 # v5.22.1: 许可激活（主机绑定+秘钥）
+from datetime import UTC
+
 from api.license import router as license_router
 
 app.include_router(license_router)
@@ -722,7 +724,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         try:
             from breadcrumb_logger import flush_breadcrumbs
             flush_breadcrumbs(session_id)
-        except: pass
+        except Exception: pass
     capture_exception(exc, source="api", path=request.url.path, status_code=500, request_body=body)
     return JSONResponse(
         status_code=500,
@@ -733,10 +735,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/api/ping")
 def ping():
     """极轻量心跳 — 零数据库调用，仅返回服务存活信号"""
-    from datetime import datetime, timezone
+    from datetime import datetime
     return {
         "ok": True,
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "version": APP_VERSION
     }
 

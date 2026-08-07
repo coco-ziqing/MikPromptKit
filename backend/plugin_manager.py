@@ -16,7 +16,7 @@ import traceback
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable
 
 # 日志：优先用项目 logger，不可用时回退 print
 try:
@@ -60,18 +60,18 @@ class PluginManifest:
     author: str = ""
     description: str = ""
     license_tier: str = "free"     # free / personal / team
-    dependencies: List[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
 
     # 后端注入
     api_router_module: str = ""    # 相对路径，如 "api"
-    db_migrations: List[str] = field(default_factory=list)  # SQL文件列表
+    db_migrations: list[str] = field(default_factory=list)  # SQL文件列表
 
     # 前端注入
-    frontend_modules: List[dict] = field(default_factory=list)
+    frontend_modules: list[dict] = field(default_factory=list)
     # [{name, url, nav_button: {slot, icon, label, view}, panel_slot: {id}}]
 
     # 钩子注册
-    hooks: Dict[str, str] = field(default_factory=dict)
+    hooks: dict[str, str] = field(default_factory=dict)
     # {"on_db_init": "hooks.on_db_init", "on_startup": "hooks.on_startup"}
 
     def to_dict(self) -> dict:
@@ -101,10 +101,10 @@ class PluginInstance:
     config: dict = field(default_factory=dict)
 
     # 前端注入数据（插件提供的）
-    nav_buttons: List[dict] = field(default_factory=list)
-    panel_slots: List[dict] = field(default_factory=list)
-    view_routes: List[dict] = field(default_factory=list)
-    context_menus: List[dict] = field(default_factory=list)
+    nav_buttons: list[dict] = field(default_factory=list)
+    panel_slots: list[dict] = field(default_factory=list)
+    view_routes: list[dict] = field(default_factory=list)
+    context_menus: list[dict] = field(default_factory=list)
 
 
 # ============================================================
@@ -115,10 +115,10 @@ class PromptKitPlugin:
     """所有插件必须继承此基类"""
 
     plugin_id: str = ""
-    manifest: Optional[PluginManifest] = None
+    manifest: PluginManifest | None = None
 
     def __init__(self):
-        self._hooks: Dict[str, Callable] = {}
+        self._hooks: dict[str, Callable] = {}
 
     # ----- 生命周期 -----
 
@@ -147,7 +147,7 @@ class PromptKitPlugin:
         """注册一个钩子回调"""
         self._hooks[name] = callback
 
-    def get_hook(self, name: str) -> Optional[Callable]:
+    def get_hook(self, name: str) -> Callable | None:
         """获取钩子回调"""
         return self._hooks.get(name)
 
@@ -178,7 +178,7 @@ class PromptKitPlugin:
 
     # ----- 数据库迁移 -----
 
-    def get_migrations(self) -> List[dict]:
+    def get_migrations(self) -> list[dict]:
         """
         返回迁移列表:
         [{"name": "001_init", "sql": "CREATE TABLE ...", "rollback_sql": "DROP TABLE ..."}]
@@ -199,7 +199,7 @@ class PromptKitPlugin:
 class PluginManager:
     """插件管理器单例"""
 
-    _instance: Optional["PluginManager"] = None
+    _instance: PluginManager | None = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -219,8 +219,8 @@ class PluginManager:
         except Exception:
             _workspace_root = Path(__file__).resolve().parent.parent
             _resource_root = _workspace_root
-        self.plugins: Dict[str, PluginInstance] = {}   # plugin_id → PluginInstance
-        self.hook_registry: Dict[str, List[Callable]] = {}  # hook_name → [callback, ...]
+        self.plugins: dict[str, PluginInstance] = {}   # plugin_id → PluginInstance
+        self.hook_registry: dict[str, list[Callable]] = {}  # hook_name → [callback, ...]
         # 打包环境下插件在 _internal/plugins/，开发环境在工作区 plugins/
         self.plugins_dir: Path = _resource_root / "plugins"
         self.disabled_dir: Path = _resource_root / "plugins" / "_disabled"
@@ -237,7 +237,7 @@ class PluginManager:
     # 插件发现
     # ================================================================
 
-    def discover(self) -> List[str]:
+    def discover(self) -> list[str]:
         """
         扫描 plugins/ 目录，发现所有有效插件。
         返回发现的 plugin_id 列表。
@@ -357,7 +357,7 @@ class PluginManager:
             traceback.print_exc()
             return False
 
-    def load_all(self, app=None, db=None) -> Dict[str, bool]:
+    def load_all(self, app=None, db=None) -> dict[str, bool]:
         """
         加载所有发现的插件。
         返回 {plugin_id: success} 字典。
@@ -442,7 +442,7 @@ class PluginManager:
             self.hook_registry[hook_name] = []
         self.hook_registry[hook_name].append(callback)
 
-    def trigger_hook(self, hook_name: str, *args, **kwargs) -> List[Any]:
+    def trigger_hook(self, hook_name: str, *args, **kwargs) -> list[Any]:
         """
         触发全局钩子，返回所有回调结果。
         仅触发已启用的插件。
@@ -519,11 +519,11 @@ class PluginManager:
     # 查询
     # ================================================================
 
-    def get_plugin(self, plugin_id: str) -> Optional[PluginInstance]:
+    def get_plugin(self, plugin_id: str) -> PluginInstance | None:
         """获取插件实例"""
         return self.plugins.get(plugin_id)
 
-    def list_plugins(self) -> List[dict]:
+    def list_plugins(self) -> list[dict]:
         """列出所有插件（简要信息）"""
         result = []
         for pid, p in self.plugins.items():
@@ -582,7 +582,7 @@ class PluginManager:
             hooks=data.get("hooks", {}),
         )
 
-    def _find_plugin_class(self, module) -> Optional[type]:
+    def _find_plugin_class(self, module) -> type | None:
         """在模块中查找 PromptKitPlugin 子类"""
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
@@ -594,7 +594,7 @@ class PluginManager:
                 return attr
         return None
 
-    def _check_dependencies(self, manifest: PluginManifest) -> List[str]:
+    def _check_dependencies(self, manifest: PluginManifest) -> list[str]:
         """检查依赖是否满足。返回缺少的依赖列表。"""
         missing = []
         for dep_id in manifest.dependencies:
@@ -603,7 +603,7 @@ class PluginManager:
                 missing.append(dep_id)
         return missing
 
-    def _get_db(self) -> Optional[Any]:
+    def _get_db(self) -> Any | None:
         """获取数据库连接（延迟导入避免循环依赖）"""
         try:
             from database import get_db
