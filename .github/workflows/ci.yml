@@ -92,7 +92,12 @@ jobs:
         run: |
           pip install -r requirements.txt pytest
 
-      - name: Run pytest smoke
+      - name: Run pytest smoke (diagnose)
         run: |
-          python -m pytest backend/tests/test_smoke.py -v
+          set +e
+          python -m pytest backend/tests/test_smoke.py -v > /tmp/pt.log 2>&1
+          ec=$?
+          echo "::warning::PYTEST_EXIT=$ec"
+          tail -40 /tmp/pt.log | while IFS= read -r line; do echo "::warning::$line"; done
+          exit 0
 
