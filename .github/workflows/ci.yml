@@ -76,3 +76,23 @@ jobs:
             [ -f "$f" ] || { echo "MISSING: $f"; exit 1; }
           done
           echo "structure OK"
+
+  pytest-smoke:
+    name: pytest 冒烟测试（离线）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install deps
+        run: |
+          pip install pytest fastapi uvicorn httpx python-multipart
+
+      - name: Run pytest smoke
+        run: |
+          python -m pytest backend/tests/test_smoke.py -v --no-header -q
+

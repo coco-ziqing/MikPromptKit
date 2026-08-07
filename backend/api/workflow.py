@@ -42,7 +42,7 @@ def _format_prompt(row, fmt="json"):
 
 
 @router.get("/random")
-def random_prompt(fmt: str = Query("json", regex="^(json|text)$")):
+def random_prompt(fmt: str = Query("json", pattern="^(json|text)$")):
     """随机取一条提示词"""
     db = get_db()
     row = db.execute("""
@@ -56,7 +56,7 @@ def random_prompt(fmt: str = Query("json", regex="^(json|text)$")):
 
 
 @router.get("/latest")
-def latest_prompts(count: int = Query(5, ge=1, le=20), fmt: str = Query("json", regex="^(json|text)$")):
+def latest_prompts(count: int = Query(5, ge=1, le=20), fmt: str = Query("json", pattern="^(json|text)$")):
     """获取最新添加的提示词"""
     db = get_db()
     rows = db.execute("""
@@ -68,7 +68,7 @@ def latest_prompts(count: int = Query(5, ge=1, le=20), fmt: str = Query("json", 
 
 
 @router.get("/by-module/{module}")
-def prompts_by_module(module: str, count: int = Query(10, ge=1, le=50), fmt: str = Query("json", regex="^(json|text)$")):
+def prompts_by_module(module: str, count: int = Query(10, ge=1, le=50), fmt: str = Query("json", pattern="^(json|text)$")):
     """按模块取提示词（如 emotion / color / camera_move / seedance）"""
     db = get_db()
     rows = db.execute("""
@@ -80,7 +80,7 @@ def prompts_by_module(module: str, count: int = Query(10, ge=1, le=50), fmt: str
 
 
 @router.get("/by-category/{category}")
-def prompts_by_category(category: str, count: int = Query(10, ge=1, le=50), fmt: str = Query("json", regex="^(json|text)$")):
+def prompts_by_category(category: str, count: int = Query(10, ge=1, le=50), fmt: str = Query("json", pattern="^(json|text)$")):
     """按分类取提示词"""
     db = get_db()
     rows = db.execute("""
@@ -92,7 +92,7 @@ def prompts_by_category(category: str, count: int = Query(10, ge=1, le=50), fmt:
 
 
 @router.get("/search")
-def workflow_search(q: str = Query("", min_length=1), count: int = Query(10, ge=1, le=30), fmt: str = Query("json", regex="^(json|text)$")):
+def workflow_search(q: str = Query("", min_length=1), count: int = Query(10, ge=1, le=30), fmt: str = Query("json", pattern="^(json|text)$")):
     """关键词搜索（支持 FTS5 全文检索），专为工作流优化"""
     db = get_db()
     try:
@@ -116,7 +116,7 @@ def workflow_search(q: str = Query("", min_length=1), count: int = Query(10, ge=
 
 
 @router.get("/{prompt_id}")
-def get_prompt(prompt_id: int, fmt: str = Query("json", regex="^(json|text)$")):
+def get_prompt(prompt_id: int, fmt: str = Query("json", pattern="^(json|text)$")):
     """按 ID 获取单条提示词"""
     db = get_db()
     row = db.execute("""

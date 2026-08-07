@@ -460,11 +460,35 @@ INDEX_COL_CHECK = {
 # ================================================================
 
 def seed_default_admin(db):
-    """插入默认管理员用户（个人版跳过登录，此处仅预埋）"""
-    _execute_safe(db, """
-        INSERT OR IGNORE INTO users (id, username, password_hash, display_name, role, is_active, created_at)
-        VALUES (1, 'admin', '', '管理员', 'admin', 1, datetime('now'))
-    """, "默认管理员 seed")
+    """插入默认管理员用户（个人版跳过登录，此处仅预埋）
+    2026-08-07 修复: 原实现 password_hash 为空字符串，全新环境首启后 admin 永远无法登录。
+    现改为：不存在则带默认哈希插入；存在但哈希为空则补默认哈希（不覆盖用户改过的密码）。
+    """
+    try:
+        from password import hash_pw
+        default_hash = hash_pw("admin")
+    except Exception:
+        default_hash = ""
+    row = db.execute("SELECT id, password_hash FROM users WHERE username='admin'").fetchone()
+    if not row:
+        try:
+            db.execute("""
+                INSERT OR IGNORE INTO users (id, username, password_hash, display_name, role, is_active, created_at)
+                VALUES (1, 'admin', ?, '管理员', 'admin', 1, datetime('now'))
+            """, [default_hash])
+            db.commit()
+            print("  [OK] 默认管理员 seed")
+        except Exception as e:
+            print(f"  [SKIP] 默认管理员 seed: {e}")
+    else:
+        cur_hash = row["password_hash"] if hasattr(row, "keys") else row[1]
+        if not cur_hash and default_hash:
+            db.execute("UPDATE users SET password_hash=? WHERE username='admin'", [default_hash])
+            try:
+                db.commit()
+            except Exception:
+                pass
+            print("[migrate] 默认管理员密码哈希已补全（admin/admin）")
 
 
 def seed_system_config(db):

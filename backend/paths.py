@@ -35,7 +35,12 @@ def get_frontend_dir() -> str:
 
 
 def get_data_dir() -> str:
-    """data/ 目录：始终在 EXE 旁边，用户可管理"""
+    """data/ 目录：始终在 EXE 旁边，用户可管理
+    支持环境变量 PK_DATA_DIR 覆盖（测试隔离/自定义数据目录用）
+    """
+    override = os.environ.get("PK_DATA_DIR")
+    if override:
+        return override
     return os.path.join(get_base_dir(), 'data')
 
 
