@@ -73,3 +73,35 @@ logs/
 
 # === 生成报告 ===
 reports/daily_*.html
+
+# === 安全加固：凭据/数据库/日志（Phase 0, 2026-08-07） ===
+.env.mail
+backend/data/
+*.phase14_backup
+*.db-wal
+*.db-shm
+
+# === 运行日志（根目录/backend） ===
+*.log
+!skills/**/*.log
+server_out.log
+server_err.log
+output.log
+temp_server_output.txt
+backend/_startup*.log
+
+# === 临时诊断脚本（历史考古，保留本地归档） ===
+_diag*.py
+_exe_test_suite.py
+_test_exe.py
+backend/_fix_migrate.py
+backend/_lint_columns.py
+backend/_lint_paths.py
+backend/_smoke_test.py
+scripts/_*.py
+tools/_*.py
+
+# === 本地临时目录 ===
+Downloads/
+dist/PromptKit/data/
+openclaw-workspace-state.json
