@@ -12,6 +12,8 @@ Phase18 v5.1.0
 团队版 (Team):   格式校验 + 定期联网 + 宽限期 + 降级策略 → 订阅制
 """
 
+from __future__ import annotations
+
 import base64
 import hashlib
 import json

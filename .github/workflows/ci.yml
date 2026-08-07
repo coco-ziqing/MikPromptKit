@@ -92,26 +92,8 @@ jobs:
         run: |
           pip install -r requirements.txt pytest
 
-      - name: Run pytest smoke (diagnose)
+      - name: Run pytest smoke
         run: |
-          set +e
-          python - <<'PYEOF' > /tmp/diag.txt 2>&1
-          import sys
-          sys.path.insert(0, 'backend')
-          import plugin_manager
-          print('PM_FILE=' + plugin_manager.__file__)
-          print('HAS_INIT=' + str(hasattr(plugin_manager, 'init_plugin_system')))
-          PYEOF
-          cat /tmp/diag.txt | while IFS= read -r line; do echo "::warning::$line"; done
-          if pip show plugin_manager > /tmp/pm.txt 2>&1; then echo "::warning::PIP_PM_INSTALLED"; else echo "::warning::PIP_PM_NOT_INSTALLED"; fi
-          python -m pytest backend/tests/test_smoke.py -v --tb=long > /tmp/pt.log 2>&1
-          ec=$?
-          export PT_EXIT=$ec
-          python - <<'PYEOF'
-          import os
-          msg = open('/tmp/pt.log', encoding='utf-8', errors='replace').read()
-          msg = msg.replace('%', '%25').replace(chr(13), '').replace(chr(10), '%0A')
-          print('::error title=pytest_exit_%s::%s' % (os.environ.get('PT_EXIT', '?'), msg[:14000]))
-          PYEOF
-          exit 0
+          python -m pytest backend/tests/test_smoke.py -v
+
 

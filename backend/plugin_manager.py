@@ -8,6 +8,8 @@ Phase18: 插件框架核心 v5.1.0
         详见 docs/REPO_ISOLATION.md
 """
 
+from __future__ import annotations
+
 import importlib
 import importlib.util
 import json
