@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """pytest 共享 fixture — 隔离数据目录 + TestClient（Phase 3.3 引入）
 
 - PK_DATA_DIR 指向临时目录，测试不触碰真实 data/

@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
 """冒烟测试：app 装配 / 路由注册 / 健康检查 / 核心 API（Phase 3.3）
 
 离线可跑（TestClient + 临时数据目录），无需启动真实服务。
 运行：python -m pytest backend/tests -v
 """
-import pytest
 
 
 class TestAppAssembly:
