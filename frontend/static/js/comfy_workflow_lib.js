@@ -52,7 +52,6 @@ App.comfyLib = {
     _selectedGroupId: 0,
     _collapsedGroups: {},
     _allGroups: [],
-    _logs: [],
     _logViewMode: null,
 };
 

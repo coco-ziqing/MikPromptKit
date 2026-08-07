@@ -974,7 +974,8 @@ Object.assign(App, {
         this._exportQueue = null;
     },
 
-    async _openExportDir() {
+    // 2026-08-03 起被 L1135 的 _openExportDir 覆盖（导出弹窗「下载目录」按钮），保留为遗留实现
+    async _openExportDirLegacy() {
         var btn = document.getElementById('btnOpenExportDir');
         var path = btn ? btn.getAttribute('data-path') : '';
         if (!path) { this.showToast('请先设置导出目录', 'warning'); return; }

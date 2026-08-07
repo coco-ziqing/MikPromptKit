@@ -1,0 +1,12 @@
+{
+  "name": "mikpromptkit",
+  "version": "5.32.0",
+  "private": true,
+  "description": "MikPromptKit 前端静态资源（无构建，原生 JS + Bootstrap 5 CDN）",
+  "scripts": {
+    "lint:frontend": "eslint frontend/static/js --config eslint.config.js"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0"
+  }
+}
