@@ -1,0 +1,801 @@
+// ComfyUI 工作流存储调用空间 — 分片 editor（Phase 3.5 拆分，常量副本随片携带）
+(function() {
+'use strict';
+if (!window.App || !App.fetchJSON) { setTimeout(arguments.callee, 200); return; }
+
+var CWL_SIZE_PRESETS = {
+    sd15:    { label: 'SD1.5', base: 512,  presets: [[512, 512], [768, 512], [512, 768], [640, 384], [384, 640], [832, 576], [576, 832]] },
+    sdxl:    { label: 'SDXL',  base: 1024, presets: [[1024, 1024], [1152, 896], [896, 1152], [1216, 832], [832, 1216], [1344, 768], [768, 1344]] },
+    flux:    { label: 'FLUX',  base: 1024, presets: [[1024, 1024], [1152, 896], [896, 1152], [1216, 832], [832, 1216], [1344, 768], [768, 1344], [1536, 640], [640, 1536]] },
+    unknown: { label: '通用',  base: 768,  presets: [[512, 512], [768, 768], [1024, 1024], [1280, 720], [720, 1280], [1920, 1080], [1080, 1920]] }
+};
+var CWL_RATIOS = [
+    { label: '1:1', w: 1, h: 1 }, { label: '4:3', w: 4, h: 3 }, { label: '3:2', w: 3, h: 2 },
+    { label: '16:9', w: 16, h: 9 }, { label: '3:4', w: 3, h: 4 }, { label: '2:3', w: 2, h: 3 }, { label: '9:16', w: 9, h: 16 }
+];
+
+// 参数排序：角色优先（正面提示词 → 负面提示词 → 其他），再按使用习惯字段顺序
+var CWL_PARAM_SORT = {
+    width: 10, height: 11, batch_size: 12,
+    seed: 20, noise_seed: 21,
+    steps: 30, cfg: 31, guidance: 32, denoise: 33,
+    sampler_name: 40, scheduler: 41,
+    lora_name: 50, ckpt_name: 51, unet_name: 52, vae_name: 53, clip_name1: 54, clip_name2: 55,
+    strength: 60, strength_model: 61,
+    text: 70, prompt_text: 71
+};
+function CWL_cmpParams(a, b) {
+    var ra = a.role === 'positive' ? 0 : (a.role === 'negative' ? 1 : 2);
+    var rb = b.role === 'positive' ? 0 : (b.role === 'negative' ? 1 : 2);
+    if (ra !== rb) return ra - rb;
+    var oa = CWL_PARAM_SORT[a.field] !== undefined ? CWL_PARAM_SORT[a.field] : 100;
+    var ob = CWL_PARAM_SORT[b.field] !== undefined ? CWL_PARAM_SORT[b.field] : 100;
+    if (oa !== ob) return oa - ob;
+    return a.key < b.key ? -1 : (a.key > b.key ? 1 : 0);
+}
+
+App.comfyLib._renderParamForm = function() {
+    var form = document.getElementById('cwlParamForm');
+    if (!form) return;
+    var preset = this._activePreset;
+    if (!preset) {
+        // 无配置：简单提示词框
+        form.innerHTML =
+          '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">提示词</label>' +
+          '<textarea id="cwlPrompt" rows="2" placeholder="输入提示词..." style="width:100%;font-size:12px;padding:8px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);resize:vertical;">' + App._escape((this._selectedWf && this._selectedWf.prompt_text) || '') + '</textarea>';
+        return;
+    }
+    var params = [];
+    try { params = JSON.parse(preset.params_json || '[]'); } catch(e) {}
+    if (params.length === 0) {
+        form.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">该配置未包含任何参数</div>';
+        return;
+    }
+    var html = '';
+    // 模型文件参数存在时：顶部显示「刷新模型列表」工具条
+    var hasFileParam = false;
+    params.forEach(function(p) {
+        if (p && p.type === 'select_file' && (p.options || []).length > 0) hasFileParam = true;
+    });
+    if (hasFileParam) {
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+          '<span style="font-size:10px;color:var(--text-muted);"><i class="bi bi-box-seam"></i> 模型文件自动同步 ComfyUI</span>' +
+          '<span style="margin-left:auto;"><button type="button" class="cwl-tree-btn" onclick="App.comfyLib._refreshModelOptions()" title="强制从 ComfyUI 拉取最新模型列表（新上传模型后点击）"><i class="bi bi-arrow-repeat"></i> 刷新模型列表</button></span>' +
+        '</div>';
+    }
+    // 尺寸快捷：表单含 width + height 滑块时提供横竖/比例/分辨率一键设置
+    var self = this;
+    var FILE_FIELDS = ['ckpt_name', 'lora_name', 'unet_name', 'vae_name', 'clip_name1', 'clip_name2'];
+    // 旧数据兜底：带 options 的参数按字段语义修正为下拉/文件下拉（不受旧 type 影响）
+    params.forEach(function(p) {
+        if (!p || typeof p !== 'object') return;
+        if ((p.options || []).length > 0) {
+            p.type = (FILE_FIELDS.indexOf(p.field) > -1) ? 'select_file' : 'select';
+        }
+    });
+    // 参数排序：正面提示词 → 负面提示词 → 常用参数（尺寸/种子/步数/CFG/采样器/调度器/模型/强度）
+    params.sort(CWL_cmpParams);
+    var wP = null, hP = null;
+    params.forEach(function(p) {
+        if (p.field === 'width' && p.type === 'slider') wP = p;
+        if (p.field === 'height' && p.type === 'slider') hP = p;
+    });
+    if (wP && hP) {
+        var mt = CWL_SIZE_PRESETS[this._modelType] || CWL_SIZE_PRESETS.unknown;
+        var base = mt.base;
+        var sb = '<div style="border:1px dashed var(--border-color);border-radius:8px;padding:8px 10px;margin-bottom:10px;">' +
+          '<div style="font-size:11px;font-weight:600;margin-bottom:6px;">📐 尺寸快捷 <span style="font-weight:400;color:var(--text-muted);font-size:10px;">' + App._escape(mt.label) + ' · 长边 ' + base + 'px</span></div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">' +
+            '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._formSetSize(1,1)" style="border-color:#6366f1;color:var(--primary);">□ 方形</button>' +
+            '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._formSetSize(4,3)" style="border-color:#6366f1;color:var(--primary);">▭ 横屏</button>' +
+            '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._formSetSize(3,4)" style="border-color:#6366f1;color:var(--primary);">▯ 竖屏</button>' +
+          '</div>' +
+          '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">';
+        CWL_RATIOS.forEach(function(r) {
+            sb += '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._formSetSize(' + r.w + ',' + r.h + ')">' + r.label + '</button>';
+        });
+        sb += '</div><div style="display:flex;gap:4px;flex-wrap:wrap;">';
+        mt.presets.forEach(function(sz) {
+            sb += '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._formSetSize(' + sz[0] + ',' + sz[1] + ',true)">' + sz[0] + '×' + sz[1] + '</button>';
+        });
+        sb += '</div></div>';
+        html += sb;
+    }
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:10px;">';
+    params.forEach(function(p) {
+        html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:8px;">' +
+                '<label style="font-size:11px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + App._escape((p.label || p.key) + ' (' + p.key + ')') + '">' + App._escape(p.label || p.key) +
+                  ' <span style="font-size:9px;color:var(--text-muted);font-weight:400;">(' + App._escape(p.key) + ')</span>' +
+                '</label>' +
+                '<span id="pv_' + App._escape(p.key) + '" style="font-size:11px;color:var(--primary);font-family:monospace;flex-shrink:0;">' + App._escape(String(p.default === undefined ? '' : p.default)) + '</span>' +
+                '</div>';
+        var val = p.default;
+        if (p.type === 'slider') {
+            var min = (p.min === undefined ? 0 : p.min), max = (p.max === undefined ? 100 : p.max), step = (p.step === undefined ? 1 : p.step);
+            html += '<div style="display:flex;align-items:center;gap:6px;">' +
+              '<input type="range" class="cwl-pv" data-key="' + App._escape(p.key) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" style="flex:1;" oninput="App.comfyLib._pvSliderSync(this)">' +
+              '<input type="number" class="cwl-pv-num" data-key="' + App._escape(p.key) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" style="width:64px;font-size:11px;padding:3px 5px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);" onchange="App.comfyLib._pvNumSync(this)" title="可手动输入数值">' +
+            '</div>';
+        } else if (p.type === 'checkbox') {
+            html += '<input type="checkbox" class="cwl-pv" data-key="' + App._escape(p.key) + '" ' + (val ? 'checked' : '') + ' style="width:18px;height:18px;">';
+        } else if (p.type === 'number') {
+            // 数字输入（大整数 seed 等，不适合滑块）
+            html += '<input type="number" class="cwl-pv" data-key="' + App._escape(p.key) + '" value="' + App._escape(String(val === undefined ? '' : val)) + '" step="any" style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
+        } else if (p.type === 'select' || (p.options || []).length > 0) {
+            // 枚举下拉（采样器/调度器等；带 options 的参数一律下拉，即使旧数据 type 为 text/number）
+            var opts = p.options || [];
+            if (opts.length === 0) opts = [String(val === undefined ? '' : val)];
+            html += '<select class="cwl-pv" data-key="' + App._escape(p.key) + '" data-field="' + App._escape(p.field || '') + '" style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
+            opts.forEach(function(o) {
+                html += '<option value="' + App._escape(o) + '"' + (String(val) === String(o) ? ' selected' : '') + '>' + App._escape(o) + '</option>';
+            });
+            html += '</select>';
+        } else if (p.type === 'select_file') {
+            // 模型文件：有可用选项时渲染下拉，无选项（ComfyUI 不可达）时回退文本框手输
+            var fopts = p.options || [];
+            if (fopts.length > 0) {
+                html += '<select class="cwl-pv" data-key="' + App._escape(p.key) + '" data-field="' + App._escape(p.field || '') + '" style="width:100%;font-size:12px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
+                fopts.forEach(function(o) {
+                    html += '<option value="' + App._escape(o) + '"' + (String(val) === String(o) ? ' selected' : '') + '>' + App._escape(o) + '</option>';
+                });
+                html += '</select>';
+            } else {
+                html += '<input type="text" class="cwl-pv" data-key="' + App._escape(p.key) + '" value="' + App._escape(String(val)) + '" style="width:100%;font-size:11px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);" title="模型文件名">';
+            }
+        } else {
+            html += '<textarea class="cwl-pv" data-key="' + App._escape(p.key) + '" rows="' + (p.key.indexOf('.text') > -1 ? 2 : 1) + '" style="width:100%;font-size:11px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);resize:vertical;">' + App._escape(String(val === undefined ? '' : val)) + '</textarea>';
+        }
+        html += '</div>';
+    });
+    html += '</div>';
+    form.innerHTML = html;
+    // 自动同步模型列表（用缓存，不强制；新模型通过手动刷新按钮获取）
+    if (hasFileParam) this._applyModelOptions(false);
+};
+
+// 应用模型选项到表单下拉（force=true 强制刷新 ComfyUI object_info 缓存）
+
+App.comfyLib._applyModelOptions = async function(force) {
+    try {
+        var d = await App.fetchJSON('/api/v2/comfyui/model-options?refresh=' + (force ? 1 : 0));
+        if (!d || !d.ok || !d.models) return false;
+        var models = d.models;
+        document.querySelectorAll('#cwlParamForm select.cwl-pv[data-field]').forEach(function(sel) {
+            var field = sel.getAttribute('data-field');
+            var opts = models[field] || [];
+            if (!opts.length) return;
+            var cur = sel.value;
+            var h = '';
+            opts.forEach(function(o) {
+                h += '<option value="' + App._escape(o) + '"' + (String(cur) === String(o) ? ' selected' : '') + '>' + App._escape(o) + '</option>';
+            });
+            // 当前选中值不在新列表时追加保留（避免切换丢失）
+            if (cur && opts.indexOf(cur) === -1) {
+                h += '<option value="' + App._escape(cur) + '" selected>' + App._escape(cur) + '</option>';
+            }
+            sel.innerHTML = h;
+        });
+        return true;
+    } catch(e) {
+        return false;
+    }
+};
+
+// 手动刷新模型列表（强制从 ComfyUI 拉取）
+
+App.comfyLib._refreshModelOptions = async function() {
+    App.showToast('正在从 ComfyUI 刷新模型列表...', 'info');
+    var ok = await this._applyModelOptions(true);
+    App.showToast(ok ? '✅ 模型列表已刷新' : '刷新失败（ComfyUI 不可达？）', ok ? 'success' : 'error');
+};
+
+// 滑块 → 数字输入框 + 显示值同步
+
+App.comfyLib._pvSliderSync = function(input) {
+    var key = input.getAttribute('data-key');
+    var num = document.querySelector('.cwl-pv-num[data-key="' + key + '"]');
+    if (num) num.value = input.value;
+    var span = document.getElementById('pv_' + key);
+    if (span) span.textContent = input.value;
+};
+
+// 数字输入框 → 滑块同步（手动输入，自动收敛到 min/max）
+
+App.comfyLib._pvNumSync = function(input) {
+    var key = input.getAttribute('data-key');
+    var rng = document.querySelector('.cwl-pv[data-key="' + key + '"]');
+    if (rng) {
+        var v = parseFloat(input.value);
+        if (isNaN(v)) { input.value = rng.value; return; }
+        var mn = parseFloat(rng.min), mx = parseFloat(rng.max);
+        if (!isNaN(mn) && !isNaN(mx)) v = Math.max(mn, Math.min(mx, v));
+        input.value = v;
+        rng.value = v;
+    }
+    var span = document.getElementById('pv_' + key);
+    if (span) span.textContent = input.value;
+};
+
+// 表单尺寸快捷：设置 width/height 参数（absolute=true 直接使用该分辨率，否则按比例换算长边）
+
+App.comfyLib._formSetSize = function(rw, rh, absolute) {
+    var w, h;
+    if (absolute) { w = rw; h = rh; }
+    else {
+        var mt = CWL_SIZE_PRESETS[this._modelType] || CWL_SIZE_PRESETS.unknown;
+        var base = mt.base;
+        if (rw >= rh) { w = base; h = Math.round(base * rh / rw); }
+        else { h = base; w = Math.round(base * rw / rh); }
+        var snap = function(n) { return Math.max(64, Math.round(n / 8) * 8); };
+        w = snap(w); h = snap(h);
+    }
+    var keys = [];
+    var params = [];
+    try { params = JSON.parse((this._activePreset || {}).params_json || '[]'); } catch(e) {}
+    params.forEach(function(p) {
+        if (p.field === 'width') keys.push(['width', w]);
+        if (p.field === 'height') keys.push(['height', h]);
+    });
+    keys.forEach(function(k) {
+        var rng = document.querySelector('.cwl-pv[data-key$=".' + k[0] + '"]');
+        var num = document.querySelector('.cwl-pv-num[data-key$=".' + k[0] + '"]');
+        if (rng) rng.value = k[1];
+        if (num) num.value = k[1];
+        var span = document.getElementById('pv_' + rng.getAttribute('data-key'));
+        if (span) span.textContent = k[1];
+    });
+    App.showToast('已设置尺寸 ' + w + '×' + h, 'success');
+};
+
+// ============ 参数配置编辑器（编辑模式） ============
+
+
+App.comfyLib.openParamEditor = function() {
+    var self = this;
+    var overlay = document.getElementById('cwlParamEditor');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'cwlParamEditor';
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'display:none;z-index:740;';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.style.display = 'none'; };
+        overlay.innerHTML =
+        '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:920px;max-height:86vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
+          '<div class="modal-header" style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
+            '<h5 style="margin:0;font-size:14px;"><i class="bi bi-sliders"></i> 参数配置 <span style="font-size:11px;color:var(--text-muted);">编辑模式 — 自主选择暴露参数</span></h5>' +
+            '<button class="header-btn-sm" onclick="document.getElementById(\'cwlParamEditor\').style.display=\'none\'">&times;</button>' +
+          '</div>' +
+          '<div class="modal-body" style="flex:1;overflow-y:auto;padding:12px 16px;">' +
+            '<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">系统已自动分析当前工作流的可调参数（' + '，勾选要暴露的项，自定义名称与组件类型，保存后切换为锁定用户模式</div>' +
+            '<div style="margin-bottom:10px;"><label style="font-size:11px;color:var(--text-muted);">配置名称</label><input id="cpeName" placeholder="如：基础出图参数" style="width:100%;font-size:12px;padding:6px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main);margin-top:4px;"></div>' +
+            '<div id="cpeSizeHelper"></div>' +
+            '<div id="cpeList" style="display:flex;flex-direction:column;gap:8px;">加载中...</div>' +
+          '</div>' +
+          '<div class="modal-footer" style="padding:10px 16px;border-top:1px solid var(--border-color);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;">' +
+            '<span style="margin-right:auto;font-size:11px;color:var(--text-muted);" id="cpeHint">🔒 保存后锁定为用户模式，仅显示所选参数</span>' +
+            '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'cwlParamEditor\').style.display=\'none\'">取消</button>' +
+            '<button class="btn btn-primary btn-sm" onclick="App.comfyLib.savePreset()"><i class="bi bi-lock"></i> 保存并锁定</button>' +
+          '</div>' +
+        '</div>';
+        document.body.appendChild(overlay);
+    }
+    overlay.style.display = 'flex';
+    var nameInput = document.getElementById('cpeName');
+    if (nameInput) nameInput.value = this._activePreset ? this._activePreset.name : ('「' + (this._selectedWf && this._selectedWf.name || '') + '」参数');
+    var listEl = document.getElementById('cpeList');
+    if (!listEl) return;
+    if (this._candidates.length === 0) {
+        listEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">未分析到可调参数（工作流可能没有数值/文本输入节点）</div>';
+        return;
+    }
+    // 编辑已有配置时回填选中
+    var selected = {};
+    if (this._activePreset) {
+        try { JSON.parse(this._activePreset.params_json || '[]').forEach(function(p) { selected[p.key] = p; }); } catch(e) {}
+    }
+    // 尺寸助手：按模型类型智能匹配宽高（横竖/比例/分辨率预设）
+    this._cpeRenderSizeHelper();
+    // 候选参数按使用习惯排序（正面→负面→常用参数），不改变原数组引用
+    var cands = this._candidates.slice().sort(CWL_cmpParams);
+    var html = '';
+    cands.forEach(function(c) {
+        var isSel = !!selected[c.key];
+        var sp = selected[c.key] || {};
+        var label = sp.label || c.label || c.key;
+        var type = sp.type || c.type;
+        var min = sp.min === undefined ? (typeof c.value === 'number' && c.value >= 0 && c.value <= 100 ? (c.value <= 2 ? 0 : Math.max(0, Math.floor(c.value / 2))) : 0) : sp.min;
+        var max = sp.max === undefined ? (typeof c.value === 'number' ? Math.max(100, Math.ceil(c.value * 2)) : 100) : sp.max;
+        var step = sp.step === undefined ? (typeof c.value === 'number' && !Number.isInteger(c.value) ? 0.1 : 1) : sp.step;
+        html += '<div class="cpe-row" style="border:1px solid ' + (isSel ? 'var(--primary)' : 'var(--border-color)') + ';border-radius:8px;padding:8px 10px;">' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+            '<input type="checkbox" class="cpe-sel" data-key="' + App._escape(c.key) + '" ' + (isSel ? 'checked' : '') + ' onchange="App.comfyLib._toggleCandidate(this)" style="width:16px;height:16px;">' +
+            '<span style="font-size:12px;font-weight:600;flex:1;display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap;">' +
+              '<span class="cpe-title" data-key="' + App._escape(c.key) + '">' + App._escape(label) + '</span>' +
+              '<span style="font-size:9px;color:var(--text-muted);font-weight:400;border:1px solid var(--border-color);border-radius:4px;padding:0 5px;white-space:nowrap;" title="原始节点字段名（节点.字段）">原始 ' + App._escape(c.key) + '</span>' +
+            '</span>' +
+            '<span onclick="App.comfyLib.renameCandidate(\'' + App._escape(c.key) + '\')" title="重命名此参数（勾选并编辑名称）" style="font-size:13px;cursor:pointer;opacity:0.7;color:#8b5cf6;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.7">✎</span>' +
+            '<code style="font-size:10px;color:var(--text-muted);">' + App._escape(c.key) + ' = ' + App._escape(String(c.value)) + '</code>' +
+          '</div>' +
+          '<div class="cpe-detail" style="display:' + (isSel ? 'flex' : 'none') + ';gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">' +
+            '<label style="font-size:10px;color:var(--text-muted);">名称 <input type="text" class="cpe-label" data-key="' + App._escape(c.key) + '" value="' + App._escape(label) + '" oninput="App.comfyLib._cpeLabelSync(this)" style="width:120px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);" title="自定义名称，保存后参数模块以此显示"></label>' +
+            '<label style="font-size:10px;color:var(--text-muted);">组件 <select class="cpe-type" data-key="' + App._escape(c.key) + '" style="font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);">' +
+              '<option value="slider" ' + (type === 'slider' ? 'selected' : '') + '>滑块</option>' +
+              '<option value="text" ' + (type === 'text' ? 'selected' : '') + '>文本框</option>' +
+              '<option value="checkbox" ' + (type === 'checkbox' ? 'selected' : '') + '>开关</option>' +
+              '<option value="number" ' + (type === 'number' ? 'selected' : '') + '>数字输入</option>' +
+              '<option value="select" ' + (type === 'select' ? 'selected' : '') + '>下拉选择</option>' +
+              '<option value="select_file" ' + (type === 'select_file' ? 'selected' : '') + '>文件选择</option>' +
+            '</select></label>' +
+            '<label style="font-size:10px;color:var(--text-muted);">范围 <input type="number" class="cpe-min" data-key="' + App._escape(c.key) + '" value="' + min + '" style="width:56px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);"> ~ <input type="number" class="cpe-max" data-key="' + App._escape(c.key) + '" value="' + max + '" style="width:56px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);"> 步长 <input type="number" class="cpe-step" data-key="' + App._escape(c.key) + '" value="' + step + '" style="width:56px;font-size:11px;padding:3px 6px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);"></label>' +
+          '</div>' +
+        '</div>';
+    });
+    listEl.innerHTML = html;
+};
+
+// 编辑器尺寸助手：模型类型徽标 + 横竖切换 + 常用比例 + 分辨率预设
+
+App.comfyLib._cpeRenderSizeHelper = function() {
+    var helper = document.getElementById('cpeSizeHelper');
+    if (!helper) return;
+    var wC = null, hC = null;
+    this._candidates.forEach(function(c) { if (c.field === 'width') wC = c; if (c.field === 'height') hC = c; });
+    if (!wC || !hC) { helper.style.display = 'none'; return; }
+    var mt = CWL_SIZE_PRESETS[this._modelType] || CWL_SIZE_PRESETS.unknown;
+    var html = '<div style="border:1px dashed #6366f1;border-radius:8px;padding:8px 10px;margin-bottom:10px;">' +
+      '<div style="font-size:11px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">📐 尺寸助手 <span style="font-weight:400;font-size:10px;color:var(--text-muted);">按模型智能匹配</span>' +
+        '<span id="cpeModelBadge" style="font-size:9px;padding:2px 7px;border-radius:8px;background:rgba(99,102,241,0.12);color:var(--primary);font-weight:600;">' + App._escape(mt.label) + '</span>' +
+        '<span id="cpeSizeVal" style="font-size:10px;color:var(--text-muted);font-weight:400;">当前 ' + (wC.value || '?') + '×' + (hC.value || '?') + '</span>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">' +
+        '<button type="button" class="cwl-tree-btn" style="border-color:#6366f1;color:var(--primary);" onclick="App.comfyLib._cpeSetSize(1,1)">□ 方形</button>' +
+        '<button type="button" class="cwl-tree-btn" style="border-color:#6366f1;color:var(--primary);" onclick="App.comfyLib._cpeSetSize(4,3)">▭ 横屏</button>' +
+        '<button type="button" class="cwl-tree-btn" style="border-color:#6366f1;color:var(--primary);" onclick="App.comfyLib._cpeSetSize(3,4)">▯ 竖屏</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">';
+    CWL_RATIOS.forEach(function(r) {
+        html += '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._cpeSetSize(' + r.w + ',' + r.h + ')">' + r.label + '</button>';
+    });
+    html += '</div><div style="display:flex;gap:4px;flex-wrap:wrap;">';
+    mt.presets.forEach(function(sz) {
+        html += '<button type="button" class="cwl-tree-btn" onclick="App.comfyLib._cpeSetSize(' + sz[0] + ',' + sz[1] + ',true)">' + sz[0] + '×' + sz[1] + '</button>';
+    });
+    html += '</div></div>';
+    helper.innerHTML = html;
+    helper.style.display = 'block';
+};
+
+// 编辑器尺寸助手：应用尺寸（absolute=true 直接使用；否则按比例以模型长边为基准换算，8 对齐）
+
+App.comfyLib._cpeSetSize = function(rw, rh, absolute) {
+    var w, h;
+    if (absolute) { w = rw; h = rh; }
+    else {
+        var mt = CWL_SIZE_PRESETS[this._modelType] || CWL_SIZE_PRESETS.unknown;
+        var base = mt.base;
+        if (rw >= rh) { w = base; h = Math.round(base * rh / rw); }
+        else { h = base; w = Math.round(base * rw / rh); }
+        var snap = function(n) { return Math.max(64, Math.round(n / 8) * 8); };
+        w = snap(w); h = snap(h);
+    }
+    var self = this;
+    // 更新候选 value（保存时作为默认值）
+    this._candidates.forEach(function(c) {
+        if (c.field === 'width') c.value = w;
+        if (c.field === 'height') c.value = h;
+    });
+    // 自动勾选 width/height
+    ['width', 'height'].forEach(function(f) {
+        var key = null;
+        self._candidates.forEach(function(c) { if (c.field === f) key = c.key; });
+        if (!key) return;
+        var cb = document.querySelector('.cpe-sel[data-key="' + key + '"]');
+        if (cb && !cb.checked) { cb.checked = true; self._toggleCandidate(cb); }
+    });
+    // 更新候选行 code 显示
+    this._candidates.forEach(function(c) {
+        if (c.field !== 'width' && c.field !== 'height') return;
+        var cb = document.querySelector('.cpe-sel[data-key="' + c.key + '"]');
+        var row = cb ? cb.closest('.cpe-row') : null;
+        if (row) {
+            var codeEl = row.querySelector('code');
+            if (codeEl) codeEl.textContent = c.key + ' = ' + c.value;
+        }
+    });
+    var valEl = document.getElementById('cpeSizeVal');
+    if (valEl) valEl.textContent = '当前 ' + w + '×' + h;
+};
+
+
+App.comfyLib._toggleCandidate = function(cb) {
+    // 用 .cpe-row 定位候选行（closest('div') 会命中标题行，找不到详情区）
+    var row = cb.closest('.cpe-row');
+    var detail = row ? row.querySelector('.cpe-detail') : null;
+    if (detail) detail.style.display = cb.checked ? 'flex' : 'none';
+    if (cb.checked) {
+        // 勾选后自动聚焦名称输入框，方便直接重命名
+        var key = cb.getAttribute('data-key');
+        var labelInput = document.querySelector('.cpe-label[data-key="' + key + '"]');
+        if (labelInput) {
+            setTimeout(function() { labelInput.focus(); labelInput.select(); }, 50);
+        }
+    }
+};
+
+// 名称输入实时同步候选行标题（自定义名 ↔ 原始名对照）
+
+App.comfyLib._cpeLabelSync = function(input) {
+    var key = input.getAttribute('data-key');
+    var title = document.querySelector('.cpe-title[data-key="' + key + '"]');
+    if (title) title.textContent = input.value || '(未命名)';
+};
+
+// 参数重命名入口：一键勾选 + 展开 + 聚焦名称输入框
+
+App.comfyLib.renameCandidate = function(key) {
+    var cb = document.querySelector('.cpe-sel[data-key="' + key + '"]');
+    if (cb) {
+        if (!cb.checked) {
+            cb.checked = true;
+            this._toggleCandidate(cb);
+        }
+        var labelInput = document.querySelector('.cpe-label[data-key="' + key + '"]');
+        if (labelInput) {
+            labelInput.focus();
+            labelInput.select();
+        }
+        var row = cb.closest('.cpe-row');
+        var detail = row ? row.querySelector('.cpe-detail') : null;
+        if (detail) {
+            detail.style.borderColor = '#8b5cf6';
+            setTimeout(function() { detail.style.borderColor = ''; }, 1200);
+        }
+    }
+};
+
+
+App.comfyLib.savePreset = async function() {
+    if (!this._selectedWf) return;
+    var params = [];
+    var cbs = document.querySelectorAll('.cpe-sel');
+    var self = this;
+    cbs.forEach(function(cb) {
+        if (!cb.checked) return;
+        var key = cb.getAttribute('data-key');
+        var cand = null;
+        for (var i = 0; i < self._candidates.length; i++) {
+            if (self._candidates[i].key === key) { cand = self._candidates[i]; break; }
+        }
+        if (!cand) return;
+        var p = {
+            key: key, node_id: cand.node_id, field: cand.field,
+            label: (document.querySelector('.cpe-label[data-key="' + key + '"]') || {}).value || cand.label,
+            // 枚举字段（带 options）强制下拉/文件下拉，避免旧配置回填 text/number/slider
+            type: (((cand.options || []).length > 0) && cand.type !== 'select_file') ? 'select' : ((document.querySelector('.cpe-type[data-key="' + key + '"]') || {}).value || cand.type || 'text'),
+            default: cand.value,
+            min: parseFloat((document.querySelector('.cpe-min[data-key="' + key + '"]') || {}).value) || 0,
+            max: parseFloat((document.querySelector('.cpe-max[data-key="' + key + '"]') || {}).value) || 100,
+            step: parseFloat((document.querySelector('.cpe-step[data-key="' + key + '"]') || {}).value) || 1,
+            options: cand.options || [],
+        };
+        params.push(p);
+    });
+    if (params.length === 0) { App.showToast('请至少勾选一个参数', 'warning'); return; }
+    var name = (document.getElementById('cpeName') || {}).value || '参数配置';
+    var body = { name: name, params: params, mode: 'user' };
+    try {
+        if (this._activePreset) {
+            await App.fetchJSON('/api/v2/comfyui/presets/' + this._activePreset.id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        } else {
+            var d = await App.fetchJSON('/api/v2/comfyui/workflows/' + encodeURIComponent(this._selectedWf.id) + '/presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            if (d && d.ok) this._activePreset = { id: d.preset_id, name: name, params_json: JSON.stringify(params), mode: 'user' };
+        }
+        document.getElementById('cwlParamEditor').style.display = 'none';
+        App.showToast('✅ 已保存并锁定为用户模式', 'success');
+        this._loadParams(this._selectedWf.id);
+    } catch(e) {
+        App.showToast('保存失败: ' + e.message, 'error');
+    }
+};
+
+// ============ 生成 ============
+
+
+App.comfyLib._collectParamValues = function() {
+    var values = {};
+    var els = document.querySelectorAll('.cwl-pv');
+    for (var i = 0; i < els.length; i++) {
+        var key = els[i].getAttribute('data-key');
+        var v = els[i].value;
+        if (els[i].type === 'checkbox') v = els[i].checked;
+        else if (els[i].type === 'range' || els[i].type === 'number') v = parseFloat(v);
+        values[key] = v;
+    }
+    return values;
+};
+
+
+App.comfyLib.generate = async function() {
+    if (this._generating) return;
+    if (!this._selectedWf) { App.showToast('请先选择一个工作流模板', 'warning'); return; }
+    var promptText = '';
+    var promptEl = document.getElementById('cwlPrompt');
+    if (promptEl) promptText = promptEl.value;
+    var paramValues = this._collectParamValues();
+    var presetId = this._activePreset ? this._activePreset.id : 0;
+    await this._doGenerate(promptText, paramValues, presetId);
+};
+
+// 以指定提示词直接生成（重新生成入口；绕过表单收集，兼容参数配置模式）
+
+App.comfyLib.generateWithText = async function(promptText) {
+    if (this._generating) return;
+    if (!this._selectedWf) { App.showToast('请先选择一个工作流模板', 'warning'); return; }
+    await this._doGenerate(promptText || '', {}, 0);
+};
+
+
+App.comfyLib._doGenerate = async function(promptText, paramValues, presetId) {
+    var status = document.getElementById('cwlGenStatus');
+    var btn = document.getElementById('cwlBtnGen');
+    if (status) status.textContent = '⏳ 正在生成（约 15-60s，请勿关闭面板）...';
+    if (btn) btn.disabled = true;
+    this._generating = true;
+    try {
+        var d = await App.fetchJSON('/api/v2/comfyui/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt_id: 0,
+                prompt_text: promptText,
+                workflow_id: this._selectedWf.id,
+                preset_id: presetId || 0,
+                param_values: paramValues || {}
+            })
+        });
+        if (!d || !d.ok) {
+            if (status) status.textContent = '❌ ' + (d && d.error ? d.error : '生成失败');
+            App.showToast('生成失败: ' + (d && d.error ? d.error : ''), 'error');
+            if (btn) btn.disabled = false;
+            this._generating = false;
+            this.loadLogs();
+            this.refreshRuntime();
+            return;
+        }
+        if (status) status.textContent = '✅ 生成完成';
+        this._lastResult = d;
+        var result = document.getElementById('cwlGenResult');
+        if (result) result.style.display = 'block';
+        var img = document.getElementById('cwlResultImg');
+        if (img) img.src = d.thumbnail_url || ('/api/thumbnails/file/' + d.thumbnail);
+        var dl = document.getElementById('cwlDownload');
+        if (dl && d.output_file) dl.href = '/api/v2/comfyui/outputs/' + encodeURIComponent(d.output_file);
+        var sc = document.getElementById('cwlSaveCardResult');
+        if (sc) sc.textContent = '';
+        this.loadList();
+        this.loadLogs();
+        this.refreshRuntime();
+    } catch(e) {
+        if (status) status.textContent = '❌ ' + e.message;
+        App.showToast('生成异常: ' + e.message, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+        this._generating = false;
+    }
+};
+
+// ============ 存为词卡 / 存为模板 ============
+
+
+App.comfyLib.saveAsCard = async function() {
+    if (!this._lastResult || !this._lastResult.output_file) return;
+    // 弹分组选择框，由用户指定存到词库哪个分组
+    this._openCardGroupPicker();
+};
+
+// 存为词卡 · 分组选择弹窗
+
+App.comfyLib._openCardGroupPicker = function() {
+    var self = this;
+    var overlay = document.getElementById('cwlGroupPicker');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'cwlGroupPicker';
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'display:none;z-index:760;';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.style.display = 'none'; };
+        overlay.innerHTML =
+        '<style>' +
+          '.cwl-grp{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:12px;border:1px solid transparent;transition:background .12s,border-color .12s;}' +
+          '.cwl-grp:hover{background:var(--hover-bg,#f1f5f9);}' +
+          '.cwl-grp-sel{background:rgba(99,102,241,0.10)!important;border-color:var(--primary)!important;color:var(--primary);font-weight:600;}' +
+          '.cwl-arrow{width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--text-muted);cursor:pointer;border-radius:4px;flex-shrink:0;}' +
+          '.cwl-arrow:hover{background:rgba(99,102,241,0.15);color:var(--primary);}' +
+          '.cwl-tree-btn{font-size:10px;padding:3px 9px;border:1px solid var(--border-color);border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer;}' +
+          '.cwl-tree-btn:hover{border-color:var(--primary);color:var(--primary);}' +
+          '.cwl-rgrp{transition:background .12s,border-color .12s,color .12s;}' +
+          '.cwl-rgrp:hover{border-color:var(--primary)!important;color:var(--primary);}' +
+          '.cwl-logview-btn{font-size:10px;padding:3px 9px;border:none;background:transparent;color:var(--text-muted);cursor:pointer;border-radius:6px;}' +
+          '.cwl-logview-btn.active{background:rgba(99,102,241,0.12);color:var(--primary);font-weight:600;}' +
+          '.cwl-rerun-btn{font-size:10px;padding:3px 9px;border:1px solid var(--primary);color:var(--primary);background:transparent;border-radius:6px;cursor:pointer;white-space:nowrap;}' +
+          '.cwl-rerun-btn:hover{background:rgba(99,102,241,0.10);}' +
+          '.cwl-log-card{transition:border-color .12s;}' +
+          '.cwl-log-card:hover{border-color:var(--primary)!important;}' +
+        '</style>' +
+        '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:560px;max-height:84vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
+          '<div class="modal-header" style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
+            '<h5 style="margin:0;font-size:14px;"><i class="bi bi-bookmark-plus"></i> 存为词卡 — 选择分组</h5>' +
+            '<button class="header-btn-sm" onclick="document.getElementById(\'cwlGroupPicker\').style.display=\'none\'">&times;</button>' +
+          '</div>' +
+          '<div class="modal-body" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:12px;">' +
+            '<div style="display:flex;gap:14px;align-items:flex-start;">' +
+              '<img id="cwlGroupImg" style="width:150px;height:100px;object-fit:cover;border-radius:10px;border:1px solid var(--border-color);background:#0f172a;flex-shrink:0;">' +
+              '<div style="flex:1;min-width:0;">' +
+                '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">将保存为词卡，提示词：</div>' +
+                '<div id="cwlGroupPrompt" style="font-size:12px;color:var(--text-main);background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;max-height:64px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"></div>' +
+              '</div>' +
+            '</div>' +
+            '<div style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;"><i class="bi bi-folder2-open"></i> 目标分组 <span id="cwlGroupSel" style="font-size:11px;color:var(--primary);font-weight:600;"></span></div>' +
+            '<div id="cwlRecommendedGroups" style="display:none;"></div>' +
+            '<div id="cwlRecentGroups" style="border:1px solid var(--border-color);border-radius:10px;padding:8px;display:none;"></div>' +
+            '<div id="cwlGroupList" style="border:1px solid var(--border-color);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:2px;">' +
+              '<div id="cwlTreeBar" style="display:flex;align-items:center;gap:6px;padding:2px 4px 6px;border-bottom:1px dashed var(--border-color);margin-bottom:4px;flex-shrink:0;">' +
+                '<span style="font-size:11px;color:var(--text-muted);"><i class="bi bi-diagram-3"></i> 全部分组 <span id="cwlTreeCount"></span></span>' +
+                '<span style="margin-left:auto;display:flex;gap:6px;">' +
+                  '<button class="cwl-tree-btn" onclick="App.comfyLib._collapseAllGroups()" title="折叠所有子分组"><i class="bi bi-arrows-collapse"></i> 全部折叠</button>' +
+                  '<button class="cwl-tree-btn" onclick="App.comfyLib._expandAllGroups()" title="展开所有子分组"><i class="bi bi-arrows-expand"></i> 全部展开</button>' +
+                '</span>' +
+              '</div>' +
+              '<div id="cwlTreeBody" style="display:flex;flex-direction:column;gap:2px;max-height:270px;overflow-y:auto;">加载分组...</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="modal-footer" style="padding:10px 16px;border-top:1px solid var(--border-color);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;">' +
+            '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'cwlGroupPicker\').style.display=\'none\'">取消</button>' +
+            '<button class="btn btn-primary btn-sm" onclick="App.comfyLib._confirmSaveAsCard()"><i class="bi bi-check"></i> 存入该分组</button>' +
+          '</div>' +
+        '</div>';
+        document.body.appendChild(overlay);
+    }
+    overlay.style.display = 'flex';
+    // 预览与提示词
+    var img = document.getElementById('cwlGroupImg');
+    if (img && this._lastResult) img.src = this._lastResult.thumbnail_url || ('/api/thumbnails/file/' + this._lastResult.thumbnail);
+    var pt = document.getElementById('cwlGroupPrompt');
+    if (pt) pt.textContent = (document.getElementById('cwlPrompt') || {}).value || '';
+    var selHint = document.getElementById('cwlGroupSel');
+    this._selectedGroupId = 0;
+    if (selHint) selHint.textContent = '';
+    var list = document.getElementById('cwlGroupList');
+    if (!list) return;
+    // 推荐分组：基于提示词内容自动识别
+    var ptText = pt ? pt.textContent : '';
+    var recEl = document.getElementById('cwlRecommendedGroups');
+    if (recEl) {
+        if (ptText && ptText.trim()) {
+            recEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:6px;">💡 正在识别推荐分组...</div>';
+            recEl.style.display = 'block';
+            App.fetchJSON('/api/v4/word-cards/groups/recommend?text=' + encodeURIComponent(ptText) + '&limit=5').then(function(d) {
+                if (!recEl) return;
+                if (!d || !d.ok || !d.items || d.items.length === 0) { recEl.style.display = 'none'; return; }
+                var rh = '<div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-bottom:6px;"><i class="bi bi-magic"></i> 推荐分组 <span style="font-weight:400;">根据提示词自动识别</span></div><div style="display:flex;flex-wrap:wrap;gap:6px;">';
+                d.items.forEach(function(g) {
+                    rh += '<span class="cwl-rgrp cwl-rec" data-id="' + g.id + '" data-name="' + App._escape(g.name || '') + '" onclick="App.comfyLib._pickGroup(' + g.id + ', this)" title="命中：' + App._escape((g.matched || []).join('、') || '内容匹配') + '" style="cursor:pointer;font-size:11px;padding:4px 10px;border-radius:14px;border:1px solid #6366f1;color:var(--primary);background:rgba(99,102,241,0.08);display:inline-flex;align-items:center;gap:4px;">' +
+                      '<span style="font-size:12px;">💡</span>' + App._escape(g.name || '未命名') +
+                    '</span>';
+                });
+                rh += '</div>';
+                recEl.innerHTML = rh;
+                recEl.style.display = 'block';
+            }).catch(function() { if (recEl) recEl.style.display = 'none'; });
+        } else {
+            recEl.style.display = 'none';
+        }
+    }
+    // 优先复用词卡模型缓存接口，缺失时直接拉取
+    var groupsP = (typeof App.cardModel !== 'undefined' && App.cardModel.getGroups)
+        ? App.cardModel.getGroups(true)
+        : App.fetchJSON('/api/v4/word-cards/groups?include_empty=true').then(function(d) { return (d && d.groups) || []; });
+    groupsP.then(function(groups) {
+        if (!groups || groups.length === 0) {
+            var tb = document.getElementById('cwlTreeBody');
+            if (tb) tb.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:12px;">词库暂无分组</div>';
+            return;
+        }
+        var last = parseInt(localStorage.getItem('cwl_last_group') || '0', 10) || 0;
+        var lastId = 0;
+        // 最近分组：按创建时间倒序前 5 个（独立区块，不影响树状结构）
+        var recentEl = document.getElementById('cwlRecentGroups');
+        var recent = groups.filter(function(g) { return g.created_at; })
+            .sort(function(a, b) { return String(b.created_at || '').localeCompare(String(a.created_at || '')); })
+            .slice(0, 5);
+        if (recent.length > 0 && recentEl) {
+            var rh = '<div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-bottom:6px;"><i class="bi bi-clock-history"></i> 最近分组</div><div style="display:flex;flex-wrap:wrap;gap:6px;">';
+            recent.forEach(function(g) {
+                var isLast = (last && g.id === last);
+                rh += '<span class="cwl-rgrp' + (isLast ? ' cwl-grp-sel' : '') + '" data-id="' + g.id + '" data-name="' + App._escape(g.name || '') + '" onclick="App.comfyLib._pickGroup(' + g.id + ', this)" style="cursor:pointer;font-size:11px;padding:4px 10px;border-radius:14px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-main);display:inline-flex;align-items:center;gap:4px;">' +
+                  '<span style="font-size:12px;">📌</span>' + App._escape(g.name || '未命名') +
+                '</span>';
+                if (isLast) lastId = g.id;
+            });
+            rh += '</div>';
+            recentEl.innerHTML = rh;
+            recentEl.style.display = 'block';
+        }
+        // 保存全部分组供树折叠/展开重渲染
+        self._allGroups = groups;
+        self._renderGroupTree(groups);
+        // 自动定位到上次选择的分组：展开祖先链 + 高亮 + 滚动到可视区
+        if (lastId) {
+            var gmap = {};
+            groups.forEach(function(g) { gmap[g.id] = g; });
+            var pid = gmap[lastId] ? gmap[lastId].parent_group_id : null;
+            while (pid && gmap[pid]) { delete self._collapsedGroups[pid]; pid = gmap[pid].parent_group_id; }
+            self._renderGroupTree(groups);
+            var treeEl = document.querySelector('#cwlTreeBody .cwl-grp[data-id="' + lastId + '"]');
+            var rEl2 = recentEl ? recentEl.querySelector('.cwl-rgrp[data-id="' + lastId + '"]') : null;
+            var recEl2 = recEl ? recEl.querySelector('.cwl-rgrp[data-id="' + lastId + '"]') : null;
+            self._pickGroup(lastId, treeEl || rEl2 || recEl2);
+            if (treeEl) setTimeout(function() { try { treeEl.scrollIntoView({ block: 'center', behavior: 'auto' }); } catch(e) {} }, 80);
+        }
+    });
+};
+
+// ============ 分组树：折叠 / 展开 ============
+
+
+App.comfyLib._groupIcon = function(g, depth) {
+    if (g.group_type === 'atom') return '🧩';
+    if (g.group_type === 'builtin') return '📦';
+    if (g.group_type === 'seedance') return '🎬';
+    if (g.group_type === 'custom') return '🗂️';
+    if (depth === 0) return '📂';
+    return '📁';
+};
+
+// 渲染可折叠分组树（不改变分组层级结构）
+
+App.comfyLib._renderGroupTree = function(groups) {
+    var body = document.getElementById('cwlTreeBody');
+    if (!body) return;
+    var self = this;
+    var gmap = {};
+    groups.forEach(function(g) { gmap[g.id] = g; });
+    var childrenMap = {};
+    groups.forEach(function(g) {
+        var pid = (g.parent_group_id && gmap[g.parent_group_id]) ? g.parent_group_id : 0;
+        (childrenMap[pid] = childrenMap[pid] || []).push(g);
+    });
+    var roots = childrenMap[0] || [];
+    // 孤立根（父级不在列表中）也纳入，保持原排序
+    groups.forEach(function(g) {
+        if (!g.parent_group_id || !gmap[g.parent_group_id]) roots.push(g);
+    });
+    var seen = {};
+    roots = roots.filter(function(g) { if (seen[g.id]) return false; seen[g.id] = 1; return true; });
+    var count = document.getElementById('cwlTreeCount');
+    if (count) count.textContent = '(' + groups.length + ')';
+    var html = '';
+    var renderNode = function(g, depth) {
+        var kids = childrenMap[g.id] || [];
+        var hasKids = kids.length > 0;
+        var collapsed = !!self._collapsedGroups[g.id];
+        var isSel = self._selectedGroupId === g.id;
+        html += '<div class="cwl-grp' + (isSel ? ' cwl-grp-sel' : '') + '" data-id="' + g.id + '" data-name="' + App._escape(g.name || '') + '" onclick="App.comfyLib._pickGroup(' + g.id + ', this)" style="padding-left:' + (6 + depth * 16) + 'px;">' +
+          (hasKids
+            ? '<span class="cwl-arrow" onclick="event.stopPropagation();App.comfyLib._toggleGroup(' + g.id + ')" title="' + (collapsed ? '展开' : '折叠') + '">' + (collapsed ? '▶' : '▼') + '</span>'
+            : '<span style="width:16px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;"></span>') +
+          '<span style="font-size:13px;">' + self._groupIcon(g, depth) + '</span>' +
+          '<span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App._escape(g.name || '未命名') + '</span>' +
+          '<span style="font-size:10px;color:var(--text-muted);flex-shrink:0;">' + (g.card_count || 0) + ' 张</span>' +
+        '</div>';
+        if (hasKids && !collapsed) {
+            kids.forEach(function(k) { renderNode(k, depth + 1); });
+        }
+    };
+    roots.forEach(function(g) { renderNode(g, 0); });
+    body.innerHTML = html;
+};
+
+// 折叠 / 展开单个分组
+})();
