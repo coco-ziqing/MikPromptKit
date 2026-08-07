@@ -298,7 +298,7 @@ def _img_thumb(aid, src):
 @router.post("/api/roles/{rid}/assets")
 async def upload_role_asset(rid: int, request: Request, file: UploadFile = File(...),
                             asset_kind: str = Form("ref_image"), caption: str = Form("")):
-    u = _auth(request)
+    _auth(request)
     if asset_kind not in ASSET_KINDS:
         asset_kind = "other"
     c = _db()

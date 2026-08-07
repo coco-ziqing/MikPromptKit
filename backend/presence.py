@@ -253,7 +253,6 @@ async def ws_presence(websocket: WebSocket):
         "current_project_id": 0,  # PhaseB: 所在项目ID
     }
 
-    was_offline = uid not in _conns or not _conns.get(uid)
     _conns.setdefault(uid, {})[cid] = {
         "ws": websocket,
         "conn_id": cid,

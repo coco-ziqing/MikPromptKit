@@ -329,7 +329,6 @@ async def get_dashboard(timeout: float = Query(5.0, ge=1.0, le=10.0)):
         from paths import get_data_dir
         db_path = os.path.join(get_data_dir(), "prompts.db")
         wal_path = db_path + "-wal"
-        shm_path = db_path + "-shm"
         db_stats["db_size_mb"] = round(os.path.getsize(db_path) / (1024 ** 2), 2) if os.path.exists(db_path) else 0
         db_stats["wal_size_mb"] = round(os.path.getsize(wal_path) / (1024 ** 2), 2) if os.path.exists(wal_path) else 0
     except Exception as e:

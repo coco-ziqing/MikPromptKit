@@ -202,7 +202,6 @@ def update_card(card_id: int, data: dict):
             (card_id,)
         ).fetchone()
         next_ver = (last_ver['max_v'] or 0) + 1
-        current_ver = current['version'] or 0
 
         db.execute("""
             INSERT INTO prompt_versions

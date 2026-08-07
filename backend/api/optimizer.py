@@ -162,7 +162,6 @@ async def optimize(data: OptimizeRequest):
     if mode not in OPTIMIZE_MODES:
         return {"ok": False, "error": f"不支持的优化模式: {mode}"}
 
-    mode_cfg = OPTIMIZE_MODES[mode]
 
     # 构建消息（含纯文本输出约束）
     try:
@@ -225,7 +224,6 @@ async def optimize_stream(request: Request):
             yield json.dumps({"error": f"不支持的优化模式: {mode}"}) + "\n"
         return StreamingResponse(_err(), media_type="text/event-stream")
 
-    mode_cfg = OPTIMIZE_MODES[mode]
     try:
         system = _build_system(mode, target_format)
     except ValueError as exc:

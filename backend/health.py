@@ -336,7 +336,7 @@ def _check_pillow() -> dict:
         from PIL import __version__ as pil_ver
         # 做一次基本操作验证
         img = Image.new("RGB", (16, 16), color="red")
-        buf = img.tobytes()
+        img.tobytes()
         return {"ok": True, "version": pil_ver, "formats": ["JPEG", "PNG", "WebP", "GIF"]}
     except ImportError:
         return {"ok": False, "error": "未安装 Pillow", "hint": "pip install Pillow"}

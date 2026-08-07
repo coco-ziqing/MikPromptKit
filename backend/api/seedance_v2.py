@@ -2,7 +2,6 @@
 API 路由 — Seedance V2 多镜头结构化组装器 (全功能版)
 27套维度词库 / 分镜项目CRUD / 镜头管理 / 拼接引擎 / 联动
 """
-import json
 import os
 import uuid
 
@@ -471,7 +470,7 @@ def create_library_card(lib_id: int, data: dict = Body(...)):
     if not lib:
         raise HTTPException(404, "词库不存在")
     # 写入词卡表（直接写 word_card，VIEW 不支持 lastrowid）
-    cur = db.execute(
+    db.execute(
         "INSERT INTO word_card (group_id, content, meaning, is_builtin, heat_weight, module, category) VALUES (?, ?, ?, 0, 0.5, 'seedance_v2', 'seedance_v2')",
         [lib_id, word_text, definition]
     )
@@ -518,7 +517,7 @@ def create_custom_word(data: dict = Body(...)):
     lib = db.execute("SELECT id FROM prompt_library WHERE id=?", [lib_id]).fetchone()
     if not lib:
         raise HTTPException(404, "词库不存在")
-    cur = db.execute(
+    db.execute(
         "INSERT INTO user_custom_word (library_id, word_text, definition) VALUES (?, ?, ?)",
         [lib_id, word_text, definition]
     )
@@ -1470,11 +1469,6 @@ def import_from_template(data: dict = Body(...)):
     tpl_content = row["content"] or ""
     tpl_meaning = row["meaning"] or ""
     tpl_category = row["category"] or "Seedance"
-    try:
-        tpl_tags = json.loads(row["tags"] or "[]")
-    except Exception:
-        tpl_tags = []
-
     # ── 1. 解析模版文本 ──
     lines = tpl_content.strip().split("\n")
     global_style = ""

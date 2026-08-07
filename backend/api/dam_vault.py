@@ -97,7 +97,7 @@ def list_versions(catalog_id: int, request: Request):
 @router.post("/versions/{catalog_id}/rollback")
 def rollback_version(catalog_id: int, request: Request, data: dict = Body(...)):
     """回退到指定版本"""
-    user = _require_admin(_get_user(request))
+    _require_admin(_get_user(request))
     vno = data.get("version_no")
     dest = data.get("dest_path")
     if not vno or not dest: raise HTTPException(400)
@@ -296,7 +296,7 @@ def restore_from_backup(backup_name: str, request: Request):
     从备份恢复 blob_store + 数据库
     注意：危险操作，恢复前会自动备份当前数据
     """
-    user = _require_admin(_get_user(request))
+    _require_admin(_get_user(request))
 
     import shutil
     bi = list_backups()
@@ -306,7 +306,6 @@ def restore_from_backup(backup_name: str, request: Request):
 
     bp = match[0]["path"]
     blob_src = os.path.join(bp, "blob_store")
-    db_src = os.path.join(bp, "prompts.db.dump")
 
     # 自动备份当前
     ts = time.strftime("%Y%m%d_%H%M%S")

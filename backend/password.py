@@ -1,3 +1,4 @@
+# ruff: noqa: E741 — 加密算法 Feistel 左右半区标准命名 l/r（密码兼容性敏感，不改名）
 """
 bcrypt 密码哈希 — 纯 Python 实现（零外部依赖）
 基于 bcrypt 2b 算法：Blowfish + 盐 + 多轮哈希

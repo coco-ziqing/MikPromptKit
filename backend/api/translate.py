@@ -230,7 +230,6 @@ async def translate_single(prompt_id: int, target_lang: str = "zh", tier: str = 
             except Exception: pass
 
     # 同时返回双向内容供前端语言切换
-    other_lang = "en" if target_lang == "zh" else "zh"
     other_trans = None
     if table == "word_card":
         try:

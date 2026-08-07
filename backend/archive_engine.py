@@ -405,7 +405,6 @@ def do_full_archive(src_path, project_id, module_key, filename="", is_critical=0
         return {"ok": False, "error": "源文件不存在"}
 
     fname = filename or os.path.basename(src_path)
-    ext = os.path.splitext(src_path)[1].lower()
 
     # 1. 拷贝到临时
     tmp_src = os.path.join(TEMP_ROOT, f"archive_src_{int(time.time()*1000)}_{fname}")

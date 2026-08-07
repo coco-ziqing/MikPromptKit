@@ -148,7 +148,6 @@ def ffprobe_metadata(video_path):
 def filetype_tags(ext, filename=""):
     """根据扩展名生成类型标签"""
     ext = ext.lower()
-    tags = []
     _map = {
         ".c4d": ["3D工程", "Cinema4D"],
         ".blend": ["3D工程", "Blender"],

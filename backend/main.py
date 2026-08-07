@@ -631,7 +631,6 @@ def ping():
 @app.get("/api/status")
 def get_status():
     try:
-        db = get_db()
         total = safe_count_dict("SELECT COUNT(*) as cnt FROM prompts")
         usage = safe_count_dict("SELECT SUM(usage_count) as cnt FROM prompts") or 0
         cards = safe_count_dict("SELECT COUNT(*) as cnt FROM prompt_cards WHERE is_deleted=0")

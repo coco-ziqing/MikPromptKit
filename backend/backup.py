@@ -403,7 +403,6 @@ def start_auto_backup():
     def first_backup():
         os.makedirs(BACKUP_DIR, exist_ok=True)  # 线程抢跑确保
         result = do_backup()
-        status = "OK" if result.get("ok") else "FAIL"
         print("[备份] 启动备份: " + str(result.get("file", result.get("error", "unknown"))))
 
     t = threading.Thread(target=first_backup, daemon=True)

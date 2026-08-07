@@ -195,7 +195,6 @@ def _fts_search_wc(db, query: str, limit: int = 30) -> list:
             if has_chinese and len(query) >= 4:
                 cn_parts = re.findall(r'[\u4e00-\u9fff]{2,4}', query)
                 sub_queries = cn_parts[:6] if cn_parts else [query]
-            ids = set()
             for sq in sub_queries:
                 like = f"%{sq}%"
                 rows = db.execute(

@@ -562,7 +562,7 @@ def run_migration(db=None):
             tbl, col = INDEX_COL_CHECK[match.group()]
             cols = [c[1] for c in db.execute(f"PRAGMA table_info({tbl})").fetchall()]
             if col not in cols:
-                if desc := INDEX_COL_CHECK.get(match.group()): pass  # noop
+                if INDEX_COL_CHECK.get(match.group()): pass  # noop
                 continue  # 列不存在，跳过此索引
         _execute_safe(db, sql)
         indexes_created += 1

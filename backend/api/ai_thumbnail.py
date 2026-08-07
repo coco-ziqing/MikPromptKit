@@ -113,7 +113,6 @@ def _generate_gradient_thumbnail(prompt_text: str, module: str = "custom") -> tu
 
     # 文字
     draw = ImageDraw.Draw(img)
-    mood = analysis.get("mood", "")
     style = analysis.get("style_keyword", "") or prompt_text[:12]
     icon = analysis.get("icon_emoji", "🎨")
 
@@ -216,7 +215,6 @@ async def batch_generate(data: BatchGenRequest):
         return {"ok": False, "error": "单次最多20条"}
 
     sem = asyncio.Semaphore(3)
-    db = get_db()
 
     async def _gen_one(pid):
         async with sem:

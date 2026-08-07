@@ -175,7 +175,6 @@ async def decompose(req: DecomposeReq):
     cjk_chars = sum(1 for ch in req.prompt if '\u4e00' <= ch <= '\u9fff' or '\u3400' <= ch <= '\u4dbf')
     is_chinese = cjk_chars >= 3 or cjk_chars >= len(req.prompt) * 0.15
     sys_prompt = DECOMPOSE_SYS_ZH if is_chinese else DECOMPOSE_SYS_EN
-    prompt_lang = "zh" if is_chinese else "en"
     print(f"[ATOM-LOG] 语言检测: {'中文' if is_chinese else '英文'} (CJK={cjk_chars}/{len(req.prompt)}), 使用 {'ZH' if is_chinese else 'EN'} system prompt")
 
     # LLM 拆解
@@ -271,7 +270,6 @@ async def decompose_batch(req: DecomposeBatchReq):
         nonlocal cache_hits
         for i, item in enumerate(req.prompts):
             h = hashlib.md5(f"{item.media_type}:{item.prompt}".encode()).hexdigest()
-            db = get_db()
             c = safe_fetch_one("SELECT * FROM atom_decompose WHERE source_hash=?", [h])
             if c:
                 cache_hits += 1
@@ -1039,7 +1037,6 @@ async def track_atom_usage(req: StatTrackReq):
     if existing:
         # 增量更新
         extra = ""
-        extra_params = []
         if req.action == "compose":
             extra = ", combo_count=combo_count+1"
         elif req.action == "export":

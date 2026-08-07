@@ -70,7 +70,7 @@ ck('场景组装器所有维度分组有卡片', all_have)
 # 6. 分镜组装器词库
 d = get('/api/seedance/v2/libraries')
 libs = d.get('libraries', [])
-empty = [l.get('name') for l in libs if not l.get('card_count', len(l.get('cards', []) or []))]
+empty = [item.get('name') for item in libs if not item.get('card_count', len(item.get('cards', []) or []))]
 ck(f'分镜组装器 {len(libs)}词库全有卡片', len(empty) == 0)
 
 # 7. word_picker（全局词卡选取器）

@@ -1974,10 +1974,8 @@ async def batch_generate_thumbnail(data: BatchGenerateRequest):
         for idx, pid in enumerate(data.prompt_ids):
             # 兼容两种数据源：prompts（旧词条）与 word_card（新词卡）
             row = db.execute("SELECT content, module FROM prompts WHERE id=?", [pid]).fetchone()
-            src_table = "prompts"
             if not row:
                 row = db.execute("SELECT content, module FROM word_card WHERE id=? AND is_deleted=0", [pid]).fetchone()
-                src_table = "word_card"
             if not row:
                 ev = {"prompt_id": pid, "ok": False, "error": "提示词不存在", "index": idx, "total": total, "done": idx + 1}
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"

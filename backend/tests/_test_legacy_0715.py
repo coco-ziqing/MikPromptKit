@@ -88,7 +88,7 @@ results.append(("埋点归属 admin", it.get("user_id") == 1 and it.get("usernam
 # ===== 2. 导出 CSV =====
 st, content = call("GET", "/api/audit/export?event=project_create&days=1", token=ADMIN, raw=True)
 txt = content.decode("utf-8-sig") if isinstance(content, bytes) else ""
-lines = [l for l in txt.split("\n") if l.strip()]
+lines = [line for line in txt.split("\n") if line.strip()]
 results.append(("导出CSV 200且有表头", st == 200 and lines and lines[0].startswith("id,created_at")))
 results.append(("导出CSV 含数据行", len(lines) >= 2))
 results.append(("导出CSV BOM(Excel兼容)", isinstance(content, bytes) and content.startswith(b"\xef\xbb\xbf")))

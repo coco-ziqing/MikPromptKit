@@ -119,7 +119,6 @@ def fmt_header(proj: dict, fmt: str) -> str:
     dur = int(proj.get("total_duration", 15))
     style = proj.get("global_style", "")
     transition = proj.get("global_transition", "")
-    neg = proj.get("negative_prompt", "")
     pix = _calc_pixel_res(ar, res)
 
     ar_label = AR_LABEL.get(ar, ar)

@@ -694,7 +694,6 @@ def batch_export(data: dict):
         ascii_name = _re.sub(r'[^\x20-\x7e]', '_', filename)
         return f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{_quote(filename)}'
 
-    placeholders = ",".join("?" * len(prompt_ids))
     db = get_db()
     # 2026-08-03 修复: 双表查询 — word_card(词库) + prompts(旧表)，词库导出不再为空
     rows = _fetch_export_rows(db, prompt_ids)

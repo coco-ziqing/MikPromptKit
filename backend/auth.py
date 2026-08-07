@@ -407,7 +407,6 @@ def my_stats(request: Request):
     user = get_current_user(request)
     if not user.get("authenticated"):
         raise HTTPException(401, "请先登录")
-    uid = user["id"]
 
     db = _ro()
     try:

@@ -581,7 +581,6 @@ def copy_thumbnail_from_library(card_id: int, data: dict):
     source = (data.get("source_filename") or "").strip()
     if not source:
         raise HTTPException(400, "请提供 source_filename")
-    db = get_db()
     card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])
     if not card:
         raise HTTPException(404, "词卡不存在")

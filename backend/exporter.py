@@ -201,7 +201,6 @@ def export_prompt_to_png(prompt_id: int) -> bytes:
     draw = ImageDraw.Draw(img)
 
     # 字体
-    font_title = _load_font(24)
     font_body = _load_font(17)
     font_small = _load_font(13)
     font_badge = _load_font(13)

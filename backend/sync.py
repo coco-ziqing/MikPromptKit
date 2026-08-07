@@ -294,7 +294,6 @@ def restore_package(pkg_name: str, backup_first: bool = True) -> dict:
 
             # 1. manifest
             if "manifest.json" in namelist:
-                manifest = json.loads(zf.read("manifest.json"))
                 restored.append("manifest.json")
 
             # 2. 恢复 DB

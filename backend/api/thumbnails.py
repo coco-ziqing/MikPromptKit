@@ -426,8 +426,8 @@ async def upload_video(file: UploadFile = File(...)):
     # Phase17-video-poster: 同步提取首帧封面（非耗时，~100ms）确保立即可用
     orig_filename = file.filename
     poster_ok = False
-    duration = 0
-    vinfo = {}
+    duration = 0  # noqa: F841 (防御性初始化)
+    vinfo = {}  # noqa: F841 (防御性初始化)
     try:
         poster_path_full = os.path.join(THUMB_DIR, poster_name)
         import subprocess
@@ -635,7 +635,7 @@ async def prepare_video_upload(file: UploadFile = File(...)):
             '-vf', 'scale=480:-2', '-q:v', '2', poster2_path, '-y'], capture_output=True, timeout=15)
         poster_ok = True
     except Exception:
-        poster_ok = False
+        poster_ok = False  # noqa: F841 (防御性标志)
 
     return {
         "ok": True,
@@ -733,7 +733,6 @@ def trim_video(data: dict):
         raise HTTPException(400, "缺少 temp_file")
 
     safe_name = os.path.basename(temp_file)
-    ext = os.path.splitext(safe_name)[1].lower()
     orig_path = os.path.join(VIDEO_DIR, safe_name)
     if not os.path.exists(orig_path):
         raise HTTPException(404, "临时文件不存在")
