@@ -95,9 +95,9 @@ jobs:
       - name: Run pytest smoke (diagnose)
         run: |
           set +e
-          python -m pytest backend/tests/test_smoke.py -v > /tmp/pt.log 2>&1
+          python -m pytest backend/tests/test_smoke.py -v --tb=long > /tmp/pt.log 2>&1
           ec=$?
-          echo "::warning::PYTEST_EXIT=$ec"
-          tail -40 /tmp/pt.log | while IFS= read -r line; do echo "::warning::$line"; done
+          msg=$(cat /tmp/pt.log | head -c 20000)
+          echo "::error title=pytest_exit_${ec}::$msg"
           exit 0
 
