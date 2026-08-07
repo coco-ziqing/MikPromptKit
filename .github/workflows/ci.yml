@@ -1,0 +1,78 @@
+name: CI — Lint & Compile
+
+on:
+  push:
+    branches: [master, dev, main]
+  pull_request:
+    branches: [master]
+
+jobs:
+  backend-lint:
+    name: 后端 ruff + 编译检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: ruff check backend
+        run: ruff check backend
+
+      - name: Python 语法编译检查（全库）
+        run: |
+          python -m compileall -q backend -x 'backend/(data|tests)/.*' || true
+          python - <<'EOF'
+          import os, py_compile
+          errs = []
+          for root, dirs, fs in os.walk('backend'):
+              dirs[:] = [d for d in dirs if d not in ('__pycache__', 'data', 'tests')]
+              for f in fs:
+                  if f.endswith('.py'):
+                      p = os.path.join(root, f)
+                      try:
+                          py_compile.compile(p, doraise=True)
+                      except Exception as e:
+                          errs.append((p, str(e)[:120]))
+          if errs:
+              for e in errs[:10]:
+                  print('ERR:', e)
+              raise SystemExit(1)
+          print('py_compile: all OK')
+          EOF
+
+  frontend-lint:
+    name: 前端 ESLint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install deps
+        run: npm install --no-audit --no-fund
+
+      - name: ESLint
+        run: npx eslint frontend/static/js --config eslint.config.js
+
+  structure-check:
+    name: 结构完整性（关键模块在岗）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 校验关键文件存在
+        run: |
+          for f in backend/main.py backend/router_registry.py backend/database.py \
+                   backend/api/cards.py backend/api/word_cards.py frontend/index.html \
+                   VERSION requirements.txt pyproject.toml; do
+            [ -f "$f" ] || { echo "MISSING: $f"; exit 1; }
+          done
+          echo "structure OK"
