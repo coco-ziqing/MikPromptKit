@@ -90,7 +90,7 @@ jobs:
 
       - name: Install deps
         run: |
-          pip install pytest fastapi uvicorn httpx python-multipart
+          pip install -r requirements.txt pytest
 
       - name: Run pytest smoke
         run: |
