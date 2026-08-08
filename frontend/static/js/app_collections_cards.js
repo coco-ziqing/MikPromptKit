@@ -144,8 +144,14 @@ Object.assign(App, {
         } catch(e) {}
     },
 
-    // 逐条通过 Ollama 优化选中卡提示词（中英文切换）
+    // 优化结果渲染（融合版 2026-08-08）：
+    // 结果内嵌到「本次处理词卡」清单行内，仅显示当前选中词卡的优化结果，不再单独列出全部
     _renderOllamaResults() {
+        if (typeof this._renderBatchPreview === 'function') {
+            this._renderBatchPreview();
+            return;
+        }
+        // 兑底：_renderBatchPreview 不可用时回退旧独立列表
         var box = document.getElementById('bgenOllamaResults');
         if (!box) return;
         var overrides = this._batchPromptOverrides || {};
@@ -186,6 +192,8 @@ Object.assign(App, {
         });
         box.innerHTML = html;
         box.style.display = 'flex';
+        // 联动刷新预览区的「已优化」徽章（优化结果变化时实时同步）
+        if (typeof this._renderBatchPreview === 'function') this._renderBatchPreview();
     },
 
     // 编辑优化结果：实时同步到 overrides + 刷新组合预览 + 临时存储

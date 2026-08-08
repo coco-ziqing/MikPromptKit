@@ -62,11 +62,16 @@ App.aiTools.renderToolbar = function() {
     container.className = 'ai-toolbar';
     container.style.cssText = 'display:none;display:flex;gap:4px;align-items:center;flex-wrap:wrap;';
     container.innerHTML = '' +
-    '<button class="ai-btn" onclick="App.aiTools.openOptimizer()" title="AI智能优化提示词"><span>✨</span> 优化</button>' +
-    '<button class="ai-btn" onclick="App.aiTools.openTranslate()" title="批量翻译选中提示词"><span>🌐</span> 翻译</button>' +
+    // 编辑模式专属：优化 / 翻译(AI批量生成) / 缩图
+    '<button class="ai-btn ai-btn-editonly" onclick="App.aiTools.openOptimizer()" title="AI智能优化提示词"><span>✨</span> 优化</button>' +
+    '<button class="ai-btn ai-btn-editonly" onclick="App.aiTools.openTranslate()" title="批量翻译选中提示词"><span>🌐</span> 翻译</button>' +
+    // 批量切换：标注档(精简) ↔ 详细档，当前分组全部词卡
+    '<button class="ai-btn ai-btn-batch" onclick="App.aiTools.batchToggleTier()" title="批量切换 标注档/详细档（当前分组全部词卡）"><span>📄⇄📚</span> 标注/详细</button>' +
+    // 批量切换：中英文翻译显示，当前分组全部词卡
+    '<button class="ai-btn ai-btn-batch" onclick="App.aiTools.batchToggleLang()" title="批量切换中英文翻译显示（当前分组全部词卡，无翻译的保持原文）"><span>🆎</span> 中英</button>' +
     '<button class="ai-btn" onclick="App.aiTools.autoTagCurrent()" title="AI自动分析标签和分类"><span>🏷️</span> 标签</button>' +
     '<button class="ai-btn ai-btn-purple" onclick="App.aiTools.openOptimizer(\'adapt\')" title="适配SDXL/Flux/MJ/DALL-E"><span>🎯</span> 适配</button>' +
-    '<button class="ai-btn ai-btn-green" onclick="App.aiTools.aiThumbCurrent()" title="AI智能生成缩略图"><span>🎨</span> 缩图</button>' +
+    '<button class="ai-btn ai-btn-green ai-btn-editonly" onclick="App.aiTools.aiThumbCurrent()" title="AI智能生成缩略图"><span>🎨</span> 缩图</button>' +
     '';
     target.appendChild(container);
     return container;
@@ -75,11 +80,93 @@ App.aiTools.renderToolbar = function() {
 // ============ 工具栏显示/隐藏 ============
 
 App.aiTools.showToolbar = function() {
-    // 仅在编辑模式下显示
-    if (!App.state.editMode) return;
+    // 陈列架页面（_showShowcase）抑制工具栏
     if (App._aiToolbarSuppressed) return;
     var bar = this.renderToolbar();
-    if (bar) bar.style.display = 'flex';
+    if (!bar) return;
+    bar.style.display = 'flex';
+    // 分层显示：编辑模式显示全量按钮；非编辑模式仅显示批量类按钮（标注/详细、中英、标签、适配）
+    var isEdit = !!App.state.editMode;
+    var editOnly = bar.querySelectorAll('.ai-btn-editonly');
+    for (var i = 0; i < editOnly.length; i++) {
+        editOnly[i].style.display = isEdit ? '' : 'none';
+    }
+};
+
+// ============ 批量切换：标注档(simple) ↔ 详细档(detailed) ============
+
+App.aiTools.batchToggleTier = function() {
+    var prompts = App.state.prompts || [];
+    if (prompts.length === 0) { App.showToast('当前分组没有词卡', 'warning'); return; }
+    // 统计当前各档数量，切到“另一边”：详细占多数 → 切标注；否则切详细
+    var counts = { simple: 0, detailed: 0, normal: 0 };
+    for (var i = 0; i < prompts.length; i++) {
+        var t = (typeof App._cardTierFor === 'function') ? App._cardTierFor(prompts[i].id) : 'normal';
+        counts[t] = (counts[t] || 0) + 1;
+    }
+    var target = counts.detailed >= counts.simple ? 'simple' : 'detailed';
+    // 清空 per-card 覆盖 → 全部走全局档位，统一生效
+    App._cardTierState = {};
+    try { localStorage.setItem('wc_card_tier', target); } catch(e) {}
+    var updated = 0;
+    for (var j = 0; j < prompts.length; j++) {
+        var p = prompts[j], pid = p.id;
+        var el = document.getElementById('cc_' + pid);
+        if (el) {
+            var tf = (typeof App._tierFields === 'function') ? App._tierFields(p, target) : null;
+            var lang = (App.state._cardLang && App.state._cardLang[pid]) || el.getAttribute('data-lang') || 'original';
+            var text = tf ? (lang === 'en' && tf.en ? tf.en : (lang === 'zh' && tf.zh ? tf.zh : (tf.main || p.content))) : p.content;
+            el.textContent = text;
+            updated++;
+        }
+        if (typeof App._updateCardTierBtns === 'function') App._updateCardTierBtns(pid);
+        if (typeof App._updateTranslateBtn === 'function') App._updateTranslateBtn(pid);
+    }
+    App.showToast('已批量切换到「' + (target === 'simple' ? '标注' : '详细') + '」档：' + updated + '/' + prompts.length + ' 张词卡', 'success');
+};
+
+// ============ 批量切换：中英文翻译显示 ============
+
+App.aiTools.batchToggleLang = function() {
+    var prompts = App.state.prompts || [];
+    if (prompts.length === 0) { App.showToast('当前分组没有词卡', 'warning'); return; }
+    var flipped = 0, missing = 0;
+    for (var i = 0; i < prompts.length; i++) {
+        var p = prompts[i], pid = p.id;
+        var el = document.getElementById('cc_' + pid);
+        if (!el) continue;
+        var tier = (typeof App._cardTierFor === 'function') ? App._cardTierFor(pid) : 'normal';
+        var tf = (typeof App._tierFields === 'function') ? App._tierFields(p, tier) : null;
+        if (!tf) continue;
+        var original = tf.main || p.content;
+        var zh = tf.zh, en = tf.en;
+        var isCN = /[\u4e00-\u9fff]/.test(original);
+        var lang = (App.state._cardLang && App.state._cardLang[pid]) || el.getAttribute('data-lang') || 'original';
+        var target = null, text = original;
+        if (lang === 'original') {
+            if (isCN && en) { target = 'en'; text = en; }
+            else if (!isCN && zh) { target = 'zh'; text = zh; }
+            else { missing++; continue; }
+        } else if (lang === 'zh') {
+            target = en ? 'en' : 'original';
+            text = en || original;
+        } else { // en
+            target = zh ? 'zh' : 'original';
+            text = zh || original;
+        }
+        if (typeof App._setCardLang === 'function') {
+            App._setCardLang(el, pid, target, text, original);
+        } else {
+            if (!el.getAttribute('data-original')) el.setAttribute('data-original', original);
+            el.setAttribute('data-lang', target);
+            el.textContent = text;
+        }
+        if (typeof App._updateTranslateBtn === 'function') App._updateTranslateBtn(pid);
+        flipped++;
+    }
+    var msg = '批量中英切换完成：' + flipped + ' 张已切换';
+    if (missing > 0) msg += '，' + missing + ' 张暂无对应翻译（保持原文）';
+    App.showToast(msg, missing > 0 ? 'info' : 'success');
 };
 
 App.aiTools.hideToolbar = function() {

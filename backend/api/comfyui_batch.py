@@ -339,6 +339,32 @@ def create_batch_task(data: BatchTaskCreate):
     engine = data.engine or "comfyui"
     wf_name = ""
     model_type = ""
+    # 2026-08-08: 自动跳过已生成缩略图的词卡（避免重复生成/重复入队）
+    ctm = data.card_type_map or {}
+    filtered_ids = []
+    skipped_existing = 0
+    for _pid in data.prompt_ids:
+        _ct = ctm.get(str(_pid)) or ctm.get(_pid) or ""
+        if _ct == "word_card":
+            _row = db.execute("SELECT thumbnail FROM word_card WHERE id=? AND is_deleted=0", [_pid]).fetchone()
+            _has = bool(_row and _row["thumbnail"])
+        elif _ct == "prompts":
+            # prompts 旧表无 thumbnail 列，缩略图存 prompt_thumbnails 关联表
+            _row = db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [_pid]).fetchone()
+            _has = bool(_row)
+        else:
+            _row = db.execute("SELECT thumbnail FROM word_card WHERE id=? AND is_deleted=0", [_pid]).fetchone()
+            _has = bool(_row and _row["thumbnail"])
+            if not _has:
+                _row = db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [_pid]).fetchone()
+                _has = bool(_row)
+        if _has:
+            skipped_existing += 1
+            continue
+        filtered_ids.append(_pid)
+    if not filtered_ids:
+        return {"ok": False, "error": f"所选 {skipped_existing} 张词卡均已生成缩略图，无需重复生成"}
+    data.prompt_ids = filtered_ids
     if engine == "comfyui":
         workflow_cfg, wf_err = _find_workflow_v2(data.workflow_id)
         if workflow_cfg:
@@ -364,8 +390,8 @@ def create_batch_task(data: BatchTaskCreate):
     safe_commit()
     task_id = cur.lastrowid
     threading.Thread(target=_batch_worker, args=(task_id,), daemon=True).start()
-    return {"ok": True, "task_id": task_id, "total": len(data.prompt_ids), "status": "queued",
-            "workflow_name": wf_name, "model_type": model_type}
+    return {"ok": True, "task_id": task_id, "total": len(data.prompt_ids), "skipped": skipped_existing,
+            "status": "queued", "workflow_name": wf_name, "model_type": model_type}
 
 
 @router.get("/batch-tasks")

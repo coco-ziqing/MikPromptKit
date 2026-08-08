@@ -95,7 +95,8 @@ Object.assign(App, {
             if (eb) eb.style.display = 'none';
             if (fb) fb.style.display = 'none';
             try { localStorage.removeItem('promptkit_editmode'); } catch(e) {}
-            if (App.aiTools) App.aiTools.hideToolbar();  // 退出编辑模式隐藏工具栏
+            // 退出编辑模式：隐藏编辑专属按钮（优化/翻译/缩图），保留批量类按钮子集
+            if (App.aiTools) App.aiTools.showToolbar();
         }
         var btn = document.getElementById('btnEditMode');
         if (this.state.editMode) {

@@ -722,8 +722,9 @@ App._updatePageTitle = function() {
             if (fb) fb.style.display = 'block';
             var btn = document.getElementById('btnEditMode');
             if (btn) { btn.style.color = '#4f46e5'; btn.classList.add('active'); }
-            if (App.aiTools) App.aiTools.showToolbar();
         }
+        // 编辑/非编辑模式均同步工具栏：编辑模式全量按钮，非编辑模式仅批量类按钮子集
+        if (App.aiTools) App.aiTools.showToolbar();
         // P0-6: 拖拽词卡到侧边栏分组
         this._wcSetupCardDrag();
     };
