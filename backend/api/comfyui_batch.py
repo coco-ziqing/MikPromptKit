@@ -6,6 +6,7 @@ ComfyUI 批量生成任务队列（Phase 3.5 自 api/comfyui.py 拆分）
 import asyncio
 import copy
 import json
+import os
 import threading
 
 import httpx
@@ -25,12 +26,113 @@ class BatchGenerateRequest(BaseModel):
     style_suffix: str = ""      # 可选：品质后缀（空=不加后缀，省略=默认后缀）
     use_module_preset: int = 1   # 0=忽略模块主体预设
 
+# ==================== 缩略图来源判定（2026-08-10 多维度综合，防手动预览图误判） ====================
+# AI 生成链路（thumb_gen.save_generated_image）只写 data/thumbnails/
+# 手动指定链路（word_cards 上传/图库复制）写 data/wc_media/thumbs/ + 同步副本到 thumbnails/
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+AI_THUMB_DIR = os.path.join(_PROJECT_ROOT, "data", "thumbnails")
+WC_THUMBS_DIR = os.path.join(_PROJECT_ROOT, "data", "wc_media", "thumbs")
+_FILE_CACHE = {}
+
+
+def _file_in(dirpath: str, fname: str) -> bool:
+    """文件存在性检查（按 basename 缓存，全库扫描 290+ 张时避免重复 stat）"""
+    key = dirpath + "|" + (fname or "")
+    if key not in _FILE_CACHE:
+        _FILE_CACHE[key] = bool(fname) and os.path.exists(os.path.join(dirpath, os.path.basename(fname)))
+    return _FILE_CACHE[key]
+
+
+def thumb_state_of(row) -> str:
+    """word_card 行缩略图来源判定（§2.3 规则，按优先级防误判）
+    返回: none / ai / manual / unknown
+    - wc_media/thumbs/ 存在 → manual（最强：仅手动链路写此目录）
+    - 仅 thumbnails/ 存在 → ai（兼容 AI 尺寸 + 0x0 历史数据）
+    - 文件丢失退化尺寸指纹: 非 320x213 → ai；320x213 → manual；0x0 → unknown
+    """
+    fname = row["thumbnail"] or ""
+    if not fname:
+        return "none"
+    in_ai = _file_in(AI_THUMB_DIR, fname)
+    in_wc = _file_in(WC_THUMBS_DIR, fname)
+    if in_wc:
+        return "manual"
+    if in_ai:
+        return "ai"
+    w = row["thumb_width"] or 0
+    h = row["thumb_height"] or 0
+    if w > 0:
+        return "ai" if not (w == 320 and h == 213) else "manual"
+    return "unknown"
+
+
+def _active_queued_pids(db) -> set:
+    """所有活跃任务（排队/运行中）中的词卡 id 集合（防重复入队，服务端兜底）"""
+    rows = db.execute("SELECT prompt_ids FROM comfyui_batch_tasks WHERE status IN ('queued','running')").fetchall()
+    s = set()
+    for r in rows:
+        try:
+            s.update(json.loads(r["prompt_ids"] or "[]"))
+        except Exception:
+            pass
+    return s
+
+
+def _filter_pending_ids(ids: list, ctm: dict = None, db=None) -> tuple:
+    """完成态过滤（单一事实来源：batch-scan 与 create_batch_task 共用，防两端判定漂移）
+    判定规则 §2.3：ai/unknown 视为已完成（跳过）；manual 不跳过（纳入生成覆盖手动图）；none 纳入
+    返回 (pending_ids, stats)
+    stats: {ai_skip, manual_count, unknown_skip, missing_skip, queued_skip, pending}
+    """
+    ctm = ctm or {}
+    stats = {"ai_skip": 0, "manual_count": 0, "unknown_skip": 0, "missing_skip": 0, "queued_skip": 0, "pending": 0}
+    queued = _active_queued_pids(db)
+    pending_ids = []
+    for _pid in ids:
+        _ct = ctm.get(str(_pid)) or ctm.get(_pid) or ""
+        if _ct == "word_card":
+            _row = db.execute("SELECT thumbnail, thumb_width, thumb_height FROM word_card WHERE id=? AND is_deleted=0", [_pid]).fetchone()
+            if not _row:
+                stats["missing_skip"] += 1
+                continue
+            _st = thumb_state_of(_row)
+        elif _ct == "prompts":
+            # prompts 旧表无尺寸/目录指纹，仅按关联表存在性判定（legacy：视为已有图跳过）
+            _row = db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [_pid]).fetchone()
+            _st = "ai" if _row else "none"
+        else:
+            # 未标注：先查 word_card 再查 prompts
+            _row = db.execute("SELECT thumbnail, thumb_width, thumb_height FROM word_card WHERE id=? AND is_deleted=0", [_pid]).fetchone()
+            if _row:
+                _st = thumb_state_of(_row)
+            else:
+                _row = db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [_pid]).fetchone()
+                _st = "ai" if _row else "none"
+        if _pid in queued:
+            stats["queued_skip"] += 1
+            continue
+        if _st == "ai" or _st == "unknown":
+            stats["ai_skip" if _st == "ai" else "unknown_skip"] += 1
+            continue
+        if _st == "manual":
+            stats["manual_count"] += 1
+        pending_ids.append(_pid)
+    stats["pending"] = len(pending_ids)
+    return pending_ids, stats
 
 
 # ==================== 批量生成任务队列 ====================
 
 # 全局批量并发锁：同一时刻只允许 1 个批量任务执行（其余排队），防止大量任务叠加提交 ComfyUI 卡死
 _BATCH_GLOBAL_LOCK = threading.Lock()
+
+
+class BatchScanRequest(BaseModel):
+    scope: str = "all"              # all / group / ids
+    group_id: int = 0
+    ids: list[int] = []
+    card_type_map: dict = {}        # ids 场景下显式标注 {prompt_id: 'word_card'|'prompts'}
+    include_legacy: bool = False    # ids 场景下是否包含 prompts 旧表条目
 
 
 class BatchTaskCreate(BaseModel):
@@ -44,6 +146,7 @@ class BatchTaskCreate(BaseModel):
     card_type_map: dict = {}     # {prompt_id: 'word_card'|'prompts'} 前端按数据源显式标注，避免 id 重叠猜错表
     engine: str = "comfyui"      # comfyui / dreamina / libtv
     manual_text: str = ""         # 手动附加文本（追加到每条组合提示词末尾）
+    batch_size: int = 0           # 每批切片张数（0=不切片单任务；>0 自动分片创建多任务）
     # dreamina 引擎参数
     model_version: str = "5.0"
     ratio: str = "1:1"
@@ -197,7 +300,7 @@ def _batch_worker(task_id: int):
                 # 优先使用前端显式标注的类型（解决 id 跨表重叠时猜错表）
                 _ct = card_type_map.get(str(pid)) or card_type_map.get(pid) or ""
                 if _ct == "word_card":
-                    row2 = db.execute("SELECT content, module FROM word_card WHERE id=? AND is_deleted=0", [pid]).fetchone()
+                    row2 = db.execute("SELECT content, content_detailed, module FROM word_card WHERE id=? AND is_deleted=0", [pid]).fetchone()
                     src_table = "word_card"
                 elif _ct == "prompts":
                     row2 = db.execute("SELECT content, module FROM prompts WHERE id=?", [pid]).fetchone()
@@ -207,7 +310,7 @@ def _batch_worker(task_id: int):
                     row2 = db.execute("SELECT content, module FROM prompts WHERE id=?", [pid]).fetchone()
                     src_table = "prompts"
                     if not row2:
-                        row2 = db.execute("SELECT content, module FROM word_card WHERE id=? AND is_deleted=0", [pid]).fetchone()
+                        row2 = db.execute("SELECT content, content_detailed, module FROM word_card WHERE id=? AND is_deleted=0", [pid]).fetchone()
                         src_table = "word_card"
                 if not row2:
                     failed += 1
@@ -215,7 +318,13 @@ def _batch_worker(task_id: int):
                     _batch_update(task_id, current_index=idx + 1, success=success, failed=failed, results=json.dumps(results, ensure_ascii=False))
                     continue
                 card_text = row2["content"]
-                # Ollama 优化结果覆盖（prompt_overrides）
+                # 2026-08-10: 生成提示词优先级 overrides > content_detailed（优化后详细档）> content（标准档）
+                # 修复「存了详细档但生成仍用标准档」——全库流水线要求用优化后的详细提示词生成
+                if src_table == "word_card":
+                    _det = row2["content_detailed"] or ""
+                    if _det.strip():
+                        card_text = _det
+                # Ollama 优化结果覆盖（prompt_overrides，会话内未保存的临时结果优先）
                 try:
                     overrides = json.loads(d.get("prompt_overrides") or "{}")
                 except Exception:
@@ -328,7 +437,9 @@ def create_batch_task(data: BatchTaskCreate):
         _find_workflow_v2,
         _get_config,
     )
-    """创建批量生成任务（立即返回 task_id，后台线程执行，支持进度查询/取消/恢复）"""
+    """创建批量生成任务（立即返回 task_ids，后台线程执行，支持进度查询/取消/恢复）
+    2026-08-10: 完成态过滤（多维度判定） + batch_size 切片（防在线引擎超限/降单批失败面）
+    """
     _ensure_batch_task_table()
     if not data.prompt_ids:
         return {"ok": False, "error": "未选择任何词条"}
@@ -339,31 +450,11 @@ def create_batch_task(data: BatchTaskCreate):
     engine = data.engine or "comfyui"
     wf_name = ""
     model_type = ""
-    # 2026-08-08: 自动跳过已生成缩略图的词卡（避免重复生成/重复入队）
-    ctm = data.card_type_map or {}
-    filtered_ids = []
-    skipped_existing = 0
-    for _pid in data.prompt_ids:
-        _ct = ctm.get(str(_pid)) or ctm.get(_pid) or ""
-        if _ct == "word_card":
-            _row = db.execute("SELECT thumbnail FROM word_card WHERE id=? AND is_deleted=0", [_pid]).fetchone()
-            _has = bool(_row and _row["thumbnail"])
-        elif _ct == "prompts":
-            # prompts 旧表无 thumbnail 列，缩略图存 prompt_thumbnails 关联表
-            _row = db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [_pid]).fetchone()
-            _has = bool(_row)
-        else:
-            _row = db.execute("SELECT thumbnail FROM word_card WHERE id=? AND is_deleted=0", [_pid]).fetchone()
-            _has = bool(_row and _row["thumbnail"])
-            if not _has:
-                _row = db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [_pid]).fetchone()
-                _has = bool(_row)
-        if _has:
-            skipped_existing += 1
-            continue
-        filtered_ids.append(_pid)
+    # 2026-08-10: 完成态过滤（§2.3 多维度判定：跳过 AI 生成/未知，纳入手动指定并覆盖）
+    filtered_ids, stats = _filter_pending_ids(data.prompt_ids, data.card_type_map or {}, db)
     if not filtered_ids:
-        return {"ok": False, "error": f"所选 {skipped_existing} 张词卡均已生成缩略图，无需重复生成"}
+        return {"ok": False, "error": f"所选 {stats['ai_skip'] + stats['unknown_skip']} 张词卡均已 AI 生成过缩略图，无需重复生成",
+                "stats": stats}
     data.prompt_ids = filtered_ids
     if engine == "comfyui":
         workflow_cfg, wf_err = _find_workflow_v2(data.workflow_id)
@@ -372,26 +463,113 @@ def create_batch_task(data: BatchTaskCreate):
             model_type = _detect_model_type(workflow_cfg["workflow_json"])
         elif not data.workflow_id:
             return {"ok": False, "error": "请先选择生成工作流"}
-    cur = db.execute(
-        """INSERT INTO comfyui_batch_tasks
-           (workflow_id, workflow_name, model_type, prompt_ids, total, status,
-            style_suffix, use_module_preset, preset_id, param_values, prompt_overrides,
-            engine, manual_text, model_version, ratio, resolution_type, width, height, card_type_map,
-            project_uuid, libtv_model, libtv_ratio)
-           VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        [data.workflow_id, wf_name, model_type, json.dumps(data.prompt_ids), len(data.prompt_ids),
-         data.style_suffix, data.use_module_preset, data.preset_id,
-         json.dumps(data.param_values or {}, ensure_ascii=False),
-         json.dumps(data.prompt_overrides or {}, ensure_ascii=False),
-         engine, data.manual_text or "", data.model_version or "5.0", data.ratio or "1:1",
-         data.resolution_type or "2k", data.width or 0, data.height or 0,
-         json.dumps(data.card_type_map or {}, ensure_ascii=False),
-         data.project_uuid or "", data.libtv_model or "Z-image Turbo", data.libtv_ratio or "1:1"])
-    safe_commit()
-    task_id = cur.lastrowid
-    threading.Thread(target=_batch_worker, args=(task_id,), daemon=True).start()
-    return {"ok": True, "task_id": task_id, "total": len(data.prompt_ids), "skipped": skipped_existing,
+    # batch_size 切片：>0 按每批 N 张创建多个任务（单事务，全部成功或全部回滚）
+    batch_size = max(0, int(data.batch_size or 0))
+    if batch_size <= 0:
+        chunks = [filtered_ids]
+    else:
+        chunks = [filtered_ids[i:i + batch_size] for i in range(0, len(filtered_ids), batch_size)]
+    new_ids = []
+    try:
+        for _chunk in chunks:
+            cur = db.execute(
+                """INSERT INTO comfyui_batch_tasks
+                   (workflow_id, workflow_name, model_type, prompt_ids, total, status,
+                    style_suffix, use_module_preset, preset_id, param_values, prompt_overrides,
+                    engine, manual_text, model_version, ratio, resolution_type, width, height, card_type_map,
+                    project_uuid, libtv_model, libtv_ratio)
+                   VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                [data.workflow_id, wf_name, model_type, json.dumps(_chunk), len(_chunk),
+                 data.style_suffix, data.use_module_preset, data.preset_id,
+                 json.dumps(data.param_values or {}, ensure_ascii=False),
+                 json.dumps(data.prompt_overrides or {}, ensure_ascii=False),
+                 engine, data.manual_text or "", data.model_version or "5.0", data.ratio or "1:1",
+                 data.resolution_type or "2k", data.width or 0, data.height or 0,
+                 json.dumps(data.card_type_map or {}, ensure_ascii=False),
+                 data.project_uuid or "", data.libtv_model or "Z-image Turbo", data.libtv_ratio or "1:1"])
+            new_ids.append(cur.lastrowid)
+        safe_commit()
+    except Exception as e:
+        return {"ok": False, "error": f"任务创建失败: {e}"}
+    for tid in new_ids:
+        threading.Thread(target=_batch_worker, args=(tid,), daemon=True).start()
+    return {"ok": True, "task_ids": new_ids, "task_id": new_ids[0], "total": len(filtered_ids),
+            "batches": len(chunks), "skipped": stats["ai_skip"] + stats["unknown_skip"], "stats": stats,
             "status": "queued", "workflow_name": wf_name, "model_type": model_type}
+
+
+@router.post("/batch-scan")
+def scan_batch_cards(data: BatchScanRequest):
+    """全库/分组/指定卡完成态扫描（2026-08-10）：返回每卡缩略图来源判定 + 优化状态 + 队列状态，
+    供前端一键流水线展示「本次将处理 N 张」并分类预览（不创建任何任务）
+    """
+    _ensure_batch_task_table()
+    db = get_db()
+    cols = "wc.id, wc.name, wc.group_id, wc.module, wc.content_detailed, wc.thumbnail, wc.thumb_width, wc.thumb_height, wg.name AS group_name"
+    if data.scope == "group":
+        rows = db.execute(
+            f"SELECT {cols} FROM word_card wc LEFT JOIN word_card_group wg ON wg.id=wc.group_id "
+            "WHERE wc.is_deleted=0 AND wc.group_id=? ORDER BY wc.group_id, wc.id", [data.group_id]).fetchall()
+        raw = [dict(r) for r in rows]
+    elif data.scope == "ids":
+        # 混合两表（收藏夹场景）：word_card 走多维判定，prompts 旧表仅存在性判定
+        ctm = data.card_type_map or {}
+        wc_ids, pr_ids = [], []
+        for _pid in data.ids:
+            if ctm.get(str(_pid)) == "word_card":
+                wc_ids.append(_pid)
+            else:
+                pr_ids.append(_pid)
+        raw = []
+        if wc_ids:
+            _ph = ",".join("?" * len(wc_ids))
+            rows = db.execute(
+                f"SELECT {cols}, 'word_card' AS _source FROM word_card wc LEFT JOIN word_card_group wg ON wg.id=wc.group_id "
+                f"WHERE wc.is_deleted=0 AND wc.id IN ({_ph}) ORDER BY wc.group_id, wc.id", wc_ids).fetchall()
+            raw += [dict(r) for r in rows]
+        if pr_ids and data.include_legacy:
+            _ph = ",".join("?" * len(pr_ids))
+            rows = db.execute(
+                "SELECT p.id, p.name, 0 AS group_id, p.module, '' AS content_detailed, '' AS thumbnail, 0 AS thumb_width, 0 AS thumb_height, '' AS group_name, 'prompts' AS _source "
+                "FROM prompts p WHERE p.id IN (" + _ph + ")", pr_ids).fetchall()
+            raw += [dict(r) for r in rows]
+    else:  # all
+        rows = db.execute(
+            f"SELECT {cols} FROM word_card wc LEFT JOIN word_card_group wg ON wg.id=wc.group_id "
+            "WHERE wc.is_deleted=0 ORDER BY wc.group_id, wc.id").fetchall()
+        raw = [dict(r) for r in rows]
+    queued = _active_queued_pids(db)
+    stats = {"total": len(raw), "pending": 0, "opt_only": 0, "ai_generated": 0,
+             "manual": 0, "unknown": 0, "queued": 0}
+    items = []
+    for r in raw:
+        _src = r.get("_source") or "word_card"
+        if _src == "prompts":
+            _has = bool(db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [r["id"]]).fetchone())
+            _st = "ai" if _has else "none"
+        else:
+            _st = thumb_state_of(r)
+        _opt = bool((r.get("content_detailed") or "").strip())
+        _queued = r["id"] in queued
+        if _queued:
+            stats["queued"] += 1
+        elif _st == "ai":
+            stats["ai_generated"] += 1
+        elif _st == "manual":
+            stats["manual"] += 1
+        elif _st == "unknown":
+            stats["unknown"] += 1
+        elif _opt:
+            stats["opt_only"] += 1
+        else:
+            stats["pending"] += 1
+        items.append({
+            "id": r["id"], "name": r.get("name") or "", "group_id": r.get("group_id") or 0,
+            "group_name": r.get("group_name") or "", "module": r.get("module") or "",
+            "optimized": _opt, "thumbnail": r.get("thumbnail") or "",
+            "thumb_state": _st, "queued": _queued,
+        })
+    return {"ok": True, "stats": stats, "items": items}
 
 
 @router.get("/batch-tasks")

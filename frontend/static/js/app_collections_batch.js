@@ -58,6 +58,15 @@ Object.assign(App, {
                 '<button class="header-btn-sm" onclick="document.getElementById(\'batchGenDialog\').style.display=\'none\'">&times;</button>' +
               '</div>' +
               '<div class="modal-body" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:12px;">' +
+                // 处理范围（2026-08-10 全词库一键流水线）
+                '<div style="display:flex;align-items:center;gap:8px;">' +
+                  '<span style="font-size:12px;font-weight:600;">处理范围</span>' +
+                  '<span style="display:flex;gap:2px;border:1px solid var(--border-color);border-radius:8px;padding:2px;">' +
+                    '<button id="bgenScopeGroup" class="cwl-logview-btn active" onclick="App._batchScopeSet(\'group\')" title="仅处理当前分组勾选的词卡">当前分组</button>' +
+                    '<button id="bgenScopeAll" class="cwl-logview-btn" onclick="App._batchScopeSet(\'all\')" title="自动检测全词库，跳过已优化/已 AI 生成，一次提交剩余">全部词库</button>' +
+                  '</span>' +
+                  '<span id="bgenScopeHint" style="font-size:10px;color:var(--text-muted);flex:1;"></span>' +
+                '</div>' +
                 // 选中卡预览：本次处理词卡清单（Ollama 优化 + 缩略图生成）
                 // flex-shrink:0 防止弹窗内容多时被 flex 压缩导致清单显示不全
                 '<div id="bgenPreview" style="border:1px solid #6366f1;border-radius:10px;padding:0;overflow:hidden;flex-shrink:0;">' +
@@ -186,6 +195,11 @@ Object.assign(App, {
               '</div>' +
               '<div class="modal-footer" style="padding:10px 16px;border-top:1px solid var(--border-color);display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-shrink:0;">' +
                 '<span id="bgenFooterHint" style="margin-right:auto;font-size:10px;color:var(--text-muted);"></span>' +
+                // 批次控制（2026-08-10：在线引擎防限流/降单批失败面）
+                '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-muted);white-space:nowrap;">每批' +
+                  '<select id="bgenBatchSize" onchange="App._batchSizeChanged()" title="每批自动提交张数：批次小则单任务失败影响面小；在线引擎建议 ≤20" style="font-size:11px;padding:2px 4px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);">' +
+                    '<option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option><option value="0">不限</option>' +
+                  '</select>张</span>' +
                 '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'batchGenDialog\').style.display=\'none\'">关闭</button>' +
                 '<button class="btn btn-primary btn-sm" id="bgenStartBtn" onclick="App._startBatchGen()"><i class="bi bi-play-fill"></i> 开始生成</button>' +
               '</div>' +
@@ -206,8 +220,11 @@ Object.assign(App, {
         this._batchTaskId = this._batchTaskIds.length > 0 ? this._batchTaskIds[this._batchTaskIds.length - 1] : null;
         // 选中卡预览：本次处理词卡清单（Ollama 优化 + 缩略图生成）
         var cnt = document.getElementById('bgenCount');
+        // 2026-08-10: 恢复处理范围（group=当前分组 / all=全词库扫描）
+        this._batchScope = this._batchScope || 'group';
+        this._batchPreviewTab = this._batchPreviewTab || 'all';
+        this._batchScopeSet(this._batchScope, true);
         if (cnt) cnt.textContent = '（' + (this._batchIds || []).length + ' 张）';
-        this._renderBatchPreview();
         this._ollamaUpdateHint();
         // 加载工作流库（先恢复上次参数设置）
         this._restoreBatchSettings();
@@ -234,6 +251,139 @@ Object.assign(App, {
         }
     },
 
+    // ============ 处理范围（2026-08-10 全词库一键流水线） ============
+
+    // 切换处理范围：group=当前分组勾选 / all=全词库自动检测
+    _batchScopeSet(mode, silent) {
+        this._batchScope = mode;
+        var bg = document.getElementById('bgenScopeGroup');
+        var ba = document.getElementById('bgenScopeAll');
+        if (bg) bg.className = 'cwl-logview-btn' + (mode === 'group' ? ' active' : '');
+        if (ba) ba.className = 'cwl-logview-btn' + (mode === 'all' ? ' active' : '');
+        if (mode === 'group') {
+            var hint = document.getElementById('bgenScopeHint');
+            if (hint) hint.textContent = '仅处理当前分组勾选的 ' + (this._batchIds || []).length + ' 张';
+            this._renderBatchPreview();
+        } else {
+            var h2 = document.getElementById('bgenScopeHint');
+            if (h2) h2.textContent = '正在扫描全词库...';
+            this._batchScopeApply();
+        }
+        if (!silent) this._saveBatchSettings();
+    },
+
+    // 拉取全词库完成态扫描（batch-scan 后端判定，前端不猜）
+    async _batchScopeApply() {
+        var self = this;
+        try {
+            var d = await this.fetchJSON('/api/v2/comfyui/batch-scan', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scope: 'all' })
+            });
+            if (!d || !d.ok) throw new Error((d && d.error) || '扫描失败');
+            this._batchScanResult = d;
+            this._renderBatchPreview();
+            var cnt = document.getElementById('bgenCount');
+            if (cnt) cnt.textContent = '（全词库 ' + d.stats.total + ' 张）';
+            var hint = document.getElementById('bgenScopeHint');
+            if (hint) hint.textContent = '已扫描 ' + d.stats.total + ' 张，自动跳过已完成';
+        } catch(e) {
+            var hint = document.getElementById('bgenScopeHint');
+            if (hint) hint.textContent = '扫描失败: ' + e.message;
+            this._batchScope = 'group';
+            var bg = document.getElementById('bgenScopeGroup');
+            var ba = document.getElementById('bgenScopeAll');
+            if (bg) bg.className = 'cwl-logview-btn active';
+            if (ba) ba.className = 'cwl-logview-btn';
+            this._renderBatchPreview();
+        }
+    },
+
+    // 全词库扫描统计：本次处理数 = 待处理 + 仅生成 + 手动图 + 未知（跳过 AI 完成 / 队列）
+    _batchScanStats() {
+        var d = this._batchScanResult;
+        if (!d || !d.stats) return null;
+        var st = d.stats;
+        var todo = st.pending + st.opt_only + st.manual + st.unknown;
+        return {
+            todo: todo,
+            text: '待处理 ' + st.pending + ' · 仅生成 ' + st.opt_only + ' · 手动图 ' + st.manual + ' · 未知 ' + st.unknown + ' · AI完成 ' + st.ai_generated + ' · 队列 ' + st.queued
+        };
+    },
+
+    // 全词库扫描清单渲染（分类 Tab + 状态徽章 + 底部本次处理提示）
+    _renderScanPreview() {
+        var self = this;
+        var d = this._batchScanResult;
+        var list = document.getElementById('bgenPreviewList');
+        if (!list || !d) return;
+        var prevScrollTop = list.scrollTop;
+        var st = this._batchScanStats();
+        var items = d.items || [];
+        var tab = this._batchPreviewTab || 'all';
+        var filtered = [];
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (tab === 'all') { filtered.push(it); continue; }
+            if (tab === 'todo' && it.thumb_state === 'none' && !it.optimized && !it.queued) { filtered.push(it); continue; }
+            if (tab === 'gen' && it.thumb_state === 'none' && it.optimized && !it.queued) { filtered.push(it); continue; }
+            if (tab === 'manual' && it.thumb_state === 'manual') { filtered.push(it); continue; }
+            if (tab === 'done' && (it.thumb_state !== 'none' || it.queued)) { filtered.push(it); continue; }
+        }
+        var selCnt = document.getElementById('bgenSelCount');
+        if (selCnt) selCnt.textContent = filtered.length + ' 张';
+        var opt = document.getElementById('bgenSelOptimized');
+        if (opt) opt.textContent = st ? st.text : '';
+        var bar = document.getElementById('bgenPreviewBatchBar');
+        if (bar) bar.style.display = 'none';
+        var html = '';
+        // 分类 Tab 栏
+        html += '<div style="display:flex;gap:3px;padding:2px 0 6px;border-bottom:1px dashed var(--border-color);margin-bottom:4px;flex-wrap:wrap;">';
+        var tabs = [['all', '全部 ' + items.length], ['todo', '待处理 ' + d.stats.pending], ['gen', '仅生成 ' + d.stats.opt_only], ['manual', '手动图 ' + d.stats.manual], ['done', '已完成 ' + (d.stats.ai_generated + d.stats.queued + d.stats.unknown)]];
+        for (var t = 0; t < tabs.length; t++) {
+            var active = tab === tabs[t][0];
+            html += '<button type="button" onclick="App._batchPreviewTabSet(\'' + tabs[t][0] + '\')" style="font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid ' + (active ? 'var(--primary)' : 'var(--border-color)') + ';color:' + (active ? 'var(--primary)' : 'var(--text-muted)') + ';background:transparent;cursor:pointer;">' + tabs[t][1] + '</button>';
+        }
+        html += '</div>';
+        if (filtered.length === 0) {
+            html += '<div style="font-size:11px;color:var(--text-muted);padding:8px 6px;">该分类无词卡</div>';
+            list.innerHTML = html;
+            return;
+        }
+        for (var j = 0; j < filtered.length; j++) {
+            var it2 = filtered[j];
+            var thumb = it2.thumbnail
+                ? '<img src="/api/thumbnails/file/' + it2.thumbnail + '" style="width:34px;height:24px;object-fit:cover;border-radius:4px;flex-shrink:0;" loading="lazy" onerror="this.style.display=\'none\'">'
+                : '<span style="width:34px;text-align:center;flex-shrink:0;font-size:13px;">🖼️</span>';
+            var label = ((it2.group_name ? it2.group_name + ' · ' : '') + (it2.name || ('词卡 #' + it2.id))).slice(0, 40);
+            var badges = '';
+            if (it2.queued) badges += '<span style="font-size:9px;color:#d97706;background:rgba(217,119,6,0.1);border:1px solid rgba(217,119,6,0.3);border-radius:4px;padding:0 5px;flex-shrink:0;">⏳ 队列中</span>';
+            if (it2.optimized) badges += '<span style="font-size:9px;color:#10b981;flex-shrink:0;font-weight:600;">✨ 已优化</span>';
+            if (it2.thumb_state === 'ai') badges += '<span style="font-size:9px;color:#059669;background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);border-radius:4px;padding:0 5px;flex-shrink:0;">✅ AI 已生成</span>';
+            else if (it2.thumb_state === 'manual') badges += '<span style="font-size:9px;color:#f59e0b;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:4px;padding:0 5px;flex-shrink:0;" title="手动指定的预览图，本次将 AI 生成覆盖">🖼️ 手动图</span>';
+            else if (it2.thumb_state === 'unknown') badges += '<span style="font-size:9px;color:#94a3b8;border:1px dashed var(--border-color);border-radius:4px;padding:0 5px;flex-shrink:0;" title="缩略图来源无法判定（文件丢失），保守纳入生成">❓ 未知</span>';
+            html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:5px 8px;margin-bottom:4px;background:var(--bg-card);">' +
+                '<div style="display:flex;align-items:center;gap:6px;">' +
+                '<span style="font-size:10px;color:var(--text-muted);width:26px;flex-shrink:0;text-align:right;">' + (j + 1) + '</span>' +
+                thumb +
+                '<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:var(--text-main);" title="' + App._escape(it2.name || '') + '">' + App._escape(label) + '</span>' +
+                badges +
+                '</div></div>';
+        }
+        list.innerHTML = html;
+        if (prevScrollTop > 0 && list.scrollHeight > prevScrollTop) list.scrollTop = prevScrollTop;
+        var sh = document.createElement('div');
+        sh.style.cssText = 'position:sticky;bottom:0;font-size:10px;color:var(--primary);text-align:center;padding:4px 0 5px;background:linear-gradient(transparent,var(--bg-card) 40%);pointer-events:none;';
+        sh.textContent = '本次将处理 ' + st.todo + ' 张（点击「开始生成」一次提交，自动跳过已完成）';
+        list.appendChild(sh);
+    },
+
+    // 分类 Tab 切换
+    _batchPreviewTabSet(tab) {
+        this._batchPreviewTab = tab;
+        this._renderBatchPreview();
+    },
+
     // 本次处理词卡清单渲染：完整列出选中词卡（缩略图/名称/优化状态），
     // 与 Ollama 优化结果联动（overrides 变化时徽章自动刷新）
     _renderBatchPreview() {
@@ -241,6 +391,11 @@ Object.assign(App, {
         if (!list) return;
         // 记录滚动位置：存词卡/恢复等操作后重绘不跳回顶部
         var prevScrollTop = list.scrollTop;
+        // 2026-08-10: 全词库模式 → 扫描结果渲染（分类 Tab/状态徽章/统计）
+        if (this._batchScope === 'all' && this._batchScanResult) {
+            this._renderScanPreview();
+            return;
+        }
         var ids = this._batchIds || [];
         var cnt = document.getElementById('bgenSelCount');
         if (cnt) cnt.textContent = ids.length + ' 张';
@@ -397,6 +552,11 @@ Object.assign(App, {
         if (cb) cb.className = 'cwl-logview-btn' + (mode === 'comfyui' ? ' active' : '');
         if (db2) db2.className = 'cwl-logview-btn' + (mode === 'dreamina' ? ' active' : '');
         if (lb) lb.className = 'cwl-logview-btn' + (mode === 'libtv' ? ' active' : '');
+        // 2026-08-10: 批次默认值引擎自适应（用户未手动改过时）：在线引擎 20 / 本地 ComfyUI 50
+        if (!this._batchSizeTouched) {
+            var bsEl = document.getElementById('bgenBatchSize');
+            if (bsEl) bsEl.value = (mode === 'comfyui') ? '50' : '20';
+        }
         var comfyArea = document.getElementById('bgenComfyArea');
         var dreaminaArea = document.getElementById('bgenDreaminaArea');
         var libtvArea = document.getElementById('bgenLibtvArea');
@@ -471,6 +631,15 @@ Object.assign(App, {
             if (this._batchPromptOverrides[pid]) {
                 batch.skipped++;
                 continue;
+            }
+            // 2026-08-10: 全词库模式 → 已保存详细档（content_detailed 非空）的卡自动跳过优化
+            if (this._batchScope === 'all' && this._batchScanResult && this._batchScanResult.items) {
+                var _scanItems = this._batchScanResult.items;
+                var _skipOpt = false;
+                for (var _so = 0; _so < _scanItems.length; _so++) {
+                    if (_scanItems[_so].id === pid && _scanItems[_so].optimized) { _skipOpt = true; break; }
+                }
+                if (_skipOpt) { batch.skipped++; continue; }
             }
             var card = null;
             (this.state.prompts || []).forEach(function(p) { if (p.id === pid && !card) card = p; });
@@ -842,7 +1011,13 @@ Object.assign(App, {
         try { return JSON.parse(localStorage.getItem('cwl_batch_settings') || 'null') || null; } catch(e) { return null; }
     },
 
-    // 保存批量设置（引擎/工作流/参数预设/后缀/开关/参数值/即梦参数）
+    // 2026-08-10: 用户手动改过批次 → 不再被引擎切换覆盖
+    _batchSizeChanged() {
+        this._batchSizeTouched = true;
+        this._saveBatchSettings();
+    },
+
+    // 保存批量设置（引擎/工作流/参数预设/后缀/开关/参数值/即梦参数/范围/批次）
     _saveBatchSettings() {
         try {
             var s = {
@@ -858,7 +1033,9 @@ Object.assign(App, {
                 dreamina_res: (document.getElementById('bgenDreaminaRes') || {}).value || '2k',
                 libtv_project: (document.getElementById('bgenLibtvProject') || {}).value || '',
                 libtv_model: (document.getElementById('bgenLibtvModel') || {}).value || 'Z-image Turbo',
-                libtv_ratio: (document.getElementById('bgenLibtvRatio') || {}).value || '1:1'
+                libtv_ratio: (document.getElementById('bgenLibtvRatio') || {}).value || '1:1',
+                scope: this._batchScope || 'group',
+                batch_size: (document.getElementById('bgenBatchSize') || {}).value || '20'
             };
             localStorage.setItem('cwl_batch_settings', JSON.stringify(s));
         } catch(e) {}
@@ -883,6 +1060,13 @@ Object.assign(App, {
         if (s.libtv_project) document.getElementById('bgenLibtvProject').value = s.libtv_project;
         if (s.libtv_model) document.getElementById('bgenLibtvModel').value = s.libtv_model;
         if (s.libtv_ratio) document.getElementById('bgenLibtvRatio').value = s.libtv_ratio;
+        // 2026-08-10: 恢复范围与批次（批次恢复后视为用户已定，不再被引擎切换覆盖）
+        if (s.scope === 'all') this._batchScope = 'all';
+        if (s.batch_size) {
+            this._batchSizeTouched = true;
+            var bsEl = document.getElementById('bgenBatchSize');
+            if (bsEl) bsEl.value = s.batch_size;
+        }
         var vm = null;
         try { vm = localStorage.getItem('cwl_batch_wf_view'); } catch(e) {}
         this._batchViewMode = vm === 'list' ? 'list' : 'grid';
@@ -1208,13 +1392,27 @@ Object.assign(App, {
         // 已有缩略图判定交由后端按库内最新数据过滤（返回 skipped），避免前端 state 旧数据误拦截
         var pendingIds = [];
         var skipQueued = 0;
-        for (var _fi = 0; _fi < this._batchIds.length; _fi++) {
-            var _fpid = this._batchIds[_fi];
-            if (this._batchQueuedPids && this._batchQueuedPids[_fpid]) { skipQueued++; continue; }
-            pendingIds.push(_fpid);
+        var scopeIsAll = this._batchScope === 'all' && this._batchScanResult;
+        if (scopeIsAll) {
+            // 全词库模式：以 batch-scan 结果为准（后端多维判定，前端不猜）
+            var scanItems = this._batchScanResult.items || [];
+            for (var _si = 0; _si < scanItems.length; _si++) {
+                var _sit = scanItems[_si];
+                if (_sit.queued) { skipQueued++; continue; }
+                if (_sit.thumb_state === 'ai') continue;  // AI 已生成 → 跳过
+                // manual（覆盖手动图）/ unknown（保守纳入）/ none（待处理/仅生成）全部纳入
+                if (this._batchQueuedPids && this._batchQueuedPids[_sit.id]) { skipQueued++; continue; }
+                pendingIds.push(_sit.id);
+            }
+        } else {
+            for (var _fi = 0; _fi < this._batchIds.length; _fi++) {
+                var _fpid = this._batchIds[_fi];
+                if (this._batchQueuedPids && this._batchQueuedPids[_fpid]) { skipQueued++; continue; }
+                pendingIds.push(_fpid);
+            }
         }
         if (pendingIds.length === 0) {
-            this.showToast('所选词卡均已在生成队列中，无需重复提交' + (skipQueued ? '（队列中 ' + skipQueued + ' 张）' : ''), 'info');
+            this.showToast('所选词卡均已完成（AI 已生成/队列中），无需重复提交' + (skipQueued ? '（队列中 ' + skipQueued + ' 张）' : ''), 'info');
             return;
         }
         if (skipQueued > 0) {
@@ -1227,15 +1425,27 @@ Object.assign(App, {
         // 2026-08-06 修复：id 在 prompts/word_card 两表可能重叠（旧数据），
         // 必须按当前列表数据源显式标注，避免后端猜表把词卡图写进 prompts 链路
         var cardTypeMap = {};
-        var typeSrc = this.state.prompts || [];
-        if ((this.state.currentView === 'collections' || this.state.currentCollection) && (this.state.collectionItems || []).length > 0) {
-            typeSrc = this.state.collectionItems;
-        }
-        for (var _ti = 0; _ti < typeSrc.length; _ti++) {
-            var _it = typeSrc[_ti];
-            if (pendingIds.indexOf(_it.id) > -1) {
-                cardTypeMap[_it.id] = (_it._source === 'word_card') ? 'word_card' : 'prompts';
+        if (scopeIsAll) {
+            // 全词库均为 word_card（batch-scan 只含词卡表）
+            for (var _ai = 0; _ai < pendingIds.length; _ai++) cardTypeMap[pendingIds[_ai]] = 'word_card';
+        } else {
+            var typeSrc = this.state.prompts || [];
+            if ((this.state.currentView === 'collections' || this.state.currentCollection) && (this.state.collectionItems || []).length > 0) {
+                typeSrc = this.state.collectionItems;
             }
+            for (var _ti = 0; _ti < typeSrc.length; _ti++) {
+                var _it = typeSrc[_ti];
+                if (pendingIds.indexOf(_it.id) > -1) {
+                    cardTypeMap[_it.id] = (_it._source === 'word_card') ? 'word_card' : 'prompts';
+                }
+            }
+        }
+        // 批次控制：每批自动提交张数（0=不切片；在线引擎防限流/降单批失败面）
+        var bsEl = document.getElementById('bgenBatchSize');
+        var batchSize = 0;
+        if (bsEl && bsEl.value) {
+            batchSize = parseInt(bsEl.value, 10);
+            if (isNaN(batchSize) || batchSize < 0) batchSize = 0;
         }
         var body = {
             prompt_ids: pendingIds,
@@ -1247,6 +1457,7 @@ Object.assign(App, {
             prompt_overrides: this._batchPromptOverrides || {},
             card_type_map: cardTypeMap,
             engine: engine,
+            batch_size: batchSize,
             manual_text: (document.getElementById('bgenManualText') || {}).value || '',
             model_version: (document.getElementById('bgenDreaminaModel') || {}).value || '5.0',
             ratio: (document.getElementById('bgenDreaminaRatio') || {}).value || '1:1',
@@ -1268,28 +1479,37 @@ Object.assign(App, {
                 this._batchSubmittingAt = null;
                 return;
             }
-            this._batchTaskId = d.task_id;
+            var taskIds = d.task_ids || (d.task_id ? [d.task_id] : []);
+            if (!taskIds.length) {
+                this.showToast('任务创建失败: 无任务 ID', 'error');
+                if (txt) txt.textContent = '❌ 任务创建失败';
+                this._batchSubmitting = false;
+                this._batchSubmittingAt = null;
+                return;
+            }
+            this._batchTaskId = taskIds[taskIds.length - 1];
             this._batchTaskTotal = d.total || pendingIds.length;
-            // 后端按库内最新数据过滤了已有缩略图的词卡
+            // 后端按库内最新数据过滤（AI 已生成的词卡）
             if (d.skipped > 0) {
-                this.showToast('已跳过 ' + d.skipped + ' 张已有缩略图的词卡，任务将生成 ' + (d.total || pendingIds.length) + ' 张', 'info');
+                this.showToast('已跳过 ' + d.skipped + ' 张（AI 已生成），任务将生成 ' + (d.total || pendingIds.length) + ' 张' + (d.batches > 1 ? '，分 ' + d.batches + ' 批' : ''), 'info');
             }
             // 记录本次任务的词卡 → 队列占用（避免重复提交同一批词卡）
             this._batchQueuedPids = this._batchQueuedPids || {};
             this._batchTaskPids = this._batchTaskPids || {};
             for (var _qq = 0; _qq < pendingIds.length; _qq++) this._batchQueuedPids[pendingIds[_qq]] = true;
-            this._batchTaskPids[d.task_id] = pendingIds.slice();
             // 任务入队：多任务并行追踪（各自独立轮询，互不影响）
             this._batchTaskIds = this._batchTaskIds || [];
-            if (this._batchTaskIds.indexOf(d.task_id) === -1) this._batchTaskIds.push(d.task_id);
+            for (var _tid = 0; _tid < taskIds.length; _tid++) {
+                if (this._batchTaskIds.indexOf(taskIds[_tid]) === -1) this._batchTaskIds.push(taskIds[_tid]);
+                this._batchTaskPids[taskIds[_tid]] = pendingIds.slice();
+                this._pollBatchTask(taskIds[_tid]);
+            }
             // 持久化任务队列：刷新页面/重开浏览器后自动恢复轮询（任务在服务端继续执行）
             try { localStorage.setItem('wc_batch_task_ids', JSON.stringify(this._batchTaskIds)); } catch(e) {}
             // 记住本次参数设置（下次打开恢复）
             this._saveBatchSettings();
-            if (txt) txt.textContent = '任务 #' + d.task_id + ' 已创建（' + (d.workflow_name || '') + '），等待执行...';
-            this.showToast('生成任务 #' + d.task_id + ' 已入队（' + this._batchTaskTotal + ' 张）', 'info');
-            // 轮询监督进度（任务持久化，断线/刷新后可恢复；多任务各自独立轮询）
-            this._pollBatchTask(d.task_id);
+            if (txt) txt.textContent = '任务 #' + taskIds.join(', #') + ' 已创建（' + (d.workflow_name || '') + '）' + (d.batches > 1 ? '，共 ' + d.batches + ' 批' : '') + '，等待执行...';
+            this.showToast('生成任务 ' + taskIds.length + ' 个已入队（' + this._batchTaskTotal + ' 张' + (d.batches > 1 ? '，每批 ' + (bsEl && bsEl.value || '') + ' 张' : '') + '）', 'info');
         } catch(e) {
             this.showToast('任务创建异常: ' + e.message, 'error');
             if (txt) txt.textContent = '❌ ' + e.message;
