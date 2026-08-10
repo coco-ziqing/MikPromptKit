@@ -520,13 +520,19 @@ Object.assign(App, {
                 stEl.textContent = '② 优化结果均已保存，跳过';
             }
             // ③ 提交生成任务（后端按批次切片；本引擎完成/队列自动跳过）
-            if (stEl) stEl.textContent = '③ 提交生成任务...';
-            var ok = await this._startBatchGen();
-            if (ok === false) {
-                if (stEl) stEl.textContent = '③ 生成未提交：' + ((document.getElementById('bgenProgressText') || {}).textContent || '见上方提示');
+            var genIds = this._batchPendingIds('generate');
+            if (genIds.length === 0) {
+                if (stEl) stEl.textContent = '③ 无待生成词卡（已全部提交/完成），跳过生成';
+                this.showToast('流水线完成：优化 + 保存完成，无待生成词卡（均已提交或已完成）', 'info');
             } else {
-                if (stEl) stEl.textContent = '✅ 流水线完成：优化 → 保存 → 生成已提交，后台执行中';
-                this.showToast('一键流水线完成：优化 → 保存 → 生成已提交（后台执行）', 'success');
+                if (stEl) stEl.textContent = '③ 提交生成任务 ' + genIds.length + ' 张...';
+                var ok = await this._startBatchGen();
+                if (ok === false) {
+                    if (stEl) stEl.textContent = '③ 生成未提交：' + ((document.getElementById('bgenProgressText') || {}).textContent || '见上方提示');
+                } else {
+                    if (stEl) stEl.textContent = '✅ 流水线完成：优化 → 保存 → 生成已提交，后台执行中';
+                    this.showToast('一键流水线完成：优化 → 保存 → 生成已提交（后台执行）', 'success');
+                }
             }
         } catch(e) {
             this.showToast('流水线异常: ' + e.message, 'error');
@@ -1578,27 +1584,22 @@ Object.assign(App, {
         if (scopeIsAll) {
             // 全词库模式：以 batch-scan 结果为准（后端多维判定，前端不猜）
             // 跳过条件：当前引擎生成 + 引擎未知（默认视为完成）；其他引擎/手动/未知状态/无图全部纳入
+            // 2026-08-10 修复：队列占用不再前端拦截——后端 _active_queued_pids 权威防重（返回 queued_skip 统计）
             var scanItems = this._batchScanResult.items || [];
             for (var _si = 0; _si < scanItems.length; _si++) {
                 var _sit = scanItems[_si];
-                if (_sit.queued) { skipQueued++; continue; }
                 if (_sit.thumb_state === 'ai' && (_sit.thumb_engine === curEngine || !_sit.thumb_engine || _sit.thumb_engine === 'unknown')) continue;  // 本引擎/未知引擎 → 跳过
-                if (this._batchQueuedPids && this._batchQueuedPids[_sit.id]) { skipQueued++; continue; }
                 pendingIds.push(_sit.id);
             }
         } else {
             for (var _fi = 0; _fi < this._batchIds.length; _fi++) {
-                var _fpid = this._batchIds[_fi];
-                if (this._batchQueuedPids && this._batchQueuedPids[_fpid]) { skipQueued++; continue; }
-                pendingIds.push(_fpid);
+                pendingIds.push(this._batchIds[_fi]);
             }
         }
         if (pendingIds.length === 0) {
-            this.showToast('所选词卡均已完成（AI 已生成/队列中），无需重复提交' + (skipQueued ? '（队列中 ' + skipQueued + ' 张）' : ''), 'info');
+            if (txt) txt.textContent = '无待生成词卡（均已本引擎完成）';
+            this.showToast('全库词卡均已由当前引擎生成（或视为完成），无需重复生成', 'info');
             return false;
-        }
-        if (skipQueued > 0) {
-            this.showToast('已自动跳过 ' + skipQueued + ' 张（已在生成队列），本次将生成 ' + pendingIds.length + ' 张', 'info');
         }
         this._batchSubmitting = true;
         this._batchSubmittingAt = Date.now();
@@ -1652,11 +1653,17 @@ Object.assign(App, {
             var d = await this.fetchJSON('/api/v2/comfyui/batch-tasks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
+                body: JSON.stringify(body),
+                _timeoutMs: 60000   // 2026-08-10: 大批量（200+/批）提交给足超时，防 30s 误杀
             });
             if (!d || !d.ok) {
-                this.showToast('任务创建失败: ' + (d && d.error || ''), 'error');
-                if (txt) txt.textContent = '❌ ' + (d && d.error || '创建失败');
+                // 2026-08-10: 后端权威防重信息（queued_skip）优先展示
+                var _errMsg = (d && (d.error || '')) || '创建失败';
+                if (d && d.stats && d.stats.queued_skip > 0) {
+                    _errMsg = '所选 ' + d.stats.queued_skip + ' 张词卡均在生成队列中，无需重复提交';
+                }
+                this.showToast('任务创建失败: ' + _errMsg, 'error');
+                if (txt) txt.textContent = '❌ ' + _errMsg;
                 this._batchSubmitting = false;
                 this._batchSubmittingAt = null;
                 return false;
@@ -1680,10 +1687,19 @@ Object.assign(App, {
             this._batchTaskPids = this._batchTaskPids || {};
             for (var _qq = 0; _qq < pendingIds.length; _qq++) this._batchQueuedPids[pendingIds[_qq]] = true;
             // 任务入队：多任务并行追踪（各自独立轮询，互不影响）
+            // 2026-08-10: _batchTaskPids 按 batch_size 切片精确对应后端任务（终态释放精确，服务端活跃任务防重兜底）
             this._batchTaskIds = this._batchTaskIds || [];
+            var _chunked = [];
+            if (d.batches > 1 && batchSize > 0) {
+                for (var _ci = 0; _ci < pendingIds.length; _ci += batchSize) {
+                    _chunked.push(pendingIds.slice(_ci, _ci + batchSize));
+                }
+            } else {
+                _chunked.push(pendingIds.slice());
+            }
             for (var _tid = 0; _tid < taskIds.length; _tid++) {
                 if (this._batchTaskIds.indexOf(taskIds[_tid]) === -1) this._batchTaskIds.push(taskIds[_tid]);
-                this._batchTaskPids[taskIds[_tid]] = pendingIds.slice();
+                this._batchTaskPids[taskIds[_tid]] = _chunked[_tid] || [];
                 this._pollBatchTask(taskIds[_tid]);
             }
             // 持久化任务队列：刷新页面/重开浏览器后自动恢复轮询（任务在服务端继续执行）
@@ -1692,12 +1708,17 @@ Object.assign(App, {
             this._saveBatchSettings();
             if (txt) txt.textContent = '任务 #' + taskIds.join(', #') + ' 已创建（' + (d.workflow_name || '') + '）' + (d.batches > 1 ? '，共 ' + d.batches + ' 批' : '') + '，等待执行...';
             this.showToast('生成任务 ' + taskIds.length + ' 个已入队（' + this._batchTaskTotal + ' 张' + (d.batches > 1 ? '，每批 ' + (bsEl && bsEl.value || '') + ' 张' : '') + '）', 'info');
+            // 2026-08-10 修复：return 前必须重置提交锁（否则 30s 内再次提交被误拦）
+            this._batchSubmitting = false;
+            this._batchSubmittingAt = null;
             return true;
         } catch(e) {
             this.showToast('任务创建异常: ' + e.message, 'error');
             if (txt) txt.textContent = '❌ ' + e.message;
             startBtn.disabled = false;
             this._batchGenRunning = false;
+            this._batchSubmitting = false;
+            this._batchSubmittingAt = null;
             return false;
         }
         this._batchSubmitting = false;
@@ -1755,6 +1776,11 @@ Object.assign(App, {
                 if (t.status === 'done' || t.status === 'cancelled' || t.status === 'error') {
                     clearInterval(interval);
                     self._batchPolls[tid] = false;
+                    // 2026-08-10 修复：任务终态后释放词卡占用（允许失败项/后续批次重新提交；后端按完成态过滤兜底）
+                    if (self._batchTaskPids && self._batchTaskPids[tid] && self._batchQueuedPids) {
+                        var _rel = self._batchTaskPids[tid];
+                        for (var _ri = 0; _ri < _rel.length; _ri++) delete self._batchQueuedPids[_rel[_ri]];
+                    }
                     self._dropBatchTask(tid);
                     if (t.status === 'done') {
                         self.showToast('任务 #' + tid + ' 完成：' + t.success + ' 成功 / ' + t.failed + ' 失败', t.failed > 0 ? 'warning' : 'success');

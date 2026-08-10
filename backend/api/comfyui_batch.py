@@ -515,6 +515,9 @@ def create_batch_task(data: BatchTaskCreate):
     _ensure_thumb_engine_col()
     filtered_ids, stats = _filter_pending_ids(data.prompt_ids, data.card_type_map or {}, db, engine)
     if not filtered_ids:
+        # 2026-08-10: 区分「均在队列」与「均已 AI 生成」文案
+        if stats["queued_skip"] > 0:
+            return {"ok": False, "error": f"所选 {stats['queued_skip']} 张词卡均在生成队列中，无需重复提交", "stats": stats}
         return {"ok": False, "error": f"所选 {stats['ai_skip'] + stats['unknown_skip']} 张词卡均已 AI 生成过缩略图，无需重复生成",
                 "stats": stats}
     data.prompt_ids = filtered_ids
