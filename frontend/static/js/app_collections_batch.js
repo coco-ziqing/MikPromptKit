@@ -272,13 +272,13 @@ Object.assign(App, {
         if (!silent) this._saveBatchSettings();
     },
 
-    // 拉取全词库完成态扫描（batch-scan 后端判定，前端不猜）
+    // 拉取全词库完成态扫描（batch-scan 后端判定，前端不猜；带当前引擎维度）
     async _batchScopeApply() {
         var self = this;
         try {
             var d = await this.fetchJSON('/api/v2/comfyui/batch-scan', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ scope: 'all' })
+                body: JSON.stringify({ scope: 'all', engine: this._batchEngineMode || 'comfyui' })
             });
             if (!d || !d.ok) throw new Error((d && d.error) || '扫描失败');
             this._batchScanResult = d;
@@ -286,7 +286,8 @@ Object.assign(App, {
             var cnt = document.getElementById('bgenCount');
             if (cnt) cnt.textContent = '（全词库 ' + d.stats.total + ' 张）';
             var hint = document.getElementById('bgenScopeHint');
-            if (hint) hint.textContent = '已扫描 ' + d.stats.total + ' 张，自动跳过已完成';
+            var st = this._batchScanStats();
+            if (hint) hint.textContent = '已扫描 ' + d.stats.total + ' 张，按当前引擎判定完成';
         } catch(e) {
             var hint = document.getElementById('bgenScopeHint');
             if (hint) hint.textContent = '扫描失败: ' + e.message;
@@ -299,19 +300,27 @@ Object.assign(App, {
         }
     },
 
-    // 全词库扫描统计：本次处理数 = 待处理 + 仅生成 + 手动图 + 未知（跳过 AI 完成 / 队列）
+    // 全词库扫描统计：本次处理数 = 待处理 + 仅生成 + 手动图 + 未知 + 其他引擎（跳过当前引擎完成/队列）
     _batchScanStats() {
         var d = this._batchScanResult;
         if (!d || !d.stats) return null;
         var st = d.stats;
-        var todo = st.pending + st.opt_only + st.manual + st.unknown;
+        var todo = st.pending + st.opt_only + st.manual + st.unknown + st.other_engine;
         return {
             todo: todo,
-            text: '待处理 ' + st.pending + ' · 仅生成 ' + st.opt_only + ' · 手动图 ' + st.manual + ' · 未知 ' + st.unknown + ' · AI完成 ' + st.ai_generated + ' · 队列 ' + st.queued
+            text: '待处理 ' + st.pending + ' · 仅生成 ' + st.opt_only + ' · 其他引擎 ' + st.other_engine + ' · 手动图 ' + st.manual + ' · 未知 ' + st.unknown + ' · 本引擎完成 ' + st.ai_generated + ' · 队列 ' + st.queued
         };
     },
 
-    // 全词库扫描清单渲染（分类 Tab + 状态徽章 + 底部本次处理提示）
+    // 引擎显示名
+    _engineName(eng) {
+        if (eng === 'comfyui') return 'ComfyUI';
+        if (eng === 'dreamina') return '即梦';
+        if (eng === 'libtv') return 'LibTV';
+        return '未知';
+    },
+
+    // 全词库扫描清单渲染（分类 Tab + 状态徽章 + 底部本次处理提示；引擎维度）
     _renderScanPreview() {
         var self = this;
         var d = this._batchScanResult;
@@ -321,14 +330,20 @@ Object.assign(App, {
         var st = this._batchScanStats();
         var items = d.items || [];
         var tab = this._batchPreviewTab || 'all';
+        var curEngine = this._batchEngineMode || 'comfyui';
+        // 引擎匹配：ai 图且引擎与当前一致（未知引擎不算匹配）
+        var isSameEngine = function(it) {
+            return it.thumb_state === 'ai' && it.thumb_engine === curEngine;
+        };
         var filtered = [];
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
             if (tab === 'all') { filtered.push(it); continue; }
             if (tab === 'todo' && it.thumb_state === 'none' && !it.optimized && !it.queued) { filtered.push(it); continue; }
             if (tab === 'gen' && it.thumb_state === 'none' && it.optimized && !it.queued) { filtered.push(it); continue; }
+            if (tab === 'other' && it.thumb_state === 'ai' && !isSameEngine(it) && !it.queued) { filtered.push(it); continue; }
             if (tab === 'manual' && it.thumb_state === 'manual') { filtered.push(it); continue; }
-            if (tab === 'done' && (it.thumb_state !== 'none' || it.queued)) { filtered.push(it); continue; }
+            if (tab === 'done' && (it.queued || isSameEngine(it))) { filtered.push(it); continue; }
         }
         var selCnt = document.getElementById('bgenSelCount');
         if (selCnt) selCnt.textContent = filtered.length + ' 张';
@@ -337,9 +352,9 @@ Object.assign(App, {
         var bar = document.getElementById('bgenPreviewBatchBar');
         if (bar) bar.style.display = 'none';
         var html = '';
-        // 分类 Tab 栏
+        // 分类 Tab 栏（其他引擎 = 非当前引擎生成的 AI 图，纳入待处理）
         html += '<div style="display:flex;gap:3px;padding:2px 0 6px;border-bottom:1px dashed var(--border-color);margin-bottom:4px;flex-wrap:wrap;">';
-        var tabs = [['all', '全部 ' + items.length], ['todo', '待处理 ' + d.stats.pending], ['gen', '仅生成 ' + d.stats.opt_only], ['manual', '手动图 ' + d.stats.manual], ['done', '已完成 ' + (d.stats.ai_generated + d.stats.queued + d.stats.unknown)]];
+        var tabs = [['all', '全部 ' + items.length], ['todo', '待处理 ' + d.stats.pending], ['gen', '仅生成 ' + d.stats.opt_only], ['other', '其他引擎 ' + d.stats.other_engine], ['manual', '手动图 ' + d.stats.manual], ['done', '已完成 ' + (d.stats.ai_generated + d.stats.queued)]];
         for (var t = 0; t < tabs.length; t++) {
             var active = tab === tabs[t][0];
             html += '<button type="button" onclick="App._batchPreviewTabSet(\'' + tabs[t][0] + '\')" style="font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid ' + (active ? 'var(--primary)' : 'var(--border-color)') + ';color:' + (active ? 'var(--primary)' : 'var(--text-muted)') + ';background:transparent;cursor:pointer;">' + tabs[t][1] + '</button>';
@@ -359,9 +374,18 @@ Object.assign(App, {
             var badges = '';
             if (it2.queued) badges += '<span style="font-size:9px;color:#d97706;background:rgba(217,119,6,0.1);border:1px solid rgba(217,119,6,0.3);border-radius:4px;padding:0 5px;flex-shrink:0;">⏳ 队列中</span>';
             if (it2.optimized) badges += '<span style="font-size:9px;color:#10b981;flex-shrink:0;font-weight:600;">✨ 已优化</span>';
-            if (it2.thumb_state === 'ai') badges += '<span style="font-size:9px;color:#059669;background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);border-radius:4px;padding:0 5px;flex-shrink:0;">✅ AI 已生成</span>';
-            else if (it2.thumb_state === 'manual') badges += '<span style="font-size:9px;color:#f59e0b;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:4px;padding:0 5px;flex-shrink:0;" title="手动指定的预览图，本次将 AI 生成覆盖">🖼️ 手动图</span>';
-            else if (it2.thumb_state === 'unknown') badges += '<span style="font-size:9px;color:#94a3b8;border:1px dashed var(--border-color);border-radius:4px;padding:0 5px;flex-shrink:0;" title="缩略图来源无法判定（文件丢失），保守纳入生成">❓ 未知</span>';
+            if (it2.thumb_state === 'ai') {
+                if (isSameEngine(it2)) {
+                    badges += '<span style="font-size:9px;color:#059669;background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);border-radius:4px;padding:0 5px;flex-shrink:0;">✅ 本引擎已生成</span>';
+                } else {
+                    var engName = this._engineName(it2.thumb_engine);
+                    badges += '<span style="font-size:9px;color:#8b5cf6;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:4px;padding:0 5px;flex-shrink:0;" title="由 ' + engName + ' 生成，非当前引擎，将用当前引擎重新生成">⚙️ ' + engName + ' 已生成</span>';
+                }
+            } else if (it2.thumb_state === 'manual') {
+                badges += '<span style="font-size:9px;color:#f59e0b;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:4px;padding:0 5px;flex-shrink:0;" title="手动指定的预览图，本次将 AI 生成覆盖">🖼️ 手动图</span>';
+            } else if (it2.thumb_state === 'unknown') {
+                badges += '<span style="font-size:9px;color:#94a3b8;border:1px dashed var(--border-color);border-radius:4px;padding:0 5px;flex-shrink:0;" title="缩略图来源无法判定（文件丢失），保守纳入生成">❓ 未知</span>';
+            }
             html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:5px 8px;margin-bottom:4px;background:var(--bg-card);">' +
                 '<div style="display:flex;align-items:center;gap:6px;">' +
                 '<span style="font-size:10px;color:var(--text-muted);width:26px;flex-shrink:0;text-align:right;">' + (j + 1) + '</span>' +
@@ -374,7 +398,7 @@ Object.assign(App, {
         if (prevScrollTop > 0 && list.scrollHeight > prevScrollTop) list.scrollTop = prevScrollTop;
         var sh = document.createElement('div');
         sh.style.cssText = 'position:sticky;bottom:0;font-size:10px;color:var(--primary);text-align:center;padding:4px 0 5px;background:linear-gradient(transparent,var(--bg-card) 40%);pointer-events:none;';
-        sh.textContent = '本次将处理 ' + st.todo + ' 张（点击「开始生成」一次提交，自动跳过已完成）';
+        sh.textContent = '本次将处理 ' + st.todo + ' 张（其他引擎生成/手动图/未知将用当前引擎 ' + this._engineName(curEngine) + ' 重新生成）';
         list.appendChild(sh);
     },
 
@@ -557,6 +581,13 @@ Object.assign(App, {
             var bsEl = document.getElementById('bgenBatchSize');
             if (bsEl) bsEl.value = (mode === 'comfyui') ? '50' : '20';
         }
+        // 2026-08-10: 引擎切换 → 全词库模式重新扫描（完成判定随引擎变化：其他引擎生成的卡会被纳入）
+        if (this._batchScope === 'all' && this._batchScanResult) {
+            var h2 = document.getElementById('bgenScopeHint');
+            if (h2) h2.textContent = '正在按 ' + this._engineName(mode) + ' 重新扫描...';
+            this._batchScopeApply();
+        }
+        this._saveBatchSettings();
         var comfyArea = document.getElementById('bgenComfyArea');
         var dreaminaArea = document.getElementById('bgenDreaminaArea');
         var libtvArea = document.getElementById('bgenLibtvArea');
@@ -1393,14 +1424,15 @@ Object.assign(App, {
         var pendingIds = [];
         var skipQueued = 0;
         var scopeIsAll = this._batchScope === 'all' && this._batchScanResult;
+        var curEngine = this._batchEngineMode || 'comfyui';
         if (scopeIsAll) {
             // 全词库模式：以 batch-scan 结果为准（后端多维判定，前端不猜）
+            // 跳过条件：仅「当前引擎生成的 AI 图」+ 队列中；其他引擎/手动/未知/无图全部纳入
             var scanItems = this._batchScanResult.items || [];
             for (var _si = 0; _si < scanItems.length; _si++) {
                 var _sit = scanItems[_si];
                 if (_sit.queued) { skipQueued++; continue; }
-                if (_sit.thumb_state === 'ai') continue;  // AI 已生成 → 跳过
-                // manual（覆盖手动图）/ unknown（保守纳入）/ none（待处理/仅生成）全部纳入
+                if (_sit.thumb_state === 'ai' && _sit.thumb_engine === curEngine) continue;  // 本引擎已生成 → 跳过
                 if (this._batchQueuedPids && this._batchQueuedPids[_sit.id]) { skipQueued++; continue; }
                 pendingIds.push(_sit.id);
             }

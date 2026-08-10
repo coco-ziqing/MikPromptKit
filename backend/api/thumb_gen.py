@@ -48,9 +48,11 @@ def save_generated_image(img_bytes: bytes, prompt_id: int, card_type: str = "wor
             f.write(img_bytes)
         db = get_db()
         src_table = card_type if card_type in ("word_card", "prompts") else ("word_card" if card_type == "word_card" else "prompts")
+        # 2026-08-10: 引擎溯源写入 thumb_engine（dreamina/libtv 走本函数；comfyui 走 _run_comfyui）
+        _eng = source if source in ("dreamina", "libtv") else "comfyui"
         if prompt_id > 0 and src_table == "word_card":
-            db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, original_ref=?, updated_at=datetime('now','localtime') WHERE id=?",
-                       [tf, iw, ih, of, prompt_id])
+            db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, original_ref=?, thumb_engine=?, updated_at=datetime('now','localtime') WHERE id=?",
+                       [tf, iw, ih, of, _eng, prompt_id])
         elif prompt_id > 0:
             db.execute("DELETE FROM prompt_videos WHERE prompt_id=?", [prompt_id])
             db.execute("INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) VALUES (?,?,'image',datetime('now','localtime'))",

@@ -1977,7 +1977,7 @@ async def _run_comfyui(server_url, workflow, workflow_cfg, prompt_text, prompt_i
                 db.execute("INSERT OR REPLACE INTO prompt_thumbnails (prompt_id, filename, media_type, updated_at) VALUES (?,?,'image',datetime('now','localtime'))", [prompt_id, tf])
             else:
                 # 词卡：更新缩略图（图片模式，清空视频预览字段）
-                db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, original_ref=?, updated_at=datetime('now','localtime') WHERE id=?",
+                db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, original_ref=?, thumb_engine='comfyui', updated_at=datetime('now','localtime') WHERE id=?",
                            [tf, iw, ih, png_name, prompt_id])
             try:
                 ts = os.path.getsize(tp) if os.path.exists(tp) else 0

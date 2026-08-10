@@ -34,6 +34,48 @@ AI_THUMB_DIR = os.path.join(_PROJECT_ROOT, "data", "thumbnails")
 WC_THUMBS_DIR = os.path.join(_PROJECT_ROOT, "data", "wc_media", "thumbs")
 _FILE_CACHE = {}
 
+# media_assets.source → 生成引擎（2026-08-10 引擎维度判定）
+SOURCE_TO_ENGINE = {
+    "dreamina": "dreamina",
+    "libtv": "libtv",
+    "ai_generated": "comfyui",       # ComfyUI 批量/单张链路
+    "comfyui_workflow": "comfyui",   # ComfyUI 工作流库链路
+}
+
+
+def _ensure_thumb_engine_col():
+    """幂等迁移：word_card 加 thumb_engine 列（2026-08-10 起 AI 落库写入引擎）"""
+    db = get_db()
+    cols = [r["name"] for r in db.execute("PRAGMA table_info(word_card)").fetchall()]
+    if "thumb_engine" not in cols:
+        db.execute("ALTER TABLE word_card ADD COLUMN thumb_engine TEXT DEFAULT ''")
+        safe_commit()
+
+
+def thumb_engine_of(row, db) -> str:
+    """缩略图生成引擎判定（word_card）：thumb_engine 列优先，其次 media_assets.filename JOIN source
+    返回: 'comfyui' / 'dreamina' / 'libtv' / 'manual' / 'unknown'
+    """
+    fname = row["thumbnail"] or ""
+    if not fname:
+        return "unknown"
+    st = thumb_state_of(row)
+    if st == "manual":
+        return "manual"
+    try:
+        col_eng = row["thumb_engine"] or ""
+    except Exception:
+        col_eng = ""
+    if col_eng:
+        return col_eng
+    try:
+        m = db.execute("SELECT source FROM media_assets WHERE filename=? LIMIT 1", [fname]).fetchone()
+        if m:
+            return SOURCE_TO_ENGINE.get(m["source"], "unknown")
+    except Exception:
+        pass
+    return "unknown"
+
 
 def _file_in(dirpath: str, fname: str) -> bool:
     """文件存在性检查（按 basename 缓存，全库扫描 290+ 张时避免重复 stat）"""
@@ -78,41 +120,58 @@ def _active_queued_pids(db) -> set:
     return s
 
 
-def _filter_pending_ids(ids: list, ctm: dict = None, db=None) -> tuple:
+def _filter_pending_ids(ids: list, ctm: dict = None, db=None, engine: str = "") -> tuple:
     """完成态过滤（单一事实来源：batch-scan 与 create_batch_task 共用，防两端判定漂移）
-    判定规则 §2.3：ai/unknown 视为已完成（跳过）；manual 不跳过（纳入生成覆盖手动图）；none 纳入
+    判定规则 §2.3：manual/unknown 不跳过（纳入生成）；ai 按引擎细分：
+      - engine 非空且缩略图引擎 != 当前引擎（含未知）→ 其他引擎生成，纳入待处理
+      - 否则 ai 视为完成跳过；prompts 旧表无引擎信息 → 视为完成
     返回 (pending_ids, stats)
-    stats: {ai_skip, manual_count, unknown_skip, missing_skip, queued_skip, pending}
+    stats: {ai_skip, other_engine, manual_count, unknown_skip, missing_skip, queued_skip, pending}
     """
     ctm = ctm or {}
-    stats = {"ai_skip": 0, "manual_count": 0, "unknown_skip": 0, "missing_skip": 0, "queued_skip": 0, "pending": 0}
+    stats = {"ai_skip": 0, "other_engine": 0, "manual_count": 0, "unknown_skip": 0, "missing_skip": 0, "queued_skip": 0, "pending": 0}
     queued = _active_queued_pids(db)
     pending_ids = []
     for _pid in ids:
         _ct = ctm.get(str(_pid)) or ctm.get(_pid) or ""
+        if _pid in queued:
+            stats["queued_skip"] += 1
+            continue
+        _row = None
         if _ct == "word_card":
-            _row = db.execute("SELECT thumbnail, thumb_width, thumb_height FROM word_card WHERE id=? AND is_deleted=0", [_pid]).fetchone()
+            _row = db.execute("SELECT thumbnail, thumb_width, thumb_height, thumb_engine FROM word_card WHERE id=? AND is_deleted=0", [_pid]).fetchone()
             if not _row:
                 stats["missing_skip"] += 1
                 continue
             _st = thumb_state_of(_row)
         elif _ct == "prompts":
             # prompts 旧表无尺寸/目录指纹，仅按关联表存在性判定（legacy：视为已有图跳过）
-            _row = db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [_pid]).fetchone()
-            _st = "ai" if _row else "none"
+            _row2 = db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [_pid]).fetchone()
+            _st = "ai" if _row2 else "none"
         else:
             # 未标注：先查 word_card 再查 prompts
-            _row = db.execute("SELECT thumbnail, thumb_width, thumb_height FROM word_card WHERE id=? AND is_deleted=0", [_pid]).fetchone()
+            _row = db.execute("SELECT thumbnail, thumb_width, thumb_height, thumb_engine FROM word_card WHERE id=? AND is_deleted=0", [_pid]).fetchone()
             if _row:
                 _st = thumb_state_of(_row)
             else:
-                _row = db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [_pid]).fetchone()
-                _st = "ai" if _row else "none"
-        if _pid in queued:
-            stats["queued_skip"] += 1
+                _row2 = db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [_pid]).fetchone()
+                _st = "ai" if _row2 else "none"
+        if _st == "ai":
+            # 引擎维度：当前引擎生成的才算完成；其他引擎/未知引擎 → 纳入待处理
+            _eng = ""
+            try:
+                if _row is not None and (_row["thumbnail"] or ""):
+                    _eng = thumb_engine_of(_row, db)
+            except Exception:
+                _eng = ""
+            if engine and _eng and _eng != engine:
+                stats["other_engine"] += 1
+                pending_ids.append(_pid)
+                continue
+            stats["ai_skip"] += 1
             continue
-        if _st == "ai" or _st == "unknown":
-            stats["ai_skip" if _st == "ai" else "unknown_skip"] += 1
+        if _st == "unknown":
+            stats["unknown_skip"] += 1
             continue
         if _st == "manual":
             stats["manual_count"] += 1
@@ -133,6 +192,7 @@ class BatchScanRequest(BaseModel):
     ids: list[int] = []
     card_type_map: dict = {}        # ids 场景下显式标注 {prompt_id: 'word_card'|'prompts'}
     include_legacy: bool = False    # ids 场景下是否包含 prompts 旧表条目
+    engine: str = ""                # 当前选中生成引擎（comfyui/dreamina/libtv）；非空时其他引擎生成的卡计入 other_engine 纳入待处理
 
 
 class BatchTaskCreate(BaseModel):
@@ -450,8 +510,9 @@ def create_batch_task(data: BatchTaskCreate):
     engine = data.engine or "comfyui"
     wf_name = ""
     model_type = ""
-    # 2026-08-10: 完成态过滤（§2.3 多维度判定：跳过 AI 生成/未知，纳入手动指定并覆盖）
-    filtered_ids, stats = _filter_pending_ids(data.prompt_ids, data.card_type_map or {}, db)
+    # 2026-08-10: 完成态过滤（§2.3 多维度判定：AI 跳过/其他引擎纳入/手动指定纳入并覆盖）
+    _ensure_thumb_engine_col()
+    filtered_ids, stats = _filter_pending_ids(data.prompt_ids, data.card_type_map or {}, db, engine)
     if not filtered_ids:
         return {"ok": False, "error": f"所选 {stats['ai_skip'] + stats['unknown_skip']} 张词卡均已 AI 生成过缩略图，无需重复生成",
                 "stats": stats}
@@ -500,12 +561,14 @@ def create_batch_task(data: BatchTaskCreate):
 
 @router.post("/batch-scan")
 def scan_batch_cards(data: BatchScanRequest):
-    """全库/分组/指定卡完成态扫描（2026-08-10）：返回每卡缩略图来源判定 + 优化状态 + 队列状态，
+    """全库/分组/指定卡完成态扫描（2026-08-10）：返回每卡缩略图来源判定 + 优化状态 + 队列状态 + 生成引擎，
     供前端一键流水线展示「本次将处理 N 张」并分类预览（不创建任何任务）
+    engine 非空时：仅当前引擎生成的缩略图视为完成；其他引擎生成的卡计入 other_engine（纳入待处理）
     """
     _ensure_batch_task_table()
+    _ensure_thumb_engine_col()
     db = get_db()
-    cols = "wc.id, wc.name, wc.group_id, wc.module, wc.content_detailed, wc.thumbnail, wc.thumb_width, wc.thumb_height, wg.name AS group_name"
+    cols = "wc.id, wc.name, wc.group_id, wc.module, wc.content_detailed, wc.thumbnail, wc.thumb_width, wc.thumb_height, wc.thumb_engine, wg.name AS group_name"
     if data.scope == "group":
         rows = db.execute(
             f"SELECT {cols} FROM word_card wc LEFT JOIN word_card_group wg ON wg.id=wc.group_id "
@@ -540,21 +603,28 @@ def scan_batch_cards(data: BatchScanRequest):
         raw = [dict(r) for r in rows]
     queued = _active_queued_pids(db)
     stats = {"total": len(raw), "pending": 0, "opt_only": 0, "ai_generated": 0,
-             "manual": 0, "unknown": 0, "queued": 0}
+             "other_engine": 0, "manual": 0, "unknown": 0, "queued": 0}
+    cur_engine = (data.engine or "").strip()
     items = []
     for r in raw:
         _src = r.get("_source") or "word_card"
         if _src == "prompts":
             _has = bool(db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [r["id"]]).fetchone())
             _st = "ai" if _has else "none"
+            _eng = ""
         else:
             _st = thumb_state_of(r)
+            _eng = thumb_engine_of(r, db)
         _opt = bool((r.get("content_detailed") or "").strip())
         _queued = r["id"] in queued
         if _queued:
             stats["queued"] += 1
         elif _st == "ai":
-            stats["ai_generated"] += 1
+            # 引擎维度：当前引擎生成 → 完成；其他引擎/未知 → 纳入待处理（other_engine）
+            if cur_engine and _eng and _eng != cur_engine:
+                stats["other_engine"] += 1
+            else:
+                stats["ai_generated"] += 1
         elif _st == "manual":
             stats["manual"] += 1
         elif _st == "unknown":
@@ -567,7 +637,7 @@ def scan_batch_cards(data: BatchScanRequest):
             "id": r["id"], "name": r.get("name") or "", "group_id": r.get("group_id") or 0,
             "group_name": r.get("group_name") or "", "module": r.get("module") or "",
             "optimized": _opt, "thumbnail": r.get("thumbnail") or "",
-            "thumb_state": _st, "queued": _queued,
+            "thumb_state": _st, "thumb_engine": _eng, "queued": _queued,
         })
     return {"ok": True, "stats": stats, "items": items}
 
