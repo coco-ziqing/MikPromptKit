@@ -331,9 +331,9 @@ Object.assign(App, {
         var items = d.items || [];
         var tab = this._batchPreviewTab || 'all';
         var curEngine = this._batchEngineMode || 'comfyui';
-        // 引擎匹配：ai 图且引擎与当前一致（未知引擎不算匹配）
+        // 引擎匹配：ai 图且引擎与当前一致；引擎未知（旧链路）默认视为完成（二喵决策 2026-08-10）
         var isSameEngine = function(it) {
-            return it.thumb_state === 'ai' && it.thumb_engine === curEngine;
+            return it.thumb_state === 'ai' && (it.thumb_engine === curEngine || !it.thumb_engine || it.thumb_engine === 'unknown');
         };
         var filtered = [];
         for (var i = 0; i < items.length; i++) {
@@ -376,7 +376,11 @@ Object.assign(App, {
             if (it2.optimized) badges += '<span style="font-size:9px;color:#10b981;flex-shrink:0;font-weight:600;">✨ 已优化</span>';
             if (it2.thumb_state === 'ai') {
                 if (isSameEngine(it2)) {
-                    badges += '<span style="font-size:9px;color:#059669;background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);border-radius:4px;padding:0 5px;flex-shrink:0;">✅ 本引擎已生成</span>';
+                    if (it2.thumb_engine === 'unknown' || !it2.thumb_engine) {
+                        badges += '<span style="font-size:9px;color:#059669;background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);border-radius:4px;padding:0 5px;flex-shrink:0;" title="引擎未知（旧链路），默认视为完成跳过">✅ 已生成（引擎未知）</span>';
+                    } else {
+                        badges += '<span style="font-size:9px;color:#059669;background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);border-radius:4px;padding:0 5px;flex-shrink:0;">✅ 本引擎已生成</span>';
+                    }
                 } else {
                     var engName = this._engineName(it2.thumb_engine);
                     badges += '<span style="font-size:9px;color:#8b5cf6;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:4px;padding:0 5px;flex-shrink:0;" title="由 ' + engName + ' 生成，非当前引擎，将用当前引擎重新生成">⚙️ ' + engName + ' 已生成</span>';
@@ -1427,12 +1431,12 @@ Object.assign(App, {
         var curEngine = this._batchEngineMode || 'comfyui';
         if (scopeIsAll) {
             // 全词库模式：以 batch-scan 结果为准（后端多维判定，前端不猜）
-            // 跳过条件：仅「当前引擎生成的 AI 图」+ 队列中；其他引擎/手动/未知/无图全部纳入
+            // 跳过条件：当前引擎生成 + 引擎未知（默认视为完成）；其他引擎/手动/未知状态/无图全部纳入
             var scanItems = this._batchScanResult.items || [];
             for (var _si = 0; _si < scanItems.length; _si++) {
                 var _sit = scanItems[_si];
                 if (_sit.queued) { skipQueued++; continue; }
-                if (_sit.thumb_state === 'ai' && _sit.thumb_engine === curEngine) continue;  // 本引擎已生成 → 跳过
+                if (_sit.thumb_state === 'ai' && (_sit.thumb_engine === curEngine || !_sit.thumb_engine || _sit.thumb_engine === 'unknown')) continue;  // 本引擎/未知引擎 → 跳过
                 if (this._batchQueuedPids && this._batchQueuedPids[_sit.id]) { skipQueued++; continue; }
                 pendingIds.push(_sit.id);
             }

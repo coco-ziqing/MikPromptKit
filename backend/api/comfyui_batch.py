@@ -157,14 +157,15 @@ def _filter_pending_ids(ids: list, ctm: dict = None, db=None, engine: str = "") 
                 _row2 = db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [_pid]).fetchone()
                 _st = "ai" if _row2 else "none"
         if _st == "ai":
-            # 引擎维度：当前引擎生成的才算完成；其他引擎/未知引擎 → 纳入待处理
+            # 引擎维度：当前引擎生成的才算完成；其他明确引擎（dreamina/libtv/comfyui）→ 纳入待处理
+            # 引擎未知（旧链路无法溯源）→ 默认视为完成跳过（2026-08-10 二喵决策）
             _eng = ""
             try:
                 if _row is not None and (_row["thumbnail"] or ""):
                     _eng = thumb_engine_of(_row, db)
             except Exception:
                 _eng = ""
-            if engine and _eng and _eng != engine:
+            if engine and _eng and _eng != engine and _eng != "unknown":
                 stats["other_engine"] += 1
                 pending_ids.append(_pid)
                 continue
@@ -620,8 +621,9 @@ def scan_batch_cards(data: BatchScanRequest):
         if _queued:
             stats["queued"] += 1
         elif _st == "ai":
-            # 引擎维度：当前引擎生成 → 完成；其他引擎/未知 → 纳入待处理（other_engine）
-            if cur_engine and _eng and _eng != cur_engine:
+            # 引擎维度：当前引擎生成 → 完成；其他明确引擎 → 纳入待处理（other_engine）
+            # 引擎未知（旧链路）→ 默认视为完成跳过（2026-08-10 二喵决策）
+            if cur_engine and _eng and _eng != cur_engine and _eng != "unknown":
                 stats["other_engine"] += 1
             else:
                 stats["ai_generated"] += 1
