@@ -173,6 +173,8 @@ Object.assign(App, {
                   '</div>' +
                   '<div id="bgenComposePreview" style="font-size:10px;color:var(--text-muted);background:var(--bg-card);border:1px dashed var(--border-color);border-radius:6px;padding:6px 8px;max-height:64px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"></div>' +
                 '</div>' +
+                // 一键流水线阶段状态（2026-08-10）
+                '<div id="bgenPipelineStatus" style="display:none;font-size:11px;color:#8b5cf6;padding:6px 10px;border:1px dashed #8b5cf6;border-radius:8px;background:rgba(139,92,246,0.04);"></div>' +
                 // 进度与明细
                 '<div id="bgenProgressArea" style="display:none;">' +
                   '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">' +
@@ -200,6 +202,8 @@ Object.assign(App, {
                   '<select id="bgenBatchSize" onchange="App._batchSizeChanged()" title="每批自动提交张数：批次小则单任务失败影响面小；在线引擎建议 ≤20" style="font-size:11px;padding:2px 4px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-card);color:var(--text-main);">' +
                     '<option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option><option value="0">不限</option>' +
                   '</select>张</span>' +
+                // 一键完整流水线（2026-08-10：仅全词库模式显示）
+                '<button class="btn btn-sm" id="bgenPipelineBtn" onclick="App._batchRunPipeline()" style="display:none;border:1px solid #8b5cf6;color:#8b5cf6;background:rgba(139,92,246,0.06);font-size:12px;" title="自动执行：① Ollama 优化未优化的卡 → ② 保存到词卡详细档 → ③ 提交生成任务（按批次）"><i class="bi bi-rocket-takeoff"></i> 🚀 一键完整处理</button>' +
                 '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'batchGenDialog\').style.display=\'none\'">关闭</button>' +
                 '<button class="btn btn-primary btn-sm" id="bgenStartBtn" onclick="App._startBatchGen()"><i class="bi bi-play-fill"></i> 开始生成</button>' +
               '</div>' +
@@ -260,6 +264,11 @@ Object.assign(App, {
         var ba = document.getElementById('bgenScopeAll');
         if (bg) bg.className = 'cwl-logview-btn' + (mode === 'group' ? ' active' : '');
         if (ba) ba.className = 'cwl-logview-btn' + (mode === 'all' ? ' active' : '');
+        // 2026-08-10: 一键流水线按钮/状态条仅全词库模式显示
+        var pb = document.getElementById('bgenPipelineBtn');
+        if (pb) pb.style.display = (mode === 'all') ? '' : 'none';
+        var ps = document.getElementById('bgenPipelineStatus');
+        if (ps) ps.style.display = (mode === 'all') ? '' : 'none';
         if (mode === 'group') {
             var hint = document.getElementById('bgenScopeHint');
             if (hint) hint.textContent = '仅处理当前分组勾选的 ' + (this._batchIds || []).length + ' 张';
@@ -349,8 +358,13 @@ Object.assign(App, {
         if (selCnt) selCnt.textContent = filtered.length + ' 张';
         var opt = document.getElementById('bgenSelOptimized');
         if (opt) opt.textContent = st ? st.text : '';
+        // 2026-08-10: 全词库模式操作栏随优化结果显示（全部存词卡/重新优化等作用于 overrides 全集）
         var bar = document.getElementById('bgenPreviewBatchBar');
-        if (bar) bar.style.display = 'none';
+        var ovCount = Object.keys(this._batchPromptOverrides || {}).length;
+        if (bar) bar.style.display = ovCount > 0 ? 'flex' : 'none';
+        // 2026-08-10: 优化按钮文案跟随范围（全词库=优化全部待优化卡）
+        var ollamaBtn = document.getElementById('bgenOllamaBtn');
+        if (ollamaBtn) ollamaBtn.innerHTML = '<i class="bi bi-magic"></i> 优化全部待优化 (' + d.stats.pending + ')';
         var html = '';
         // 分类 Tab 栏（其他引擎 = 非当前引擎生成的 AI 图，纳入待处理）
         html += '<div style="display:flex;gap:3px;padding:2px 0 6px;border-bottom:1px dashed var(--border-color);margin-bottom:4px;flex-wrap:wrap;">';
@@ -412,6 +426,117 @@ Object.assign(App, {
         this._renderBatchPreview();
     },
 
+    // ============ 全词库流程编排（2026-08-10 一键流水线） ============
+
+    // 待处理集合：optimize=待优化（无图无详细档非队列）；generate=待生成（非本引擎完成）
+    _batchPendingIds(mode) {
+        if (this._batchScope === 'all' && this._batchScanResult) {
+            var curEngine = this._batchEngineMode || 'comfyui';
+            var out = [];
+            var items = this._batchScanResult.items || [];
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                if (it.queued) continue;
+                if (mode === 'optimize') {
+                    if (it.thumb_state === 'none' && !it.optimized) out.push(it.id);
+                } else {
+                    // generate：跳过本引擎完成/未知引擎（默认视为完成）
+                    if (it.thumb_state === 'ai' && (it.thumb_engine === curEngine || !it.thumb_engine || it.thumb_engine === 'unknown')) continue;
+                    out.push(it.id);
+                }
+            }
+            return out;
+        }
+        return (this._batchIds || []).slice();
+    },
+
+    // 批量取词卡内容（batch-cards 接口，缓存供全词库 Ollama 优化使用）
+    async _batchLoadCardTexts(ids) {
+        var need = [];
+        this._batchCardTexts = this._batchCardTexts || {};
+        for (var i = 0; i < ids.length; i++) {
+            if (!this._batchCardTexts[ids[i]]) need.push(ids[i]);
+        }
+        if (need.length === 0) return this._batchCardTexts;
+        var d = await this.fetchJSON('/api/v2/comfyui/batch-cards', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: need, card_type_map: {} })
+        });
+        if (d && d.ok) {
+            for (var j = 0; j < d.cards.length; j++) {
+                this._batchCardTexts[d.cards[j].id] = d.cards[j];
+            }
+        }
+        return this._batchCardTexts;
+    },
+
+    // 等待 Ollama 优化队列排空（流水线串联用）
+    _batchWaitOllamaQueue() {
+        var self = this;
+        return new Promise(function(resolve) {
+            var timer = setInterval(function() {
+                if (!self._ollamaQueueRunning && (!self._ollamaQueue || self._ollamaQueue.length === 0)) {
+                    clearInterval(timer);
+                    resolve();
+                }
+            }, 500);
+        });
+    },
+
+    // 一键完整流水线（全词库模式）：① 优化未优化 → ② 全部存词卡 → ③ 提交生成（按批次）
+    async _batchRunPipeline() {
+        if (this._batchScope !== 'all') {
+            this.showToast('一键完整处理仅在全词库模式可用', 'warning');
+            return;
+        }
+        if (this._pipelineRunning) { this.showToast('流水线执行中，请稍候', 'warning'); return; }
+        var model = (document.getElementById('bgenOllamaModel') || {}).value;
+        if (!model) { this.showToast('请先选择 Ollama 模型（流水线第一步是提示词优化）', 'warning'); return; }
+        this._pipelineRunning = true;
+        var btn = document.getElementById('bgenPipelineBtn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 流水线执行中...'; }
+        var stEl = document.getElementById('bgenPipelineStatus');
+        try {
+            // ① 优化未优化的卡（串行队列，自动跳过已有优化）
+            var optIds = this._batchPendingIds('optimize');
+            if (optIds.length > 0) {
+                if (stEl) stEl.textContent = '① 优化提示词 ' + optIds.length + ' 张...';
+                await this._batchLoadCardTexts(optIds);
+                this._enhanceBatchPrompts();
+                await this._batchWaitOllamaQueue();
+            } else if (stEl) {
+                stEl.textContent = '① 无待优化词卡，跳过';
+            }
+            // ② 保存全部优化结果到词卡详细档（生成时使用详细档提示词）
+            var ovKeys = Object.keys(this._batchPromptOverrides || {});
+            var unsaved = 0;
+            for (var k = 0; k < ovKeys.length; k++) {
+                if (!(this._ollamaSaved && this._ollamaSaved[ovKeys[k]] === true)) unsaved++;
+            }
+            if (unsaved > 0) {
+                if (stEl) stEl.textContent = '② 保存优化结果 ' + unsaved + ' 条到词卡...';
+                await this._ollamaSaveAll();
+            } else if (stEl) {
+                stEl.textContent = '② 优化结果均已保存，跳过';
+            }
+            // ③ 提交生成任务（后端按批次切片；本引擎完成/队列自动跳过）
+            if (stEl) stEl.textContent = '③ 提交生成任务...';
+            var ok = await this._startBatchGen();
+            if (ok === false) {
+                if (stEl) stEl.textContent = '③ 生成未提交：' + ((document.getElementById('bgenProgressText') || {}).textContent || '见上方提示');
+            } else {
+                if (stEl) stEl.textContent = '✅ 流水线完成：优化 → 保存 → 生成已提交，后台执行中';
+                this.showToast('一键流水线完成：优化 → 保存 → 生成已提交（后台执行）', 'success');
+            }
+        } catch(e) {
+            this.showToast('流水线异常: ' + e.message, 'error');
+            if (stEl) stEl.textContent = '❌ 流水线异常: ' + e.message;
+        } finally {
+            this._pipelineRunning = false;
+            if (btn) { btn.disabled = false; btn.innerHTML = '🚀 一键完整处理'; }
+        }
+    },
+
     // 本次处理词卡清单渲染：完整列出选中词卡（缩略图/名称/优化状态），
     // 与 Ollama 优化结果联动（overrides 变化时徽章自动刷新）
     _renderBatchPreview() {
@@ -425,6 +550,9 @@ Object.assign(App, {
             return;
         }
         var ids = this._batchIds || [];
+        // 2026-08-10: 分组模式恢复优化按钮文案
+        var ollamaBtn = document.getElementById('bgenOllamaBtn');
+        if (ollamaBtn) ollamaBtn.innerHTML = '<i class="bi bi-magic"></i> 优化选中卡提示词';
         var cnt = document.getElementById('bgenSelCount');
         if (cnt) cnt.textContent = ids.length + ' 张';
         var overrides = this._batchPromptOverrides || {};
@@ -623,8 +751,16 @@ Object.assign(App, {
             var n = parseInt(mcEl.value, 10);
             if (!isNaN(n) && n > 0) maxChars = Math.min(Math.max(n, 50), 3000);
         }
-        var ids = this._batchIds || [];
-        if (ids.length === 0) { this.showToast('请先选择要优化的词卡', 'warning'); return; }
+        // 2026-08-10: 目标集合 = 全词库模式取扫描结果中的待优化卡（修复分组勾选断裂），分组模式沿用勾选集
+        var ids = this._batchPendingIds('optimize');
+        if (ids.length === 0) {
+            this.showToast(this._batchScope === 'all' ? '全词库待优化词卡为 0（均已优化或已有图）' : '请先选择要优化的词卡', 'warning');
+            return;
+        }
+        // 全词库模式：预拉取词卡原文（批量接口，避免逐条请求）
+        if (this._batchScope === 'all') {
+            try { await this._batchLoadCardTexts(ids); } catch(e) {}
+        }
         var seq = ++this._ollamaQueueSeq;
         // 快照参数与词卡集合，后续操作不影响本批次
         var batch = { seq: seq, ids: ids.slice(), model: model, lang: lang, maxChars: maxChars, done: 0, err: 0, skipped: 0, total: ids.length };
@@ -677,7 +813,12 @@ Object.assign(App, {
                 if (_skipOpt) { batch.skipped++; continue; }
             }
             var card = null;
-            (this.state.prompts || []).forEach(function(p) { if (p.id === pid && !card) card = p; });
+            // 2026-08-10: 全词库模式内容源 = batch-cards 批量缓存（state.prompts 不含全库）
+            if (this._batchCardTexts && this._batchCardTexts[pid]) {
+                card = this._batchCardTexts[pid];
+            } else {
+                (this.state.prompts || []).forEach(function(p) { if (p.id === pid && !card) card = p; });
+            }
             var text = card ? (card.content || '') : '';
             if (!text) { batch.done++; continue; }
             var skipTxt = batch.skipped > 0 ? '（已跳过 ' + batch.skipped + ' 张已有优化）' : '';
@@ -758,14 +899,18 @@ Object.assign(App, {
     // 全部存词卡：只处理当前选中的词卡（不关联其他分组/历史批次的优化结果），串行逐条 PUT content_detailed（避免并发写锁）
     async _ollamaSaveAll() {
         var overrides = this._batchPromptOverrides || {};
-        // 仅当前选中词卡中有优化结果的条目
-        var ids = this._batchIds || [];
+        // 2026-08-10: 全词库模式保存全部优化结果；分组模式限定当前选中词卡
         var keys = [];
-        for (var _ki = 0; _ki < ids.length; _ki++) {
-            var _kpid = ids[_ki];
-            if (overrides[_kpid] || overrides[String(_kpid)]) keys.push(_kpid);
+        if (this._batchScope === 'all') {
+            keys = Object.keys(overrides);
+        } else {
+            var ids = this._batchIds || [];
+            for (var _ki = 0; _ki < ids.length; _ki++) {
+                var _kpid = ids[_ki];
+                if (overrides[_kpid] || overrides[String(_kpid)]) keys.push(_kpid);
+            }
         }
-        if (!keys.length) { this.showToast('当前选中的词卡没有可保存的优化结果', 'warning'); return; }
+        if (!keys.length) { this.showToast('当前没有可保存的优化结果', 'warning'); return; }
         this._ollamaSaved = this._ollamaSaved || {};
         var btn = document.getElementById('bgenSaveAllBtn');
         var hint = document.getElementById('bgenSavedHint');
@@ -827,7 +972,8 @@ Object.assign(App, {
 
     // 全部使用详细/标准：详细=overrides 填充详细档内容，标准=清空 overrides
     _batchUseTier(tier) {
-        var ids = this._batchIds || [];
+        // 2026-08-10: 全词库模式作用于全部待优化卡（修复分组勾选断裂）
+        var ids = this._batchPendingIds('optimize');
         if (!ids.length) { this.showToast('请先选中词卡', 'warning'); return; }
         this._batchPromptOverrides = this._batchPromptOverrides || {};
         var self = this;
@@ -1449,7 +1595,7 @@ Object.assign(App, {
         }
         if (pendingIds.length === 0) {
             this.showToast('所选词卡均已完成（AI 已生成/队列中），无需重复提交' + (skipQueued ? '（队列中 ' + skipQueued + ' 张）' : ''), 'info');
-            return;
+            return false;
         }
         if (skipQueued > 0) {
             this.showToast('已自动跳过 ' + skipQueued + ' 张（已在生成队列），本次将生成 ' + pendingIds.length + ' 张', 'info');
@@ -1513,7 +1659,7 @@ Object.assign(App, {
                 if (txt) txt.textContent = '❌ ' + (d && d.error || '创建失败');
                 this._batchSubmitting = false;
                 this._batchSubmittingAt = null;
-                return;
+                return false;
             }
             var taskIds = d.task_ids || (d.task_id ? [d.task_id] : []);
             if (!taskIds.length) {
@@ -1521,7 +1667,7 @@ Object.assign(App, {
                 if (txt) txt.textContent = '❌ 任务创建失败';
                 this._batchSubmitting = false;
                 this._batchSubmittingAt = null;
-                return;
+                return false;
             }
             this._batchTaskId = taskIds[taskIds.length - 1];
             this._batchTaskTotal = d.total || pendingIds.length;
@@ -1546,11 +1692,13 @@ Object.assign(App, {
             this._saveBatchSettings();
             if (txt) txt.textContent = '任务 #' + taskIds.join(', #') + ' 已创建（' + (d.workflow_name || '') + '）' + (d.batches > 1 ? '，共 ' + d.batches + ' 批' : '') + '，等待执行...';
             this.showToast('生成任务 ' + taskIds.length + ' 个已入队（' + this._batchTaskTotal + ' 张' + (d.batches > 1 ? '，每批 ' + (bsEl && bsEl.value || '') + ' 张' : '') + '）', 'info');
+            return true;
         } catch(e) {
             this.showToast('任务创建异常: ' + e.message, 'error');
             if (txt) txt.textContent = '❌ ' + e.message;
             startBtn.disabled = false;
             this._batchGenRunning = false;
+            return false;
         }
         this._batchSubmitting = false;
         this._batchSubmittingAt = null;

@@ -644,6 +644,38 @@ def scan_batch_cards(data: BatchScanRequest):
     return {"ok": True, "stats": stats, "items": items}
 
 
+class BatchCardsRequest(BaseModel):
+    ids: list[int] = []
+    card_type_map: dict = {}        # {prompt_id: 'word_card'|'prompts'}（默认按 word_card 查）
+
+
+@router.post("/batch-cards")
+def batch_cards(data: BatchCardsRequest):
+    """批量取词卡内容（2026-08-10）：供全词库模式 Ollama 优化取原文（一次拉取，避免 N 次单卡请求）
+    返回: {ok, cards: [{id, name, content, content_detailed, module}]}
+    """
+    db = get_db()
+    ctm = data.card_type_map or {}
+    wc_ids, pr_ids = [], []
+    for _pid in data.ids:
+        if ctm.get(str(_pid)) == "prompts":
+            pr_ids.append(_pid)
+        else:
+            wc_ids.append(_pid)
+    cards = []
+    if wc_ids:
+        _ph = ",".join("?" * len(wc_ids))
+        rows = db.execute(
+            f"SELECT id, name, content, content_detailed, module FROM word_card WHERE id IN ({_ph}) AND is_deleted=0", wc_ids).fetchall()
+        cards += [dict(r) for r in rows]
+    if pr_ids:
+        _ph = ",".join("?" * len(pr_ids))
+        rows = db.execute(
+            f"SELECT id, name, content, '' AS content_detailed, module FROM prompts WHERE id IN ({_ph})", pr_ids).fetchall()
+        cards += [dict(r) for r in rows]
+    return {"ok": True, "cards": cards}
+
+
 @router.get("/batch-tasks")
 def list_batch_tasks(limit: int = Query(20, ge=1, le=100)):
     """批量任务列表（含运行中/排队/历史）"""
