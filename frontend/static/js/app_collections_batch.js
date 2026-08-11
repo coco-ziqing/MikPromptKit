@@ -2191,8 +2191,9 @@ Object.assign(App, {
             if (e.clientX > rect.right - 14) return;
             fs.active = true;
             fs.moved = false;
-            fs.startX = e.clientX - rect.left;
-            fs.startY = e.clientY - rect.top;
+            // 内容坐标（含 scrollLeft/scrollTop）：选框粘在内容上，随列表滚动保持选中不丢
+            fs.startX = e.clientX - rect.left + list.scrollLeft;
+            fs.startY = e.clientY - rect.top + list.scrollTop;
             fs.x = fs.startX;
             fs.y = fs.startY;
             box.style.left = fs.startX + 'px';
@@ -2209,8 +2210,9 @@ Object.assign(App, {
         document.addEventListener('mousemove', function(e) {
             if (!fs.active) return;
             var rect = list.getBoundingClientRect();
-            var cx = e.clientX - rect.left;
-            var cy = e.clientY - rect.top;
+            // 内容坐标（随滚动保持框选连续性）
+            var cx = e.clientX - rect.left + list.scrollLeft;
+            var cy = e.clientY - rect.top + list.scrollTop;
             if (Math.abs(cx - fs.startX) > 4 || Math.abs(cy - fs.startY) > 4) fs.moved = true;
             fs.x = cx;
             fs.y = cy;
@@ -2230,7 +2232,7 @@ Object.assign(App, {
                     fs.raf = requestAnimationFrame(function step() {
                         if (!fs.active) { fs.raf = 0; return; }
                         list.scrollTop += speed;
-                        // 选框保持相对可视区（不随滚动移动），行位置变化由高亮重算覆盖
+                        // 内容坐标下选框/选中判定随滚动保持；行高亮重算
                         self._frameUpdateHighlight();
                         fs.raf = requestAnimationFrame(step);
                     });
@@ -2254,7 +2256,7 @@ Object.assign(App, {
         });
     },
 
-    // 计算与选框相交的行并高亮
+    // 计算与选框相交的行并高亮（全部用内容坐标：滚动后滚出可视区的行仍保持选中）
     _frameUpdateHighlight() {
         var fs = this._frameSel;
         var list = document.getElementById('bgenPreviewList');
@@ -2268,8 +2270,9 @@ Object.assign(App, {
         var rows = list.querySelectorAll('[data-pid]');
         for (var i = 0; i < rows.length; i++) {
             var rc = rows[i].getBoundingClientRect();
-            var rl = rc.left - lr.left;
-            var rt = rc.top - lr.top;
+            // 行内容坐标 = 可视坐标 + 滚动偏移
+            var rl = rc.left - lr.left + list.scrollLeft;
+            var rt = rc.top - lr.top + list.scrollTop;
             var rr = rl + rc.width;
             var rb = rt + rc.height;
             var pid = rows[i].getAttribute('data-pid');
