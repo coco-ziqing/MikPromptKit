@@ -293,11 +293,17 @@ def delete_word_card_thumbnail(card_id: int):
 
 @router.get("/thumbnails/{filename}")
 def serve_word_card_thumbnail(filename: str):
-    """返回词卡缩略图文件"""
-    path = os.path.join(WC_THUMB_DIR, filename)
-    if not os.path.exists(path):
-        raise HTTPException(404, "缩略图不存在")
-    return FileResponse(path, media_type="image/jpeg")
+    """返回词卡缩略图文件
+    2026-08-11 增强: 优先 wc_media/thumbs(手动预览), 缺失时回退 data/thumbnails(词库 AI 缩略图),
+    兼容悬停预览等旧调用点直接显示批量生成的词库预览图。"""
+    base = os.path.basename(filename)  # 防目录穿越
+    p1 = os.path.join(WC_THUMB_DIR, base)
+    if os.path.exists(p1):
+        return FileResponse(p1, media_type="image/jpeg")
+    p2 = os.path.join(AI_THUMB_DIR, base)
+    if os.path.exists(p2):
+        return FileResponse(p2, media_type="image/jpeg")
+    raise HTTPException(404, "缩略图不存在")
 
 
 # ==================== 词卡视频预览 ====================

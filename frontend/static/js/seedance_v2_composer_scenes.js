@@ -197,8 +197,15 @@ App.seedanceV2._doSetDuration=function(sid,v){var self=this;this._pushUndoBefore
             var html = '';
             if (card && card.preview_video) {
                 html += '<video src="/api/seedance/v2/videos/'+card.preview_video+'" style="width:100%;height:auto;border-radius:6px;" autoplay muted loop></video>';
-            } else if (card && card.preview_image) {
-                html += '<img src="/api/seedance/v2/thumbnails/'+card.preview_image+'" style="width:100%;height:auto;border-radius:6px;">';
+            } else if (card && (card.wc_thumbnail || card.preview_image)) {
+                // 2026-08-11: 词库缩略图优先（与词库预览图一致）；旧 preview 走 seedance 接口
+                var _purl = card.wc_thumbnail
+                    ? '/api/thumbnails/file/' + card.wc_thumbnail
+                    : '/api/seedance/v2/thumbnails/' + card.preview_image;
+                var _fb = card.wc_thumbnail
+                    ? ('/api/seedance/v2/thumbnails/' + (card.preview_image || ''))
+                    : '';
+                html += '<img src="' + _purl + '" style="width:100%;height:auto;border-radius:6px;"' + (_fb ? ' onerror="if(this.src.indexOf(\'/api/thumbnails/file/\')===0){this.src=\'' + _fb + '\';}"' : '') + '>';
             } else {
                 html += '<div style="padding:12px;text-align:center;color:var(--text-muted);font-size:12px;">'+(card?App._t('auto.str_c54d754f', '无媒体预览'):App._t('auto.str_b31f0889', '无匹配词卡'))+'</div>';
             }
