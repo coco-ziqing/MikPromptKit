@@ -190,6 +190,21 @@ _BATCH_GLOBAL_LOCK = threading.Lock()
 _RESUMED_TASKS = set()
 _RESUMED_LOCK = threading.Lock()
 
+# 最近一次启动恢复报告（2026-08-11：供前端 resume-report 查询，断点任务自主识别 + 询问提醒）
+_RESUME_REPORT = None
+_RESUME_REPORT_LOCK = threading.Lock()
+
+
+def _get_resume_report():
+    with _RESUME_REPORT_LOCK:
+        return _RESUME_REPORT
+
+
+def _set_resume_report(report):
+    global _RESUME_REPORT
+    with _RESUME_REPORT_LOCK:
+        _RESUME_REPORT = report
+
 
 def _mark_resumed(tid: int):
     """登记任务已由某 worker 接管（幂等，防重复恢复）"""
@@ -537,32 +552,92 @@ def _batch_worker(task_id: int):
 
 
 def _resume_orphaned_tasks():
-    """启动恢复：接管上次进程遗留的 queued/running 任务（2026-08-11 修复）
+    """启动恢复：接管上次进程遗留的 queued/running/error 任务（2026-08-11 增强）
     此前无恢复机制：服务重启后 DB 里的任务无人消费，前端永久显示"在队列中"。
-    恢复时按 id 顺序 spawn worker（全局锁串行）；running 任务由 _batch_worker 从
-    current_index 续跑，已完成结果从 DB 读回，不重复生成。
+    - queued：自动恢复（从头执行）
+    - running：断点续跑（从已确认完成处继续，不重复生成）
+    - error：异常中断，不自动重试（防无限失败循环），列入待处理清单提醒用户
+    返回恢复报告 dict（供前端 resume-report 查询 / 通知落库）；无任务返回 None。
     """
     try:
         _ensure_batch_task_table()
         db = get_db()
         rows = db.execute(
-            "SELECT id FROM comfyui_batch_tasks WHERE status IN ('queued','running') ORDER BY id"
+            "SELECT id, status, total FROM comfyui_batch_tasks WHERE status IN ('queued','running','error') ORDER BY id"
         ).fetchall()
         if not rows:
-            return
+            _set_resume_report(None)
+            return None
         started = 0
+        resumed_ids = []
+        error_tasks = []
+        total_cards = 0
         with _RESUMED_LOCK:
             for r in rows:
                 tid = r["id"]
+                st = r["status"]
+                if st == "error":
+                    # 异常中断：不自动重试，列入待处理（用户决定是否重试）
+                    error_tasks.append({"id": tid, "total": r["total"]})
+                    continue
                 if tid in _RESUMED_TASKS:
                     continue
                 _RESUMED_TASKS.add(tid)
                 threading.Thread(target=_batch_worker, args=(tid,), daemon=True).start()
                 started += 1
-        if started:
-            print(f"[Batch] 队列恢复: 接管 {started} 个未完成任务 (queued/running)")
+                resumed_ids.append(tid)
+                total_cards += int(r["total"] or 0)
+        report = {
+            "resumed": started,
+            "resumed_ids": resumed_ids,
+            "error_count": len(error_tasks),
+            "error_tasks": error_tasks[:50],
+            "total_cards": total_cards,
+            "created_at": _now_str(),
+        }
+        _set_resume_report(report)
+        if started or error_tasks:
+            msg = f"[Batch] 队列恢复: 自动续跑 {started} 个任务({total_cards} 张词卡)"
+            if error_tasks:
+                msg += f"，另有 {len(error_tasks)} 个异常任务待处理"
+            print(msg)
+            _notify_resume_report(report)
+        return report
     except Exception as e:
         print(f"[Batch] 队列恢复失败: {e}")
+        return None
+
+
+def _notify_resume_report(report):
+    """恢复报告提醒：落库 sys_notifications（离线可查）+ WebSocket 实时推送（在线即见）
+    2026-08-11：断点任务自主识别后，必须让用户知道哪些任务被恢复、哪些需处理"""
+    try:
+        db = get_db()
+        row = db.execute("SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1").fetchone()
+        if not row:
+            return
+        uid = row["id"]
+        title = "批量任务断点恢复"
+        body = f"检测到 {report['resumed']} 个中断任务已自动恢复（断点续跑，共 {report['total_cards']} 张词卡）"
+        if report["error_count"]:
+            ids = ",".join(str(t["id"]) for t in report["error_tasks"][:10])
+            body += f"；另有 {report['error_count']} 个异常任务待处理（任务 {ids}），可在任务列表查看/重试"
+        # 落库（离线用户下次登录可见）
+        try:
+            db.execute(
+                "INSERT INTO sys_notifications(user_id, title, message, category) VALUES (?,?,?,?)",
+                [uid, title, body, "batch_resume"])
+            safe_commit()
+        except Exception as e:
+            print(f"[Batch] 恢复通知落库失败: {e}")
+        # WebSocket 实时推送（在线立即弹出）
+        try:
+            from notify import notify_user
+            notify_user(uid, event="batch_resume", title=title, body=body, category="batch_resume")
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"[Batch] 恢复通知发送失败: {e}")
 
 
 def _now_str():
@@ -757,6 +832,16 @@ def batch_cards(data: BatchCardsRequest):
             f"SELECT id, name, content, '' AS content_detailed, module FROM prompts WHERE id IN ({_ph})", pr_ids).fetchall()
         cards += [dict(r) for r in rows]
     return {"ok": True, "cards": cards}
+
+
+@router.get("/batch-tasks/resume-report")
+def get_batch_resume_report():
+    """启动恢复报告（2026-08-11）：断点任务自主识别结果
+    服务启动时 _resume_orphaned_tasks 生成；前端批处理页打开时查询，
+    展示「已自动恢复 N 个中断任务 / M 个异常任务待处理」并询问确认。
+    """
+    _ensure_batch_task_table()
+    return {"ok": True, "report": _get_resume_report()}
 
 
 @router.get("/batch-tasks")

@@ -253,6 +253,32 @@ Object.assign(App, {
             var resBox = document.getElementById('bgenOllamaResults');
             if (resBox) { resBox.style.display = 'none'; resBox.innerHTML = ''; }
         }
+        // 2026-08-11: 断点任务自主识别 + 询问提醒（启动恢复报告）
+        this._checkResumeReport();
+    },
+
+    // ============ 启动恢复报告检查（2026-08-11 断点任务提醒） ============
+    _checkResumeReport() {
+        var self = this;
+        this.fetchJSON('/api/v2/comfyui/batch-tasks/resume-report').then(function(d) {
+            if (!d || !d.ok || !d.report) return;
+            var rep = d.report;
+            if (!rep.resumed && !rep.error_count) return;
+            // 同一报告只询问一次（localStorage 按报告时间戳去重）
+            var lastAck = localStorage.getItem('bgenResumeAck') || '';
+            if (lastAck === rep.created_at) return;
+            var parts = [];
+            if (rep.resumed > 0) {
+                parts.push('已自动恢复 ' + rep.resumed + ' 个中断任务（断点续跑，共 ' + rep.total_cards + ' 张词卡，正在后台继续执行）');
+            }
+            if (rep.error_count > 0) {
+                parts.push(rep.error_count + ' 个异常任务待处理（可在任务列表查看/重试）');
+            }
+            var msg = '检测到上次中断的批量生成任务：\n\n' + parts.join('\n') + '\n\n已恢复任务正在后台继续执行，请勿重复提交相同词卡（任务进度见下方列表）。';
+            if (confirm(msg + '\n\n[确定] 知道了（本次不再提醒）    [取消] 稍后再说')) {
+                localStorage.setItem('bgenResumeAck', rep.created_at);
+            }
+        }).catch(function() {});
     },
 
     // ============ 处理范围（2026-08-10 全词库一键流水线） ============
