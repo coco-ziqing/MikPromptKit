@@ -437,8 +437,10 @@
         if (s._editMode) { return this._renderEditModeCard(s, idx); }
         var h='<div class="s2-scene-card" data-scene-id="'+s.id+'" data-scene-order="'+(idx+1)+'">';
         var dotColor=App.seedanceV2._sceneColor(s.id);
+        // v5.36.2: 镜头视频任务状态徽章（若该镜头有进行中/成功任务）
+        var vtBadge = App.seedanceV2._sceneVideoBadge(s.id);
         h+='<div class="s2-drag-handle" draggable="true" title="拖拽排序" style="border-top:4px solid '+dotColor+';padding-top:2px;"><span class="s2-drag-icon">\u2e3f</span></div>';
-        h+='<div class="s2-scene-header"><div class="s2-scene-title"><span class="s2-scene-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+dotColor+App._t('auto.str_6d65e37d', ';margin-right:6px;vertical-align:middle;flex-shrink:0;" title="镜头')+(idx+1)+'"></span><strong onclick="event.stopPropagation();App.seedanceV2._toggleSceneCard('+s.id+')" style="cursor:pointer;" title="点击折叠/展开"><span class="s2-scene-fold-arrow">▼</span> 镜头 '+(idx+1)+'</strong> <span class="s2-time-badge">'+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span></div><div class="s2-scene-actions">';
+        h+='<div class="s2-scene-header"><div class="s2-scene-title"><span class="s2-scene-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+dotColor+App._t('auto.str_6d65e37d', ';margin-right:6px;vertical-align:middle;flex-shrink:0;" title="镜头')+(idx+1)+'"></span><strong onclick="event.stopPropagation();App.seedanceV2._toggleSceneCard('+s.id+')" style="cursor:pointer;" title="点击折叠/展开"><span class="s2-scene-fold-arrow">▼</span> 镜头 '+(idx+1)+'</strong> <span class="s2-time-badge">'+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span>'+vtBadge+'</div><div class="s2-scene-actions">';
         h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;before&apos;)">\u2b06插入</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;after&apos;)">\u2b07插入</button>';
         h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.duplicateScene('+s.id+')">📋复制</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._copyScene('+s.id+')" title="拷贝提示词">📝拷贝</button><button class="btn btn-xs btn-outline s2-clear-btn" data-scene-id="'+s.id+'" title="清除所有字段" style="color:#ef4444;border-color:#ef4444;">🗑清除</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._pasteScene('+s.id+')" title="粘贴提示词">📄粘贴</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._exportScene('+s.id+')" title="导出镜头">📤导出</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._importScene('+s.id+')" title="导入镜头">📥导入</button><button class="btn btn-xs btn-outline s2-review-btn" style="color:#8b5cf6;border-color:#8b5cf6;" onclick="event.stopPropagation();App.seedanceV2.openSceneReview('+s.id+')" title="审阅">📖审阅</button><button class="btn btn-xs btn-outline s2-editmode-toggle" data-scene-id="'+s.id+'" title="切换到文本编辑模式，自由修改字段内容" style="color:#10b981;border-color:#10b981;">✏️ 编辑</button><button class="btn btn-xs btn-danger s2-del-btn" data-scene-id="'+s.id+'" title="删除此镜头">🗑</button></div></div>';
         // 折叠后第二行：纯文本单行省略
@@ -932,6 +934,52 @@
     App.seedanceV2.reorderScenes=async function(src,tgt){if(!this.currentProjectId)return;this._pushUndoBefore();var ids=[];for(var i=0;i<this.scenes.length;i++)ids.push(this.scenes[i].id);var si=ids.indexOf(src),ti=ids.indexOf(tgt);if(si<0||ti<0)return;ids.splice(si,1);var newTi=ids.indexOf(tgt);if(si<ti)ids.splice(newTi+1,0,src);else ids.splice(newTi,0,src);var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_ids:ids})});if(d&&d.ok){await this.openProject(this.currentProjectId);App.showToast(App._t('auto.str_7d7594cf', '镜头已重新排序'),'success');}};
 
     App.seedanceV2.updateSceneField=async function(sid,f,v){this._pushUndoBefore();var d={};d[f]=v;await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});};
+
+    // ========== v5.36.2: 镜头视频任务状态徽章 ==========
+    App.seedanceV2._sceneVideoBadge = function(sceneId) {
+        if (!this._videoTaskCache) return '';
+        var tasks = this._videoTaskCache[sceneId];
+        if (!tasks || !tasks.length) return '';
+        var active = null, done = null;
+        for (var i = 0; i < tasks.length; i++) {
+            var t = tasks[i];
+            if (t.status === 'querying' || t.status === 'submitting' || t.status === 'queued') {
+                if (!active || (t.progress||0) > (active.progress||0)) active = t;
+            } else if (t.status === 'success') {
+                done = t;
+            }
+        }
+        if (active) {
+            var prog = active.progress || 5;
+            return '<span class="s2-vt-badge s2-vt-active" title="视频生成中 '+prog+'% — 点击查看任务面板" onclick="event.stopPropagation();App.seedanceV2.openVideoPanel()">🎬 '+prog+'%</span>';
+        }
+        if (done) {
+            return '<span class="s2-vt-badge s2-vt-done" title="视频已生成 — 点击查看" onclick="event.stopPropagation();App.seedanceV2.openVideoPanel()">🎬 ✅</span>';
+        }
+        return '';
+    };
+
+    // 加载所有镜头视频任务状态缓存（渲染卡片时用）
+    App.seedanceV2._loadVideoTaskCache = async function() {
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/video/tasks?limit=100');
+            if (!d || !d.items) return;
+            var cache = {};
+            for (var i = 0; i < d.items.length; i++) {
+                var t = d.items[i];
+                if (!t.scene_id) continue;
+                if (!cache[t.scene_id]) cache[t.scene_id] = [];
+                cache[t.scene_id].push(t);
+            }
+            this._videoTaskCache = cache;
+        } catch (e) { console.warn('video task cache fail', e); }
+    };
+
+    // 刷新徽章（提交后/面板关闭时调用）
+    App.seedanceV2._refreshVideoBadges = async function() {
+        await this._loadVideoTaskCache();
+        this.renderScenes();
+    };
 
     // ========== v5.36.2: 图像参考 ==========
 

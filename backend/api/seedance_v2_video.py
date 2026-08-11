@@ -78,6 +78,9 @@ def _ensure_video_task_table():
     if tbl_cols and "image_refs" not in tbl_cols:
         db.execute("ALTER TABLE seedance_video_tasks ADD COLUMN image_refs TEXT DEFAULT ''")
         print("[Seedance Video] seedance_video_tasks 增加列 image_refs")
+    if tbl_cols and "progress" not in tbl_cols:
+        db.execute("ALTER TABLE seedance_video_tasks ADD COLUMN progress INTEGER DEFAULT 0")
+        print("[Seedance Video] seedance_video_tasks 增加列 progress")
     db.execute("""CREATE TABLE IF NOT EXISTS seedance_video_tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id INTEGER,
@@ -90,6 +93,7 @@ def _ensure_video_task_table():
         video_resolution TEXT DEFAULT '720p',
         session INTEGER DEFAULT 0,
         image_refs TEXT DEFAULT '',
+        progress INTEGER DEFAULT 0,
         submit_id TEXT DEFAULT '',
         status TEXT DEFAULT 'queued',
         fail_reason TEXT DEFAULT '',
@@ -244,6 +248,8 @@ def _query_and_download(task_id: int):
     timeout_sec = 900  # 最长 15 分钟
     deadline = time.time() + timeout_sec
     last_status = "querying"
+    # 进度估算: 生成中按已耗时推进（即梦无进度接口，用时间估算，封顶 90）
+    start_wait = time.time()
     while time.time() < deadline:
         out, err, code = _dreamina_run(["query_result", "--submit_id=" + str(submit_id)], timeout=60)
         data = _parse_cli_json(out, err)
@@ -267,10 +273,11 @@ def _query_and_download(task_id: int):
                 if m:
                     urls.append(m.group(1))
             url = urls[0] if urls else ""
-            _task_update(task_id, status="success", result_url=url, finished_at=_now_str())
+            _task_update(task_id, status="success", result_url=url, finished_at=_now_str(), progress=100)
             # 下载本地
             if url:
                 try:
+                    _task_update(task_id, progress=95)
                     import httpx
                     with httpx.Client(timeout=180) as cl:
                         r = cl.get(url)
@@ -279,19 +286,22 @@ def _query_and_download(task_id: int):
                             fpath = os.path.join(VIDEO_DIR, fname)
                             with open(fpath, "wb") as f:
                                 f.write(r.content)
-                            _task_update(task_id, result_local=fname)
+                            _task_update(task_id, result_local=fname, progress=100)
                 except Exception as e:
                     _task_update(task_id, fail_reason=f"下载失败: {e}")
             return
         if last_status == "fail":
             reason = (data.get("fail_reason") or "").strip()
             _task_update(task_id, status="fail", fail_reason=reason or (err or out)[-200:],
-                         finished_at=_now_str())
+                         finished_at=_now_str(), progress=100)
             return
-        # 仍在 querying
+        # 仍在 querying: 按耗时推进进度（0-90 区间，5 分钟到 90 封顶）
+        elapsed = time.time() - start_wait
+        prog = int(min(90, 15 + elapsed / 300.0 * 75))
+        _task_update(task_id, progress=prog)
         time.sleep(8)
     _task_update(task_id, status="fail", fail_reason=f"轮询超时({timeout_sec}s)，最后状态 {last_status}",
-                 finished_at=_now_str())
+                 finished_at=_now_str(), progress=100)
 
 
 def _video_worker(task_id: int):
@@ -302,7 +312,7 @@ def _video_worker(task_id: int):
         task = db.execute("SELECT * FROM seedance_video_tasks WHERE id=?", [task_id]).fetchone()
         if not task or task["status"] == "success":
             return
-        _task_update(task_id, status="submitting", started_at=_now_str())
+        _task_update(task_id, status="submitting", started_at=_now_str(), progress=10)
         try:
             ttype = task["task_type"] or "text2video"
             refs = []
@@ -345,7 +355,7 @@ def _video_worker(task_id: int):
                 return
             _task_update(task_id, status="querying", submit_id=str(submit_id))
             if status == "fail":
-                _task_update(task_id, status="fail",
+                _task_update(task_id, status="fail", progress=100,
                              fail_reason=(data.get("fail_reason") or "")[:200], finished_at=_now_str())
                 return
             if status == "success":
@@ -547,7 +557,7 @@ def retry_video_task(task_id: int):
     if row["status"] == "success":
         raise HTTPException(400, "任务已成功，无需重试")
     _task_update(task_id, status="queued", fail_reason="", submit_id="", result_url="", result_local="",
-                 started_at="", finished_at="")
+                 started_at="", finished_at="", progress=0)
     threading.Thread(target=_video_worker, args=(task_id,), daemon=True).start()
     return {"ok": True}
 

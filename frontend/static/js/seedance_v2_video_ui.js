@@ -214,6 +214,7 @@
             if (d && d.ok) {
                 App.showToast('✅ 已提交 '+d.count+' 个视频任务', 'success');
                 this.openVideoPanel();
+                if (App.seedanceV2._refreshVideoBadges) App.seedanceV2._refreshVideoBadges();
             } else {
                 App.showToast('提交未完成: ' + (d ? (d.detail || d.error || '未知错误') : '无响应'), 'error');
             }
@@ -234,7 +235,9 @@
         overlay.onclick = function(e) { if (e.target === overlay) { overlay.remove(); self._stopVideoPoll(); } };
         overlay.innerHTML = '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:760px;max-height:80vh;display:flex;flex-direction:column;">' +
             '<div class="modal-header"><h5>🎬 视频生成任务</h5><button class="header-btn-sm" onclick="App.seedanceV2.closeVideoPanel()">&times;</button></div>' +
-            '<div class="modal-body" style="flex:1;overflow-y:auto;" id="s2VideoTaskList"><div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div></div>' +
+            '<div class="modal-body" style="flex:1;overflow-y:auto;">' +
+            '<div id="s2VideoSummary" style="margin-bottom:10px;"></div>' +
+            '<div id="s2VideoTaskList"><div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div></div></div>' +
             '<div class="modal-footer" style="justify-content:space-between;">' +
             '<span style="font-size:11px;color:var(--text-muted);" id="s2VideoPollHint">每 8 秒自动刷新</span>' +
             '<button class="btn btn-secondary btn-sm" onclick="App.seedanceV2.closeVideoPanel()">关闭</button></div></div>';
@@ -246,6 +249,7 @@
     App.seedanceV2.closeVideoPanel = function() {
         var m = document.getElementById('s2VideoPanel'); if (m) m.remove();
         this._stopVideoPoll();
+        if (App.seedanceV2._refreshVideoBadges) App.seedanceV2._refreshVideoBadges();
     };
 
     App.seedanceV2._stopVideoPoll = function() {
@@ -258,6 +262,7 @@
         this._videoPollTimer = setInterval(function() {
             if (!document.getElementById('s2VideoPanel')) { self._stopVideoPoll(); return; }
             self._loadVideoTasks(true);
+            if (self._loadVideoTaskCache) self._loadVideoTaskCache();
         }, 8000);
     };
 
@@ -275,6 +280,8 @@
             var h = '';
             if (!items.length) {
                 h = '<div style="text-align:center;padding:30px;color:var(--text-muted);">暂无任务，点击「🎬 生成视频」提交</div>';
+                var sum = document.getElementById('s2VideoSummary');
+                if (sum) sum.innerHTML = '';
             } else {
                 var statusMap = {
                     'queued': ['排队中', '#94a3b8'],
@@ -283,12 +290,55 @@
                     'success': ['✅ 成功', '#10b981'],
                     'fail': ['❌ 失败', '#ef4444']
                 };
+                // ===== 聚合进度统计 =====
+                var done = 0, failed = 0, active = 0, totalProg = 0;
+                for (var si2 = 0; si2 < items.length; si2++) {
+                    var st2 = items[si2].status;
+                    if (st2 === 'success') done++;
+                    else if (st2 === 'fail') failed++;
+                    else active++;
+                    totalProg += (items[si2].progress || 0);
+                }
+                var total = items.length;
+                var avgProg = total ? Math.round(totalProg / total) : 0;
+                var sumEl = document.getElementById('s2VideoSummary');
+                if (sumEl) {
+                    var donePct = total ? Math.round(done / total * 100) : 0;
+                    sumEl.innerHTML = '<div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;">' +
+                        '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:4px;">' +
+                        '<span><strong>'+done+'</strong>/'+total+' 完成'+(active?' · <span style="color:#f59e0b;">'+active+' 进行中</span>':'')+(failed?' · <span style="color:#ef4444;">'+failed+' 失败</span>':'')+'</span>' +
+                        '<span style="font-weight:700;color:'+(donePct===100?'#10b981':'var(--text-main)')+';">'+donePct+'%</span></div>' +
+                        '<div style="height:8px;background:var(--hover-bg);border-radius:4px;overflow:hidden;">' +
+                        '<div style="height:100%;width:'+donePct+'%;background:linear-gradient(90deg,#10b981,#22c55e);border-radius:4px;transition:width 0.6s;"></div></div>' +
+                        '</div>';
+                }
                 h = '<div style="display:flex;flex-direction:column;gap:8px;">';
                 for (var i = 0; i < items.length; i++) {
                     var t = items[i];
                     var st = statusMap[t.status] || [t.status, '#94a3b8'];
                     var sceneLabel = t.scene_id ? ('镜头 #' + (function(){ for (var si=0; si<App.seedanceV2.scenes.length; si++){ if(App.seedanceV2.scenes[si].id===t.scene_id) return App.seedanceV2.scenes[si].scene_order; } return t.scene_id; })()) : '整项目';
                     var promptShort = (t.prompt || '').substring(0, 60);
+                    var prog = t.progress || 0;
+                    if (t.status === 'success') prog = 100;
+                    if (t.status === 'queued') prog = 5;
+                    if (t.status === 'submitting') prog = 10;
+                    // 已等待时长（进行中任务）
+                    var waitHtml = '';
+                    if (t.status === 'querying' || t.status === 'submitting' || t.status === 'queued') {
+                        var stTs = t.started_at || t.created_at || '';
+                        var waitSec = 0;
+                        if (stTs) {
+                            var parts = stTs.split(/[-: ]/);
+                            if (parts.length >= 6) {
+                                var d0 = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
+                                waitSec = Math.max(0, Math.round((Date.now() - d0.getTime()) / 1000));
+                            }
+                        }
+                        waitHtml = waitSec > 0 ? (' · 已等待 '+Math.floor(waitSec/60)+'分'+ (waitSec%60)+'秒') : '';
+                    }
+                    var barColor = t.status === 'success' ? 'linear-gradient(90deg,#10b981,#22c55e)' : (t.status === 'fail' ? 'linear-gradient(90deg,#ef4444,#f87171)' : 'linear-gradient(90deg,#f59e0b,#fbbf24)');
+                    var barHtml = '<div style="height:6px;background:var(--hover-bg);border-radius:3px;overflow:hidden;margin-top:4px;">' +
+                        '<div style="height:100%;width:'+prog+'%;background:'+barColor+';border-radius:3px;transition:width 0.8s;'+(t.status==='querying'?'animation:s2ProgressStripe 1s linear infinite;background-image:linear-gradient(45deg,rgba(255,255,255,0.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,0.15) 50%,rgba(255,255,255,0.15) 75%,transparent 75%);background-size:20px 20px;background-color:#f59e0b;':'')+'"></div></div>';
                     var actionHtml = '';
                     if (t.status === 'success') {
                         var preview = '';
@@ -313,9 +363,10 @@
                         '<span style="font-size:12px;font-weight:600;white-space:nowrap;">'+sceneLabel+'</span>' +
                         '<span style="font-size:10px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+App._escape(t.prompt||'')+'">'+App._escape(promptShort)+'</span>' +
                         '</div>' +
-                        '<span style="font-size:11px;padding:2px 8px;border-radius:10px;white-space:nowrap;background:'+st[1]+'22;color:'+st[1]+';font-weight:600;">'+st[0]+'</span>' +
+                        '<span style="font-size:11px;padding:2px 8px;border-radius:10px;white-space:nowrap;background:'+st[1]+'22;color:'+st[1]+';font-weight:600;">'+st[0]+(t.status==='querying'||t.status==='submitting'||t.status==='queued'?' '+prog+'%':'')+'</span>' +
                         '</div>' +
-                        '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">'+t.model_version+' · '+t.ratio+' · '+t.video_resolution+' · '+t.duration+'s'+(t.created_at?' · '+t.created_at:'')+'</div>' +
+                        '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">'+t.model_version+' · '+t.ratio+' · '+t.video_resolution+' · '+t.duration+'s'+(t.created_at?' · '+t.created_at:'')+waitHtml+'</div>' +
+                        barHtml +
                         actionHtml +
                         '</div>';
                 }
