@@ -2406,8 +2406,9 @@ Object.assign(App, {
     },
 
     // 渲染队列总览：统计 + 任务卡片（活跃全部 + 最近 3 个终态）
-    _renderBatchQueueOverview(items) {
-        var ov = document.getElementById('bgenQueueOverview');
+    // container 为空时渲染到弹窗内 bgenQueueOverview；主界面状态条面板传入自身容器
+    _renderBatchQueueOverview(items, container) {
+        var ov = container || document.getElementById('bgenQueueOverview');
         if (!ov) return;
         var active = [];
         var doneArr = [];
@@ -2474,6 +2475,86 @@ Object.assign(App, {
         }
         ov.innerHTML = html;
         ov.style.display = 'block';
+    },
+
+    // ============ 主界面队列状态条（2026-08-11 刷新即见） ============
+    // 页面右下角常驻悬浮条：🟢运行/🟡排队/❌异常/✅完成 概要，点击展开任务列表面板。
+    // 解决「队列总览藏在弹窗里，刷新后找不到」的问题。
+    _initBatchQueueBar() {
+        var self = this;
+        if (this._batchBarEl) return;
+        var bar = document.createElement('div');
+        bar.id = 'bgenQueueBar';
+        bar.style.cssText = 'position:fixed;right:14px;bottom:12px;z-index:600;display:none;align-items:center;gap:8px;padding:6px 14px;border-radius:20px;background:var(--bg-card,#1e293b);border:1px solid #6366f1;box-shadow:0 6px 24px rgba(0,0,0,0.35);cursor:pointer;font-size:11px;color:var(--text-main,#e2e8f0);';
+        bar.innerHTML = '<span style="font-weight:600;">📊 生成队列</span><span id="bgenQueueBarStats"></span>';
+        bar.onclick = function() { self._toggleBatchQueuePanel(); };
+        document.body.appendChild(bar);
+        this._batchBarEl = bar;
+        var panel = document.createElement('div');
+        panel.id = 'bgenQueuePanel';
+        panel.style.cssText = 'position:fixed;right:14px;bottom:44px;width:430px;max-width:92vw;max-height:60vh;overflow-y:auto;z-index:601;display:none;background:var(--bg-card,#1e293b);border:1px solid #6366f1;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,0.4);padding:8px 10px;';
+        panel.innerHTML = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">' +
+            '<span style="font-size:12px;font-weight:600;">📊 生成队列总览</span>' +
+            '<span style="margin-left:auto;font-size:9px;color:var(--text-muted);">3s 自动刷新 · 点击查看词卡详情</span>' +
+            '<button type="button" style="border:none;background:none;cursor:pointer;font-size:14px;color:var(--text-muted);" onclick="App._toggleBatchQueuePanel()">✕</button>' +
+            '</div><div id="bgenQueuePanelBody"></div>';
+        document.body.appendChild(panel);
+        this._batchQueuePanelEl = panel;
+        // 全局轮询（常驻，不随弹窗开关）
+        if (this._batchQueueBarTimer) clearInterval(this._batchQueueBarTimer);
+        var tick = async function() {
+            try {
+                var d = await self.fetchJSON('/api/v2/comfyui/batch-tasks?limit=100');
+                if (d && d.ok) self._renderBatchQueueBar(d.items || []);
+            } catch(e) { /* 忽略，下轮重试 */ }
+        };
+        tick();
+        this._batchQueueBarTimer = setInterval(tick, 3000);
+    },
+
+    // 更新状态条概要 + 展开面板内容（若面板打开）
+    _renderBatchQueueBar(items) {
+        var bar = this._batchBarEl;
+        var statsEl = document.getElementById('bgenQueueBarStats');
+        if (!bar || !statsEl) return;
+        var active = [];
+        var doneCnt = 0;
+        for (var i = 0; i < items.length; i++) {
+            var t = items[i];
+            if (t.status === 'queued' || t.status === 'running' || t.status === 'error') active.push(t);
+            else if (t.status === 'done') doneCnt++;
+        }
+        if (active.length === 0) { bar.style.display = 'none'; return; }
+        var runCnt = 0, queuedCnt = 0, errCnt = 0;
+        for (var j = 0; j < active.length; j++) {
+            if (active[j].status === 'running') runCnt++;
+            else if (active[j].status === 'queued') queuedCnt++;
+            else errCnt++;
+        }
+        bar.style.display = 'flex';
+        statsEl.innerHTML = '<span style="color:#10b981;">🟢' + runCnt + '</span>' +
+            '<span style="color:#d97706;">🟡' + queuedCnt + '</span>' +
+            (errCnt ? '<span style="color:#ef4444;">❌' + errCnt + '</span>' : '') +
+            '<span style="color:#94a3b8;">✅' + doneCnt + '</span>';
+        if (this._batchQueuePanelEl && this._batchQueuePanelEl.style.display === 'block') {
+            this._renderBatchQueueOverview(items, document.getElementById('bgenQueuePanelBody'));
+        }
+    },
+
+    // 展开/收起主界面队列面板
+    _toggleBatchQueuePanel() {
+        var panel = this._batchQueuePanelEl;
+        if (!panel) return;
+        var show = panel.style.display !== 'block';
+        panel.style.display = show ? 'block' : 'none';
+        if (show) {
+            var self = this;
+            this.fetchJSON('/api/v2/comfyui/batch-tasks?limit=100').then(function(d) {
+                if (d && d.ok && self._batchQueuePanelEl && self._batchQueuePanelEl.style.display === 'block') {
+                    self._renderBatchQueueOverview(d.items || [], document.getElementById('bgenQueuePanelBody'));
+                }
+            }).catch(function() {});
+        }
     },
 
     // 悬停大图预览：跟随鼠标显示原图（不阻塞点击）
@@ -3016,6 +3097,8 @@ Object.assign(App, {
                 if (typeof App._pollBatchTask === 'function') {
                     for (var bi = 0; bi < list.length; bi++) App._pollBatchTask(list[bi]);
                 }
+                // 2026-08-11: 主界面常驻队列状态条（刷新即见，点击展开任务列表）
+                if (typeof App._initBatchQueueBar === 'function') App._initBatchQueueBar();
             } catch(e) {}
         }, 2000);
     };
