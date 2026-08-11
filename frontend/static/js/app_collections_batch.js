@@ -82,6 +82,13 @@ Object.assign(App, {
                     '<button type="button" class="bgen-btn" id="bgenSaveAllBtn" onclick="App._ollamaSaveAll()" style="padding:1px 8px;font-size:10px;border-color:#10b981;color:#10b981;" title="所有优化结果一键存入对应词卡详细档">💾 全部存词卡</button>' +
                     '<button type="button" class="bgen-btn" onclick="App._ollamaRevertAll()" style="padding:1px 8px;font-size:10px;border-color:var(--border-color);color:var(--text-muted);" title="丢弃全部优化结果，恢复原始提示词">↩ 全部恢复</button>' +
                   '</div>' +
+                  // 2026-08-11: 框选批量操作栏（拖拽框选后显示：批量免生成/恢复生成）
+                  '<div id="bgenFrameBar" style="display:none;align-items:center;gap:4px;padding:5px 8px;border-bottom:1px dashed #6366f1;flex-wrap:wrap;background:rgba(99,102,241,0.05);">' +
+                    '<span id="bgenFrameCount" style="font-size:10px;color:#6366f1;font-weight:600;"></span>' +
+                    '<button type="button" class="bgen-btn" onclick="App._batchFrameSkip()" style="padding:1px 8px;font-size:10px;border-color:#ef4444;color:#ef4444;" title="将框选的所有词卡标记为免生成（不参与本次生成）">⛔ 批量免生成</button>' +
+                    '<button type="button" class="bgen-btn" onclick="App._batchFrameUnskip()" style="padding:1px 8px;font-size:10px;border-color:#10b981;color:#10b981;" title="恢复框选词卡参与生成">✅ 恢复生成</button>' +
+                    '<button type="button" class="bgen-btn" onclick="App._batchFrameClear()" style="padding:1px 8px;font-size:10px;border-color:var(--border-color);color:var(--text-muted);">✕ 清除选择</button>' +
+                  '</div>' +
                   '<div id="bgenPreviewList" style="max-height:300px;overflow-y:auto;padding:4px 6px;"></div>' +
                 '</div>' +
                 // 生成引擎切换
@@ -259,6 +266,10 @@ Object.assign(App, {
         }
         // 2026-08-11: 断点任务自主识别 + 询问提醒（启动恢复报告）
         this._checkResumeReport();
+        // 2026-08-11: 列表拖拽框选（全词库/分组预览通用，边缘自动滚动 + 批量免生成）
+        this._batchFrameSelected = {};
+        if (this._frameSel) this._frameSel.selected = {};
+        this._initFrameSelect();
     },
 
     // ============ 启动恢复报告检查（2026-08-11 断点任务提醒） ============
@@ -2150,6 +2161,211 @@ Object.assign(App, {
             var total = (this._batchIds || []).length;
             var skippedCount = Object.keys(this._batchSkipPids || {}).length;
             cnt.textContent = total + ' 张' + (skippedCount > 0 ? '（已排除 ' + skippedCount + '）' : '');
+        }
+    },
+
+    // ============ 拖拽框选批量选择（2026-08-11） ============
+    // 列表内按住左键拖拽 → 矩形框选词卡行；鼠标靠近列表上下边缘自动滚动；
+    // 选中后可批量「免生成/恢复生成」；点击按钮/输入框/滚动条不触发框选。
+    _initFrameSelect() {
+        var self = this;
+        var list = document.getElementById('bgenPreviewList');
+        if (!list || list.dataset.framesel === '1') return;
+        list.dataset.framesel = '1';
+        list.style.position = 'relative';
+        this._frameSel = this._frameSel || { active: false, moved: false, box: null, raf: 0, selected: {} };
+        this._batchFrameSelected = this._batchFrameSelected || {};
+        var fs = this._frameSel;
+        var box = document.createElement('div');
+        box.id = 'bgenFrameBox';
+        box.style.cssText = 'position:absolute;display:none;border:1px solid #6366f1;background:rgba(99,102,241,0.15);z-index:5;pointer-events:none;border-radius:3px;';
+        list.appendChild(box);
+        fs.box = box;
+
+        list.addEventListener('mousedown', function(e) {
+            if (e.button !== 0) return;
+            var t = e.target;
+            if (t && t.closest && t.closest('button, input, textarea, a, select')) return;
+            var rect = list.getBoundingClientRect();
+            // 滚动条区域不触发（右侧 14px）
+            if (e.clientX > rect.right - 14) return;
+            fs.active = true;
+            fs.moved = false;
+            fs.startX = e.clientX - rect.left;
+            fs.startY = e.clientY - rect.top;
+            fs.x = fs.startX;
+            fs.y = fs.startY;
+            box.style.left = fs.startX + 'px';
+            box.style.top = fs.startY + 'px';
+            box.style.width = '0px';
+            box.style.height = '0px';
+            box.style.display = 'block';
+            // 清除旧框选（行高亮）
+            self._frameClearHighlight();
+            try { document.body.style.userSelect = 'none'; } catch(e2) {}
+            if (e.preventDefault) e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!fs.active) return;
+            var rect = list.getBoundingClientRect();
+            var cx = e.clientX - rect.left;
+            var cy = e.clientY - rect.top;
+            if (Math.abs(cx - fs.startX) > 4 || Math.abs(cy - fs.startY) > 4) fs.moved = true;
+            fs.x = cx;
+            fs.y = cy;
+            var l = Math.min(fs.startX, fs.x);
+            var t2 = Math.min(fs.startY, fs.y);
+            box.style.left = l + 'px';
+            box.style.top = t2 + 'px';
+            box.style.width = Math.abs(fs.x - fs.startX) + 'px';
+            box.style.height = Math.abs(fs.y - fs.startY) + 'px';
+            // 边缘自动滚动（鼠标靠近列表可视区上下边缘持续滚动）
+            var lr = list.getBoundingClientRect();
+            var speed = 0;
+            if (e.clientY < lr.top + 28) speed = -12;
+            else if (e.clientY > lr.bottom - 28) speed = 12;
+            if (speed !== 0) {
+                if (!fs.raf) {
+                    fs.raf = requestAnimationFrame(function step() {
+                        if (!fs.active) { fs.raf = 0; return; }
+                        list.scrollTop += speed;
+                        // 选框保持相对可视区（不随滚动移动），行位置变化由高亮重算覆盖
+                        self._frameUpdateHighlight();
+                        fs.raf = requestAnimationFrame(step);
+                    });
+                }
+            } else if (fs.raf) {
+                cancelAnimationFrame(fs.raf);
+                fs.raf = 0;
+            }
+            self._frameUpdateHighlight();
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (!fs.active) return;
+            fs.active = false;
+            if (fs.raf) { cancelAnimationFrame(fs.raf); fs.raf = 0; }
+            if (fs.box) fs.box.style.display = 'none';
+            try { document.body.style.userSelect = ''; } catch(e3) {}
+            // 非拖拽点击（原地按下松开）→ 清除框选
+            if (!fs.moved) self._frameClearSelection();
+            self._frameUpdateBar();
+        });
+    },
+
+    // 计算与选框相交的行并高亮
+    _frameUpdateHighlight() {
+        var fs = this._frameSel;
+        var list = document.getElementById('bgenPreviewList');
+        if (!fs || !list) return;
+        var l = Math.min(fs.startX, fs.x);
+        var t2 = Math.min(fs.startY, fs.y);
+        var r = Math.max(fs.startX, fs.x);
+        var b = Math.max(fs.startY, fs.y);
+        var lr = list.getBoundingClientRect();
+        var sel = {};
+        var rows = list.querySelectorAll('[data-pid]');
+        for (var i = 0; i < rows.length; i++) {
+            var rc = rows[i].getBoundingClientRect();
+            var rl = rc.left - lr.left;
+            var rt = rc.top - lr.top;
+            var rr = rl + rc.width;
+            var rb = rt + rc.height;
+            var pid = rows[i].getAttribute('data-pid');
+            var hit = rr > l && rb > t2 && rl < r && rt < b;
+            if (hit) {
+                sel[pid] = true;
+                rows[i].style.outline = '2px solid #6366f1';
+                rows[i].style.outlineOffset = '-2px';
+                rows[i].style.background = 'rgba(99,102,241,0.08)';
+            } else {
+                rows[i].style.outline = '';
+                rows[i].style.background = '';
+            }
+        }
+        fs.selected = sel;
+        this._batchFrameSelected = sel;
+    },
+
+    // 清除行高亮（保留选择集合）
+    _frameClearHighlight() {
+        var list = document.getElementById('bgenPreviewList');
+        if (!list) return;
+        var rows = list.querySelectorAll('[data-pid]');
+        for (var i = 0; i < rows.length; i++) {
+            rows[i].style.outline = '';
+            rows[i].style.background = '';
+        }
+    },
+
+    // 清除选择集合 + 高亮 + 操作栏
+    _frameClearSelection() {
+        this._frameClearHighlight();
+        this._batchFrameSelected = {};
+        if (this._frameSel) this._frameSel.selected = {};
+        this._frameUpdateBar();
+    },
+
+    // 框选操作栏显隐/计数
+    _frameUpdateBar() {
+        var bar = document.getElementById('bgenFrameBar');
+        var cnt = document.getElementById('bgenFrameCount');
+        if (!bar || !cnt) return;
+        var n = Object.keys(this._batchFrameSelected || {}).length;
+        if (n === 0) { bar.style.display = 'none'; return; }
+        bar.style.display = 'flex';
+        cnt.textContent = '已框选 ' + n + ' 张';
+    },
+
+    // 批量免生成：框选卡全部标记为不参与本次生成
+    _batchFrameSkip() {
+        var pids = Object.keys(this._batchFrameSelected || {});
+        if (!pids.length) return;
+        this._batchSkipPids = this._batchSkipPids || {};
+        for (var i = 0; i < pids.length; i++) this._batchSkipPids[pids[i]] = true;
+        for (var j = 0; j < pids.length; j++) {
+            var row = document.querySelector('#bgenPreviewList [data-pid="' + pids[j] + '"]');
+            this._applySkipState(pids[j], row);
+        }
+        this.showToast('已标记 ' + pids.length + ' 张为「免生成」（提交时自动跳过）', 'info');
+        this._frameClearSelection();
+        this._renderBatchPreview();
+    },
+
+    // 批量恢复生成：框选卡恢复参与
+    _batchFrameUnskip() {
+        var pids = Object.keys(this._batchFrameSelected || {});
+        if (!pids.length) return;
+        this._batchSkipPids = this._batchSkipPids || {};
+        for (var i = 0; i < pids.length; i++) delete this._batchSkipPids[pids[i]];
+        for (var j = 0; j < pids.length; j++) {
+            var row = document.querySelector('#bgenPreviewList [data-pid="' + pids[j] + '"]');
+            this._applySkipState(pids[j], row);
+        }
+        this.showToast('已恢复 ' + pids.length + ' 张参与生成', 'info');
+        this._frameClearSelection();
+        this._renderBatchPreview();
+    },
+
+    // 清除框选
+    _batchFrameClear() {
+        this._frameClearSelection();
+    },
+
+    // 单卡免生成状态应用到行（opacity + 按钮文案）
+    _applySkipState(pid, row) {
+        if (!row) return;
+        var skipped = !!(this._batchSkipPids || {})[pid];
+        row.style.opacity = skipped ? '0.45' : '';
+        var btns = row.querySelectorAll('button');
+        for (var i = 0; i < btns.length; i++) {
+            var b = btns[i];
+            var oc = b.getAttribute('onclick') || '';
+            if (oc.indexOf('_batchToggleSkip') > -1) {
+                b.innerHTML = skipped ? '✅ 生成' : '⛔ 免生成';
+                b.title = skipped ? '恢复参与本次生成' : '排除该卡，不参与本次生成';
+            }
         }
     },
 
