@@ -101,6 +101,7 @@
             '<input id="s2VideoSession" class="s2-input" type="number" min="0" value="'+defSession+'" style="width:100%;margin-top:2px;" title="即梦 CLI --session"></div>' +
             '</div>' +
             '<div id="s2VideoResTip">'+resTip+'</div>' +
+            '<div id="s2VideoRefsBox" style="margin-top:8px;"></div>' +
             '<div style="background:var(--hover-bg);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--text-muted);margin-top:8px;">' +
             '⏱ 预计时长：整项目='+(p.total_duration||15)+'s（上限15s，超长请用逐镜头）；逐镜头=各镜头时长（自动收敛 4-15s，seedance2.5 可达 30s）<br>' +
             '📌 即梦生成异步执行，提交后可到「📺 任务面板」查看进度与结果。</div>' +
@@ -108,6 +109,8 @@
             '<div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'s2VideoSubmit\').remove()">取消</button>' +
             '<button class="btn btn-primary btn-sm" id="s2VideoSubmitBtn">③ 提交生成</button></div></div>';
         document.body.appendChild(overlay);
+        // v5.36.2: 加载将携带的参考图预览
+        this._loadSubmitRefsPreview();
         document.getElementById('s2VideoSubmitBtn').onclick = function() {
             var scope = document.querySelector('input[name="s2VideoScope"]:checked');
             var model = document.getElementById('s2VideoModel').value;
@@ -116,6 +119,49 @@
             var session = parseInt(document.getElementById('s2VideoSession').value || '0');
             self._doVideoSubmit(scope ? scope.value : 'scenes', model, ratio, res, session);
         };
+    };
+
+    // v5.36.2: 提交弹窗参考图预览（全局+镜头合并，显示生产方式）
+    App.seedanceV2._loadSubmitRefsPreview = async function() {
+        var box = document.getElementById('s2VideoRefsBox');
+        if (!box) return;
+        var self = this;
+        if (!this.currentProjectId) return;
+        try {
+            var refs = [];
+            var gd = await App.fetchJSON('/api/seedance/v2/refs?project_id='+this.currentProjectId);
+            if (gd && gd.items) refs = refs.concat(gd.items);
+            // 逐镜头（scope=scenes 时前端先显示总数提示）
+            var sceneTotal = 0;
+            var scenes = this.scenes || [];
+            for (var i = 0; i < scenes.length; i++) {
+                var dd = await App.fetchJSON('/api/seedance/v2/refs?project_id='+this.currentProjectId+'&scene_id='+scenes[i].id);
+                if (dd && dd.items) sceneTotal += dd.items.length;
+            }
+            if (!refs.length && !sceneTotal) {
+                box.innerHTML = '<div style="font-size:11px;color:var(--text-muted);background:var(--hover-bg);border-radius:6px;padding:6px 10px;">📝 生产方式：纯文本（无图像参考）。可在镜头卡「🖼 参考」或全局参数「🖼 全局图像参考」添加。</div>';
+                return;
+            }
+            var mode = '';
+            var total = refs.length + sceneTotal;
+            if (total === 0) mode = '📝 纯文本';
+            else if (total === 1) mode = '🖼 单图参考 → image2video';
+            else mode = '🖼🖼 多图参考('+total+') → multimodal2video';
+            var h = '<div style="font-size:11px;font-weight:600;margin-bottom:4px;color:#8b5cf6;">'+mode+'</div>';
+            if (refs.length) {
+                h += '<div style="font-size:10px;color:var(--text-muted);margin-bottom:2px;">全局参考 ('+refs.length+'):</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;">';
+                for (var j = 0; j < refs.length; j++) {
+                    h += '<img src="'+App._escape(refs[j].preview_url||refs[j].url||'')+'" style="width:36px;height:36px;object-fit:cover;border-radius:5px;border:1px solid var(--border-color);" title="'+App._escape(refs[j].ref_name||'')+'" onerror="this.style.opacity=0.2">';
+                }
+                h += '</div>';
+            }
+            if (sceneTotal) {
+                h += '<div style="font-size:10px;color:var(--text-muted);">+ '+sceneTotal+' 张镜头级参考图（逐镜头模式时随镜头携带）</div>';
+            }
+            box.innerHTML = h;
+        } catch (e) {
+            box.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">参考图加载失败</div>';
+        }
     };
 
     // 模型切换时更新分辨率映射提示

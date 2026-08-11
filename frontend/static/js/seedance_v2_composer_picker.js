@@ -82,6 +82,11 @@
         h+='<div class="s2-field" style="flex:1;"><label>视频分辨率</label><select id="s2_video_resolution" class="s2-input" onchange="App.seedanceV2._saveVideoParam(&apos;video_resolution&apos;,this.value)">'+vrOpts+'</select></div>';
         h+='<div class="s2-field" style="flex:0.8;"><label>即梦会话</label><input id="s2_video_session" class="s2-input" type="number" min="0" value="'+vses+'" onchange="App.seedanceV2._saveVideoParam(&apos;video_session&apos;,this.value)" title="即梦 CLI --session，默认 0"></div>';
         h+='<div style="width:100%;font-size:10px;color:var(--text-muted);margin-top:2px;" id="s2VideoParamHint">💡 即梦画幅取上方「画幅」设置（16:9/9:16/1:1/21:9/4:3/3:4 均支持）；分辨率超出模型上限将自动降级（如 seedance2.0fast 上限 720p）。</div>';
+        h+='</div>';
+        // v5.36.2: 全局图像参考（所有镜头共享，上限9张）
+        h+='<div class="s2-global-row" style="margin-top:6px;background:rgba(139,92,246,0.05);border:1px dashed rgba(139,92,246,0.3);border-radius:6px;padding:6px 8px;">';
+        h+='<div style="width:100%;font-size:11px;font-weight:700;color:#8b5cf6;margin-bottom:4px;">🖼 全局图像参考 <span style="font-weight:400;color:var(--text-muted);font-size:10px;">(所有镜头共享，生成视频时携带)</span><button class="s2-ref-add-btn s2-ref-add-global" style="float:right;border:1px solid #8b5cf6;color:#8b5cf6;" title="添加全局参考图（上限9张）">+ 添加</button></div>';
+        h+='<div class="s2-ref-thumbs" id="s2RefThumbs_global"></div>';
         h+='</div></div></div>';
         // ③ 输出预览
         h+='<div class="s2-output-section"><div class="s2-section-title" onclick="App.seedanceV2._toggleOutput()" title="点击折叠/展开"> 输出预览 <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span></div>';
@@ -415,6 +420,10 @@
             document.querySelectorAll('.s2-edit-input').forEach(function(el){el.addEventListener('input',function(){var sid=parseInt(this.dataset.sceneId),f=this.dataset.field;if(!sid||!f)return;self._onEditInput(sid,f,this);});});
             document.querySelectorAll('.s2-edit-archive').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=parseInt(this.dataset.sceneId),f=this.dataset.field;if(!sid||!f)return;self._archiveField(sid,f);});});
             document.querySelectorAll('.s2-edit-all-archive').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=parseInt(this.dataset.sceneId);if(!sid)return;self._archiveAllFields(sid);});});
+            // ===== v5.36.2: 参考图事件 =====
+            document.querySelectorAll('.s2-ref-add-btn').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=this.dataset.sceneId;if(sid==='global'){self._openRefPicker(null);}else if(sid){self._openRefPicker(parseInt(sid));}else{var p=this.closest('.s2-ref-group');var pid2=p?p.dataset.sceneId:null;if(pid2==='global')self._openRefPicker(null);else if(pid2)self._openRefPicker(parseInt(pid2));}});});
+            document.querySelectorAll('.s2-ref-del').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var id=parseInt(this.dataset.refId);if(!id)return;self._deleteRef(id);});});
+            self._loadAllRefThumbs();
 
         },100);
         // v9.3: 每次渲染镜头卡片后刷新时间轴
@@ -485,6 +494,12 @@
             h+='<span class="s2-field-chip s2-chip-audio '+(filled?'s2-filled':'s2-empty')+'" data-scene-id="'+s.id+'" data-field="'+af.f+'" style="opacity:'+(s.audio_enabled?'1':'0.4')+';"><span class="s2-chip-label">'+af.icon+' '+af.n+'</span><span class="s2-chip-val">'+(filled?(av.length>12?av.substring(0,12)+'..':av):'+')+'</span></span>';
         }
         h+='</div></div>';
+                // == v5.36.2: 图像参考区（角色图/场景图） ==
+        h+='<div class="s2-field-group s2-ref-group" data-scene-id="'+s.id+'">';
+        h+='<span class="s2-field-label">🖼 参考</span>';
+        h+='<span class="s2-ref-add-btn" data-scene-id="'+s.id+'" title="添加角色参考图/场景参考图（上限9张）">+ 添加</span>';
+        h+='<div class="s2-ref-thumbs" id="s2RefThumbs_'+s.id+'"></div>';
+        h+='</div>';
                 // == 拓展区：功能单元(Ext-Unit)系统 ==
         h+='<div class="s2-field-group s2-ext-group">';
         h+='<span class="s2-field-label">拓展</span>';
@@ -573,6 +588,12 @@
             }
             h += '</div>';
         }
+        h += '</div>';
+        // v5.36.2: 编辑模式参考图区
+        h += '<div class="s2-field-group s2-ref-group" data-scene-id="'+s.id+'">';
+        h += '<span class="s2-field-label">🖼 参考</span>';
+        h += '<span class="s2-ref-add-btn" data-scene-id="'+s.id+'" title="添加角色参考图/场景参考图（上限9张）">+ 添加</span>';
+        h += '<div class="s2-ref-thumbs" id="s2RefThumbs_'+s.id+'"></div>';
         h += '</div>';
         // 底部操作区
         h += '<div class="s2-edit-actions">';
@@ -911,6 +932,241 @@
     App.seedanceV2.reorderScenes=async function(src,tgt){if(!this.currentProjectId)return;this._pushUndoBefore();var ids=[];for(var i=0;i<this.scenes.length;i++)ids.push(this.scenes[i].id);var si=ids.indexOf(src),ti=ids.indexOf(tgt);if(si<0||ti<0)return;ids.splice(si,1);var newTi=ids.indexOf(tgt);if(si<ti)ids.splice(newTi+1,0,src);else ids.splice(newTi,0,src);var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_ids:ids})});if(d&&d.ok){await this.openProject(this.currentProjectId);App.showToast(App._t('auto.str_7d7594cf', '镜头已重新排序'),'success');}};
 
     App.seedanceV2.updateSceneField=async function(sid,f,v){this._pushUndoBefore();var d={};d[f]=v;await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});};
+
+    // ========== v5.36.2: 图像参考 ==========
+
+    // 加载镜头/全局参考图缩略图
+    App.seedanceV2._loadAllRefThumbs = async function() {
+        if (!this.currentProjectId) return;
+        var self = this;
+        try {
+            // 全局
+            var gd = await App.fetchJSON('/api/seedance/v2/refs?project_id='+this.currentProjectId);
+            if (gd) self._renderRefThumbs(gd.items || [], 'global');
+            // 各镜头
+            var scenes = this.scenes || [];
+            for (var i = 0; i < scenes.length; i++) {
+                var sid = scenes[i].id;
+                var dd = await App.fetchJSON('/api/seedance/v2/refs?project_id='+this.currentProjectId+'&scene_id='+sid);
+                if (dd) self._renderRefThumbs(dd.items || [], sid);
+            }
+        } catch (e) { console.warn('refs load fail', e); }
+    };
+
+    // 渲染参考图缩略图区
+    App.seedanceV2._renderRefThumbs = function(items, scopeKey) {
+        var c = document.getElementById('s2RefThumbs_'+scopeKey);
+        if (!c) return;
+        if (!items.length) { c.innerHTML = '<span style="font-size:10px;color:var(--text-muted);">暂无参考图</span>'; return; }
+        var h = '';
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            var label = (it.ref_type === 'scene' ? '🏞' : (it.ref_type === 'style' ? '🎨' : '🧑')) + (it.ref_name ? ' '+App._escape(it.ref_name) : '');
+            h += '<span class="s2-ref-thumb" title="'+App._escape(it.file_path||'')+'">' +
+                '<img src="'+App._escape(it.preview_url || '')+'" onerror="this.style.opacity=0.3" loading="lazy" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border-color);">' +
+                '<span class="s2-ref-thumb-label">'+label+'</span>' +
+                '<button class="s2-ref-del" data-ref-id="'+it.id+'" title="删除">✕</button>' +
+                '</span>';
+        }
+        h += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">'+items.length+'/9</span>';
+        c.innerHTML = h;
+        // 重新绑定删除（renderScenes 绑定的是渲染时的，这里动态补绑）
+        var self = this;
+        c.querySelectorAll('.s2-ref-del').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var id = parseInt(this.dataset.refId);
+                if (id) self._deleteRef(id);
+            });
+        });
+    };
+
+    // 删除参考图
+    App.seedanceV2._deleteRef = async function(refId) {
+        var self = this;
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/refs/'+refId, { method:'DELETE' });
+            if (d && d.ok) {
+                App.showToast('已删除参考图', 'info');
+                await this._loadAllRefThumbs();
+            } else {
+                App.showToast('删除未完成: ' + (d ? (d.detail||'未知') : '无响应'), 'error');
+            }
+        } catch (e) { App.showToast('删除异常: '+e.message, 'error'); }
+    };
+
+    // 打开参考图添加弹窗（三来源：上传/媒体库/角色库）
+    App.seedanceV2._openRefPicker = async function(sceneId) {
+        var old = document.getElementById('s2RefPicker');
+        if (old) old.remove();
+        var self = this;
+        var scopeLabel = sceneId ? ('镜头 #' + (function(){ for (var i=0;i<self.scenes.length;i++){ if(self.scenes[i].id===sceneId) return self.scenes[i].scene_order; } return sceneId; })()) : '全局';
+        var overlay = document.createElement('div');
+        overlay.id = 's2RefPicker';
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'display:flex;z-index:720;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+        overlay.innerHTML = '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:640px;">' +
+            '<div class="modal-header"><h5>🖼 添加图像参考 — '+scopeLabel+'</h5><button class="header-btn-sm" onclick="document.getElementById(\'s2RefPicker\').remove()">&times;</button></div>' +
+            '<div class="modal-body">' +
+            '<div style="display:flex;gap:6px;margin-bottom:10px;">' +
+            '<button class="btn btn-sm btn-primary s2-ref-tab" data-tab="upload">📤 上传图片</button>' +
+            '<button class="btn btn-sm btn-outline s2-ref-tab" data-tab="media">📚 媒体库</button>' +
+            '<button class="btn btn-sm btn-outline s2-ref-tab" data-tab="character">🧑 角色库</button>' +
+            '</div>' +
+            '<div id="s2RefTabBody"></div>' +
+            '</div>' +
+            '<div class="modal-footer"><span style="font-size:10px;color:var(--text-muted);">上限 9 张（角色+场景合计）</span><button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'s2RefPicker\').remove()">关闭</button></div></div>';
+        document.body.appendChild(overlay);
+        var renderTab = function(tab) {
+            var body = document.getElementById('s2RefTabBody');
+            document.querySelectorAll('.s2-ref-tab').forEach(function(b){ b.classList.remove('btn-primary'); b.classList.add('btn-outline'); });
+            var btn = document.querySelector('.s2-ref-tab[data-tab="'+tab+'"]');
+            if (btn) { btn.classList.remove('btn-outline'); btn.classList.add('btn-primary'); }
+            if (tab === 'upload') {
+                body.innerHTML = '<div style="padding:10px;">' +
+                    '<label style="font-size:11px;color:var(--text-muted);">参考类型</label>' +
+                    '<select id="s2RefType" class="s2-input" style="width:100%;margin:4px 0 8px;"><option value="character">🧑 角色参考图</option><option value="scene">🏞 场景参考图</option><option value="style">🎨 风格参考图</option></select>' +
+                    '<label style="font-size:11px;color:var(--text-muted);">备注名（可选）</label>' +
+                    '<input id="s2RefName" class="modal-input" placeholder="如：主角·李明" style="margin:4px 0 10px;">' +
+                    '<input id="s2RefFile" type="file" accept="image/*" style="margin-bottom:10px;">' +
+                    '<button class="btn btn-primary btn-sm" id="s2RefUploadBtn">上传并添加</button></div>';
+                document.getElementById('s2RefUploadBtn').onclick = function() {
+                    var f = document.getElementById('s2RefFile').files[0];
+                    if (!f) { App.showToast('请选择图片', 'warning'); return; }
+                    self._uploadRef(sceneId, f);
+                };
+            } else if (tab === 'media') {
+                body.innerHTML = '<div style="padding:6px;font-size:12px;color:var(--text-muted);">加载媒体库...</div>';
+                self._loadMediaRefs(sceneId, body);
+            } else {
+                body.innerHTML = '<div style="padding:6px;font-size:12px;color:var(--text-muted);">加载角色库...</div>';
+                self._loadCharacterRefs(sceneId, body);
+            }
+        };
+        overlay.querySelectorAll('.s2-ref-tab').forEach(function(b){
+            b.addEventListener('click', function(){ renderTab(this.dataset.tab); });
+        });
+        renderTab('upload');
+    };
+
+    // 上传参考图并添加
+    App.seedanceV2._uploadRef = async function(sceneId, file) {
+        App.showToast('上传中...', 'info');
+        var self = this;
+        try {
+            var fd = new FormData();
+            fd.append('file', file);
+            var up = await App.fetchJSON('/api/seedance/v2/refs/upload', { method:'POST', body: fd, _noJson: true });
+            // fetchJSON 需要检查返回格式
+            var upData = null;
+            if (up && typeof up === 'string') { try { upData = JSON.parse(up); } catch(e){} }
+            else if (up && up.ok !== undefined) upData = up;
+            if (!upData || !upData.ok) {
+                App.showToast('上传未完成: ' + (upData ? (upData.detail||'未知') : '无响应'), 'error');
+                return;
+            }
+            var refType = document.getElementById('s2RefType') ? document.getElementById('s2RefType').value : 'character';
+            var refName = document.getElementById('s2RefName') ? (document.getElementById('s2RefName').value || '') : '';
+            var payload = {
+                project_id: this.currentProjectId,
+                scene_id: sceneId || null,
+                ref_type: refType,
+                ref_name: refName,
+                source_kind: 'upload',
+                file_path: upData.file_path,
+                url: upData.url
+            };
+            var d = await App.fetchJSON('/api/seedance/v2/refs', {
+                method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+            });
+            var m = document.getElementById('s2RefPicker'); if (m) m.remove();
+            if (d && d.ok) {
+                App.showToast('✅ 参考图已添加', 'success');
+                await this._loadAllRefThumbs();
+            } else {
+                App.showToast('添加未完成: ' + (d ? (d.detail||'未知') : '无响应'), 'error');
+                this._loadAllRefThumbs();
+            }
+        } catch (e) {
+            App.showToast('上传异常: '+e.message, 'error');
+        }
+    };
+
+    // 从媒体库选择
+    App.seedanceV2._loadMediaRefs = async function(sceneId, bodyEl) {
+        var self = this;
+        try {
+            var d = await App.fetchJSON('/api/media/library?page_size=30');
+            var items = (d && d.items) ? d.items : [];
+            if (!items.length) { bodyEl.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--text-muted);">媒体库暂无图片</div>'; return; }
+            var h = '<div style="display:flex;flex-wrap:wrap;gap:8px;max-height:300px;overflow-y:auto;padding:4px;">';
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                var fname = it.filename || '';
+                var url = '/api/media/original/' + encodeURIComponent(fname);
+                h += '<div class="s2-media-pick" data-fname="'+App._escape(fname)+'" data-url="'+url+'" title="'+App._escape(fname)+'" style="cursor:pointer;width:70px;text-align:center;">' +
+                    '<img src="'+url+'" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--border-color);" loading="lazy" onerror="this.style.opacity=0.2">' +
+                    '<div style="font-size:9px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+App._escape((it.original_filename||fname).substring(0,10))+'</div></div>';
+            }
+            h += '</div>';
+            bodyEl.innerHTML = h;
+            bodyEl.querySelectorAll('.s2-media-pick').forEach(function(el){
+                el.addEventListener('click', async function() {
+                    var fname = this.dataset.fname, url = this.dataset.url;
+                    var refType = prompt('参考类型？(character=角色 / scene=场景 / style=风格)', 'character');
+                    if (!refType || !['character','scene','style'].includes(refType)) { App.showToast('已取消', 'info'); return; }
+                    var refName = prompt('备注名（可空）', '');
+                    var d = await App.fetchJSON('/api/seedance/v2/refs', {
+                        method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({ project_id: self.currentProjectId, scene_id: sceneId||null,
+                            ref_type: refType, ref_name: refName||'', source_kind:'media_lib', filename: fname, url: url })
+                    });
+                    var m = document.getElementById('s2RefPicker'); if (m) m.remove();
+                    if (d && d.ok) { App.showToast('✅ 已添加媒体库参考图', 'success'); await self._loadAllRefThumbs(); }
+                    else { App.showToast('添加未完成: ' + (d ? (d.detail||'未知') : '无响应'), 'error'); }
+                });
+            });
+        } catch (e) {
+            bodyEl.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--text-muted);">媒体库加载失败: '+App._escape(e.message)+'</div>';
+        }
+    };
+
+    // 从角色库选择
+    App.seedanceV2._loadCharacterRefs = async function(sceneId, bodyEl) {
+        var self = this;
+        try {
+            var d = await App.fetchJSON('/api/characters?page_size=50');
+            var items = (d && d.items) ? d.items : [];
+            if (!items.length) { bodyEl.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--text-muted);">角色库暂无角色</div>'; return; }
+            var h = '<div style="display:flex;flex-wrap:wrap;gap:8px;max-height:300px;overflow-y:auto;padding:4px;">';
+            for (var i = 0; i < items.length; i++) {
+                var ch = items[i];
+                var av = ch.avatar || ch.preview_image || '';
+                var imgUrl = av ? '/api/characters/images/' + encodeURIComponent(av) : '';
+                h += '<div class="s2-char-pick" data-cid="'+ch.id+'" data-name="'+App._escape(ch.name||'')+'" title="'+App._escape(ch.name||'')+'" style="cursor:pointer;width:80px;text-align:center;">' +
+                    (imgUrl ? '<img src="'+imgUrl+'" style="width:64px;height:64px;object-fit:cover;border-radius:50%;border:1px solid var(--border-color);" loading="lazy" onerror="this.style.opacity=0.2">' : '<div style="width:64px;height:64px;border-radius:50%;background:var(--hover-bg);display:flex;align-items:center;justify-content:center;font-size:24px;">🧑</div>') +
+                    '<div style="font-size:9px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+App._escape(ch.name||'').substring(0,8)+'</div></div>';
+            }
+            h += '</div>';
+            bodyEl.innerHTML = h;
+            bodyEl.querySelectorAll('.s2-char-pick').forEach(function(el){
+                el.addEventListener('click', async function() {
+                    var cid = this.dataset.cid, name = this.dataset.name;
+                    var d = await App.fetchJSON('/api/seedance/v2/refs', {
+                        method:'POST', headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({ project_id: self.currentProjectId, scene_id: sceneId||null,
+                            ref_type:'character', ref_name: name, source_kind:'character', character_id: parseInt(cid) })
+                    });
+                    var m = document.getElementById('s2RefPicker'); if (m) m.remove();
+                    if (d && d.ok) { App.showToast('✅ 已添加角色参考图', 'success'); await self._loadAllRefThumbs(); }
+                    else { App.showToast('添加未完成: ' + (d ? (d.detail||'未知') : '无响应'), 'error'); }
+                });
+            });
+        } catch (e) {
+            bodyEl.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--text-muted);">角色库加载失败: '+App._escape(e.message)+'</div>';
+        }
+    };
 
     // v5.36.0: 即梦视频参数实时保存（全局参数区联动）
     App.seedanceV2._saveVideoParam=async function(key,val){

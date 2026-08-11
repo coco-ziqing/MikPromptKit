@@ -75,6 +75,9 @@ def _ensure_video_task_table():
     if tbl_cols and "session" not in tbl_cols:
         db.execute("ALTER TABLE seedance_video_tasks ADD COLUMN session INTEGER DEFAULT 0")
         print("[Seedance Video] seedance_video_tasks 增加列 session")
+    if tbl_cols and "image_refs" not in tbl_cols:
+        db.execute("ALTER TABLE seedance_video_tasks ADD COLUMN image_refs TEXT DEFAULT ''")
+        print("[Seedance Video] seedance_video_tasks 增加列 image_refs")
     db.execute("""CREATE TABLE IF NOT EXISTS seedance_video_tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id INTEGER,
@@ -86,6 +89,7 @@ def _ensure_video_task_table():
         duration INTEGER DEFAULT 5,
         video_resolution TEXT DEFAULT '720p',
         session INTEGER DEFAULT 0,
+        image_refs TEXT DEFAULT '',
         submit_id TEXT DEFAULT '',
         status TEXT DEFAULT 'queued',
         fail_reason TEXT DEFAULT '',
@@ -135,6 +139,48 @@ def _build_scene_prompt(scene: dict, global_style: str = "") -> str:
         return ""
     style = (global_style or "").strip()
     return (style + "，" + text) if style else text
+
+
+def _collect_refs(project_id: int, scene_id) -> list:
+    """收集参考图：镜头级 + 全局级合并去重（按 file_path）
+    返回 [{ref_type, ref_name, file_path, url}]，总数 ≤9
+    """
+    db = get_db()
+    refs = []
+    seen = set()
+    rows = []
+    try:
+        if scene_id:
+            rows += db.execute(
+                "SELECT * FROM seedance_image_refs WHERE project_id=? AND scene_id=? ORDER BY sort_order, id",
+                [project_id, scene_id]).fetchall()
+        rows += db.execute(
+            "SELECT * FROM seedance_image_refs WHERE project_id=? AND scene_id IS NULL ORDER BY sort_order, id",
+            [project_id]).fetchall()
+    except Exception:
+        return []
+    for r in rows:
+        fp = r["file_path"] or ""
+        if not fp or fp in seen:
+            continue
+        seen.add(fp)
+        refs.append({"ref_type": r["ref_type"] or "character",
+                     "ref_name": r["ref_name"] or "",
+                     "file_path": fp,
+                     "url": r["url"] or ""})
+    return refs
+
+
+def _pick_task_type(refs: list, requested: str) -> str:
+    """确定生成方式：无图=text2video；单图=image2video；多图=multimodal2video"""
+    n = len(refs)
+    if n == 0:
+        return "text2video"
+    if n == 1:
+        if requested == "multimodal2video":
+            return "multimodal2video"
+        return "image2video"
+    return "multimodal2video"
 
 
 _SESSION_CACHE = {"list": None, "ts": 0}
@@ -258,13 +304,32 @@ def _video_worker(task_id: int):
             return
         _task_update(task_id, status="submitting", started_at=_now_str())
         try:
-            args = ["text2video", "--prompt", task["prompt"],
-                    "--model_version", task["model_version"],
-                    "--ratio", task["ratio"],
-                    "--duration", str(task["duration"]),
-                    "--video_resolution", task["video_resolution"],
-                    "--session", str(task["session"] or 0),
-                    "--poll", "0"]
+            ttype = task["task_type"] or "text2video"
+            refs = []
+            try:
+                refs = json.loads(task["image_refs"] or "[]")
+            except Exception:
+                refs = []
+            ref_paths = [r.get("file_path", "") for r in refs if r.get("file_path") and os.path.exists(r.get("file_path", ""))]
+            if ttype in ("image2video", "multimodal2video") and ref_paths:
+                # 图像参考模式：image2video(单图) / multimodal2video(多图)
+                cmd = "image2video" if (ttype == "image2video" and len(ref_paths) == 1) else "multimodal2video"
+                args = [cmd, "--prompt", task["prompt"],
+                        "--model_version", task["model_version"],
+                        "--duration", str(task["duration"]),
+                        "--video_resolution", task["video_resolution"],
+                        "--session", str(task["session"] or 0),
+                        "--poll", "0"]
+                for rp in ref_paths:
+                    args += ["--image", rp]
+            else:
+                args = ["text2video", "--prompt", task["prompt"],
+                        "--model_version", task["model_version"],
+                        "--ratio", task["ratio"],
+                        "--duration", str(task["duration"]),
+                        "--video_resolution", task["video_resolution"],
+                        "--session", str(task["session"] or 0),
+                        "--poll", "0"]
             out, err, code = _dreamina_run(args, timeout=180)
             data = _parse_cli_json(out, err)
             if not data:
@@ -357,6 +422,7 @@ def create_video_tasks(data: dict = Body(...)):
     if not proj:
         raise HTTPException(404, "分镜项目不存在")
     scope = data.get("scope", "scenes")
+    task_type = data.get("task_type", "text2video")  # text2video / image2video / multimodal2video
     # 项目持久化的即梦参数作为默认（v5.36.0 全局参数联动）
     model = data.get("model_version") or proj["video_model"] or "seedance2.0fast"
     ratio = data.get("ratio") or proj["aspect_ratio"] or "16:9"
@@ -367,6 +433,13 @@ def create_video_tasks(data: dict = Body(...)):
     if ratio not in RATIOS:
         raise HTTPException(400, f"不支持的画幅: {ratio}")
     resolution = _valid_resolution(model, resolution)
+
+    # 图像参考数量限制（角色+场景合计 ≤9，对齐 multimodal2video 2.0系 image≤9）
+    def _check_ref_limit(refs, scope_label):
+        n = len(refs)
+        if n > 9:
+            raise HTTPException(400, f"{scope_label}参考图 {n} 张超过上限 9 张（即梦 multimodal 限制），请减少后再提交")
+        return n
 
     # 组装任务列表
     tasks = []
@@ -383,7 +456,10 @@ def create_video_tasks(data: dict = Body(...)):
         full = "；".join(prompt_parts)
         if not full.strip():
             raise HTTPException(400, "项目没有可组装的镜头内容")
-        tasks.append({"scene_id": None, "prompt": full, "duration": dur})
+        refs = _collect_refs(project_id, None)
+        _check_ref_limit(refs, "全局")
+        tt = _pick_task_type(refs, task_type)
+        tasks.append({"scene_id": None, "prompt": full, "duration": dur, "refs": refs, "task_type": tt})
     else:
         scene_ids = data.get("scene_ids")
         if scene_ids:
@@ -402,18 +478,22 @@ def create_video_tasks(data: dict = Body(...)):
             if not sp.strip():
                 continue
             dur = _validate_duration(model, int(float(s["duration"] or 5)))
-            tasks.append({"scene_id": s["id"], "prompt": sp, "duration": dur})
+            refs = _collect_refs(project_id, s["id"])
+            _check_ref_limit(refs, f"镜头{s['scene_order']}")
+            tt = _pick_task_type(refs, task_type)
+            tasks.append({"scene_id": s["id"], "prompt": sp, "duration": dur, "refs": refs, "task_type": tt})
 
     if not tasks:
         raise HTTPException(400, "没有可生成的内容（请先填充镜头字段）")
 
-    # 写入队列
+    # 写入队列（v5.36.2: 携带参考图 JSON）
     created_ids = []
     for t in tasks:
+        refs_json = json.dumps(t["refs"], ensure_ascii=False)
         cur = db.execute(
-            "INSERT INTO seedance_video_tasks (project_id, scene_id, task_type, prompt, model_version, ratio, duration, video_resolution, session, status, created_at) "
-            "VALUES (?, ?, 'text2video', ?, ?, ?, ?, ?, ?, 'queued', ?)",
-            [project_id, t["scene_id"], t["prompt"], model, ratio, t["duration"], resolution, video_session, _now_str()]
+            "INSERT INTO seedance_video_tasks (project_id, scene_id, task_type, prompt, model_version, ratio, duration, video_resolution, session, image_refs, status, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)",
+            [project_id, t["scene_id"], t["task_type"], t["prompt"], model, ratio, t["duration"], resolution, video_session, refs_json, _now_str()]
         )
         created_ids.append(cur.lastrowid)
     safe_commit()
