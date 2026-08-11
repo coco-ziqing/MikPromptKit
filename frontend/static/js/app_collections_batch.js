@@ -213,6 +213,10 @@ Object.assign(App, {
         overlay.style.display = 'flex';
         // 多任务队列：恢复所有未完成任务追踪（各自独立轮询，互不影响）
         this._batchTaskIds = this._batchTaskIds || [];
+        // 2026-08-11: 弹窗重开时重置阶段性成果缓存（网格/明细/已渲染标记从当前任务重新累积）
+        this._batchSuccess = [];
+        this._batchRenderedPids = {};
+        this._batchDetailRendered = {};
         if (this._batchTaskIds.length === 0) {
             this._batchGenRunning = false;
         } else {
@@ -408,11 +412,11 @@ Object.assign(App, {
         for (var j = 0; j < filtered.length; j++) {
             var it2 = filtered[j];
             var thumb = it2.thumbnail
-                ? '<img src="/api/thumbnails/file/' + it2.thumbnail + '" style="width:34px;height:24px;object-fit:cover;border-radius:4px;flex-shrink:0;" loading="lazy" onerror="this.style.display=\'none\'">'
-                : '<span style="width:34px;text-align:center;flex-shrink:0;font-size:13px;">🖼️</span>';
+                ? '<img data-thumb="1" src="/api/thumbnails/file/' + it2.thumbnail + '" style="width:34px;height:24px;object-fit:cover;border-radius:4px;flex-shrink:0;" loading="lazy" onerror="this.style.display=\'none\'">'
+                : '<span data-thumb="1" style="width:34px;text-align:center;flex-shrink:0;font-size:13px;">🖼️</span>';
             var label = ((it2.group_name ? it2.group_name + ' · ' : '') + (it2.name || ('词卡 #' + it2.id))).slice(0, 40);
             var badges = '';
-            if (it2.queued) badges += '<span style="font-size:9px;color:#d97706;background:rgba(217,119,6,0.1);border:1px solid rgba(217,119,6,0.3);border-radius:4px;padding:0 5px;flex-shrink:0;">⏳ 队列中</span>';
+            if (it2.queued) badges += '<span data-queuebadge="1" style="font-size:9px;color:#d97706;background:rgba(217,119,6,0.1);border:1px solid rgba(217,119,6,0.3);border-radius:4px;padding:0 5px;flex-shrink:0;">⏳ 队列中</span>';
             if (it2.optimized) badges += '<span style="font-size:9px;color:#10b981;flex-shrink:0;font-weight:600;">✨ 已优化</span>';
             if (it2.thumb_state === 'ai') {
                 if (isSameEngine(it2)) {
@@ -430,7 +434,7 @@ Object.assign(App, {
             } else if (it2.thumb_state === 'unknown') {
                 badges += '<span style="font-size:9px;color:#94a3b8;border:1px dashed var(--border-color);border-radius:4px;padding:0 5px;flex-shrink:0;" title="缩略图来源无法判定（文件丢失），保守纳入生成">❓ 未知</span>';
             }
-            html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:5px 8px;margin-bottom:4px;background:var(--bg-card);">' +
+            html += '<div data-pid="' + it2.id + '" style="border:1px solid var(--border-color);border-radius:8px;padding:5px 8px;margin-bottom:4px;background:var(--bg-card);">' +
                 '<div style="display:flex;align-items:center;gap:6px;">' +
                 '<span style="font-size:10px;color:var(--text-muted);width:26px;flex-shrink:0;text-align:right;">' + (j + 1) + '</span>' +
                 thumb +
@@ -574,6 +578,24 @@ Object.assign(App, {
     _renderBatchPreview() {
         var list = document.getElementById('bgenPreviewList');
         if (!list) return;
+        // 2026-08-11: 本地操作互不影响——用户正在编辑优化结果时跳过全量重建
+        //（已完成卡的缩略图/徽章由 _updatePreviewCard 局部更新，不打断输入）
+        var activeEl = document.activeElement;
+        if (activeEl && activeEl.tagName === 'TEXTAREA' && list.contains(activeEl)) {
+            var optE = document.getElementById('bgenSelOptimized');
+            if (optE && this._batchIds) {
+                var ov = this._batchPromptOverrides || {};
+                var oc = 0;
+                for (var _z = 0; _z < this._batchIds.length; _z++) if (ov[this._batchIds[_z]]) oc++;
+                var parts = [];
+                if (oc > 0) parts.push('✨ 已优化 ' + oc);
+                var qc = 0;
+                if (this._batchQueuedPids) for (var _q2 = 0; _q2 < this._batchIds.length; _q2++) if (this._batchQueuedPids[this._batchIds[_q2]]) qc++;
+                if (qc > 0) parts.push('⏳ 队列 ' + qc);
+                optE.textContent = parts.length > 0 ? parts.join(' · ') : '（Ollama 优化 + 缩略图生成）';
+            }
+            return;
+        }
         // 记录滚动位置：存词卡/恢复等操作后重绘不跳回顶部
         var prevScrollTop = list.scrollTop;
         // 2026-08-10: 全词库模式 → 扫描结果渲染（分类 Tab/状态徽章/统计）
@@ -615,8 +637,8 @@ Object.assign(App, {
             var pid = ids[i];
             var card = this._findCardForPreview(pid);
             var thumb = (card && card.thumbnail)
-                ? '<img src="/api/thumbnails/file/' + card.thumbnail + '" style="width:34px;height:24px;object-fit:cover;border-radius:4px;flex-shrink:0;" loading="lazy" onerror="this.style.display=\'none\'">'
-                : '<span style="width:34px;text-align:center;flex-shrink:0;font-size:13px;">🖼️</span>';
+                ? '<img data-thumb="1" src="/api/thumbnails/file/' + card.thumbnail + '" style="width:34px;height:24px;object-fit:cover;border-radius:4px;flex-shrink:0;" loading="lazy" onerror="this.style.display=\'none\'">'
+                : '<span data-thumb="1" style="width:34px;text-align:center;flex-shrink:0;font-size:13px;">🖼️</span>';
             var name = card ? (card.name || card.category || '') : '';
             var content = card ? (card.content || '') : '';
             var label = ((name ? name + ' · ' : '') + (content || ('词卡 #' + pid))).slice(0, 44);
@@ -626,9 +648,9 @@ Object.assign(App, {
             // 缩略图状态徽章：已生成 / 队列中（自动跳过依据）
             var thumbBadge = '';
             if (card && card.thumbnail) {
-                thumbBadge = '<span style="font-size:9px;color:#059669;background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);border-radius:4px;padding:0 5px;flex-shrink:0;white-space:nowrap;">✅ 已生成</span>';
+                thumbBadge = '<span data-thumbbadge="1" style="font-size:9px;color:#059669;background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);border-radius:4px;padding:0 5px;flex-shrink:0;white-space:nowrap;">✅ 已生成</span>';
             } else if (this._batchQueuedPids && this._batchQueuedPids[pid]) {
-                thumbBadge = '<span style="font-size:9px;color:#d97706;background:rgba(217,119,6,0.1);border:1px solid rgba(217,119,6,0.3);border-radius:4px;padding:0 5px;flex-shrink:0;white-space:nowrap;">⏳ 队列中</span>';
+                thumbBadge = '<span data-thumbbadge="1" data-queuebadge="1" style="font-size:9px;color:#d97706;background:rgba(217,119,6,0.1);border:1px solid rgba(217,119,6,0.3);border-radius:4px;padding:0 5px;flex-shrink:0;white-space:nowrap;">⏳ 队列中</span>';
             }
             // 分组标记：用于判别是否选错词卡
             var groupBadge = '';
@@ -654,7 +676,7 @@ Object.assign(App, {
                     '</div>' +
                     '</div>';
             }
-            html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:5px 8px;margin-bottom:4px;background:var(--bg-card);">' +
+            html += '<div data-pid="' + pid + '" style="border:1px solid var(--border-color);border-radius:8px;padding:5px 8px;margin-bottom:4px;background:var(--bg-card);">' +
                 '<div style="display:flex;align-items:center;gap:6px;">' +
                 '<input type="checkbox" class="ollama-reopt-check" data-pid="' + pid + '" title="勾选参与「全部重新优化」" style="width:13px;height:13px;flex-shrink:0;">' +
                 '<span style="font-size:10px;color:var(--text-muted);width:22px;flex-shrink:0;text-align:right;">' + (i + 1) + '</span>' +
@@ -1796,8 +1818,33 @@ Object.assign(App, {
                         var queueRest = (self._batchTaskIds || []).filter(function(x) { return x !== tid; }).length;
                         txt.textContent = (stMap[t.status] || t.status) + '：' + t.current_index + '/' + t.total + '（成功 ' + t.success + ' / 失败 ' + t.failed + '）' + eta + (queueRest > 0 ? ' · 队列中还有 ' + queueRest + ' 个任务' : '');
                     }
-                    // 明细（全量渲染，最后一项高亮为当前项）
-                    self._renderBatchResults(t.results || [], t.status);
+                    // 明细（2026-08-11 流式增量：新完成项追加，不重建 DOM，不打断本地操作）
+                    self._renderBatchResults(t.results || [], t.status, tid);
+                    // 2026-08-11: 阶段性成果实时可见 —— 每完成一张立即填入预览（不等整批 done）
+                    var results = t.results || [];
+                    self._batchRenderedPids = self._batchRenderedPids || {};
+                    self._batchRenderedPids[tid] = self._batchRenderedPids[tid] || {};
+                    var rendered = self._batchRenderedPids[tid];
+                    var newDone = [];
+                    for (var _rd = 0; _rd < results.length; _rd++) {
+                        var rr = results[_rd];
+                        if (rr.ok && rr.thumbnail_url && !rendered[rr.prompt_id]) {
+                            rendered[rr.prompt_id] = true;
+                            newDone.push(rr);
+                        }
+                    }
+                    if (newDone.length > 0) {
+                        self._batchSuccess = self._batchSuccess || [];
+                        for (var _nd2 = 0; _nd2 < newDone.length; _nd2++) {
+                            self._batchSuccess.push({ thumb: newDone[_nd2].thumbnail_url, text: newDone[_nd2].prompt_text || '' });
+                            // 预览清单该卡行局部更新（缩略图 + ✅已生成，不重建不打断编辑）
+                            if (typeof self._updatePreviewCard === 'function') self._updatePreviewCard(newDone[_nd2].prompt_id, newDone[_nd2].thumbnail_url);
+                        }
+                        // 缩略图网格实时更新（阶段性成果展示）
+                        self._renderBatchGrid();
+                        // 主界面词卡缩略图节流刷新（后台队列与本地浏览互不影响）
+                        self._scheduleListRefresh();
+                    }
                 }
                 if (t.status === 'done' || t.status === 'cancelled' || t.status === 'error') {
                     clearInterval(interval);
@@ -1885,27 +1932,34 @@ Object.assign(App, {
         } catch(e) { return ''; }
     },
 
-    // 从任务结果渲染明细列表
-    _renderBatchResults(results, status) {
+    // 从任务结果渲染明细列表（2026-08-11 流式增量：新完成项追加，不重建 DOM）
+    // 阶段性完成即填入明细（含完整提示词），不等整批 done；本地滚动/查看不受重绘干扰
+    _renderBatchResults(results, status, tid) {
         var det = document.getElementById('bgenDetail');
         if (!det) return;
+        this._batchDetailRendered = this._batchDetailRendered || {};
+        var key = tid || 'cur';
+        var rendered = this._batchDetailRendered[key] || {};
         if (!results || results.length === 0) {
-            if (status === 'queued') det.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">任务排队中，等待执行...</div>';
+            if (status === 'queued' && det.childElementCount === 0) {
+                det.innerHTML = '<div data-queued-placeholder="1" style="font-size:11px;color:var(--text-muted);">任务排队中，等待执行...</div>';
+            }
             return;
         }
-        var html = '';
+        var appended = false;
         for (var i = 0; i < results.length; i++) {
             var r = results[i];
-            var isCur = (status === 'running') && (i === results.length - 1);
-            var color = r.ok ? '#10b981' : '#ef4444';
-            html += '<div class="bgen-item' + (isCur ? ' bgen-active" style="border-left:3px solid ' + color + ';"' : '"') + ' style="border-color:' + color + '33;">' +
-              (r.thumbnail_url ? '<img src="' + r.thumbnail_url + '" style="width:42px;height:28px;object-fit:cover;border-radius:4px;flex-shrink:0;" loading="lazy">' : '<span style="width:42px;text-align:center;flex-shrink:0;">' + (r.ok ? '✅' : '❌') + '</span>') +
-              '<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + App._escape(r.prompt_text || '') + '">' + App._escape((r.prompt_text || '').slice(0, 40)) + '</span>' +
-              '<span style="font-size:10px;color:' + color + ';flex-shrink:0;">' + (r.ok ? '成功' : (r.error || '失败')) + '</span>' +
-            '</div>';
+            if (rendered[r.prompt_id]) continue;
+            rendered[r.prompt_id] = true;
+            this._appendBatchDetail(r);
+            appended = true;
         }
-        det.innerHTML = html;
-        det.scrollTop = det.scrollHeight;
+        this._batchDetailRendered[key] = rendered;
+        if (appended) {
+            // 移除「排队中」占位
+            var ph = det.querySelector('[data-queued-placeholder]');
+            if (ph) ph.remove();
+        }
     },
 
     _appendBatchDetail(ev) {
@@ -1941,6 +1995,56 @@ Object.assign(App, {
         });
         items.innerHTML = html;
         grid.style.display = 'block';
+    },
+
+    // 2026-08-11: 预览清单单行局部更新（缩略图 + 队列徽章→已生成），不重建列表、不打断编辑
+    _updatePreviewCard(pid, thumbUrl) {
+        var list = document.getElementById('bgenPreviewList');
+        if (!list) return;
+        var row = list.querySelector('[data-pid="' + pid + '"]');
+        if (!row) return;
+        // 缩略图：占位 span → img；已 img 则换 src
+        var t = row.querySelector('[data-thumb]');
+        if (t) {
+            if (t.tagName === 'IMG') {
+                t.src = thumbUrl;
+                t.style.display = '';
+            } else {
+                var img = document.createElement('img');
+                img.src = thumbUrl;
+                img.style.cssText = 'width:34px;height:24px;object-fit:cover;border-radius:4px;flex-shrink:0;';
+                img.loading = 'lazy';
+                t.parentNode.replaceChild(img, t);
+            }
+        }
+        // 队列徽章 → ✅ 已生成
+        var qb = row.querySelector('[data-queuebadge]');
+        if (qb) {
+            qb.outerHTML = '<span data-thumbbadge="1" style="font-size:9px;color:#059669;background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);border-radius:4px;padding:0 5px;flex-shrink:0;white-space:nowrap;">✅ 已生成</span>';
+            return;
+        }
+        // 无队列徽章且无缩略图徽章：在卡名后补插
+        if (!row.querySelector('[data-thumbbadge]')) {
+            var labelEl = row.querySelector('span[style*="flex:1"]');
+            if (labelEl) {
+                var sp = document.createElement('span');
+                sp.setAttribute('data-thumbbadge', '1');
+                sp.style.cssText = 'font-size:9px;color:#059669;background:rgba(5,150,105,0.1);border:1px solid rgba(5,150,105,0.25);border-radius:4px;padding:0 5px;flex-shrink:0;white-space:nowrap;';
+                sp.textContent = '✅ 已生成';
+                labelEl.parentNode.insertBefore(sp, labelEl.nextSibling);
+            }
+        }
+    },
+
+    // 2026-08-11: 主界面词卡节流刷新（每张完成实时更新缩略图；队列后台执行与本地浏览互不影响）
+    _scheduleListRefresh() {
+        var self = this;
+        this._listRefreshTimer = this._listRefreshTimer || null;
+        if (this._listRefreshTimer) clearTimeout(this._listRefreshTimer);
+        this._listRefreshTimer = setTimeout(function() {
+            self._listRefreshTimer = null;
+            if (typeof self.loadPrompts === 'function') self.loadPrompts();
+        }, 2500);
     },
 
     // 悬停大图预览：跟随鼠标显示原图（不阻塞点击）
@@ -1991,6 +2095,10 @@ Object.assign(App, {
             if (retryBtn) retryBtn.style.display = 'none';
             var det = document.getElementById('bgenDetail');
             if (det) det.innerHTML = '';
+            // 2026-08-11: 重试任务从头累积阶段性成果
+            this._batchSuccess = [];
+            this._batchRenderedPids = {};
+            this._batchDetailRendered = {};
             this._batchTaskId = d.task_id;
             this._batchTaskTotal = d.total;
             // 重试任务入队（多任务队列）
