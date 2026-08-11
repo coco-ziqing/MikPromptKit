@@ -423,6 +423,7 @@
             // ===== v5.36.2: 参考图事件 =====
             document.querySelectorAll('.s2-ref-add-btn').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=this.dataset.sceneId;if(sid==='global'){self._openRefPicker(null);}else if(sid){self._openRefPicker(parseInt(sid));}else{var p=this.closest('.s2-ref-group');var pid2=p?p.dataset.sceneId:null;if(pid2==='global')self._openRefPicker(null);else if(pid2)self._openRefPicker(parseInt(pid2));}});});
             document.querySelectorAll('.s2-ref-del').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var id=parseInt(this.dataset.refId);if(!id)return;self._deleteRef(id);});});
+            document.querySelectorAll('.s2-ref-edit').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var id=parseInt(this.dataset.refId);if(!id)return;self._editRefName(id);});});
             self._loadAllRefThumbs();
 
         },100);
@@ -1014,6 +1015,7 @@
                 '<img src="'+App._escape(it.preview_url || '')+'" onerror="this.style.opacity=0.3" loading="lazy" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border-color);">' +
                 '<span class="s2-ref-thumb-label">'+label+'</span>' +
                 '<button class="s2-ref-del" data-ref-id="'+it.id+'" title="删除">✕</button>' +
+                '<button class="s2-ref-edit" data-ref-id="'+it.id+'" title="编辑名称/类型">✏️</button>' +
                 '</span>';
         }
         h += '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">'+items.length+'/9</span>';
@@ -1027,6 +1029,42 @@
                 if (id) self._deleteRef(id);
             });
         });
+        c.querySelectorAll('.s2-ref-edit').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var id = parseInt(this.dataset.refId);
+                if (id) self._editRefName(id);
+            });
+        });
+    };
+
+    // 编辑参考图名称/类型
+    App.seedanceV2._editRefName = async function(refId) {
+        var self = this;
+        try {
+            var list = await App.fetchJSON('/api/seedance/v2/refs?project_id='+this.currentProjectId);
+            var gd = list ? (list.items||[]) : [];
+            var scenes = this.scenes || [];
+            var all = gd.slice();
+            for (var i = 0; i < scenes.length; i++) {
+                var dd = await App.fetchJSON('/api/seedance/v2/refs?project_id='+this.currentProjectId+'&scene_id='+scenes[i].id);
+                if (dd && dd.items) all = all.concat(dd.items);
+            }
+            var it = null;
+            for (var j = 0; j < all.length; j++) { if (all[j].id === refId) { it = all[j]; break; } }
+            if (!it) { App.showToast('参考图不存在', 'error'); return; }
+            var newName = prompt('参考图名称（角色名用于提示词声明）：', it.ref_name || '');
+            if (newName === null) return;
+            var newType = prompt('类型：character=角色 / scene=场景 / style=风格', it.ref_type || 'character');
+            if (!newType || !['character','scene','style'].includes(newType)) { App.showToast('已取消', 'info'); return; }
+            if (newType === 'character' && !(newName||'').trim()) { App.showToast('角色参考图必须填写角色名', 'warning'); return; }
+            var d = await App.fetchJSON('/api/seedance/v2/refs/'+refId, {
+                method:'PUT', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ ref_name: (newName||'').trim(), ref_type: newType })
+            });
+            if (d && d.ok) { App.showToast('✅ 参考图已更新', 'success'); await this._loadAllRefThumbs(); }
+            else { App.showToast('更新未完成: ' + (d ? (d.detail||'未知') : '无响应'), 'error'); }
+        } catch (e) { App.showToast('更新异常: '+e.message, 'error'); }
     };
 
     // 删除参考图
@@ -1074,8 +1112,8 @@
             if (tab === 'upload') {
                 body.innerHTML = '<div style="padding:10px;">' +
                     '<label style="font-size:11px;color:var(--text-muted);">参考类型</label>' +
-                    '<select id="s2RefType" class="s2-input" style="width:100%;margin:4px 0 8px;"><option value="character">🧑 角色参考图</option><option value="scene">🏞 场景参考图</option><option value="style">🎨 风格参考图</option></select>' +
-                    '<label style="font-size:11px;color:var(--text-muted);">备注名（可选）</label>' +
+                    '<select id="s2RefType" class="s2-input" style="width:100%;margin:4px 0 8px;" onchange="App.seedanceV2._refTypeChanged(this)"><option value="character">🧑 角色参考图</option><option value="scene">🏞 场景参考图</option><option value="style">🎨 风格参考图</option></select>' +
+                    '<label style="font-size:11px;color:var(--text-muted);" id="s2RefNameLabel">角色名（角色类型必填）</label>' +
                     '<input id="s2RefName" class="modal-input" placeholder="如：主角·李明" style="margin:4px 0 10px;">' +
                     '<input id="s2RefFile" type="file" accept="image/*" style="margin-bottom:10px;">' +
                     '<button class="btn btn-primary btn-sm" id="s2RefUploadBtn">上传并添加</button></div>';
@@ -1098,6 +1136,16 @@
         renderTab('upload');
     };
 
+    // 上传参考图类型切换：更新名称标签提示
+    App.seedanceV2._refTypeChanged = function(sel) {
+        var lbl = document.getElementById('s2RefNameLabel');
+        if (!lbl) return;
+        var v = sel.value;
+        lbl.textContent = v === 'character' ? '角色名（必填，用于提示词角色对应）' : (v === 'scene' ? '场景名（可选）' : '风格名（可选）');
+        var inp = document.getElementById('s2RefName');
+        if (inp) inp.placeholder = v === 'character' ? '如：主角·李明' : (v === 'scene' ? '如：雪山之巅' : '如：赛博朋克');
+    };
+
     // 上传参考图并添加
     App.seedanceV2._uploadRef = async function(sceneId, file) {
         App.showToast('上传中...', 'info');
@@ -1116,6 +1164,11 @@
             }
             var refType = document.getElementById('s2RefType') ? document.getElementById('s2RefType').value : 'character';
             var refName = document.getElementById('s2RefName') ? (document.getElementById('s2RefName').value || '') : '';
+            // v5.36.5: 角色参考必须命名
+            if (refType === 'character' && !refName.trim()) {
+                App.showToast('角色参考图必须填写角色名（如：主角·李明）', 'warning');
+                return;
+            }
             var payload = {
                 project_id: this.currentProjectId,
                 scene_id: sceneId || null,
@@ -1164,11 +1217,13 @@
                     var fname = this.dataset.fname, url = this.dataset.url;
                     var refType = prompt('参考类型？(character=角色 / scene=场景 / style=风格)', 'character');
                     if (!refType || !['character','scene','style'].includes(refType)) { App.showToast('已取消', 'info'); return; }
-                    var refName = prompt('备注名（可空）', '');
+                    // v5.36.5: 角色参考必须命名（提示词声明需要角色名对应，模型才知道图是谁）
+                    var refName = prompt(refType==='character' ? '角色名（必填，如：主角·李明）：' : '备注名（可空，如：雪山场景）：', '');
+                    if (refType==='character' && !(refName||'').trim()) { App.showToast('角色参考图必须填写角色名', 'warning'); return; }
                     var d = await App.fetchJSON('/api/seedance/v2/refs', {
                         method:'POST', headers:{'Content-Type':'application/json'},
                         body: JSON.stringify({ project_id: self.currentProjectId, scene_id: sceneId||null,
-                            ref_type: refType, ref_name: refName||'', source_kind:'media_lib', filename: fname, url: url })
+                            ref_type: refType, ref_name: (refName||'').trim(), source_kind:'media_lib', filename: fname, url: url })
                     });
                     var m = document.getElementById('s2RefPicker'); if (m) m.remove();
                     if (d && d.ok) { App.showToast('✅ 已添加媒体库参考图', 'success'); await self._loadAllRefThumbs(); }
@@ -1201,10 +1256,14 @@
             bodyEl.querySelectorAll('.s2-char-pick').forEach(function(el){
                 el.addEventListener('click', async function() {
                     var cid = this.dataset.cid, name = this.dataset.name;
+                    // v5.36.5: 角色名可改（默认取角色档案名）
+                    var refName = prompt('角色参考名（用于提示词声明）：', name||'');
+                    if (refName === null) return;
+                    if (!(refName||'').trim()) { App.showToast('角色参考图必须填写角色名', 'warning'); return; }
                     var d = await App.fetchJSON('/api/seedance/v2/refs', {
                         method:'POST', headers:{'Content-Type':'application/json'},
                         body: JSON.stringify({ project_id: self.currentProjectId, scene_id: sceneId||null,
-                            ref_type:'character', ref_name: name, source_kind:'character', character_id: parseInt(cid) })
+                            ref_type:'character', ref_name: (refName||'').trim(), source_kind:'character', character_id: parseInt(cid) })
                     });
                     var m = document.getElementById('s2RefPicker'); if (m) m.remove();
                     if (d && d.ok) { App.showToast('✅ 已添加角色参考图', 'success'); await self._loadAllRefThumbs(); }

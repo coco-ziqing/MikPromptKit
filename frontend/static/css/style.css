@@ -3993,3 +3993,7 @@ body.dark-theme .header-divider {
 .s2-vt-badge { display:inline-block; font-size:10px; padding:1px 8px; border-radius:10px; margin-left:6px; cursor:pointer; font-weight:600; vertical-align:middle; }
 .s2-vt-active { background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.4); }
 .s2-vt-done { background:rgba(16,185,129,0.12); color:#10b981; border:1px solid rgba(16,185,129,0.35); }
+
+/* v5.36.5: 参考图编辑按钮 */
+.s2-ref-edit { position:absolute; top:-5px; left:-5px; width:16px; height:16px; border-radius:50%; background:#8b5cf6; color:#fff; border:none; font-size:9px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; }
+.s2-ref-edit:hover { background:#7c3aed; }

@@ -152,6 +152,45 @@ def _build_scene_prompt(scene: dict, global_style: str = "") -> str:
     return (style + "，" + text) if style else text
 
 
+def _build_ref_aware_prompt(base_prompt: str, refs: list) -> str:
+    """参考图模式提示词规范（符合即梦 multimodal2video / image2video）
+    结构：
+      【参考图声明】图1=角色「名字」保持外观一致；图2=场景参考…
+      【动态描述】原有文本（动作/运镜/光影变化，画面内容由图锚定）
+    即梦 multimodal 模式下 prompt 是编辑引导语：必须显式声明每张图
+    的角色/场景对应关系与一致性要求，模型才知道如何参考。
+    """
+    if not refs:
+        return base_prompt
+    # 图编号 → 声明
+    decls = []
+    for idx, r in enumerate(refs, start=1):
+        rtype = r.get("ref_type", "character")
+        name = (r.get("ref_name") or "").strip()
+        if rtype == "scene":
+            label = f"图{idx}为场景参考"
+            if name:
+                label += f"「{name}」"
+            label += "，保持场景环境/风格/氛围一致"
+        elif rtype == "style":
+            label = f"图{idx}为风格参考"
+            if name:
+                label += f"「{name}」"
+            label += "，保持画面风格/色调一致"
+        else:
+            label = f"图{idx}为角色参考"
+            if name:
+                label += f"「{name}」"
+            label += "，严格保持该角色外貌/服装/发型/气质一致，不要改变形象"
+        decls.append(label)
+    decl_text = "；".join(decls)
+    body = (base_prompt or "").strip()
+    # 参考图模式下，动态描述强调"动作/运镜/变化"（静态外观由图锚定）
+    if body:
+        return f"【参考图声明】{decl_text}。【动态描述】{body}"
+    return f"【参考图声明】{decl_text}。请以参考图为基准生成连贯视频。"
+
+
 def _collect_refs(project_id: int, scene_id) -> list:
     """收集参考图：镜头级 + 全局级合并去重（按 file_path）
     返回 [{ref_type, ref_name, file_path, url}]，总数 ≤9
@@ -595,6 +634,8 @@ def create_video_tasks(data: dict = Body(...)):
         refs = _collect_refs(project_id, None)
         _check_ref_limit(refs, "全局")
         tt = _pick_task_type(refs, task_type)
+        if refs:
+            full = _build_ref_aware_prompt(full, refs)
         tasks.append({"scene_id": None, "prompt": full, "duration": dur, "refs": refs, "task_type": tt})
     else:
         scene_ids = data.get("scene_ids")
@@ -617,6 +658,9 @@ def create_video_tasks(data: dict = Body(...)):
             refs = _collect_refs(project_id, s["id"])
             _check_ref_limit(refs, f"镜头{s['scene_order']}")
             tt = _pick_task_type(refs, task_type)
+            # v5.36.5: 参考图模式提示词规范（图声明段 + 动态描述）
+            if refs:
+                sp = _build_ref_aware_prompt(sp, refs)
             tasks.append({"scene_id": s["id"], "prompt": sp, "duration": dur, "refs": refs, "task_type": tt})
 
     if not tasks:

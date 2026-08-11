@@ -212,6 +212,31 @@ def add_ref(data: dict = Body(...)):
     return {"ok": True, "id": cur.lastrowid}
 
 
+@router.put("/refs/{ref_id}")
+def update_ref(ref_id: int, data: dict = Body(...)):
+    """更新参考图（重命名 / 改类型）"""
+    _ensure_refs_table()
+    db = get_db()
+    row = db.execute("SELECT * FROM seedance_image_refs WHERE id=?", [ref_id]).fetchone()
+    if not row:
+        raise HTTPException(404, "参考图不存在")
+    sets = []
+    params = []
+    if "ref_name" in data:
+        sets.append("ref_name=?")
+        params.append((data.get("ref_name") or "").strip())
+    if "ref_type" in data:
+        rt = data.get("ref_type")
+        if rt not in ALLOWED_TYPES:
+            raise HTTPException(400, f"ref_type 必须是 {ALLOWED_TYPES}")
+        sets.append("ref_type=?")
+        params.append(rt)
+    if sets:
+        db.execute(f"UPDATE seedance_image_refs SET {', '.join(sets)} WHERE id=?", params + [ref_id])
+        safe_commit()
+    return {"ok": True}
+
+
 @router.delete("/refs/{ref_id}")
 def delete_ref(ref_id: int):
     """删除参考图"""
