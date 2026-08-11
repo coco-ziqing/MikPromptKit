@@ -239,7 +239,8 @@
             '<div id="s2VideoSummary" style="margin-bottom:10px;"></div>' +
             '<div id="s2VideoTaskList"><div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div></div></div>' +
             '<div class="modal-footer" style="justify-content:space-between;">' +
-            '<span style="font-size:11px;color:var(--text-muted);" id="s2VideoPollHint">每 8 秒自动刷新</span>' +
+            '<span style="display:flex;gap:8px;align-items:center;"><span style="font-size:11px;color:var(--text-muted);" id="s2VideoPollHint">每 8 秒自动刷新</span>' +
+            '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2.openVideoTemplates()" style="color:#8b5cf6;border-color:#8b5cf6;font-size:11px;padding:2px 10px;">📚 模版库</button></span>' +
             '<button class="btn btn-secondary btn-sm" onclick="App.seedanceV2.closeVideoPanel()">关闭</button></div></div>';
         document.body.appendChild(overlay);
         this._loadVideoTasks();
@@ -350,7 +351,9 @@
                         } else if (t.result_url) {
                             preview = '<a href="'+t.result_url+'" target="_blank" class="btn btn-xs btn-outline">🔗 打开原链接</a>';
                         }
-                        actionHtml = '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;">'+preview+dl+'</div>';
+                        // v5.36.4: 存档为分镜视频模版
+                        var archiveBtn = '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._archiveTaskAsTemplate('+t.id+')" style="color:#8b5cf6;border-color:#8b5cf6;" title="将本视频与提示词存档为词库模版">📥 存档为模版</button>';
+                        actionHtml = '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap;">'+preview+dl+archiveBtn+'</div>';
                     } else if (t.status === 'fail') {
                         actionHtml = '<div style="margin-top:4px;display:flex;align-items:center;gap:8px;">' +
                             '<span style="font-size:10px;color:#ef4444;">'+(t.fail_reason||'未知原因').substring(0,80)+'</span>' +
@@ -376,6 +379,108 @@
         } catch (e) {
             if (!silent) { c.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);">加载失败: '+App._escape(e.message)+'</div>'; }
         }
+    };
+
+    // v5.36.4: 存档任务为分镜视频模版
+    App.seedanceV2._archiveTaskAsTemplate = async function(taskId) {
+        var self = this;
+        var name = prompt('模版名称（可空，自动生成）', '');
+        if (name === null) return;
+        App.showToast('正在存档为模版...', 'info');
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/video/tasks/'+taskId+'/archive-template', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ name: name || '' }), _timeoutMs: 30000
+            });
+            if (d && d.ok) {
+                App.showToast('✅ 已存档为模版「'+d.name+'」', 'success');
+            } else {
+                App.showToast('存档未完成: ' + (d ? (d.detail||'未知错误') : '无响应'), 'error');
+            }
+        } catch (e) { App.showToast('存档异常: '+e.message, 'error'); }
+    };
+
+    // 打开分镜视频模版管理面板
+    App.seedanceV2.openVideoTemplates = async function() {
+        var old = document.getElementById('s2VideoTplPanel');
+        if (old) old.remove();
+        var self = this;
+        var overlay = document.createElement('div');
+        overlay.id = 's2VideoTplPanel';
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'display:flex;z-index:715;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+        overlay.innerHTML = '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:820px;max-height:82vh;display:flex;flex-direction:column;">' +
+            '<div class="modal-header"><h5>🎬 分镜视频模版库</h5><button class="header-btn-sm" onclick="document.getElementById(\'s2VideoTplPanel\').remove()">&times;</button></div>' +
+            '<div class="modal-body" style="flex:1;overflow-y:auto;" id="s2VideoTplList"><div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div></div>' +
+            '<div class="modal-footer"><span style="font-size:11px;color:var(--text-muted);">模版存档于词库「分镜视频模版」分组，可复用提示词重新生成</span>' +
+            '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'s2VideoTplPanel\').remove()">关闭</button></div></div>';
+        document.body.appendChild(overlay);
+        this._loadVideoTemplates();
+    };
+
+    // 加载模版列表
+    App.seedanceV2._loadVideoTemplates = async function() {
+        var c = document.getElementById('s2VideoTplList');
+        if (!c) return;
+        var self = this;
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/video/templates');
+            if (!d || !d.items) return;
+            var items = d.items;
+            var h = '';
+            if (!items.length) {
+                h = '<div style="text-align:center;padding:40px;color:var(--text-muted);">暂无模版<br><span style="font-size:11px;">在任务面板对成功的视频点「📥 存档为模版」即可入库</span></div>';
+            } else {
+                h = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;">';
+                for (var i = 0; i < items.length; i++) {
+                    var t = items[i];
+                    var vurl = t.video_url || '';
+                    h += '<div style="border:1px solid var(--border-color);border-radius:8px;overflow:hidden;background:var(--bg-card);">' +
+                        (vurl ? '<video src="'+App._escape(vurl)+'" controls preload="metadata" style="width:100%;height:130px;object-fit:cover;background:#000;"></video>'
+                              : '<div style="height:130px;background:var(--hover-bg);display:flex;align-items:center;justify-content:center;font-size:32px;">🎬</div>') +
+                        '<div style="padding:8px 10px;">' +
+                        '<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+App._escape(t.name||'')+'">'+App._escape(t.name||'未命名')+'</div>' +
+                        '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;max-height:32px;overflow:hidden;">'+App._escape((t.meaning||'').substring(0,50))+'</div>' +
+                        '<div style="display:flex;gap:6px;margin-top:6px;">' +
+                        '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._copyTemplatePrompt('+t.id+')" title="复制提示词">📋 复制提示词</button>' +
+                        '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._regenFromTemplate('+t.id+')" title="用此模版重新生成（填充为单镜头模板）" style="color:#10b981;border-color:#10b981;">🎬 重新生成</button>' +
+                        '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._deleteVideoTemplate('+t.id+')" style="color:#ef4444;border-color:#ef4444;">🗑</button>' +
+                        '</div></div></div>';
+                }
+                h += '</div>';
+            }
+            c.innerHTML = h;
+        } catch (e) {
+            c.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);">加载失败: '+App._escape(e.message)+'</div>';
+        }
+    };
+
+    // 复制模版提示词
+    App.seedanceV2._copyTemplatePrompt = function(cardId) {
+        var self = this;
+        App.fetchJSON('/api/seedance/v2/libraries/cards/'+cardId).then(function(d) {
+            var content = d && d.card ? (d.card.content || '') : '';
+            if (!content) { App.showToast('提示词为空', 'warning'); return; }
+            navigator.clipboard.writeText(content).then(function() {
+                App.showToast('✅ 提示词已复制', 'success');
+            }).catch(function() { App.showToast('复制失败，请手动复制', 'error'); });
+        });
+    };
+
+    // 用模版重新生成（跳转到组装器，填充为新镜头？简化：打开提交弹窗并预填提示词）
+    App.seedanceV2._regenFromTemplate = function(cardId) {
+        App.showToast('重新生成功能开发中，请复制提示词后手动组装', 'info');
+    };
+
+    // 删除模版
+    App.seedanceV2._deleteVideoTemplate = async function(cardId) {
+        if (!confirm('确定删除此分镜视频模版？')) return;
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/video/templates/'+cardId, { method:'DELETE' });
+            if (d && d.ok) { App.showToast('模版已删除', 'info'); this._loadVideoTemplates(); }
+            else { App.showToast('删除未完成: ' + (d ? (d.detail||'未知') : '无响应'), 'error'); }
+        } catch (e) { App.showToast('删除异常: '+e.message, 'error'); }
     };
 
     // 重试任务

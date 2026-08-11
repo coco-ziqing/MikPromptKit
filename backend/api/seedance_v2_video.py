@@ -23,6 +23,13 @@ router = APIRouter(tags=["seedance-v2-video"])
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 VIDEO_DIR = os.path.join(_PROJECT_ROOT, "data", "videos")
 os.makedirs(VIDEO_DIR, exist_ok=True)
+# v5.36.4: 词卡预览视频目录（复用词库词卡视频管理机制）
+WC_VIDEO_DIR = os.path.join(_PROJECT_ROOT, "data", "wc_media", "videos")
+os.makedirs(WC_VIDEO_DIR, exist_ok=True)
+# 分镜视频模版分组（seedance 类型，prompt_library VIEW 可识别）
+TEMPLATE_GROUP_NAME = "分镜视频模版"
+TEMPLATE_GROUP_SUBTYPE = "video_template"
+
 
 # 即梦支持的模型与参数（v1 固定集，后续按 CLI -h 扩展）
 MODEL_VERSIONS = ["seedance2.0fast", "seedance2.0", "seedance2.0_vip", "seedance2.0fast_vip", "seedance2.0mini", "seedance2.5"]
@@ -386,6 +393,125 @@ def _resume_orphaned_video_tasks():
 
 
 # ==================== API ====================
+
+def _ensure_template_group() -> int:
+    """确保「分镜视频模版」seedance 分组存在，返回 group_id（幂等）"""
+    db = get_db()
+    row = db.execute(
+        "SELECT id FROM word_card_group WHERE group_type='seedance' AND seedance_subtype=? AND is_active=1",
+        [TEMPLATE_GROUP_SUBTYPE]).fetchone()
+    if row:
+        return row["id"]
+    # 创建分组：挂到「📹 视频模板」(63) 下，找不到则挂 53 视频词库
+    parent = db.execute("SELECT id FROM word_card_group WHERE id=63 AND is_active=1").fetchone()
+    parent_id = parent["id"] if parent else 53
+    key = "video_template_" + str(int(time.time() * 1000))
+    cur = db.execute(
+        "INSERT INTO word_card_group (name, group_key, group_type, seedance_subtype, parent_group_id, sort_order) "
+        "VALUES (?, ?, 'seedance', ?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card_group))",
+        [TEMPLATE_GROUP_NAME, key, TEMPLATE_GROUP_SUBTYPE, parent_id])
+    safe_commit()
+    print(f"[Seedance Video] 创建分镜视频模版分组 id={cur.lastrowid}")
+    return cur.lastrowid
+
+
+@router.get("/video/templates")
+def list_video_templates():
+    """列出分镜视频生成模版词卡（含视频 URL）"""
+    _ensure_video_task_table()
+    gid = _ensure_template_group()
+    db = get_db()
+    rows = db.execute(
+        "SELECT * FROM word_card WHERE group_id=? AND is_deleted=0 ORDER BY id DESC LIMIT 100",
+        [gid]).fetchall()
+    items = []
+    for r in rows:
+        d2 = dict(r)
+        if d2.get("preview_media"):
+            d2["video_url"] = "/api/seedance/v2/videos/" + d2["preview_media"]
+        items.append(d2)
+    return {"items": items, "group_id": gid, "group_name": TEMPLATE_GROUP_NAME}
+
+
+@router.post("/video/tasks/{task_id}/archive-template")
+def archive_task_as_template(task_id: int, data: dict = Body(default={})):
+    """将成功的视频生成任务存档为分镜视频模版词卡
+    复制视频到 wc_media/videos（词卡预览视频机制），词卡 content=提示词
+    body: { name: 可选模版名 }
+    """
+    _ensure_video_task_table()
+    db = get_db()
+    task = db.execute("SELECT * FROM seedance_video_tasks WHERE id=?", [task_id]).fetchone()
+    if not task:
+        raise HTTPException(404, "任务不存在")
+    if task["status"] != "success":
+        raise HTTPException(400, "仅成功任务可存档为模版")
+    src = task["result_local"] or ""
+    if not src:
+        # 尝试从 result_url 兜底（无本地文件时仅存提示词）
+        src_path = ""
+    else:
+        src_path = os.path.join(VIDEO_DIR, os.path.basename(src))
+    if src_path and not os.path.exists(src_path):
+        src_path = ""
+    if not src_path:
+        raise HTTPException(400, "视频文件不存在，无法存档（任务可能未下载到本地）")
+
+    gid = _ensure_template_group()
+    # 复制视频到词卡视频目录
+    ext = os.path.splitext(src_path)[1].lower() or ".mp4"
+    import uuid as _uuid
+    dest_name = _uuid.uuid4().hex + ext
+    import shutil
+    dest_full = os.path.join(WC_VIDEO_DIR, dest_name)
+    if os.path.exists(dest_full):
+        try:
+            os.remove(dest_full)
+        except Exception:
+            pass
+    shutil.copy2(src_path, dest_full)
+
+    # 模版名
+    name = (data.get("name") or "").strip()
+    if not name:
+        proj = db.execute("SELECT name FROM user_project WHERE id=?", [task["project_id"]]).fetchone()
+        proj_name = (proj["name"] if proj else "分镜")[:20]
+        scene_tag = f"镜头{task['scene_id']}" if task["scene_id"] else "整项目"
+        name = f"{proj_name}-{scene_tag}-{task['model_version']}"
+
+    # 查重：同名跳过
+    dup = db.execute(
+        "SELECT id FROM word_card WHERE group_id=? AND name=? AND is_deleted=0",
+        [gid, name]).fetchone()
+    if dup:
+        raise HTTPException(400, f"同名模版已存在: {name}")
+
+    cur = db.execute(
+        "INSERT INTO word_card (group_id, name, content, meaning, media_type, preview_media, is_builtin, heat_weight, module, category, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, 'video', ?, 0, 0.5, 'seedance_video', 'video_template', datetime('now','localtime'), datetime('now','localtime'))",
+        [gid, name, task["prompt"] or "", f"分镜视频模版 · {task['model_version']} · {task['ratio']} · {task['duration']}s", dest_name])
+    safe_commit()
+    return {"ok": True, "card_id": cur.lastrowid, "name": name, "video_url": "/api/seedance/v2/videos/" + dest_name}
+
+
+@router.delete("/video/templates/{card_id}")
+def delete_video_template(card_id: int):
+    """删除分镜视频模版词卡（含视频文件）"""
+    db = get_db()
+    card = db.execute("SELECT * FROM word_card WHERE id=? AND is_deleted=0", [card_id]).fetchone()
+    if not card:
+        raise HTTPException(404, "模版词卡不存在")
+    if card["preview_media"]:
+        p = os.path.join(WC_VIDEO_DIR, card["preview_media"])
+        if os.path.exists(p):
+            try:
+                os.remove(p)
+            except Exception as e:
+                print(f"[Seedance Video] 模版视频删除失败 {p}: {e}")
+    db.execute("UPDATE word_card SET is_deleted=1, deleted_at=datetime('now','localtime') WHERE id=?", [card_id])
+    safe_commit()
+    return {"ok": True}
+
 
 @router.get("/video/config")
 def video_config():
