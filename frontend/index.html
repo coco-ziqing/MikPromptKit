@@ -84,6 +84,8 @@
                     <div class="nav-dropdown-item" onclick="App.showBackupInfo()"><i class="bi bi-database"></i> 数据备份</div>
                     <div class="nav-dropdown-item" onclick="App.showSyncPanel()"><i class="bi bi-arrow-left-right"></i> 数据同步</div>
                     <div class="nav-dropdown-item" onclick="App.monitor.open()"><i class="bi bi-speedometer2"></i> 服务监测</div>
+                    <div class="nav-dropdown-item" onclick="App.maintenance.openMail()"><i class="bi bi-envelope"></i> 邮件推送设置</div>
+                    <div class="nav-dropdown-item" onclick="App.maintenance.shutdownPrepare()"><i class="bi bi-power"></i> 关机准备</div>
                     <div class="nav-dropdown-item" onclick="App.comfyLib.open()"><i class="bi bi-magic"></i> 工作流库</div>
                     <div class="nav-dropdown-item" onclick="App.openComfyConfig()"><i class="bi bi-puzzle"></i> 扩展工具</div>
                     <div class="nav-dropdown-item" onclick="App._kvOpen()"><i class="bi bi-shield-lock" style="color:#f59e0b;"></i> 密钥保管</div>
@@ -1146,6 +1148,7 @@
     <script defer src="/static/js/app_tools_core.js?v=2b8615cd"></script>
     <script defer src="/static/js/app_tools_drop_export.js?v=0c43587a"></script>
     <script defer src="/static/js/app_tools_modal_exec.js?v=9b4b1fe8"></script>
+    <script defer src="/static/js/app_maintenance.js?v=a1b2c3d4"></script>
 <script defer src="/static/js/app_import_export.js?v=5d30178f"></script>
     <script defer src="/static/js/app_media.js?v=54527403"></script>
 <script defer src="/static/js/app_media_viewer.js?v=f64f19b6"></script>

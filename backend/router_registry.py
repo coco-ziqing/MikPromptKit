@@ -33,6 +33,7 @@ from api.exporter import router as exporter_router
 from api.libtv import router as libtv_router
 from api.license import router as license_router
 from api.logs import router as log_router
+from api.maintenance import router as maintenance_router
 from api.media import router as media_router
 from api.monitor import router as monitor_router
 from api.ocr import router as ocr_router
@@ -114,3 +115,4 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(dam_search_router)
     app.include_router(dam_vault_router)
     app.include_router(license_router)
+    app.include_router(maintenance_router)
