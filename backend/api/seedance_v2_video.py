@@ -873,7 +873,23 @@ def list_video_tasks(project_id: int = Query(None), status: str = Query(None),
     sql += " ORDER BY id DESC LIMIT ?"
     params.append(limit)
     rows = db.execute(sql, params).fetchall()
-    return {"items": [dict(r) for r in rows]}
+    items = [dict(r) for r in rows]
+    # v5.36.8: 附带统计（前端完成通知/聚合进度用）
+    stats = {}
+    if project_id:
+        stats = {"total": 0, "done": 0, "fail": 0, "active": 0}
+        for r2 in db.execute(
+            "SELECT status, COUNT(*) as c FROM seedance_video_tasks WHERE project_id=? GROUP BY status",
+            [project_id]).fetchall():
+            s = r2["status"]
+            if s == "success":
+                stats["done"] = r2["c"]
+            elif s == "fail":
+                stats["fail"] = r2["c"]
+            else:
+                stats["active"] += r2["c"]
+            stats["total"] += r2["c"]
+    return {"items": items, "stats": stats}
 
 
 @router.get("/video/tasks/{task_id}")

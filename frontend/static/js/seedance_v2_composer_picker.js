@@ -982,6 +982,17 @@
         this.renderScenes();
     };
 
+    // v5.36.8: 后台完成通知定时器（30s，仅当有进行中任务；幂等启动）
+    App.seedanceV2._startVideoNotifyTimer = function() {
+        if (this._videoNotifyTimer) return;
+        var self = this;
+        this._videoNotifyTimer = setInterval(function() {
+            if (!self.currentProjectId) return;
+            if (self._notifyVideoCompletions) self._notifyVideoCompletions();
+            if (self._loadVideoTaskCache) self._loadVideoTaskCache();
+        }, 30000);
+    };
+
     // ========== v5.36.2: 图像参考 ==========
 
     // 加载镜头/全局参考图缩略图

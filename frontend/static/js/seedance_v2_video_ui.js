@@ -324,6 +324,73 @@
         this._startVideoPoll();
     };
 
+    // v5.36.8: 视频任务完成通知（新完成探测 → toast + 标题闪烁 + 声音）
+    App.seedanceV2._notifyVideoCompletions = async function() {
+        if (!this.currentProjectId) return;
+        var self = this;
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/video/tasks?project_id='+this.currentProjectId+'&limit=20');
+            if (!d || !d.items) return;
+            var items = d.items;
+            // 只探测近 90 秒内完成的成功任务（新完成）
+            var now = Date.now();
+            var newlyDone = [];
+            for (var i = 0; i < items.length; i++) {
+                var t = items[i];
+                if (t.status !== 'success') continue;
+                var ft = t.finished_at || '';
+                var ts = 0;
+                if (ft) {
+                    var p = ft.split(/[-: ]/);
+                    if (p.length >= 6) ts = new Date(+p[0], +p[1]-1, +p[2], +p[3], +p[4], +p[5]).getTime();
+                }
+                if (ts && (now - ts) < 90000) newlyDone.push(t);
+            }
+            if (!newlyDone.length) return;
+            // 防重复通知（sessionStorage 记录已通知的 task id）
+            var notified = [];
+            try { notified = JSON.parse(sessionStorage.getItem('vt_notified') || '[]'); } catch(e) {}
+            var fresh = newlyDone.filter(function(t){ return notified.indexOf(t.id) < 0; });
+            if (!fresh.length) return;
+            notified = notified.concat(fresh.map(function(t){ return t.id; })).slice(-30);
+            try { sessionStorage.setItem('vt_notified', JSON.stringify(notified)); } catch(e) {}
+            // 通知
+            for (var j = 0; j < fresh.length; j++) {
+                App.showToast('🎬 视频生成完成：任务 #'+fresh[j].id, 'success');
+            }
+            // 标题闪烁 + 声音
+            self._flashTitleAndBeep(fresh.length);
+        } catch (e) { /* 静默 */ }
+    };
+
+    // 标题闪烁 + 提示音
+    App.seedanceV2._flashTitleAndBeep = function(count) {
+        // 声音（Web Audio 短音）
+        try {
+            var Ctx = window.AudioContext || window.webkitAudioContext;
+            if (Ctx) {
+                var ctx = new Ctx();
+                var o = ctx.createOscillator();
+                var g = ctx.createGain();
+                o.connect(g); g.connect(ctx.destination);
+                o.frequency.value = 880;
+                g.gain.value = 0.15;
+                o.start();
+                setTimeout(function(){ o.stop(); ctx.close(); }, 300);
+            }
+        } catch(e) {}
+        // 标题闪烁
+        var orig = document.title;
+        var flips = 0;
+        var timer = setInterval(function() {
+            document.title = (flips % 2 === 0) ? '🎬 ' + count + ' 个视频已完成!' : orig;
+            flips++;
+            if (flips >= 8) { clearInterval(timer); document.title = orig; }
+        }, 500);
+        // 5s 后强制恢复
+        setTimeout(function(){ clearInterval(timer); document.title = orig; }, 6000);
+    };
+
     App.seedanceV2.closeVideoPanel = function() {
         var m = document.getElementById('s2VideoPanel'); if (m) m.remove();
         this._stopVideoPoll();
@@ -341,6 +408,7 @@
             if (!document.getElementById('s2VideoPanel')) { self._stopVideoPoll(); return; }
             self._loadVideoTasks(true);
             if (self._loadVideoTaskCache) self._loadVideoTaskCache();
+            if (self._notifyVideoCompletions) self._notifyVideoCompletions();
         }, 8000);
     };
 
