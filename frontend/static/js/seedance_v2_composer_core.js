@@ -307,7 +307,7 @@
         if(this._saving){App.showToast('正在保存，请稍后','warning');return;}
         this._saving=true;
         var d={};
-        var fields=['name','total_duration','aspect_ratio','resolution','global_style','global_transition','negative_prompt'];
+        var fields=['name','total_duration','aspect_ratio','resolution','global_style','global_transition','negative_prompt','video_model','video_resolution','video_session'];
         for(var i=0;i<fields.length;i++){
             var f=fields[i];
             var e=document.getElementById('s2_'+f);
@@ -316,6 +316,8 @@
         // checkbox: 用 checked 而非 value
         var cb=document.getElementById('s2_audio_enabled');
         if(cb)d['audio_enabled']=cb.checked;
+        // v5.36.0: 即梦视频参数数值化
+        if(d['video_session']!==undefined)d['video_session']=parseInt(d['video_session']||0);
         var self=this;
         try{
             var result=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{

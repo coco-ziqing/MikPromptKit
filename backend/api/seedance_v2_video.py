@@ -50,8 +50,31 @@ def _now_str():
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _ensure_project_video_cols():
+    """幂等迁移: user_project 增加即梦视频参数列（PRAGMA 探测，无异常路径）"""
+    db = get_db()
+    cols = [r["name"] for r in db.execute("PRAGMA table_info(user_project)").fetchall()]
+    if "video_model" not in cols:
+        db.execute("ALTER TABLE user_project ADD COLUMN video_model TEXT DEFAULT 'seedance2.0fast'")
+        print("[Seedance Video] user_project 增加列 video_model")
+    if "video_session" not in cols:
+        db.execute("ALTER TABLE user_project ADD COLUMN video_session INTEGER DEFAULT 0")
+        print("[Seedance Video] user_project 增加列 video_session")
+    if "video_resolution" not in cols:
+        db.execute("ALTER TABLE user_project ADD COLUMN video_resolution TEXT DEFAULT '720p'")
+        print("[Seedance Video] user_project 增加列 video_resolution")
+    safe_commit()
+
+
 def _ensure_video_task_table():
     db = get_db()
+    # 旧表补列（幂等 PRAGMA 探测，CREATE IF NOT EXISTS 不更新旧表）
+    tbl_cols = [r["name"] for r in db.execute("PRAGMA table_info(seedance_video_tasks)").fetchall()] if any(
+        r["name"] == "seedance_video_tasks" for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='seedance_video_tasks'").fetchall()
+    ) else []
+    if tbl_cols and "session" not in tbl_cols:
+        db.execute("ALTER TABLE seedance_video_tasks ADD COLUMN session INTEGER DEFAULT 0")
+        print("[Seedance Video] seedance_video_tasks 增加列 session")
     db.execute("""CREATE TABLE IF NOT EXISTS seedance_video_tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id INTEGER,
@@ -62,6 +85,7 @@ def _ensure_video_task_table():
         ratio TEXT DEFAULT '16:9',
         duration INTEGER DEFAULT 5,
         video_resolution TEXT DEFAULT '720p',
+        session INTEGER DEFAULT 0,
         submit_id TEXT DEFAULT '',
         status TEXT DEFAULT 'queued',
         fail_reason TEXT DEFAULT '',
@@ -111,6 +135,33 @@ def _build_scene_prompt(scene: dict, global_style: str = "") -> str:
         return ""
     style = (global_style or "").strip()
     return (style + "，" + text) if style else text
+
+
+_SESSION_CACHE = {"list": None, "ts": 0}
+
+
+def _valid_session(session: int) -> int:
+    """校验即梦会话 ID 是否存在；不存在回退默认会话 0
+    用 CLI `session list` 探测（30s 缓存），失败保守放行（0）"""
+    if session == 0:
+        return 0
+    import time as _t
+    if _SESSION_CACHE["list"] is None or _t.time() - _SESSION_CACHE["ts"] > 30:
+        try:
+            out, _err, _code = _dreamina_run(["session", "list"], timeout=20)
+            _SESSION_CACHE["list"] = out or ""
+            _SESSION_CACHE["ts"] = _t.time()
+        except Exception:
+            _SESSION_CACHE["list"] = ""
+    if _SESSION_CACHE["list"]:
+        ids = set()
+        for line in _SESSION_CACHE["list"].splitlines():
+            m = re.match(r"^\s*(\d+)\s+", line)
+            if m:
+                ids.add(int(m.group(1)))
+        if session not in ids:
+            return 0
+    return session
 
 
 def _validate_duration(model: str, duration: int):
@@ -212,6 +263,7 @@ def _video_worker(task_id: int):
                     "--ratio", task["ratio"],
                     "--duration", str(task["duration"]),
                     "--video_resolution", task["video_resolution"],
+                    "--session", str(task["session"] or 0),
                     "--poll", "0"]
             out, err, code = _dreamina_run(args, timeout=180)
             data = _parse_cli_json(out, err)
@@ -262,10 +314,23 @@ def _resume_orphaned_video_tasks():
 
 @router.get("/video/config")
 def video_config():
-    """视频生成参数集（供前端渲染）"""
+    """视频生成参数集（供前端渲染）+ 分辨率/模型映射规则"""
+    _ensure_project_video_cols()
+    # 项目分辨率档位 → 即梦建议映射（按模型上限）
+    proj_res_map = {
+        "480p": "480p", "720p": "720p", "1080p": "1080p",
+        "2K": "1080p", "4K": "4k", "6K": "4k", "8K": "4k"
+    }
+    # 模型 → 最高分辨率
+    model_max_res = {
+        "seedance2.0fast": "720p", "seedance2.0": "720p", "seedance2.0mini": "720p",
+        "seedance2.0fast_vip": "720p", "seedance2.0_vip": "4k", "seedance2.5": "720p"
+    }
     return {"ok": True, "model_versions": MODEL_VERSIONS, "ratios": RATIOS,
             "resolutions": RESOLUTIONS, "cli_available": os.path.exists(DREAMINA_BIN),
-            "video_dir": VIDEO_DIR}
+            "video_dir": VIDEO_DIR,
+            "proj_res_map": proj_res_map, "model_max_res": model_max_res,
+            "model_limits": {k: {"duration": v} for k, v in _MODEL_LIMITS.items()}}
 
 
 @router.post("/video/tasks")
@@ -282,24 +347,26 @@ def create_video_tasks(data: dict = Body(...)):
     }
     """
     global _VWORKER_STARTED
+    _ensure_project_video_cols()
     _ensure_video_task_table()
     project_id = data.get("project_id")
     if not project_id:
         raise HTTPException(400, "project_id 必填")
+    db = get_db()
+    proj = db.execute("SELECT * FROM user_project WHERE id=?", [project_id]).fetchone()
+    if not proj:
+        raise HTTPException(404, "分镜项目不存在")
     scope = data.get("scope", "scenes")
-    model = data.get("model_version", "seedance2.0fast")
-    ratio = data.get("ratio", "16:9")
-    resolution = data.get("resolution", "720p")
+    # 项目持久化的即梦参数作为默认（v5.36.0 全局参数联动）
+    model = data.get("model_version") or proj["video_model"] or "seedance2.0fast"
+    ratio = data.get("ratio") or proj["aspect_ratio"] or "16:9"
+    resolution = data.get("resolution") or proj["video_resolution"] or "720p"
+    video_session = _valid_session(int(data.get("session", proj["video_session"] or 0)))
     if model not in MODEL_VERSIONS:
         raise HTTPException(400, f"不支持的模型: {model}")
     if ratio not in RATIOS:
         raise HTTPException(400, f"不支持的画幅: {ratio}")
     resolution = _valid_resolution(model, resolution)
-
-    db = get_db()
-    proj = db.execute("SELECT * FROM user_project WHERE id=?", [project_id]).fetchone()
-    if not proj:
-        raise HTTPException(404, "分镜项目不存在")
 
     # 组装任务列表
     tasks = []
@@ -344,9 +411,9 @@ def create_video_tasks(data: dict = Body(...)):
     created_ids = []
     for t in tasks:
         cur = db.execute(
-            "INSERT INTO seedance_video_tasks (project_id, scene_id, task_type, prompt, model_version, ratio, duration, video_resolution, status, created_at) "
-            "VALUES (?, ?, 'text2video', ?, ?, ?, ?, ?, 'queued', ?)",
-            [project_id, t["scene_id"], t["prompt"], model, ratio, t["duration"], resolution, _now_str()]
+            "INSERT INTO seedance_video_tasks (project_id, scene_id, task_type, prompt, model_version, ratio, duration, video_resolution, session, status, created_at) "
+            "VALUES (?, ?, 'text2video', ?, ?, ?, ?, ?, ?, 'queued', ?)",
+            [project_id, t["scene_id"], t["prompt"], model, ratio, t["duration"], resolution, video_session, _now_str()]
         )
         created_ids.append(cur.lastrowid)
     safe_commit()

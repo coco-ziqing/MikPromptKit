@@ -14,10 +14,11 @@
         } catch (e) { console.warn('video cfg fail', e); }
     };
 
-    // 打开提交弹窗
+    // 打开提交弹窗（三步引导：①范围 ②参数确认 ③提交）
     App.seedanceV2.openVideoSubmit = async function() {
         if (!this._videoCfg) await this._loadVideoCfg();
-        var cfg = this._videoCfg || {model_versions:['seedance2.0fast'], ratios:['16:9'], resolutions:['720p'], cli_available:true};
+        var cfg = this._videoCfg || {model_versions:['seedance2.0fast'], ratios:['16:9'], resolutions:['720p'], cli_available:true,
+                                     proj_res_map:{}, model_max_res:{}};
         var p = this.currentProject || {};
         var old = document.getElementById('s2VideoSubmit');
         if (old) old.remove();
@@ -41,59 +42,112 @@
             loginWarn = '<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);color:#ef4444;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:10px;">⚠️ 即梦未登录，提交将失败。请先在 工具 → 生成引擎授权中心 完成即梦登录。</div>';
         }
 
+        // ===== 参数默认值：优先项目全局参数（v5.36.0 联动） =====
+        var defModel = p.video_model || 'seedance2.0fast';
+        var defRes = p.video_resolution || '720p';
+        var defRatio = p.aspect_ratio || '16:9';
+        var defSession = (p.video_session===undefined||p.video_session===null)?0:p.video_session;
+
         var modelOpts = '';
         for (var i = 0; i < cfg.model_versions.length; i++) {
             var m = cfg.model_versions[i];
             var label = m === 'seedance2.0fast' ? 'seedance2.0fast (默认·均衡)' : m;
-            modelOpts += '<option value="'+m+'"'+(m==='seedance2.0fast'?' selected':'')+'>'+label+'</option>';
+            modelOpts += '<option value="'+m+'"'+(m===defModel?' selected':'')+'>'+label+'</option>';
         }
         var ratioOpts = '';
         for (var j = 0; j < cfg.ratios.length; j++) {
             var r = cfg.ratios[j];
-            ratioOpts += '<option value="'+r+'"'+(r===(p.aspect_ratio||'16:9')?' selected':'')+'>'+r+'</option>';
+            ratioOpts += '<option value="'+r+'"'+(r===defRatio?' selected':'')+'>'+r+'</option>';
         }
         var resOpts = '';
         for (var k = 0; k < cfg.resolutions.length; k++) {
-            resOpts += '<option value="'+cfg.resolutions[k]+'"'+(cfg.resolutions[k]==='720p'?' selected':'')+'>'+cfg.resolutions[k]+'</option>';
+            resOpts += '<option value="'+cfg.resolutions[k]+'"'+(cfg.resolutions[k]===defRes?' selected':'')+'>'+cfg.resolutions[k]+'</option>';
         }
 
-        overlay.innerHTML = '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:520px;">' +
+        // ===== 参数映射提示（项目分辨率 → 即梦建议） =====
+        var projRes = p.resolution || '4K';
+        var mappedRes = (cfg.proj_res_map && cfg.proj_res_map[projRes]) || '720p';
+        var maxRes = (cfg.model_max_res && cfg.model_max_res[defModel]) || '720p';
+        var resTip = '';
+        if (projRes !== mappedRes) {
+            resTip = '<div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);color:#d97706;border-radius:6px;padding:6px 10px;font-size:11px;margin-top:6px;">⚠️ 项目分辨率 '+projRes+' 超出/不匹配即梦档位，已映射为 <strong>'+mappedRes+'</strong>（模型 '+defModel+' 上限 '+maxRes+'，可选 2.0_vip 升至 4k）。</div>';
+        } else {
+            resTip = '<div style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);color:#10b981;border-radius:6px;padding:6px 10px;font-size:11px;margin-top:6px;">✅ 项目分辨率 '+projRes+' 与即梦参数一致（模型 '+defModel+' 上限 '+maxRes+'）。</div>';
+        }
+
+        overlay.innerHTML = '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:540px;">' +
             '<div class="modal-header"><h5>🎬 即梦视频生成</h5><button class="header-btn-sm" onclick="document.getElementById(\'s2VideoSubmit\').remove()">&times;</button></div>' +
             '<div class="modal-body">' + loginWarn +
-            '<p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">将分镜组装结果提交到即梦生成视频。镜头内容将按标准公式拼接为提示词。</p>' +
+            '<div style="display:flex;gap:6px;margin-bottom:12px;">' +
+            '<span style="flex:1;text-align:center;font-size:11px;padding:4px 0;border-radius:6px;background:rgba(79,70,229,0.1);color:#6366f1;font-weight:600;">① 选择范围</span>' +
+            '<span style="flex:1;text-align:center;font-size:11px;padding:4px 0;border-radius:6px;background:rgba(79,70,229,0.1);color:#6366f1;font-weight:600;">② 确认参数</span>' +
+            '<span style="flex:1;text-align:center;font-size:11px;padding:4px 0;border-radius:6px;background:var(--hover-bg);color:var(--text-muted);font-weight:600;">③ 提交生成</span>' +
+            '</div>' +
             '<div style="margin-bottom:10px;"><label style="font-size:11px;color:var(--text-muted);">生成范围</label>' +
             '<div style="display:flex;gap:8px;margin-top:4px;">' +
             '<label style="flex:1;border:1px solid var(--border-color);border-radius:8px;padding:8px;cursor:pointer;text-align:center;font-size:13px;" class="s2-video-scope-opt">' +
-            '<input type="radio" name="s2VideoScope" value="scenes" checked style="margin-right:4px;">逐镜头生成<br><span style="font-size:10px;color:var(--text-muted);">每镜头一段视频</span></label>' +
+            '<input type="radio" name="s2VideoScope" value="scenes" checked style="margin-right:4px;">逐镜头生成<br><span style="font-size:10px;color:var(--text-muted);">每镜头一段视频（推荐）</span></label>' +
             '<label style="flex:1;border:1px solid var(--border-color);border-radius:8px;padding:8px;cursor:pointer;text-align:center;font-size:13px;" class="s2-video-scope-opt">' +
             '<input type="radio" name="s2VideoScope" value="all" style="margin-right:4px;">整项目生成<br><span style="font-size:10px;color:var(--text-muted);">拼接为一段（≤15s）</span></label>' +
             '</div></div>' +
             '<div style="margin-bottom:10px;"><label style="font-size:11px;color:var(--text-muted);">模型版本</label>' +
-            '<select id="s2VideoModel" class="s2-input" style="width:100%;margin-top:2px;">'+modelOpts+'</select></div>' +
-            '<div style="display:flex;gap:10px;margin-bottom:10px;">' +
-            '<div style="flex:1;"><label style="font-size:11px;color:var(--text-muted);">画幅</label>' +
+            '<select id="s2VideoModel" class="s2-input" style="width:100%;margin-top:2px;" onchange="App.seedanceV2._videoModelChanged(this)">'+modelOpts+'</select></div>' +
+            '<div style="display:flex;gap:10px;margin-bottom:4px;">' +
+            '<div style="flex:1;"><label style="font-size:11px;color:var(--text-muted);">画幅（来自全局参数）</label>' +
             '<select id="s2VideoRatio" class="s2-input" style="width:100%;margin-top:2px;">'+ratioOpts+'</select></div>' +
             '<div style="flex:1;"><label style="font-size:11px;color:var(--text-muted);">分辨率</label>' +
             '<select id="s2VideoRes" class="s2-input" style="width:100%;margin-top:2px;">'+resOpts+'</select></div>' +
+            '<div style="flex:0.7;"><label style="font-size:11px;color:var(--text-muted);">会话</label>' +
+            '<input id="s2VideoSession" class="s2-input" type="number" min="0" value="'+defSession+'" style="width:100%;margin-top:2px;" title="即梦 CLI --session"></div>' +
             '</div>' +
-            '<div style="background:var(--hover-bg);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--text-muted);">' +
-            '⏱ 预计时长：整项目='+(p.total_duration||15)+'s（上限15s，超长请用逐镜头）；逐镜头=各镜头时长（自动收敛到 4-15s）<br>' +
-            '📌 提示：即梦生成异步执行，提交后可在任务面板查看进度与结果。</div>' +
+            '<div id="s2VideoResTip">'+resTip+'</div>' +
+            '<div style="background:var(--hover-bg);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--text-muted);margin-top:8px;">' +
+            '⏱ 预计时长：整项目='+(p.total_duration||15)+'s（上限15s，超长请用逐镜头）；逐镜头=各镜头时长（自动收敛 4-15s，seedance2.5 可达 30s）<br>' +
+            '📌 即梦生成异步执行，提交后可到「📺 任务面板」查看进度与结果。</div>' +
             '</div>' +
             '<div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'s2VideoSubmit\').remove()">取消</button>' +
-            '<button class="btn btn-primary btn-sm" id="s2VideoSubmitBtn">提交生成</button></div></div>';
+            '<button class="btn btn-primary btn-sm" id="s2VideoSubmitBtn">③ 提交生成</button></div></div>';
         document.body.appendChild(overlay);
         document.getElementById('s2VideoSubmitBtn').onclick = function() {
             var scope = document.querySelector('input[name="s2VideoScope"]:checked');
             var model = document.getElementById('s2VideoModel').value;
             var ratio = document.getElementById('s2VideoRatio').value;
             var res = document.getElementById('s2VideoRes').value;
-            self._doVideoSubmit(scope ? scope.value : 'scenes', model, ratio, res);
+            var session = parseInt(document.getElementById('s2VideoSession').value || '0');
+            self._doVideoSubmit(scope ? scope.value : 'scenes', model, ratio, res, session);
         };
     };
 
+    // 模型切换时更新分辨率映射提示
+    App.seedanceV2._videoModelChanged = function(sel) {
+        var model = sel.value;
+        var cfg = this._videoCfg || {};
+        var maxRes = (cfg.model_max_res && cfg.model_max_res[model]) || '720p';
+        var tip = document.getElementById('s2VideoResTip');
+        if (!tip) return;
+        var resSel = document.getElementById('s2VideoRes');
+        if (resSel) {
+            var cur = resSel.value;
+            var allowed = ['480p','720p','1080p','4k'];
+            var valid = ['480p','720p','1080p','4k'].indexOf(cur) >= 0;
+            // 按模型过滤可用档位
+            if (model === 'seedance2.5') {
+                resSel.innerHTML = '<option value="480p">480p</option><option value="720p">720p</option>';
+                if (cur !== '480p' && cur !== '720p') cur = '720p';
+            } else if (model === 'seedance2.0_vip') {
+                resSel.innerHTML = '<option value="720p">720p</option><option value="1080p">1080p</option><option value="4k">4k</option>';
+                if (cur === '480p') cur = '720p';
+            } else {
+                resSel.innerHTML = '<option value="720p">720p</option>';
+                cur = '720p';
+            }
+            resSel.value = cur;
+        }
+        tip.innerHTML = '💡 模型 '+model+' 分辨率上限 <strong>'+maxRes+'</strong>；切换 2.0_vip 可升至 1080p/4k，seedance2.5 仅 480p/720p（支持 30s 长视频）。';
+    };
+
     // 提交视频任务
-    App.seedanceV2._doVideoSubmit = async function(scope, model, ratio, res) {
+    App.seedanceV2._doVideoSubmit = async function(scope, model, ratio, res, session) {
         if (!this.currentProjectId) { App.showToast('请先选择项目', 'warning'); return; }
         App.showToast('正在提交视频任务...', 'info');
         try {
@@ -105,6 +159,7 @@
                     model_version: model,
                     ratio: ratio,
                     resolution: res,
+                    session: session || 0,
                     task_type: 'text2video'
                 }),
                 _timeoutMs: 30000

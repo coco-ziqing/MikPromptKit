@@ -61,7 +61,28 @@
         h+='<div class="s2-field"><label>总时长(秒)</label><select id="s2_total_duration" class="s2-input" onchange="App.seedanceV2.onTotalDurationChange()">';for(var td=4;td<=15;td+=1){h+='<option value="'+td+'"'+(td===(p.total_duration||15)?' selected':'')+'>'+td+'秒</option>';}h+='</select></div></div>';
         h+='<div class="s2-global-row"><div class="s2-field" style="flex:2;"><label>全局画风 <span class="s2-style-picker-btn" onclick="App.seedanceV2._openGlobalGroupPicker(88)" title="从词库选择画风">📚 选风格</span></label><input id="s2_global_style" class="s2-input" placeholder="..." value="'+App._escape(p.global_style||'')+'" onchange="App.seedanceV2.setDirty();App.seedanceV2._debouncedCompose()"></div><div class="s2-field" style="flex:1;"><label>全局转场</label><input id="s2_global_transition" class="s2-input" placeholder="..." value="'+App._escape(p.global_transition||'')+'" onchange="App.seedanceV2.setDirty();App.seedanceV2._debouncedCompose()"></div></div>';
         var rm=(p.remaining_duration!==undefined)?p.remaining_duration:p.remaining;
-        h+='<div style="font-size:12px;color:var(--text-muted);margin-top:4px;"><span>已分配: <strong>'+(p.total_dur_input||0)+'</strong>s / <strong>'+p.total_duration+'</strong>s</span><span style="margin-left:12px;'+(rm<=0?'color:#ef4444;':'')+'">剩余: <strong>'+Math.max(0,rm)+'</strong>s</span></div></div></div>';
+        h+='<div style="font-size:12px;color:var(--text-muted);margin-top:4px;"><span>已分配: <strong>'+(p.total_dur_input||0)+'</strong>s / <strong>'+p.total_duration+'</strong>s</span><span style="margin-left:12px;'+(rm<=0?'color:#ef4444;':'')+'">剩余: <strong>'+Math.max(0,rm)+'</strong>s</span></div>';
+        // v5.36.0: 即梦视频参数组（与提交弹窗联动，保存到项目）
+        var vm = p.video_model || 'seedance2.0fast';
+        var vses = (p.video_session===undefined||p.video_session===null)?0:p.video_session;
+        var vres = p.video_resolution || '720p';
+        var VMODELS = ['seedance2.0fast','seedance2.0','seedance2.0_vip','seedance2.0fast_vip','seedance2.0mini','seedance2.5'];
+        var vmOpts = '';
+        for (var vi = 0; vi < VMODELS.length; vi++) {
+            vmOpts += '<option value="'+VMODELS[vi]+'"'+(VMODELS[vi]===vm?' selected':'')+'>'+VMODELS[vi]+'</option>';
+        }
+        var VRESS = ['480p','720p','1080p','4k'];
+        var vrOpts = '';
+        for (var vj = 0; vj < VRESS.length; vj++) {
+            vrOpts += '<option value="'+VRESS[vj]+'"'+(VRESS[vj]===vres?' selected':'')+'>'+VRESS[vj]+'</option>';
+        }
+        h+='<div class="s2-global-row" style="margin-top:6px;background:rgba(16,185,129,0.05);border:1px dashed rgba(16,185,129,0.3);border-radius:6px;padding:6px 8px;">';
+        h+='<div style="width:100%;font-size:11px;font-weight:700;color:#10b981;margin-bottom:4px;">🎬 即梦视频参数 <span style="font-weight:400;color:var(--text-muted);font-size:10px;">(生成视频时的默认参数，提交弹窗可改)</span></div>';
+        h+='<div class="s2-field" style="flex:1.4;"><label>模型版本</label><select id="s2_video_model" class="s2-input" onchange="App.seedanceV2._saveVideoParam(&apos;video_model&apos;,this.value)">'+vmOpts+'</select></div>';
+        h+='<div class="s2-field" style="flex:1;"><label>视频分辨率</label><select id="s2_video_resolution" class="s2-input" onchange="App.seedanceV2._saveVideoParam(&apos;video_resolution&apos;,this.value)">'+vrOpts+'</select></div>';
+        h+='<div class="s2-field" style="flex:0.8;"><label>即梦会话</label><input id="s2_video_session" class="s2-input" type="number" min="0" value="'+vses+'" onchange="App.seedanceV2._saveVideoParam(&apos;video_session&apos;,this.value)" title="即梦 CLI --session，默认 0"></div>';
+        h+='<div style="width:100%;font-size:10px;color:var(--text-muted);margin-top:2px;" id="s2VideoParamHint">💡 即梦画幅取上方「画幅」设置（16:9/9:16/1:1/21:9/4:3/3:4 均支持）；分辨率超出模型上限将自动降级（如 seedance2.0fast 上限 720p）。</div>';
+        h+='</div></div></div>';
         // ③ 输出预览
         h+='<div class="s2-output-section"><div class="s2-section-title" onclick="App.seedanceV2._toggleOutput()" title="点击折叠/展开"> 输出预览 <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span></div>';
         // 格式/密度/音频控制行
@@ -890,6 +911,20 @@
     App.seedanceV2.reorderScenes=async function(src,tgt){if(!this.currentProjectId)return;this._pushUndoBefore();var ids=[];for(var i=0;i<this.scenes.length;i++)ids.push(this.scenes[i].id);var si=ids.indexOf(src),ti=ids.indexOf(tgt);if(si<0||ti<0)return;ids.splice(si,1);var newTi=ids.indexOf(tgt);if(si<ti)ids.splice(newTi+1,0,src);else ids.splice(newTi,0,src);var d=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_ids:ids})});if(d&&d.ok){await this.openProject(this.currentProjectId);App.showToast(App._t('auto.str_7d7594cf', '镜头已重新排序'),'success');}};
 
     App.seedanceV2.updateSceneField=async function(sid,f,v){this._pushUndoBefore();var d={};d[f]=v;await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});};
+
+    // v5.36.0: 即梦视频参数实时保存（全局参数区联动）
+    App.seedanceV2._saveVideoParam=async function(key,val){
+        if(!this.currentProjectId)return;
+        if(key==='video_session'){val=parseInt(val||0);if(isNaN(val))val=0;}
+        if(this.currentProject)this.currentProject[key]=val;
+        var d={};d[key]=val;
+        try{
+            var r=await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId,{
+                method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)
+            });
+            if(r&&r.ok){App.showToast('已保存','success');}
+        }catch(e){console.warn('save video param fail',e);}
+    };
 
     // ========== Phase13.4: 撤销栈 ==========
 
