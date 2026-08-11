@@ -184,6 +184,8 @@ Object.assign(App, {
                 '<div id="bgenPipelineStatus" style="display:none;font-size:11px;color:#8b5cf6;padding:6px 10px;border:1px dashed #8b5cf6;border-radius:8px;background:rgba(139,92,246,0.04);"></div>' +
                 // 进度与明细
                 '<div id="bgenProgressArea" style="display:none;">' +
+                  // 2026-08-11: 生成队列总览（任务清单 + 运行状态 + 统计）
+                  '<div id="bgenQueueOverview" style="display:none;border:1px solid var(--border-color);border-radius:8px;padding:6px 8px;margin-bottom:8px;background:var(--bg-card);"></div>' +
                   '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">' +
                     '<span style="font-size:11px;color:var(--text-muted);" id="bgenProgressText">准备中...</span>' +
                     '<span style="margin-left:auto;display:flex;gap:6px;">' +
@@ -270,6 +272,8 @@ Object.assign(App, {
         this._batchFrameSelected = {};
         if (this._frameSel) this._frameSel.selected = {};
         this._initFrameSelect();
+        // 2026-08-11: 生成队列总览轮询（任务清单 + 运行状态 + 统计）
+        this._pollBatchQueue();
     },
 
     // ============ 启动恢复报告检查（2026-08-11 断点任务提醒） ============
@@ -2370,6 +2374,106 @@ Object.assign(App, {
                 b.title = skipped ? '恢复参与本次生成' : '排除该卡，不参与本次生成';
             }
         }
+    },
+
+    // ============ 生成队列总览（2026-08-11 可视化监管） ============
+    // 每 3s 拉取任务列表，渲染「队列总览」：统计行 + 每任务状态卡片（运行/排队/完成/异常）
+    _pollBatchQueue() {
+        var self = this;
+        if (this._batchQueueTimer) return;
+        var tick = async function() {
+            var ov = document.getElementById('bgenQueueOverview');
+            var dialog = document.getElementById('batchGenDialog');
+            // 弹窗关闭/面板不存在 → 停止轮询（任务仍在后台执行）
+            if (!ov || !dialog || dialog.style.display !== 'flex') {
+                self._stopBatchQueue();
+                return;
+            }
+            try {
+                var d = await self.fetchJSON('/api/v2/comfyui/batch-tasks?limit=100');
+                if (d && d.ok) self._renderBatchQueueOverview(d.items || []);
+            } catch(e) { /* 网络抖动忽略，下轮重试 */ }
+        };
+        tick();
+        this._batchQueueTimer = setInterval(tick, 3000);
+    },
+
+    _stopBatchQueue() {
+        if (this._batchQueueTimer) {
+            clearInterval(this._batchQueueTimer);
+            this._batchQueueTimer = null;
+        }
+    },
+
+    // 渲染队列总览：统计 + 任务卡片（活跃全部 + 最近 3 个终态）
+    _renderBatchQueueOverview(items) {
+        var ov = document.getElementById('bgenQueueOverview');
+        if (!ov) return;
+        var active = [];
+        var doneArr = [];
+        for (var i = 0; i < items.length; i++) {
+            var t = items[i];
+            if (t.status === 'queued' || t.status === 'running' || t.status === 'error') active.push(t);
+            else if (t.status === 'done' || t.status === 'cancelled') doneArr.push(t);
+        }
+        if (active.length === 0 && doneArr.length === 0) { ov.style.display = 'none'; return; }
+        var stMap = { queued: ['🟡', '排队中', '#d97706'], running: ['🟢', '生成中', '#10b981'], done: ['✅', '完成', '#059669'], cancelled: ['⛔', '已取消', '#94a3b8'], error: ['❌', '异常', '#ef4444'] };
+        var engName = { dreamina: '即梦', libtv: 'LibTV', comfyui: 'ComfyUI' };
+        var runCnt = 0, queuedCnt = 0, errCnt = 0, doneCnt = 0;
+        var totalP = 0, doneP = 0, okS = 0, failS = 0;
+        for (var j = 0; j < active.length; j++) {
+            if (active[j].status === 'running') runCnt++;
+            else if (active[j].status === 'queued') queuedCnt++;
+            else errCnt++;
+            totalP += active[j].total || 0;
+            doneP += active[j].current_index || 0;
+        }
+        for (var k = 0; k < doneArr.length; k++) {
+            if (doneArr[k].status === 'done') doneCnt++;
+            okS += doneArr[k].success || 0;
+            failS += doneArr[k].failed || 0;
+        }
+        var html = '';
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">' +
+            '<span style="font-size:11px;font-weight:600;color:var(--text-main);">📊 生成队列总览</span>' +
+            '<span style="margin-left:auto;font-size:9px;color:var(--text-muted);">3s 自动刷新</span>' +
+            '</div>';
+        html += '<div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap;">' +
+            '<span>🟢 运行 ' + runCnt + '</span>' +
+            '<span>🟡 排队 ' + queuedCnt + '</span>' +
+            '<span>✅ 完成 ' + doneCnt + '</span>' +
+            (errCnt ? '<span style="color:#ef4444;">❌ 异常 ' + errCnt + '</span>' : '') +
+            (active.length ? '<span style="color:var(--text-main);">进行中 ' + doneP + '/' + totalP + ' 张</span>' : '') +
+            (okS + failS > 0 ? '<span>累计 成功 ' + okS + ' / 失败 ' + failS + '</span>' : '') +
+            '</div>';
+        // 任务卡片：活跃全部 + 最近 3 个终态
+        var shown = active.concat(doneArr.slice(0, 3));
+        for (var m = 0; m < shown.length; m++) {
+            var t2 = shown[m];
+            var sm = stMap[t2.status] || ['⚪', t2.status, '#94a3b8'];
+            var pct = t2.total > 0 ? Math.round((t2.current_index || 0) / t2.total * 100) : 0;
+            var eta = (t2.status === 'running') ? this._batchEtaText(t2) : '';
+            var eng = engName[t2.engine] || t2.engine || '';
+            var cur = (t2.current_prompt || '').slice(0, 36);
+            var isRun = t2.status === 'running';
+            var tailTxt = '';
+            if (t2.status === 'done') tailTxt = '成功 ' + (t2.success || 0) + ' / 失败 ' + (t2.failed || 0);
+            else if (t2.status === 'error') tailTxt = (t2.error || '异常').slice(0, 26);
+            html += '<div style="border:1px solid var(--border-color);border-radius:6px;padding:4px 8px;margin-bottom:3px;' + (isRun ? 'border-color:#10b981;background:rgba(16,185,129,0.05);' : '') + '">' +
+                '<div style="display:flex;align-items:center;gap:6px;">' +
+                '<span>' + sm[0] + '</span>' +
+                '<span style="font-size:10px;font-weight:600;color:var(--text-main);">#' + t2.id + (eng ? ' ' + eng : '') + '</span>' +
+                '<span style="font-size:10px;color:' + sm[2] + ';">' + sm[1] + '</span>' +
+                '<span style="font-size:10px;color:var(--text-muted);">' + (t2.current_index || 0) + '/' + t2.total + '</span>' +
+                (isRun && cur ? '<span style="font-size:9px;color:var(--text-muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + App._escape(t2.current_prompt || '') + '">' + App._escape(cur) + '</span>' : '<span style="flex:1;"></span>') +
+                (tailTxt ? '<span style="font-size:10px;color:' + (t2.status === 'error' ? '#ef4444' : 'var(--text-muted)') + ';">' + App._escape(tailTxt) + '</span>' : '') +
+                eta +
+                '</div>' +
+                ((t2.status === 'queued' || t2.status === 'running') ? '<div style="height:4px;background:var(--border-color);border-radius:2px;margin-top:3px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:' + sm[2] + ';transition:width .3s;"></div></div>' : '') +
+                '</div>';
+        }
+        ov.innerHTML = html;
+        ov.style.display = 'block';
     },
 
     // 悬停大图预览：跟随鼠标显示原图（不阻塞点击）
