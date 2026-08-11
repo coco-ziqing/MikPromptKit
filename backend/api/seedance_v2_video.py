@@ -88,6 +88,9 @@ def _ensure_video_task_table():
     if tbl_cols and "progress" not in tbl_cols:
         db.execute("ALTER TABLE seedance_video_tasks ADD COLUMN progress INTEGER DEFAULT 0")
         print("[Seedance Video] seedance_video_tasks 增加列 progress")
+    if tbl_cols and "fail_category" not in tbl_cols:
+        db.execute("ALTER TABLE seedance_video_tasks ADD COLUMN fail_category TEXT DEFAULT ''")
+        print("[Seedance Video] seedance_video_tasks 增加列 fail_category")
     db.execute("""CREATE TABLE IF NOT EXISTS seedance_video_tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id INTEGER,
@@ -101,6 +104,7 @@ def _ensure_video_task_table():
         session INTEGER DEFAULT 0,
         image_refs TEXT DEFAULT '',
         progress INTEGER DEFAULT 0,
+        fail_category TEXT DEFAULT '',
         submit_id TEXT DEFAULT '',
         status TEXT DEFAULT 'queued',
         fail_reason TEXT DEFAULT '',
@@ -198,6 +202,36 @@ def _build_ref_aware_prompt(base_prompt: str, refs: list) -> str:
     return "，".join(parts)
 
 
+# 参考图压缩预处理目录（提交前生成，避免 CLI 上传大图超时）
+REF_TMP_DIR = os.path.join(_PROJECT_ROOT, "data", "video_refs", "tmp")
+os.makedirs(REF_TMP_DIR, exist_ok=True)
+
+
+def _compress_ref_image(src_path: str) -> str:
+    """压缩参考图到 ≤1024px/JPEG q80（~100KB），返回临时文件路径
+    解决 CLI 上传超时（3MB 大图 HOST 上传 1-2min 撞 deadline，压缩后秒级成功）
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return src_path  # 无 Pillow 则原样
+    try:
+        fname = os.path.basename(src_path)
+        stem, ext = os.path.splitext(fname)
+        if ext.lower() in ('.gif',):
+            return src_path  # gif 不压缩（动画）
+        dst = os.path.join(REF_TMP_DIR, f"cmp_{int(time.time()*1000)}_{stem[:20]}.jpg")
+        im = Image.open(src_path)
+        im.thumbnail((1024, 1024), Image.LANCZOS)
+        if im.mode in ('RGBA', 'P'):
+            im = im.convert('RGB')
+        im.save(dst, 'JPEG', quality=80, optimize=True)
+        return dst
+    except Exception as e:
+        print(f"[Seedance Video] 参考图压缩失败 {src_path}: {e}")
+        return src_path
+
+
 def _collect_refs(project_id: int, scene_id) -> list:
     """收集参考图：镜头级 + 全局级合并去重（按 file_path）
     返回 [{ref_type, ref_name, file_path, url}]，总数 ≤9
@@ -230,6 +264,28 @@ def _collect_refs(project_id: int, scene_id) -> list:
     return refs
 
 
+# 错误分类: CLI 原始错误 → 类别 + 用户引导（v5.36.7）
+_ERROR_CATEGORIES = [
+    ("ExceedConcurrencyLimit", "concurrency", "即梦账户并发任务超限。请等待当前生成完成后再提交，或稍后重试（系统会自动重试）。"),
+    ("ret=1001", "param", "参数错误（可能为无效会话/画幅/分辨率）。请检查会话与参数设置后重试。"),
+    ("AigcComplianceConfirmationRequired", "compliance", "该模型首次使用需先在即梦网页端完成一次模型授权确认，然后重试。"),
+    ("no file upload", "upload", "参考图上传失败（大图可能超时，系统已自动压缩后重试）。"),
+    ("upload", "upload", "参考图上传失败。请检查图片文件是否可读。"),
+    ("timeout", "timeout", "任务超时。生成耗时过长，请重试或减少参考图数量。"),
+    ("login", "login", "即梦未登录或登录态失效。请到「工具 → 生成引擎授权中心」重新登录。"),
+]
+
+
+def _classify_error(reason: str) -> dict:
+    """将 CLI 原始错误归类，返回 {category, message, retryable}"""
+    reason = reason or ""
+    for pat, cat, msg in _ERROR_CATEGORIES:
+        if pat.lower() in reason.lower():
+            return {"category": cat, "message": msg,
+                    "retryable": cat in ("concurrency", "upload", "timeout")}
+    return {"category": "unknown", "message": reason[:200], "retryable": False}
+
+
 def _pick_task_type(refs: list, requested: str) -> str:
     """确定生成方式：无图=text2video；单图=image2video；多图=multimodal2video"""
     n = len(refs)
@@ -245,27 +301,35 @@ def _pick_task_type(refs: list, requested: str) -> str:
 _SESSION_CACHE = {"list": None, "ts": 0}
 
 
-def _valid_session(session: int) -> int:
-    """校验即梦会话 ID 是否存在；不存在回退默认会话 0
-    用 CLI `session list` 探测（30s 缓存），失败保守放行（0）"""
-    if session == 0:
-        return 0
+def _fetch_session_list(force: bool = False):
+    """拉取即梦会话列表（30s 缓存；force=True 时实时刷新）
+    返回 [(id, name)]，失败返回 []"""
     import time as _t
-    if _SESSION_CACHE["list"] is None or _t.time() - _SESSION_CACHE["ts"] > 30:
+    if force or _SESSION_CACHE["list"] is None or _t.time() - _SESSION_CACHE["ts"] > 30:
         try:
             out, _err, _code = _dreamina_run(["session", "list"], timeout=20)
             _SESSION_CACHE["list"] = out or ""
             _SESSION_CACHE["ts"] = _t.time()
         except Exception:
             _SESSION_CACHE["list"] = ""
-    if _SESSION_CACHE["list"]:
-        ids = set()
-        for line in _SESSION_CACHE["list"].splitlines():
-            m = re.match(r"^\s*(\d+)\s+", line)
-            if m:
-                ids.add(int(m.group(1)))
-        if session not in ids:
-            return 0
+    sessions = []
+    for line in _SESSION_CACHE["list"].splitlines():
+        m = re.match(r"^\s*(\d+)\s+(\S.*?)\s{2,}", line)
+        if m:
+            sessions.append((int(m.group(1)), m.group(2).strip()))
+    if not sessions:
+        sessions = [(0, "default")]
+    return sessions
+
+
+def _valid_session(session: int, force: bool = False) -> int:
+    """校验即梦会话 ID 是否存在；不存在回退默认会话 0
+    force=True 时实时校验（提交路径用），无效回退 0"""
+    if session == 0:
+        return 0
+    ids = {s[0] for s in _fetch_session_list(force=force)}
+    if session not in ids:
+        return 0
     return session
 
 
@@ -347,8 +411,9 @@ def _query_and_download(task_id: int):
             return
         if last_status == "fail":
             reason = (data.get("fail_reason") or "").strip()
+            cls = _classify_error(reason)
             _task_update(task_id, status="fail", fail_reason=reason or (err or out)[-200:],
-                         finished_at=_now_str(), progress=100)
+                         finished_at=_now_str(), progress=100, fail_category=cls["category"])
             return
         # 仍在 querying: 按耗时推进进度（0-90 区间，5 分钟到 90 封顶）
         elapsed = time.time() - start_wait
@@ -376,6 +441,9 @@ def _video_worker(task_id: int):
             except Exception:
                 refs = []
             ref_paths = [r.get("file_path", "") for r in refs if r.get("file_path") and os.path.exists(r.get("file_path", ""))]
+            # v5.36.7: 提交前压缩参考图（保持顺序），解决 CLI 大图上传超时
+            if ref_paths:
+                ref_paths = [_compress_ref_image(p) for p in ref_paths]
             if ttype in ("image2video", "multimodal2video") and ref_paths:
                 # 图像参考模式：image2video(单图) / multimodal2video(多图)
                 cmd = "image2video" if (ttype == "image2video" and len(ref_paths) == 1) else "multimodal2video"
@@ -410,14 +478,19 @@ def _video_worker(task_id: int):
                 return
             _task_update(task_id, status="querying", submit_id=str(submit_id))
             if status == "fail":
+                reason = (data.get("fail_reason") or "")[:200]
+                cls = _classify_error(reason)
                 _task_update(task_id, status="fail", progress=100,
-                             fail_reason=(data.get("fail_reason") or "")[:200], finished_at=_now_str())
+                             fail_reason=reason, finished_at=_now_str(), fail_category=cls["category"])
                 return
             if status == "success":
                 # 直接进入下载流程（submit 即成功）
                 pass
         except Exception as e:
-            _task_update(task_id, status="fail", fail_reason=f"提交异常: {e}", finished_at=_now_str())
+            reason = f"提交异常: {e}"
+            cls = _classify_error(reason)
+            _task_update(task_id, status="fail", fail_reason=reason, finished_at=_now_str(),
+                         fail_category=cls["category"])
             return
     # 锁外轮询（不阻塞其他任务提交）
     _query_and_download(task_id)
@@ -611,7 +684,9 @@ def create_video_tasks(data: dict = Body(...)):
     model = data.get("model_version") or proj["video_model"] or "seedance2.0fast"
     ratio = data.get("ratio") or proj["aspect_ratio"] or "16:9"
     resolution = data.get("resolution") or proj["video_resolution"] or "720p"
-    video_session = _valid_session(int(data.get("session", proj["video_session"] or 0)))
+    video_session = _valid_session(int(data.get("session", proj["video_session"] or 0)), force=True)
+    # 无效会话回退 0 时提示
+    session_fallback = video_session != int(data.get("session", proj["video_session"] or 0))
     if model not in MODEL_VERSIONS:
         raise HTTPException(400, f"不支持的模型: {model}")
     if ratio not in RATIOS:
@@ -695,7 +770,9 @@ def create_video_tasks(data: dict = Body(...)):
         threading.Thread(target=_video_worker, args=(tid,), daemon=True).start()
 
     return {"ok": True, "task_ids": created_ids, "count": len(created_ids),
-            "model_version": model, "ratio": ratio, "video_resolution": resolution}
+            "model_version": model, "ratio": ratio, "video_resolution": resolution,
+            "sessions": [{"id": s[0], "name": s[1]} for s in _fetch_session_list()],
+            "session_fallback": session_fallback if 'session_fallback' in dir() else False}
 
 
 @router.get("/video/tasks")

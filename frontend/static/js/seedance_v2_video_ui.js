@@ -12,6 +12,16 @@
             var d = await App.fetchJSON('/api/seedance/v2/video/config');
             if (d && d.ok) this._videoCfg = d;
         } catch (e) { console.warn('video cfg fail', e); }
+        // v5.36.7: 加载即梦有效会话列表（下拉选择，避免无效会话 1001 错误）
+        try {
+            var sd = await App.fetchJSON('/api/v2/dreamina/status');
+            if (sd && sd.ok) this._videoLoginOk = sd.logged_in;
+        } catch (e) {}
+        try {
+            var s2 = await App.fetchJSON('/api/seedance/v2/video/tasks?limit=1');
+            // 从最近提交响应缓存会话列表（若无则后端提交时返回）
+        } catch (e) {}
+        this._videoSessions = null; // 提交时由后端返回后填充
     };
 
     // 打开提交弹窗（三步引导：①范围 ②参数确认 ③提交）
@@ -97,8 +107,11 @@
             '<select id="s2VideoRatio" class="s2-input" style="width:100%;margin-top:2px;">'+ratioOpts+'</select></div>' +
             '<div style="flex:1;"><label style="font-size:11px;color:var(--text-muted);">分辨率</label>' +
             '<select id="s2VideoRes" class="s2-input" style="width:100%;margin-top:2px;">'+resOpts+'</select></div>' +
-            '<div style="flex:0.7;"><label style="font-size:11px;color:var(--text-muted);">会话</label>' +
-            '<input id="s2VideoSession" class="s2-input" type="number" min="0" value="'+defSession+'" style="width:100%;margin-top:2px;" title="即梦 CLI --session"></div>' +
+            '<div style="flex:0.9;"><label style="font-size:11px;color:var(--text-muted);">即梦会话</label>' +
+            '<select id="s2VideoSession" class="s2-input" style="width:100%;margin-top:2px;" title="即梦 CLI --session">' +
+            '<option value="0">0 · 默认对话</option>' +
+            (self._videoSessions ? self._videoSessions.map(function(s){ return '<option value="'+s.id+'"'+(String(s.id)===String(defSession)?' selected':'')+'>'+s.id+' · '+App._escape((s.name||'').substring(0,12))+'</option>'; }).join('') : '') +
+            '</select></div>' +
             '</div>' +
             '<div id="s2VideoResTip">'+resTip+'</div>' +
             '<div id="s2VideoRefsBox" style="margin-top:8px;"></div>' +
@@ -116,7 +129,8 @@
             var model = document.getElementById('s2VideoModel').value;
             var ratio = document.getElementById('s2VideoRatio').value;
             var res = document.getElementById('s2VideoRes').value;
-            var session = parseInt(document.getElementById('s2VideoSession').value || '0');
+            var sel = document.getElementById('s2VideoSession');
+            var session = parseInt(sel ? sel.value : '0') || 0;
             self._doVideoSubmit(scope ? scope.value : 'scenes', model, ratio, res, session);
         };
     };
@@ -213,6 +227,9 @@
             var m = document.getElementById('s2VideoSubmit'); if (m) m.remove();
             if (d && d.ok) {
                 App.showToast('✅ 已提交 '+d.count+' 个视频任务', 'success');
+                // v5.36.7: 缓存会话列表供下次下拉 + 无效会话回退提示
+                if (d.sessions && d.sessions.length) this._videoSessions = d.sessions;
+                if (d.session_fallback) App.showToast('⚠️ 所选会话无效，已自动使用默认会话 0', 'warning');
                 this.openVideoPanel();
                 if (App.seedanceV2._refreshVideoBadges) App.seedanceV2._refreshVideoBadges();
             } else {
@@ -355,8 +372,21 @@
                         var archiveBtn = '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._archiveTaskAsTemplate('+t.id+')" style="color:#8b5cf6;border-color:#8b5cf6;" title="将本视频与提示词存档为词库模版">📥 存档为模版</button>';
                         actionHtml = '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap;">'+preview+dl+archiveBtn+'</div>';
                     } else if (t.status === 'fail') {
-                        actionHtml = '<div style="margin-top:4px;display:flex;align-items:center;gap:8px;">' +
+                        // v5.36.7: 分类引导文案
+                        var catMap = {
+                            'concurrency': '⏳ 即梦并发超限 — 稍后自动重试',
+                            'param': '⚠️ 参数错误 — 检查会话/画幅/分辨率后重试',
+                            'compliance': '📋 需先在即梦网页端完成模型授权',
+                            'upload': '🖼 参考图上传失败 — 已自动压缩重试',
+                            'timeout': '⏱ 任务超时 — 重试或减少参考图',
+                            'login': '🔑 即梦未登录 — 请到授权中心登录',
+                            'unknown': ''
+                        };
+                        var cat = t.fail_category || '';
+                        var catHint = catMap[cat] || '';
+                        actionHtml = '<div style="margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
                             '<span style="font-size:10px;color:#ef4444;">'+(t.fail_reason||'未知原因').substring(0,80)+'</span>' +
+                            (catHint ? '<span style="font-size:10px;color:#f59e0b;">'+catHint+'</span>' : '') +
                             '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._retryVideoTask('+t.id+')" style="color:#10b981;border-color:#10b981;">↩ 重试</button></div>';
                     }
                     h += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;background:var(--bg-card);">' +
@@ -376,6 +406,21 @@
                 h += '</div>';
             }
             c.innerHTML = h;
+            // v5.36.7: 自动重试（concurrency/upload 类，每任务最多1次，防抖30s）
+            var now = Date.now();
+            for (var ai = 0; ai < items.length; ai++) {
+                var it = items[ai];
+                if (it.status !== 'fail') continue;
+                var cat = it.fail_category || '';
+                if (cat !== 'concurrency' && cat !== 'upload' && cat !== 'timeout') continue;
+                var key = 'vt_retry_' + it.id;
+                var last = 0;
+                try { last = parseInt(localStorage.getItem(key) || '0'); } catch(e) {}
+                if (now - last > 30000) {
+                    try { localStorage.setItem(key, String(now)); } catch(e) {}
+                    this._retryVideoTask(it.id);
+                }
+            }
         } catch (e) {
             if (!silent) { c.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);">加载失败: '+App._escape(e.message)+'</div>'; }
         }
