@@ -223,9 +223,13 @@
             else mode = '🖼🖼 多图参考('+total+') → multimodal2video';
             var h = '<div style="font-size:11px;font-weight:600;margin-bottom:4px;color:#8b5cf6;">'+mode+'</div>';
             if (refs.length) {
-                h += '<div style="font-size:10px;color:var(--text-muted);margin-bottom:2px;">全局参考 ('+refs.length+'):</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;">';
+                h += '<div style="font-size:10px;color:var(--text-muted);margin-bottom:2px;">全局参考 ('+refs.length+'):</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;align-items:center;">';
                 for (var j = 0; j < refs.length; j++) {
-                    h += '<img src="'+App._escape(refs[j].preview_url||refs[j].url||'')+'" style="width:36px;height:36px;object-fit:cover;border-radius:5px;border:1px solid var(--border-color);" title="'+App._escape(refs[j].ref_name||'')+'" onerror="this.style.opacity=0.2">';
+                    var rt = refs[j].ref_type === 'scene' ? '🏞场景' : (refs[j].ref_type === 'style' ? '🎨风格' : '🧑角色');
+                    var rn = refs[j].ref_name || (refs[j].ref_type === 'character' ? '(未命名⚠️)' : '');
+                    h += '<span style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;" title="'+App._escape(rn)+'">' +
+                        '<img src="'+App._escape(refs[j].preview_url||refs[j].url||'')+'" style="width:36px;height:36px;object-fit:cover;border-radius:5px;border:1px solid var(--border-color);" onerror="this.style.opacity=0.2">' +
+                        '<span style="font-size:8px;color:var(--text-muted);max-width:44px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+App._escape(rt+' '+(rn||''))+'</span></span>';
                 }
                 h += '</div>';
             }
@@ -641,9 +645,26 @@
         });
     };
 
-    // 用模版重新生成（跳转到组装器，填充为新镜头？简化：打开提交弹窗并预填提示词）
-    App.seedanceV2._regenFromTemplate = function(cardId) {
-        App.showToast('重新生成功能开发中，请复制提示词后手动组装', 'info');
+    // v5.36.9: 模版一键重新生成（创建新项目 + 填充模版提示词 + 打开组装器）
+    App.seedanceV2._regenFromTemplate = async function(cardId) {
+        App.showToast('正在创建模版复用项目...', 'info');
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/video/templates/'+cardId+'/regen', {
+                method: 'POST', _timeoutMs: 15000
+            });
+            if (d && d.ok) {
+                App.showToast('✅ 已创建项目「'+d.project_name+'」，正在打开...', 'success');
+                // 切到分镜组装器视图并打开新项目
+                try { localStorage.setItem('promptkit_seedance_project', String(d.project_id)); } catch(e) {}
+                if (App.switchView) App.switchView('seedance');
+                var m = document.getElementById('s2VideoTplPanel'); if (m) m.remove();
+                if (App.seedanceV2 && App.seedanceV2.openProject) {
+                    setTimeout(function(){ App.seedanceV2.openProject(d.project_id); }, 300);
+                }
+            } else {
+                App.showToast('创建未完成: ' + (d ? (d.detail||'未知') : '无响应'), 'error');
+            }
+        } catch (e) { App.showToast('创建异常: '+e.message, 'error'); }
     };
 
     // 删除模版

@@ -615,6 +615,33 @@ def archive_task_as_template(task_id: int, data: dict = Body(default={})):
     return {"ok": True, "card_id": cur.lastrowid, "name": name, "video_url": "/api/seedance/v2/videos/" + dest_name}
 
 
+@router.post("/video/templates/{card_id}/regen")
+def regen_from_template(card_id: int):
+    """从模版词卡创建新分镜项目（内容=模版提示词，单镜头）"""
+    db = get_db()
+    card = db.execute("SELECT * FROM word_card WHERE id=? AND is_deleted=0", [card_id]).fetchone()
+    if not card:
+        raise HTTPException(404, "模版词卡不存在")
+    content = card["content"] or ""
+    if not content.strip():
+        raise HTTPException(400, "模版提示词为空")
+    # 创建项目
+    import time as _t
+    name = f"模版复用-{card['name'] or '视频模版'}"
+    cur = db.execute(
+        "INSERT INTO user_project (name, total_duration, aspect_ratio, resolution, global_style, created_at, updated_at) "
+        "VALUES (?, 5, '16:9', '720p', '', datetime('now','localtime'), datetime('now','localtime'))",
+        [name])
+    pid = cur.lastrowid
+    # 单镜头：把模版提示词作为 scene_desc 的补充（拆 @Tag 前缀后作为完整提示词存 details）
+    db.execute(
+        "INSERT INTO user_project_scene (project_id, scene_order, start_time, end_time, duration, is_locked, details, created_at) "
+        "VALUES (?, 1, 0, 5, 5, 0, ?, datetime('now','localtime'))",
+        [pid, content])
+    safe_commit()
+    return {"ok": True, "project_id": pid, "project_name": name, "prompt": content}
+
+
 @router.delete("/video/templates/{card_id}")
 def delete_video_template(card_id: int):
     """删除分镜视频模版词卡（含视频文件）"""
