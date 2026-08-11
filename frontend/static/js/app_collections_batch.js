@@ -434,12 +434,20 @@ Object.assign(App, {
             } else if (it2.thumb_state === 'unknown') {
                 badges += '<span style="font-size:9px;color:#94a3b8;border:1px dashed var(--border-color);border-radius:4px;padding:0 5px;flex-shrink:0;" title="缩略图来源无法判定（文件丢失），保守纳入生成">❓ 未知</span>';
             }
-            html += '<div data-pid="' + it2.id + '" style="border:1px solid var(--border-color);border-radius:8px;padding:5px 8px;margin-bottom:4px;background:var(--bg-card);">' +
+            // 2026-08-11: 灵活选择「免生成」+ 图词对照「查看」
+            var isSkipped2 = !!(this._batchSkipPids || {})[it2.id];
+            var skipBtn2 = isSkipped2
+                ? '<button type="button" class="bgen-btn" style="padding:1px 6px;font-size:10px;border-color:#10b981;color:#10b981;flex-shrink:0;" onclick="App._batchToggleSkip(' + it2.id + ', this)" title="恢复参与本次生成">✅ 生成</button>'
+                : '<button type="button" class="bgen-btn" style="padding:1px 6px;font-size:10px;border-color:var(--border-color);color:var(--text-muted);flex-shrink:0;" onclick="App._batchToggleSkip(' + it2.id + ', this)" title="排除该卡，不参与本次生成">⛔ 免生成</button>';
+            var viewBtn2 = '<button type="button" class="bgen-btn" style="padding:1px 6px;font-size:10px;border-color:#6366f1;color:#6366f1;flex-shrink:0;" onclick="App.showCardDetail(' + it2.id + ')" title="查看词卡详情：图 + 提示词对照，判断图词是否匹配">👁 查看</button>';
+            html += '<div data-pid="' + it2.id + '" style="' + (isSkipped2 ? 'opacity:0.45;' : '') + 'border:1px solid var(--border-color);border-radius:8px;padding:5px 8px;margin-bottom:4px;background:var(--bg-card);">' +
                 '<div style="display:flex;align-items:center;gap:6px;">' +
                 '<span style="font-size:10px;color:var(--text-muted);width:26px;flex-shrink:0;text-align:right;">' + (j + 1) + '</span>' +
                 thumb +
                 '<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:var(--text-main);" title="' + App._escape(it2.name || '') + '">' + App._escape(label) + '</span>' +
                 badges +
+                skipBtn2 +
+                viewBtn2 +
                 '</div></div>';
         }
         list.innerHTML = html;
@@ -676,7 +684,13 @@ Object.assign(App, {
                     '</div>' +
                     '</div>';
             }
-            html += '<div data-pid="' + pid + '" style="border:1px solid var(--border-color);border-radius:8px;padding:5px 8px;margin-bottom:4px;background:var(--bg-card);">' +
+            // 2026-08-11: 灵活选择「免生成」+ 图词对照「查看」（判断图与提示词是否匹配）
+            var isSkipped = !!(this._batchSkipPids || {})[pid];
+            var skipBtn = isSkipped
+                ? '<button type="button" class="bgen-btn" style="padding:1px 6px;font-size:10px;border-color:#10b981;color:#10b981;flex-shrink:0;" onclick="App._batchToggleSkip(' + pid + ', this)" title="恢复参与本次生成">✅ 生成</button>'
+                : '<button type="button" class="bgen-btn" style="padding:1px 6px;font-size:10px;border-color:var(--border-color);color:var(--text-muted);flex-shrink:0;" onclick="App._batchToggleSkip(' + pid + ', this)" title="排除该卡，不参与本次生成">⛔ 免生成</button>';
+            var viewBtn = '<button type="button" class="bgen-btn" style="padding:1px 6px;font-size:10px;border-color:#6366f1;color:#6366f1;flex-shrink:0;" onclick="App.showCardDetail(' + pid + ')" title="查看词卡详情：图 + 提示词对照，判断图词是否匹配">👁 查看</button>';
+            html += '<div data-pid="' + pid + '" style="' + (isSkipped ? 'opacity:0.45;' : '') + 'border:1px solid var(--border-color);border-radius:8px;padding:5px 8px;margin-bottom:4px;background:var(--bg-card);">' +
                 '<div style="display:flex;align-items:center;gap:6px;">' +
                 '<input type="checkbox" class="ollama-reopt-check" data-pid="' + pid + '" title="勾选参与「全部重新优化」" style="width:13px;height:13px;flex-shrink:0;">' +
                 '<span style="font-size:10px;color:var(--text-muted);width:22px;flex-shrink:0;text-align:right;">' + (i + 1) + '</span>' +
@@ -685,6 +699,8 @@ Object.assign(App, {
                 groupBadge +
                 thumbBadge +
                 optBadge +
+                skipBtn +
+                viewBtn +
                 '</div>' +
                 optArea +
                 '</div>';
@@ -1629,21 +1645,34 @@ Object.assign(App, {
         var skipQueued = 0;
         var scopeIsAll = this._batchScope === 'all' && this._batchScanResult;
         var curEngine = this._batchEngineMode || 'comfyui';
+        var skipPids = this._batchSkipPids || {};
         if (scopeIsAll) {
             // 全词库模式：以 batch-scan 结果为准（后端多维判定，前端不猜）
             // 跳过条件：当前引擎生成 + 引擎未知（默认视为完成）；其他引擎/手动/未知状态/无图全部纳入
             // 2026-08-10 修复：队列占用不再前端拦截——后端 _active_queued_pids 权威防重（返回 queued_skip 统计）
+            // 2026-08-11: 灵活选择——预览列表标记「免生成」的词卡不参与提交
             var scanItems = this._batchScanResult.items || [];
             for (var _si = 0; _si < scanItems.length; _si++) {
                 var _sit = scanItems[_si];
+                if (skipPids[_sit.id]) continue;  // 用户手动排除
                 if (_sit.thumb_state === 'ai' && (_sit.thumb_engine === curEngine || !_sit.thumb_engine || _sit.thumb_engine === 'unknown')) continue;  // 本引擎/未知引擎 → 跳过
                 pendingIds.push(_sit.id);
             }
         } else {
             for (var _fi = 0; _fi < this._batchIds.length; _fi++) {
+                if (skipPids[this._batchIds[_fi]]) continue;  // 用户手动排除
                 pendingIds.push(this._batchIds[_fi]);
             }
         }
+        // 2026-08-11: 生成预判 —— 提交前风险检查 + 提醒 + 一键排除问题卡
+        var precheck = await this._batchPrecheckFilter(pendingIds, engine);
+        if (!precheck.ids) {
+            // 用户取消提交（预判提醒后返回检查）
+            this._batchGenRunning = false;
+            if (txt) txt.textContent = '已取消提交（预判发现风险，请检查）';
+            return false;
+        }
+        pendingIds = precheck.ids;
         if (pendingIds.length === 0) {
             if (txt) txt.textContent = '无待生成词卡（均已本引擎完成）';
             this.showToast('全库词卡均已由当前引擎生成（或视为完成），无需重复生成', 'info');
@@ -2045,6 +2074,83 @@ Object.assign(App, {
             self._listRefreshTimer = null;
             if (typeof self.loadPrompts === 'function') self.loadPrompts();
         }, 2500);
+    },
+
+    // ============ 生成预判（2026-08-11 提交前风险检查 + 提醒 + 排除问题卡） ============
+    // 调后端 batch-precheck 逐卡分类；存在高危（无内容/文件丢失/超长）时 confirm 询问，
+    // 用户确认后排除问题卡仅生成安全卡；返回 {ids, excluded, warnings}
+    // 返回 ids=null 表示用户取消提交
+    async _batchPrecheckFilter(ids, engine) {
+        var self = this;
+        if (!ids || ids.length === 0) return { ids: ids, excluded: [], warnings: [] };
+        var d = null;
+        try {
+            d = await this.fetchJSON('/api/v2/comfyui/batch-precheck', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: ids, engine: engine || '' }),
+                _timeoutMs: 20000
+            });
+        } catch(e) {
+            // 预判服务不可用不阻塞提交（保守放行）
+            return { ids: ids, excluded: [], warnings: [] };
+        }
+        if (!d || !d.ok) return { ids: ids, excluded: [], warnings: [] };
+        var items = d.items || [];
+        // 高危：生成必失败/图已不可见/可能被拒 —— 建议排除
+        var hard = items.filter(function(x) { return x.risk === 'no_content' || x.risk === 'file_missing' || x.risk === 'prompt_long'; });
+        var hardIds = {};
+        hard.forEach(function(x) { hardIds[x.id] = x.risk; });
+        var soft = items.filter(function(x) { return x.risk === 'manual' || x.risk === 'ai_other'; });
+        if (hard.length === 0 && soft.length === 0) return { ids: ids, excluded: [], warnings: [] };
+        var msgParts = [];
+        var st = d.stats || {};
+        if (hard.length > 0) {
+            msgParts.push('⚠️ 预判发现 ' + hard.length + ' 张词卡可能存在生成问题：');
+            if (st.no_content) msgParts.push('  · 无提示词内容 ' + st.no_content + ' 张（生成必然失败）');
+            if (st.file_missing) msgParts.push('  · 缩略图文件丢失 ' + st.file_missing + ' 张（图已不可见，重生成可修复）');
+            if (st.prompt_long) msgParts.push('  · 提示词超长 ' + st.prompt_long + ' 张（可能被引擎截断/拒绝）');
+            msgParts.push('');
+        }
+        if (soft.length > 0) {
+            msgParts.push('本次将覆盖重生成：手动指定图 ' + (st.manual || 0) + ' 张、其他引擎图 ' + (st.ai_other || 0) + ' 张（原图会被替换）');
+        }
+        var remain = ids.length - hard.length;
+        var ok = confirm(msgParts.join('\n') + '\n\n[确定] 排除 ' + hard.length + ' 张问题卡，仅生成其余 ' + remain + ' 张\n[取消] 返回检查（可在预览列表「⛔ 免生成」灵活排除）');
+        if (!ok) {
+            return { ids: null, excluded: hardIds, warnings: msgParts };
+        }
+        this._batchPrecheckExcluded = this._batchPrecheckExcluded || {};
+        hard.forEach(function(x) { self._batchPrecheckExcluded[x.id] = x.risk; });
+        // 预览列表同步标记免生成（排除的问题卡下次提交也不参与）
+        this._batchSkipPids = this._batchSkipPids || {};
+        hard.forEach(function(x) { self._batchSkipPids[x.id] = true; });
+        var filtered = ids.filter(function(x) { return !hardIds[x]; });
+        this.showToast('已排除 ' + hard.length + ' 张问题卡，本次生成 ' + filtered.length + ' 张', 'warning');
+        return { ids: filtered, excluded: hardIds, warnings: msgParts };
+    },
+
+    // 2026-08-11: 灵活选择 —— 单卡「免生成/恢复」切换（不参与本次生成任务）
+    _batchToggleSkip(pid, btn) {
+        this._batchSkipPids = this._batchSkipPids || {};
+        if (this._batchSkipPids[pid]) {
+            delete this._batchSkipPids[pid];
+        } else {
+            this._batchSkipPids[pid] = true;
+        }
+        var skipped = !!this._batchSkipPids[pid];
+        var row = btn ? btn.closest('[data-pid]') : null;
+        if (row) {
+            row.style.opacity = skipped ? '0.45' : '';
+            btn.innerHTML = skipped ? '✅ 生成' : '⛔ 免生成';
+            btn.title = skipped ? '恢复参与本次生成' : '排除该卡，不参与本次生成';
+        }
+        // 更新统计文案
+        var cnt = document.getElementById('bgenSelCount');
+        if (cnt) {
+            var total = (this._batchIds || []).length;
+            var skippedCount = Object.keys(this._batchSkipPids || {}).length;
+            cnt.textContent = total + ' 张' + (skippedCount > 0 ? '（已排除 ' + skippedCount + '）' : '');
+        }
     },
 
     // 悬停大图预览：跟随鼠标显示原图（不阻塞点击）

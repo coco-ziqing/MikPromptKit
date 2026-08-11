@@ -645,6 +645,105 @@ def _now_str():
     return _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+class BatchPrecheckRequest(BaseModel):
+    ids: list[int]
+    card_type_map: dict = {}
+    engine: str = ""
+
+
+@router.post("/batch-precheck")
+def batch_precheck(data: BatchPrecheckRequest):
+    """生成预判（2026-08-11）：提交生成前逐卡风险分类，供前端提醒/排除问题卡
+    risk 严重度从高到低：
+      no_content      无提示词内容（生成必失败，建议排除）
+      file_missing    缩略图字段有值但文件丢失（图已不可见）
+      prompt_long     提示词超长（可能被引擎截断/拒绝）
+      manual          手动指定图（可能与提示词不匹配，将覆盖重生成）
+      ai_other        其他引擎 AI 生成（将覆盖重生成）
+      engine_unknown  图来源未知（旧链路，默认视为完成，无法确认匹配）
+      ai_matched      本引擎 AI 生成（图与提示词匹配，跳过）
+      queued          已在队列（跳过）
+      missing         词卡不存在/已删除（跳过）
+      ready           无图无风险，正常生成
+    """
+    _ensure_batch_task_table()
+    ctm = data.card_type_map or {}
+    engine = (data.engine or "").strip()
+    db = get_db()
+    queued = _active_queued_pids(db)
+    _SEV = {"no_content": 9, "file_missing": 8, "prompt_long": 7, "manual": 5, "ai_other": 4,
+            "engine_unknown": 3, "ai_matched": 2, "queued": 2, "missing": 1, "ready": 0}
+    stats = {k: 0 for k in _SEV}
+    items = []
+    for _pid in data.ids:
+        it = {"id": _pid, "risk": "ready", "risk_label": "正常生成", "suggest": "",
+              "has_thumb": False, "thumb_state": "none", "thumb_engine": "",
+              "file_ok": True, "content_len": 0, "name": ""}
+        if _pid in queued:
+            it["risk"] = "queued"; it["risk_label"] = "已在队列"; it["suggest"] = "已排队，自动跳过"
+            stats["queued"] += 1; items.append(it); continue
+        _ct = ctm.get(str(_pid)) or ctm.get(_pid) or ""
+        row = None
+        if _ct == "word_card" or not _ct:
+            row = db.execute(
+                "SELECT id, name, content, content_detailed, thumbnail, thumb_width, thumb_height, thumb_engine "
+                "FROM word_card WHERE id=? AND is_deleted=0", [_pid]).fetchone()
+        if not row:
+            # prompts 旧表（无尺寸/引擎溯源，仅判内容与缩略图存在性）
+            prow = db.execute("SELECT id, content FROM prompts WHERE id=?", [_pid]).fetchone()
+            if not prow:
+                it["risk"] = "missing"; it["risk_label"] = "词卡不存在"; it["suggest"] = "已删除或不存在，自动跳过"
+                stats["missing"] += 1; items.append(it); continue
+            text = (prow["content"] or "").strip()
+            it["content_len"] = len(text)
+            has_img = bool(db.execute("SELECT 1 FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image'", [_pid]).fetchone())
+            it["has_thumb"] = has_img
+            it["thumb_state"] = "ai" if has_img else "none"
+            if not text:
+                it["risk"] = "no_content"; it["risk_label"] = "无提示词内容"; it["suggest"] = "生成必然失败，建议补充内容或排除"
+            elif len(text) > 800:
+                it["risk"] = "prompt_long"; it["risk_label"] = "提示词超长"; it["suggest"] = "可能被引擎截断/拒绝，建议精简"
+            elif has_img:
+                it["risk"] = "ai_matched"; it["risk_label"] = "已有图（旧表）"; it["suggest"] = "无法溯源，默认视为完成"
+            stats[it["risk"]] += 1; items.append(it); continue
+        it["name"] = row["name"] or ""
+        # 生成提示词 = content_detailed 优先（与 _batch_worker 生成逻辑一致）
+        text = (row["content_detailed"] or "").strip() or (row["content"] or "").strip()
+        it["content_len"] = len(text)
+        cur_risk = "ready"
+        if not text:
+            cur_risk = "no_content"; it["risk_label"] = "无提示词内容"; it["suggest"] = "生成必然失败，建议补充内容或排除"
+        elif len(text) > 800:
+            cur_risk = "prompt_long"; it["risk_label"] = "提示词超长"; it["suggest"] = "可能被引擎截断/拒绝，建议精简或确认"
+        # 缩略图来源判定（仅在无内容风险时叠加图风险，严重度取最高）
+        fname = row["thumbnail"] or ""
+        it["has_thumb"] = bool(fname)
+        _st = thumb_state_of(row)
+        it["thumb_state"] = _st
+        if _st == "ai":
+            _eng = thumb_engine_of(row, db) or ""
+            it["thumb_engine"] = _eng
+            if engine and _eng and _eng != engine and _eng != "unknown":
+                _r2 = "ai_other"; _l2 = "其他引擎已生成"; _s2 = f"由 {_eng} 生成，将用当前引擎覆盖"
+            elif _eng and _eng == engine:
+                _r2 = "ai_matched"; _l2 = "本引擎已生成"; _s2 = "图与提示词匹配，自动跳过"
+            else:
+                _r2 = "engine_unknown"; _l2 = "图来源未知"; _s2 = "旧链路生成，默认视为完成，无法确认图词匹配"
+        elif _st == "manual":
+            _r2 = "manual"; _l2 = "手动指定图"; _s2 = "该图可能与本卡提示词不匹配，将覆盖重新生成"
+        elif _st == "unknown":
+            _r2 = "file_missing"; _l2 = "缩略图文件丢失"; _s2 = "字段有值但文件已丢失，图不可见，将重新生成"
+            it["file_ok"] = False
+        else:
+            _r2 = "ready"; _l2 = "正常生成"; _s2 = ""
+        if _SEV[_r2] > _SEV[cur_risk]:
+            cur_risk = _r2; it["risk_label"] = _l2; it["suggest"] = _s2
+        it["risk"] = cur_risk
+        stats[cur_risk] += 1
+        items.append(it)
+    return {"ok": True, "stats": stats, "items": items, "engine": engine}
+
+
 @router.post("/batch-tasks")
 def create_batch_task(data: BatchTaskCreate):
     from api.comfyui import (  # noqa: F401 (延迟导入打破循环)
