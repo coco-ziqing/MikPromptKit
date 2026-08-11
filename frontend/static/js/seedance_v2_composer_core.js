@@ -517,7 +517,10 @@
                 var def = card.definition || card.meaning || '';
                 var injectValue = word;  // 使用词条名填充，与字段值做精确匹配（定义文本太长会导致 indexOf 误判）
                 var isSelected = fieldVal && injectValue && fieldVal.trim() && (fieldVal.indexOf(injectValue) >= 0 || injectValue.indexOf(fieldVal) >= 0);
-                var pt=card.preview_image?'/api/seedance/v2/thumbnails/'+card.preview_image:'';
+                // 2026-08-11: 词库缩略图优先（wc_thumbnail，与词库预览图一致）；无则用旧 preview_image
+                var pt = card.wc_thumbnail
+                    ? '/api/thumbnails/file/' + card.wc_thumbnail
+                    : (card.preview_image ? '/api/seedance/v2/thumbnails/' + card.preview_image : '');
                 var vt=card.preview_video?'/api/seedance/v2/videos/'+card.preview_video:'';
                 var hasMedia=pt||vt;
                 h += '<div class="s2-right-card-item'+(isSelected?' selected':'')+'" data-word="'+App._escape(injectValue)+'" data-card-id="'+card.id+'" data-video="'+(vt||'')+'" onclick="App.seedanceV2._pickRightWord(this)" style="display:flex;gap:8px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;margin-bottom:4px;cursor:pointer;transition:0.12s;'+(isSelected?'background:rgba(16,185,129,0.08);border-color:#10b981;':'')+'" onmouseenter="App.seedanceV2._thumbHoverIn(this)" onmouseleave="App.seedanceV2._thumbHoverOut(this)">';

@@ -778,7 +778,12 @@ def recommend_cards(project_id: int, scene_id: int):
                     [lib["id"]]
                 ).fetchall()
                 if cards:
-                    recommendations[field_name] = [dict(c) for c in cards]
+                    # 2026-08-11: 附加词库缩略图（与词库预览图一致）
+                    try:
+                        from api.seedance_v2_library import _attach_wc_thumbnail
+                        recommendations[field_name] = [_attach_wc_thumbnail(db, dict(c)) for c in cards]
+                    except Exception:
+                        recommendations[field_name] = [dict(c) for c in cards]
 
     return {"recommendations": recommendations}
 

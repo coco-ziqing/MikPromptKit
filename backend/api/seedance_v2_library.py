@@ -20,6 +20,12 @@ WC_THUMB_DIR = os.path.join(
 )
 os.makedirs(WC_THUMB_DIR, exist_ok=True)
 
+# 词库 AI 缩略图目录（批量生成链路写入 data/thumbnails/）
+AI_THUMB_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "thumbnails"
+)
+
 # 词卡视频存储目录（统一到 wc_media）
 WC_VIDEO_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -29,6 +35,60 @@ os.makedirs(WC_VIDEO_DIR, exist_ok=True)
 
 
 # ==================== 词库接口 (27套) ====================
+
+
+def _attach_wc_thumbnail(db, card: dict) -> dict:
+    """为 prompt_word_card 记录附加词库缩略图（wc_thumbnail）
+    2026-08-11: 批量生成缩略图写入 word_card.thumbnail（新表），分镜组装器读旧表
+    prompt_word_card 时无此图（旧 preview_image 文件多已丢失）→ 回退：
+      1) word_text 与 word_card.name/content 精确匹配（词库中同名词卡 = 用户看到的图）
+      2) seedance_id_map(old→new) 映射兜底
+    仅接受文件真实存在的缩略图（避免返回 404 的旧文件）。
+    """
+    if card.get("wc_thumbnail"):
+        return card
+    thumb = ""
+    wt = (card.get("word_text") or "").strip()
+    cid = card.get("id")
+
+    def _pick(fname):
+        """只接受文件真实存在的词库缩略图（防旧文件已丢失导致 404）"""
+        if not fname:
+            return ""
+        try:
+            if os.path.exists(os.path.join(AI_THUMB_DIR, fname)) or os.path.exists(os.path.join(WC_THUMB_DIR, fname)):
+                return fname
+        except Exception:
+            pass
+        return ""
+
+    if wt:
+        try:
+            m = db.execute(
+                "SELECT thumbnail FROM word_card WHERE is_deleted=0 AND name=? AND thumbnail!='' LIMIT 1",
+                [wt]).fetchone()
+            if m:
+                thumb = _pick(m["thumbnail"])
+            if not thumb:
+                m2 = db.execute(
+                    "SELECT thumbnail FROM word_card WHERE is_deleted=0 AND content=? AND thumbnail!='' LIMIT 1",
+                    [wt]).fetchone()
+                if m2:
+                    thumb = _pick(m2["thumbnail"])
+        except Exception:
+            thumb = ""
+    if not thumb and cid is not None:
+        try:
+            m3 = db.execute(
+                "SELECT nw.thumbnail FROM seedance_id_map m JOIN word_card nw ON nw.id=m.new_id "
+                "WHERE m.old_id=? AND nw.is_deleted=0 AND nw.thumbnail!='' LIMIT 1", [cid]).fetchone()
+            if m3:
+                thumb = _pick(m3["thumbnail"])
+        except Exception:
+            thumb = ""
+    card["wc_thumbnail"] = thumb
+    return card
+
 
 @router.get("/libraries")
 def list_libraries(category: str = Query(None)):
@@ -108,13 +168,20 @@ def list_cards(
         params + [page_size, offset]
     ).fetchall()
 
+    # 2026-08-11: 附加词库缩略图（wc_thumbnail）——分镜组装器与词库预览图保持一致
+    # 批量生成缩略图写入 word_card.thumbnail（新表），prompt_word_card 无此图，
+    # 通过 seedance_id_map / 名称匹配回退，使选择词卡时显示与词库相同的预览图
+    items = []
+    for r in rows:
+        items.append(_attach_wc_thumbnail(db, dict(r)))
+
     return {
         "library": dict(lib),
         "total": total,
         "page": page,
         "page_size": page_size,
         "total_pages": max(1, (total + page_size - 1) // page_size),
-        "items": [dict(r) for r in rows]
+        "items": items
     }
 
 
@@ -129,7 +196,9 @@ def get_card(card_id: int):
     ).fetchone()
     if not card:
         raise HTTPException(404, "词卡不存在")
-    return {"card": dict(card)}
+    d = dict(card)
+    d = _attach_wc_thumbnail(db, d)
+    return {"card": d}
 
 
 # ==================== 词卡缩略图 ====================
