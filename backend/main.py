@@ -218,6 +218,13 @@ async def lifespan(app: FastAPI):
     # 启动自动备份
     start_auto_backup()
 
+    # 2026-08-11 修复: 批量生成队列恢复（重启后接管 queued/running 孤儿任务，防止前端"在队列中"永久卡死）
+    try:
+        from api.comfyui_batch import _resume_orphaned_tasks
+        _resume_orphaned_tasks()
+    except Exception as e:
+        log_warn(f"[main] 批量队列恢复跳过: {e}")
+
     # 异步重建语义搜索索引
     try:
         from semantic import _ML_OK

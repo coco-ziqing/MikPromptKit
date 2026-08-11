@@ -74,9 +74,11 @@ class DreaminaGenerateRequest(BaseModel):
 
 def dreamina_text2image(prompt: str, model_version: str = "5.0", ratio: str = "1:1",
                         resolution_type: str = "2k", width: int = 0, height: int = 0,
-                        generate_num: int = 1, poll: int = 180, retries: int = 2) -> dict:
+                        generate_num: int = 1, poll: int = 180, retries: int = 2,
+                        timeout: int = 300) -> dict:
     """调用 dreamina CLI 文生图，返回 {ok, image_url, width, height, submit_id}
-    即梦生成阶段偶发失败（final generation failed），自动重试 retries 次"""
+    即梦生成阶段偶发失败（final generation failed），自动重试 retries 次
+    timeout: CLI 子进程超时（秒），防网络悬挂阻塞调用方（2026-08-11 批量场景收紧）"""
     import time as _t
     last_err = ""
     for attempt in range(retries + 1):
@@ -86,7 +88,7 @@ def dreamina_text2image(prompt: str, model_version: str = "5.0", ratio: str = "1
             args += ["--width", str(width), "--height", str(height), "--resolution_type", resolution_type]
         else:
             args += ["--ratio", ratio, "--resolution_type", resolution_type]
-        out, err, code = _dreamina_run(args)
+        out, err, code = _dreamina_run(args, timeout=timeout)
         # 解析 stdout 中最后一个含 gen_status 的 JSON
         data = None
         for cand in reversed(re.findall(r"\{.*\}", out, re.S)):

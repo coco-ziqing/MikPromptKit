@@ -186,6 +186,16 @@ def _filter_pending_ids(ids: list, ctm: dict = None, db=None, engine: str = "") 
 # 全局批量并发锁：同一时刻只允许 1 个批量任务执行（其余排队），防止大量任务叠加提交 ComfyUI 卡死
 _BATCH_GLOBAL_LOCK = threading.Lock()
 
+# 已接管任务登记（2026-08-11 修复）：防「启动恢复」与「新建/重试」并发 spawn 双 worker
+_RESUMED_TASKS = set()
+_RESUMED_LOCK = threading.Lock()
+
+
+def _mark_resumed(tid: int):
+    """登记任务已由某 worker 接管（幂等，防重复恢复）"""
+    with _RESUMED_LOCK:
+        _RESUMED_TASKS.add(tid)
+
 
 class BatchScanRequest(BaseModel):
     scope: str = "all"              # all / group / ids
@@ -311,6 +321,17 @@ def _batch_worker(task_id: int):
             prompt_ids = json.loads(d["prompt_ids"] or "[]")
             total = len(prompt_ids)
             engine = d.get("engine") or "comfyui"
+            # 2026-08-11 续跑支持：服务重启后恢复时，从已确认完成处继续而非重头重新生成
+            # 注意：current_index 是「处理前写入的序号+1」，中断时最后一张可能未完成；
+            # 故以 len(results)（已确认完成数）为准，起点 = min(current_index, len(results))，
+            # 未完成的张会被重新生成（不丢卡），已完成张靠 done_pids 跳过（不重复生成）
+            resume_index = 0
+            is_resume = d.get("status") == "running"
+            if is_resume:
+                try:
+                    resume_index = max(0, int(d.get("current_index") or 0))
+                except Exception:
+                    resume_index = 0
             # 前端显式标注的数据源类型映射（{prompt_id: 'word_card'|'prompts'}）
             # 2026-08-06 修复：id 在 prompts/word_card 两表重叠时（如旧数据 id 81-130），
             # 不能再靠"先查 prompts 猜表"——用户从词卡视图勾选会被误写进 prompts 链路
@@ -349,9 +370,36 @@ def _batch_worker(task_id: int):
             results = []
             success = 0
             failed = 0
-            _batch_update(task_id, status="running", started_at=_now_str(), current_index=0,
-                          current_prompt="准备中...", success=0, failed=0, results="[]")
+            if is_resume:
+                # 续跑：已完成进度从 DB 读回（results/success/failed），不重置计数
+                try:
+                    results = json.loads(d.get("results") or "[]")
+                except Exception:
+                    results = []
+                if not isinstance(results, list):
+                    results = []
+                for _r in results:
+                    if _r.get("ok"):
+                        success += 1
+                    else:
+                        failed += 1
+                # 起点修正：current_index 是处理前写的序号+1，中断张可能未完成（差值=1）
+                resume_index = min(resume_index, len(results))
+                if len(results) >= total:
+                    # 全部完成但 done 未落库（进程在收尾时被杀）→ 直接标完成，不重复生成
+                    _batch_update(task_id, status="done", success=success, failed=failed,
+                                  current_index=total, current_prompt="",
+                                  results=json.dumps(results, ensure_ascii=False), finished_at=_now_str())
+                    return
+                _batch_update(task_id, status="running", current_prompt="恢复运行中...")
+            else:
+                _batch_update(task_id, status="running", started_at=_now_str(), current_index=0,
+                              current_prompt="准备中...", success=0, failed=0, results="[]")
+            # 已确认完成的 pid（防重复生成；正常任务 results 为空不受影响）
+            done_pids = {x.get("prompt_id") for x in results if x.get("ok")}
             for idx, pid in enumerate(prompt_ids):
+                if idx < resume_index or pid in done_pids:
+                    continue  # 续跑：已完成项跳过，不重复生成
                 # 取消检查
                 chk = db.execute("SELECT status FROM comfyui_batch_tasks WHERE id=?", [task_id]).fetchone()
                 if not chk or chk["status"] == "cancelled":
@@ -410,10 +458,11 @@ def _batch_worker(task_id: int):
                         from api.dreamina import dreamina_text2image
                         from api.thumb_gen import save_generated_image
                         dr = dreamina_text2image(final_prompt,
-                                                 d.get("model_version") or "5.0",
-                                                 d.get("ratio") or "1:1",
-                                                 d.get("resolution_type") or "2k",
-                                                 int(d.get("width") or 0), int(d.get("height") or 0), 1)
+                                                 model_version=d.get("model_version") or "5.0",
+                                                 ratio=d.get("ratio") or "1:1",
+                                                 resolution_type=d.get("resolution_type") or "2k",
+                                                 width=int(d.get("width") or 0), height=int(d.get("height") or 0),
+                                                 generate_num=1, poll=120, retries=1, timeout=150)
                         if not dr.get("ok"):
                             result = {"ok": False, "error": dr.get("error", "即梦生成失败")}
                         else:
@@ -434,7 +483,8 @@ def _batch_worker(task_id: int):
                         lt = libtv_text2image(final_prompt,
                                               d.get("project_uuid") or "",
                                               d.get("libtv_model") or "Z-image Turbo",
-                                              d.get("libtv_ratio") or "1:1")
+                                              d.get("libtv_ratio") or "1:1",
+                                              timeout=150)
                         if not lt.get("ok"):
                             result = {"ok": False, "error": lt.get("error", "LibTV 生成失败")}
                         else:
@@ -484,6 +534,35 @@ def _batch_worker(task_id: int):
         except Exception as e:
             _batch_update(task_id, status="error", error=str(e)[:300], finished_at=_now_str())
             print(f"[Batch] 任务 {task_id} 异常: {e}")
+
+
+def _resume_orphaned_tasks():
+    """启动恢复：接管上次进程遗留的 queued/running 任务（2026-08-11 修复）
+    此前无恢复机制：服务重启后 DB 里的任务无人消费，前端永久显示"在队列中"。
+    恢复时按 id 顺序 spawn worker（全局锁串行）；running 任务由 _batch_worker 从
+    current_index 续跑，已完成结果从 DB 读回，不重复生成。
+    """
+    try:
+        _ensure_batch_task_table()
+        db = get_db()
+        rows = db.execute(
+            "SELECT id FROM comfyui_batch_tasks WHERE status IN ('queued','running') ORDER BY id"
+        ).fetchall()
+        if not rows:
+            return
+        started = 0
+        with _RESUMED_LOCK:
+            for r in rows:
+                tid = r["id"]
+                if tid in _RESUMED_TASKS:
+                    continue
+                _RESUMED_TASKS.add(tid)
+                threading.Thread(target=_batch_worker, args=(tid,), daemon=True).start()
+                started += 1
+        if started:
+            print(f"[Batch] 队列恢复: 接管 {started} 个未完成任务 (queued/running)")
+    except Exception as e:
+        print(f"[Batch] 队列恢复失败: {e}")
 
 
 def _now_str():
@@ -557,6 +636,7 @@ def create_batch_task(data: BatchTaskCreate):
     except Exception as e:
         return {"ok": False, "error": f"任务创建失败: {e}"}
     for tid in new_ids:
+        _mark_resumed(tid)
         threading.Thread(target=_batch_worker, args=(tid,), daemon=True).start()
     return {"ok": True, "task_ids": new_ids, "task_id": new_ids[0], "total": len(filtered_ids),
             "batches": len(chunks), "skipped": stats["ai_skip"] + stats["unknown_skip"], "stats": stats,
@@ -769,6 +849,7 @@ def retry_batch_failed(task_id: int):
          d.get("project_uuid") or "", d.get("libtv_model") or "Z-image Turbo", d.get("libtv_ratio") or "1:1"])
     safe_commit()
     new_id = cur.lastrowid
+    _mark_resumed(new_id)
     threading.Thread(target=_batch_worker, args=(new_id,), daemon=True).start()
     return {"ok": True, "task_id": new_id, "total": len(failed_ids), "failed_ids": failed_ids}
 
