@@ -82,6 +82,9 @@
         h+='<button class="btn btn-sm btn-info" onclick="App.seedanceV2.copyJSON()"> 复制JSON</button>';
         h+='<button class="btn btn-sm btn-outline" onclick="App.seedanceV2.copyLibTV()"> 填入LibTV</button>';
         h+='<button class="btn btn-sm btn-warning" style="background:#8b5cf6;color:#fff;border:1px solid #7c3aed;" onclick="App.seedanceV2.matchModel()" title="AI 智能分析提示词并推荐最佳视频生成模型">🧠 智能匹配</button>';
+        // v5.36.0: 即梦视频生成任务提交
+        h+='<button class="btn btn-sm btn-success" onclick="App.seedanceV2.openVideoSubmit()" title="将组装结果提交到即梦生成视频">🎬 生成视频</button>';
+        h+='<button class="btn btn-sm btn-outline" onclick="App.seedanceV2.openVideoPanel()" title="查看视频生成任务进度与结果" style="color:#10b981;border-color:#10b981;">📺 任务面板</button>';
         h+='<button class="btn btn-sm btn-secondary" onclick="App.seedanceV2.resetProject()"> 重置</button>';
         h+='</div>';
         h+='<textarea id="s2Output" class="s2-output-text" readonly placeholder="切换镜头字段后实时合成…"></textarea>';
@@ -386,6 +389,11 @@
             document.querySelectorAll('.s2-ext-unit-dropdown').forEach(function(el){el.addEventListener('change',function(){var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var idx=parseInt(p.dataset.extIdx);self._extUnitChange(sid,idx,this.value);});});
             document.querySelectorAll('.s2-ext-unit-remove').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var p=this.closest('.s2-ext-unit');var sid=parseInt(p.dataset.sceneId);var idx=parseInt(p.dataset.extIdx);self.removeExtUnit(sid,idx);});});
             document.querySelectorAll('.s2-ext-unit-add-btn').forEach(function(el){el.addEventListener('click',function(){var p=this.closest('.s2-ext-unit-list');var sid=parseInt(p.dataset.sceneId);if(!sid)return;self.addExtUnit(sid);});});
+            // ===== v5.36.0: 编辑模式事件绑定 =====
+            document.querySelectorAll('.s2-editmode-toggle').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=parseInt(this.dataset.sceneId);if(!sid)return;self.toggleSceneEditMode(sid);});});
+            document.querySelectorAll('.s2-edit-input').forEach(function(el){el.addEventListener('input',function(){var sid=parseInt(this.dataset.sceneId),f=this.dataset.field;if(!sid||!f)return;self._onEditInput(sid,f,this);});});
+            document.querySelectorAll('.s2-edit-archive').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=parseInt(this.dataset.sceneId),f=this.dataset.field;if(!sid||!f)return;self._archiveField(sid,f);});});
+            document.querySelectorAll('.s2-edit-all-archive').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=parseInt(this.dataset.sceneId);if(!sid)return;self._archiveAllFields(sid);});});
 
         },100);
         // v9.3: 每次渲染镜头卡片后刷新时间轴
@@ -395,12 +403,14 @@
 
     App.seedanceV2.renderSceneCard = function(scene,idx){
         var s=scene; var F={'camera_move':App._t('auto.str_4abc8a41', '运镜'),'subject':'主体','scene_desc':App._t('auto.str_c931653c', '场景'),'composition':App._t('auto.str_c38d3f3b', '构图'),'lighting':'光影','action':'动作','focal_length':'焦段','texture':'质感','speed':'速率','emotion':'情绪','color_grade':'调色','weather':'天气','particles':'粒子','perspective':'视角','depth_of_field':'景深','filter':'滤镜','natural_force':'外力','environment_detail':'环境','film_flaw':'瑕疵','fantasy_physics':'奇幻'};
+        // v5.36.0: 编辑模式独立渲染（不干扰选择模式逻辑）
+        if (s._editMode) { return this._renderEditModeCard(s, idx); }
         var h='<div class="s2-scene-card" data-scene-id="'+s.id+'" data-scene-order="'+(idx+1)+'">';
         var dotColor=App.seedanceV2._sceneColor(s.id);
         h+='<div class="s2-drag-handle" draggable="true" title="拖拽排序" style="border-top:4px solid '+dotColor+';padding-top:2px;"><span class="s2-drag-icon">\u2e3f</span></div>';
         h+='<div class="s2-scene-header"><div class="s2-scene-title"><span class="s2-scene-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+dotColor+App._t('auto.str_6d65e37d', ';margin-right:6px;vertical-align:middle;flex-shrink:0;" title="镜头')+(idx+1)+'"></span><strong onclick="event.stopPropagation();App.seedanceV2._toggleSceneCard('+s.id+')" style="cursor:pointer;" title="点击折叠/展开"><span class="s2-scene-fold-arrow">▼</span> 镜头 '+(idx+1)+'</strong> <span class="s2-time-badge">'+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span></div><div class="s2-scene-actions">';
         h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;before&apos;)">\u2b06插入</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.insertScene('+s.id+',&apos;after&apos;)">\u2b07插入</button>';
-        h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.duplicateScene('+s.id+')">📋复制</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._copyScene('+s.id+')" title="拷贝提示词">📝拷贝</button><button class="btn btn-xs btn-outline s2-clear-btn" data-scene-id="'+s.id+'" title="清除所有字段" style="color:#ef4444;border-color:#ef4444;">🗑清除</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._pasteScene('+s.id+')" title="粘贴提示词">📄粘贴</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._exportScene('+s.id+')" title="导出镜头">📤导出</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._importScene('+s.id+')" title="导入镜头">📥导入</button><button class="btn btn-xs btn-outline s2-review-btn" style="color:#8b5cf6;border-color:#8b5cf6;" onclick="event.stopPropagation();App.seedanceV2.openSceneReview('+s.id+')" title="审阅">📖审阅</button><button class="btn btn-xs btn-danger s2-del-btn" data-scene-id="'+s.id+'" title="删除此镜头">🗑</button></div></div>';
+        h+='<button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2.duplicateScene('+s.id+')">📋复制</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._copyScene('+s.id+')" title="拷贝提示词">📝拷贝</button><button class="btn btn-xs btn-outline s2-clear-btn" data-scene-id="'+s.id+'" title="清除所有字段" style="color:#ef4444;border-color:#ef4444;">🗑清除</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._pasteScene('+s.id+')" title="粘贴提示词">📄粘贴</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._exportScene('+s.id+')" title="导出镜头">📤导出</button><button class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._importScene('+s.id+')" title="导入镜头">📥导入</button><button class="btn btn-xs btn-outline s2-review-btn" style="color:#8b5cf6;border-color:#8b5cf6;" onclick="event.stopPropagation();App.seedanceV2.openSceneReview('+s.id+')" title="审阅">📖审阅</button><button class="btn btn-xs btn-outline s2-editmode-toggle" data-scene-id="'+s.id+'" title="切换到文本编辑模式，自由修改字段内容" style="color:#10b981;border-color:#10b981;">✏️ 编辑</button><button class="btn btn-xs btn-danger s2-del-btn" data-scene-id="'+s.id+'" title="删除此镜头">🗑</button></div></div>';
         // 折叠后第二行：纯文本单行省略
         var plainText = App.seedanceV2._scenePlainText(s);
         h+='<div class="s2-scene-collapsed-text" title="'+App._escape(plainText)+'">'+App._escape(plainText)+'</div>';
@@ -409,7 +419,7 @@
         var P=[0.5,1,1.5,2,2.5,3,4,5,6,7,8,9,10,12,15];for(var pi=0;pi<P.length;pi++){var sel=Math.abs(P[pi]-(s.duration||3))<0.01?' selected':'';h+='<option value="'+P[pi]+'"'+sel+'>'+P[pi]+'</option>';}
         h+='</select><span class="s2-dur-label">秒</span><button class="s2-lock-btn'+(s.is_locked?' s2-locked':'')+'" data-scene-id="'+s.id+'" title="'+(s.is_locked?'点击解锁时长':'点击锁定时长')+'"><span class="s2-lock-icon"></span></button></div>';
         h+='<div class="s2-scene-fields s2-scene-fields-compact"><div class="s2-field-group"><span class="s2-field-label">基础</span>';
-        ['camera_move','subject','scene_desc','composition','lighting'].forEach(function(f){var v=s[f]||'',n=F[f]||f;h+='<span class="s2-field-chip '+(v?'s2-filled':'s2-empty')+'" data-scene-id="'+s.id+'" data-field="'+f+'"><span class="s2-chip-label">'+n+'</span><span class="s2-chip-val">'+(v.length>10?v.substring(0,10)+'..':(v||'+'))+'</span></span>';});
+        ['camera_move','subject','scene_desc','composition','lighting'].forEach(function(f){var v=s[f]||'',n=F[f]||f;var cz=(s._customized&&s._customized[f])?' s2-customized':'';h+='<span class="s2-field-chip '+(v?'s2-filled':'s2-empty')+cz+'" data-scene-id="'+s.id+'" data-field="'+f+'"><span class="s2-chip-label">'+(cz?'✏️':'')+n+'</span><span class="s2-chip-val">'+(v.length>10?v.substring(0,10)+'..':(v||'+'))+'</span></span>';});
         h+='</div>';
         // == v4.0.0-phase10.1: 出演角色 + 场景模板（合并到同一行）
         // 获取已分配的 character_id，查找角色名称
@@ -464,6 +474,240 @@
         h+='<div class="s2-ext-unit-add-btn">+</div>';
         h+='</div>';
         h+='</div></div></div></div>';return h;
+    };
+
+    // ========== v5.36.0: 镜头编辑模式（选择模式 ↔ 文本编辑模式自由切换） ==========
+
+    // 编辑模式字段分组（基础/扩展/音频）
+    App.seedanceV2._editFieldGroups = [
+        {label:'基础', fields:['camera_move','subject','scene_desc','composition','lighting']},
+        {label:'扩展', fields:['action','focal_length','texture','speed','emotion','color_grade','weather','particles','perspective','depth_of_field','filter','natural_force','environment_detail','film_flaw','fantasy_physics']},
+        {label:'音频', fields:['character_voice','bgm','sfx']}
+    ];
+
+    // 切换镜头的编辑模式
+    App.seedanceV2.toggleSceneEditMode = function(sid, force) {
+        for (var i = 0; i < this.scenes.length; i++) {
+            if (this.scenes[i].id === sid) {
+                var s = this.scenes[i];
+                var target = (force === undefined) ? !s._editMode : !!force;
+                if (target) { this._pushUndoBefore(); }  // 进入编辑模式前压栈（返回可撤销）
+                s._editMode = target;
+                if (!target) {
+                    // 退出编辑模式：确认所有输入已落库
+                    var inputs = document.querySelectorAll('.s2-edit-input[data-scene-id="'+sid+'"]');
+                    for (var j = 0; j < inputs.length; j++) {
+                        var inp = inputs[j];
+                        var f = inp.dataset.field;
+                        if (f && inp.value !== (s[f]||'')) this._saveEditField(sid, f, inp.value, true);
+                    }
+                }
+                this.renderScenes();
+                return;
+            }
+        }
+    };
+
+    // 渲染编辑模式镜头卡（全字段自由文本编辑 + 存词归档入口）
+    App.seedanceV2._renderEditModeCard = function(s, idx) {
+        var F = this._F || {};
+        var h = '<div class="s2-scene-card s2-edit-card" data-scene-id="'+s.id+'" data-scene-order="'+(idx+1)+'">';
+        var dotColor = this._sceneColor(s.id);
+        // header
+        h += '<div class="s2-scene-header"><div class="s2-scene-title"><span class="s2-scene-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+dotColor+';margin-right:6px;vertical-align:middle;"></span><strong>镜头 '+(idx+1)+'</strong> <span class="s2-time-badge">'+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span> <span class="s2-edit-badge">✏️ 编辑中</span></div><div class="s2-scene-actions">';
+        h += '<button class="btn btn-xs btn-outline s2-editmode-toggle" data-scene-id="'+s.id+'" title="返回选择模式">🔀 选择模式</button>';
+        h += '<button class="btn btn-xs btn-danger s2-del-btn" data-scene-id="'+s.id+'" title="删除此镜头">🗑</button></div></div>';
+        // 时间行（保留时长/锁定）
+        h += '<div class="s2-scene-time"><span class="s2-time-label">⏱ '+parseInt(s.start_time)+'-'+parseInt(s.end_time)+'s</span>';
+        h += '<input class="s2-scene-dur s2-time-input'+(s.is_locked?' s2-dur-manual':'')+'" type="number" min="0.5" max="15" step="0.5" onblur="if(parseFloat(this.value)<0.5)this.value=0.5;if(parseFloat(this.value)>15)this.value=15;" value="'+(s.duration||3)+'" data-scene-id="'+s.id+'" title="'+(s.is_locked?'🔒 已锁定':'🔓 未锁定')+'">';
+        h += '<button class="s2-lock-btn'+(s.is_locked?' s2-locked':'')+'" data-scene-id="'+s.id+'" title="'+(s.is_locked?'点击解锁时长':'点击锁定时长')+'"><span class="s2-lock-icon"></span></button></div>';
+        // 字段编辑表单
+        h += '<div class="s2-edit-fields">';
+        for (var g = 0; g < this._editFieldGroups.length; g++) {
+            var grp = this._editFieldGroups[g];
+            h += '<div class="s2-field-group s2-edit-group"><span class="s2-field-label">'+grp.label+'</span>';
+            for (var fi = 0; fi < grp.fields.length; fi++) {
+                var f = grp.fields[fi];
+                var v = s[f] || '';
+                var nm = F[f] || f;
+                h += '<div class="s2-edit-row"><span class="s2-edit-label" title="'+App._escape(nm)+'">'+App._escape(nm)+'</span>';
+                h += '<input class="s2-edit-input" data-scene-id="'+s.id+'" data-field="'+f+'" value="'+App._escape(v)+'" placeholder="选择或输入" spellcheck="false">';
+                h += '<button class="s2-edit-archive" data-scene-id="'+s.id+'" data-field="'+f+'" title="将当前内容存为词卡">📥</button>';
+                h += '</div>';
+            }
+            h += '</div>';
+        }
+        // 拓展单元字段（编辑模式下同样可编辑）
+        if (!s._extUnits) s._extUnits = this._initExtUnits(s);
+        if (s._extUnits.length) {
+            h += '<div class="s2-field-group s2-edit-group"><span class="s2-field-label">拓展</span>';
+            for (var ui = 0; ui < s._extUnits.length; ui++) {
+                var uf = s._extUnits[ui].field;
+                var uv = s[uf] || '';
+                var unm = F[uf] || uf;
+                h += '<div class="s2-edit-row"><span class="s2-edit-label" title="'+App._escape(unm)+'">'+App._escape(unm)+'</span>';
+                h += '<input class="s2-edit-input" data-scene-id="'+s.id+'" data-field="'+uf+'" value="'+App._escape(uv)+'" placeholder="选择或输入" spellcheck="false">';
+                h += '<button class="s2-edit-archive" data-scene-id="'+s.id+'" data-field="'+uf+'" title="将当前内容存为词卡">📥</button>';
+                h += '</div>';
+            }
+            h += '</div>';
+        }
+        h += '</div>';
+        // 底部操作区
+        h += '<div class="s2-edit-actions">';
+        h += '<button class="btn btn-xs btn-primary s2-edit-all-archive" data-scene-id="'+s.id+'" title="将本镜头所有已填字段存为词卡">📥 全部存为词卡</button>';
+        h += '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._openGroupCreator()" title="新建自定义词库分组（同步到词库）">➕ 新建分组</button>';
+        h += '<button class="btn btn-xs btn-outline s2-editmode-toggle" data-scene-id="'+s.id+'" title="返回选择模式">↩ 返回选择</button>';
+        h += '</div></div>';
+        return h;
+    };
+
+    // 编辑模式输入防抖保存（600ms）
+    App.seedanceV2._editSaveTimers = {};
+    App.seedanceV2._onEditInput = function(sid, field, el) {
+        // 本地先行更新 scene 数据（体验层）
+        for (var i = 0; i < this.scenes.length; i++) {
+            if (this.scenes[i].id === sid) {
+                var s = this.scenes[i];
+                s[field] = el.value;
+                if (!s._customized) s._customized = {};
+                s._customized[field] = true;  // 改造标记
+                break;
+            }
+        }
+        var key = sid + '_' + field;
+        if (this._editSaveTimers[key]) clearTimeout(this._editSaveTimers[key]);
+        var self = this;
+        this._editSaveTimers[key] = setTimeout(function() {
+            self._saveEditField(sid, field, el.value, false);
+        }, 600);
+    };
+
+    // 编辑字段落库（编辑模式不压撤销栈，高频输入用防抖）
+    App.seedanceV2._saveEditField = function(sid, field, value, immediate) {
+        var key = sid + '_' + field;
+        if (this._editSaveTimers[key]) { clearTimeout(this._editSaveTimers[key]); delete this._editSaveTimers[key]; }
+        var d = {}; d[field] = value;
+        var self = this;
+        App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sid, {
+            method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(d)
+        }).then(function(res) {
+            if (res && res.ok) { if (immediate) self._debouncedCompose(); }
+        }).catch(function(e) { console.warn('edit save fail', e); });
+    };
+
+    // 存词卡归档弹窗（字段级）
+    App.seedanceV2._archiveField = function(sid, field) {
+        var s = null;
+        for (var i = 0; i < this.scenes.length; i++) { if (this.scenes[i].id === sid) { s = this.scenes[i]; break; } }
+        if (!s) return;
+        var v = s[field] || '';
+        if (!v.trim()) { App.showToast('字段内容为空，无需归档', 'warning'); return; }
+        this._openArchiveModal([{field: field, value: v}]);
+    };
+
+    // 全部存为词卡（收集所有已填字段）
+    App.seedanceV2._archiveAllFields = function(sid) {
+        var s = null;
+        for (var i = 0; i < this.scenes.length; i++) { if (this.scenes[i].id === sid) { s = this.scenes[i]; break; } }
+        if (!s) return;
+        var items = [];
+        var keys = ['camera_move','subject','scene_desc','composition','lighting','action','focal_length','texture','speed','emotion','color_grade','weather','particles','perspective','depth_of_field','filter','natural_force','environment_detail','film_flaw','fantasy_physics','character_voice','bgm','sfx'];
+        for (var i = 0; i < keys.length; i++) {
+            var v = s[keys[i]] || '';
+            if (v.trim()) items.push({field: keys[i], value: v});
+        }
+        if (s._extUnits) {
+            for (var j = 0; j < s._extUnits.length; j++) {
+                var uf = s._extUnits[j].field;
+                var uv = s[uf] || '';
+                if (uv.trim()) items.push({field: uf, value: uv});
+            }
+        }
+        if (!items.length) { App.showToast('本镜头暂无已填字段', 'warning'); return; }
+        this._openArchiveModal(items);
+    };
+
+    // 归档弹窗：选择目标词库/新建分组 + 释义
+    App.seedanceV2._openArchiveModal = function(items) {
+        var old = document.getElementById('s2ArchiveModal');
+        if (old) old.remove();
+        var self = this;
+        // 字段 → 默认维度词库映射
+        var libs = this.libraries || [];
+        var optHtml = '';
+        var fieldToDim = this._fieldToDim || {};
+        var firstField = items[0] ? items[0].field : '';
+        var defaultDim = fieldToDim[firstField] || firstField;
+        var hasDim = false;
+        for (var i = 0; i < libs.length; i++) {
+            var lib = libs[i];
+            var isDefault = (lib.dimension_key === defaultDim);
+            if (isDefault) hasDim = true;
+            optHtml += '<option value="'+lib.id+'"'+(isDefault?' selected':'')+'>'+(lib.category==='custom'?'📦 ':'📚 ')+App._escape(lib.dimension_name)+(isDefault?' (默认)':'')+'</option>';
+        }
+        // 条目预览
+        var itemHtml = '';
+        for (var j = 0; j < items.length; j++) {
+            var it = items[j];
+            var nm = (this._F && this._F[it.field]) || it.field;
+            itemHtml += '<div class="s2-archive-item"><span class="s2-archive-item-field">'+App._escape(nm)+'</span><span class="s2-archive-item-val">'+App._escape(it.value.length>40?it.value.substring(0,40)+'…':it.value)+'</span></div>';
+        }
+        var overlay = document.createElement('div');
+        overlay.id = 's2ArchiveModal';
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'display:flex;z-index:680;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+        overlay.innerHTML = '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:480px;">' +
+            '<div class="modal-header"><h5>📥 存为词卡</h5><button class="header-btn-sm" onclick="document.getElementById(\'s2ArchiveModal\').remove()">&times;</button></div>' +
+            '<div class="modal-body">' +
+            '<p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">将改造后的内容归档到词库，之后可在选择器中复用：</p>' +
+            '<div class="s2-archive-items">'+itemHtml+'</div>' +
+            '<div style="margin-top:10px;"><label style="font-size:11px;color:var(--text-muted);">目标词库</label>' +
+            '<select id="s2ArchiveLib" class="s2-input" style="width:100%;margin-top:2px;">'+optHtml+'</select></div>' +
+            '<div style="margin-top:8px;"><label style="font-size:11px;color:var(--text-muted);">或新建分组（输入名称将创建自定义分组）</label>' +
+            '<input id="s2ArchiveNewGroup" class="modal-input" placeholder="新分组名称（可选）" style="margin-top:2px;"></div>' +
+            '<div style="margin-top:8px;"><label style="font-size:11px;color:var(--text-muted);">释义 / 备注（可选）</label>' +
+            '<input id="s2ArchiveDef" class="modal-input" placeholder="该词条的用途说明" style="margin-top:2px;"></div>' +
+            '</div>' +
+            '<div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'s2ArchiveModal\').remove()">取消</button>' +
+            '<button class="btn btn-primary btn-sm" id="s2ArchiveConfirm">确认归档 ('+items.length+' 条)</button></div></div>';
+        document.body.appendChild(overlay);
+        document.getElementById('s2ArchiveConfirm').onclick = function() {
+            var libId = parseInt(document.getElementById('s2ArchiveLib').value || '0');
+            var newGroup = (document.getElementById('s2ArchiveNewGroup').value || '').trim();
+            var def = (document.getElementById('s2ArchiveDef').value || '').trim();
+            if (!libId && !newGroup) { App.showToast('请选择词库或填写新分组名称', 'warning'); return; }
+            self._doArchive(items, libId, newGroup, def);
+        };
+    };
+
+    // 执行归档（调用后端）
+    App.seedanceV2._doArchive = async function(items, libId, newGroup, def) {
+        App.showToast('正在归档...', 'info');
+        var payload = {
+            items: items,
+            target_lib_id: libId || null,
+            new_group_name: newGroup || null,
+            definition: def || ''
+        };
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/scenes/archive', {
+                method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+            });
+            var m = document.getElementById('s2ArchiveModal'); if (m) m.remove();
+            if (d && d.ok) {
+                App.showToast('✅ 已归档 '+d.saved+' 条'+(d.skipped?'，跳过重复 '+d.skipped+' 条':'')+(d.new_lib_id?'，新分组已创建':'')+'', 'success');
+                // 刷新词库缓存，让新词卡立即可选
+                var libsToClear = d.lib_ids || [];
+                for (var i = 0; i < libsToClear.length; i++) { if (this.cardCache[libsToClear[i]]) delete this.cardCache[libsToClear[i]]; }
+                if (newGroup) { await this.loadLibraries(); this.renderPickerLibTabs(this.activePickerLibId); }
+            } else {
+                App.showToast('归档未完成: ' + (d ? (d.detail || d.error || '未知错误') : '无响应'), 'error');
+            }
+        } catch (e) {
+            App.showToast('归档异常: ' + e.message, 'error');
+        }
     };
 
     // 折叠后纯文本行（无分组标签，仅字段值拼接）

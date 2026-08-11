@@ -3953,3 +3953,22 @@ body.dark-theme .header-divider {
     border-color: var(--primary, #3b82f6) !important;
     box-shadow: var(--card-shadow, 0 2px 12px rgba(0,0,0,.1)) !important;
 }
+/* ===== v5.36.0: 镜头编辑模式样式 ===== */
+.s2-edit-card { border-color: rgba(16,185,129,0.45); box-shadow: 0 0 0 1px rgba(16,185,129,0.15); }
+.s2-edit-badge { display:inline-block; font-size:10px; padding:1px 8px; border-radius:10px; background:rgba(16,185,129,0.12); color:#10b981; margin-left:6px; font-weight:600; }
+.s2-edit-fields { display:flex; flex-direction:column; gap:2px; margin:4px 0 8px; }
+.s2-edit-group { margin-bottom:2px; }
+.s2-edit-row { display:flex; align-items:center; gap:6px; width:100%; margin:1px 0; }
+.s2-edit-label { font-size:11px; font-weight:600; color:var(--text-muted); width:52px; flex-shrink:0; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.s2-edit-input { flex:1; min-width:0; font-size:12px; padding:3px 8px; border:1px solid var(--border-color); border-radius:5px; background:var(--bg-main); color:var(--text-main); }
+.s2-edit-input:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 2px rgba(79,70,229,0.15); }
+.s2-edit-archive { flex-shrink:0; font-size:12px; padding:2px 7px; border:1px solid var(--border-color); border-radius:5px; background:transparent; cursor:pointer; color:var(--text-muted); transition:0.15s; }
+.s2-edit-archive:hover { border-color:#10b981; color:#10b981; background:rgba(16,185,129,0.08); }
+.s2-edit-actions { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; align-items:center; }
+.s2-field-chip.s2-customized { border-color:#8b5cf6; background:rgba(139,92,246,0.08); }
+.s2-field-chip.s2-customized .s2-chip-label { color:#8b5cf6; }
+.s2-archive-items { max-height:140px; overflow-y:auto; border:1px solid var(--border-color); border-radius:6px; padding:4px 6px; background:var(--hover-bg); }
+.s2-archive-item { display:flex; gap:8px; font-size:12px; padding:2px 0; border-bottom:1px dashed var(--border-color); }
+.s2-archive-item:last-child { border-bottom:none; }
+.s2-archive-item-field { flex-shrink:0; font-weight:600; color:var(--text-muted); min-width:52px; }
+.s2-archive-item-val { color:var(--text-main); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

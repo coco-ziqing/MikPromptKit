@@ -12,9 +12,12 @@ router = APIRouter(prefix="/api/seedance/v2", tags=["seedance-v2"])
 # Phase 3.5: library/project 子路由（同 prefix 挂载）
 from api.seedance_v2_library import router as seedance_v2_library_router
 from api.seedance_v2_project import router as seedance_v2_project_router
+# v5.36.0: 即梦视频生成任务子路由
+from api.seedance_v2_video import router as seedance_v2_video_router
 
 router.include_router(seedance_v2_library_router)
 router.include_router(seedance_v2_project_router)
+router.include_router(seedance_v2_video_router)
 from api.seedance_v2_project import _recalculate_scene_times  # noqa: F401
 
 # ==================== 反向解析（文本→结构化） ====================

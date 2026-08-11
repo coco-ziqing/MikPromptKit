@@ -437,6 +437,122 @@ def copy_word_card_video_from_library(card_id: int, data: dict = Body(...)):
     return {"ok": True, "video_filename": dest_name, "poster_filename": poster_name}
 
 
+# ==================== 镜头改造归档 (v5.36.0) ====================
+
+# 字段 → 中文标签（与前端 _F 一致）
+_SCENE_FIELD_LABELS = {
+    'camera_move': '运镜', 'subject': '主体', 'scene_desc': '场景', 'composition': '构图',
+    'lighting': '光影', 'action': '动作', 'focal_length': '焦段', 'texture': '质感',
+    'speed': '速率', 'emotion': '情绪', 'color_grade': '调色', 'weather': '天气',
+    'particles': '粒子', 'perspective': '视角', 'depth_of_field': '景深', 'filter': '滤镜',
+    'natural_force': '外力', 'environment_detail': '环境', 'film_flaw': '瑕疵',
+    'fantasy_physics': '奇幻', 'character_voice': '角色旁白', 'bgm': 'BGM', 'sfx': '音效',
+}
+# 字段 → 词库 dimension_key 映射（与前端 _fieldToDim 一致）
+_SCENE_FIELD_TO_DIM = {
+    'scene_desc': 'scene', 'environment_detail': 'env_detail',
+    'character_voice': 'audio_char_narr', 'bgm': 'audio_bgm', 'sfx': 'audio_sfx',
+}
+
+
+@router.post("/scenes/archive")
+def archive_scene_fields(data: dict = Body(...)):
+    """镜头编辑模式改造归档：将编辑后的字段内容存为词卡
+
+    body: {
+      items: [{field, value}],        # 要归档的字段与内容
+      target_lib_id: int|None,        # 指定目标词库（优先）
+      new_group_name: str|None,       # 或新建自定义分组（二者填一，new_group 优先）
+      definition: str                 # 释义/备注（可选）
+    }
+    查重规则: 同词库 + 同 word_text 已存在 → 跳过
+    """
+    items = data.get("items") or []
+    target_lib_id = data.get("target_lib_id")
+    new_group_name = (data.get("new_group_name") or "").strip()
+    definition = (data.get("definition") or "").strip()
+    if not items:
+        raise HTTPException(400, "items 必填")
+
+    db = get_db()
+    lib_id = None
+    new_lib_id = None
+
+    # 1) 确定目标词库
+    if new_group_name:
+        # 新建自定义分组（或复用同名）— prompt_library 是 VIEW，直接写真实表 word_card_group
+        existing = db.execute(
+            "SELECT id FROM word_card_group WHERE name=? AND group_type='seedance' AND seedance_subtype='custom' AND is_active=1",
+            [new_group_name]
+        ).fetchone()
+        if existing:
+            lib_id = existing["id"]
+        else:
+            import time
+            key = "custom_" + str(int(time.time() * 1000))
+            cur = db.execute(
+                "INSERT INTO word_card_group (name, group_key, group_type, seedance_subtype, description, sort_order) "
+                "VALUES (?, ?, 'seedance', 'custom', ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card_group))",
+                [new_group_name, key, new_group_name]
+            )
+            lib_id = cur.lastrowid
+            new_lib_id = lib_id
+    elif target_lib_id:
+        lib_id = int(target_lib_id)
+        lib = db.execute("SELECT id FROM prompt_library WHERE id=?", [lib_id]).fetchone()
+        if not lib:
+            raise HTTPException(404, "目标词库不存在")
+    else:
+        # 自动按字段匹配维度词库
+        field = items[0].get("field", "")
+        dim = _SCENE_FIELD_TO_DIM.get(field, field)
+        lib = db.execute("SELECT id FROM prompt_library WHERE dimension_key=?", [dim]).fetchone()
+        if not lib:
+            raise HTTPException(400, f"字段 {field} 无对应维度词库，请选择目标词库或新建分组")
+        lib_id = lib["id"]
+
+    # 2) 逐条写入词卡（查重跳过）
+    saved, skipped = 0, 0
+    for item in items:
+        wt = (item.get("value") or "").strip()
+        if not wt:
+            continue
+        field = item.get("field", "")
+        dup = db.execute(
+            "SELECT id FROM word_card WHERE group_id=? AND content=? AND is_deleted=0",
+            [lib_id, wt]
+        ).fetchone()
+        if dup:
+            skipped += 1
+            continue
+        label = _SCENE_FIELD_LABELS.get(field, field)
+        note = definition
+        if not note:
+            note = f"[改造自: {label}]"
+        elif definition:
+            note = f"{definition} [改造自: {label}]"
+        db.execute(
+            "INSERT INTO word_card (group_id, content, meaning, is_builtin, heat_weight, module, category) "
+            "VALUES (?, ?, ?, 0, 0.5, 'seedance_v2', 'seedance_v2')",
+            [lib_id, wt, note]
+        )
+        db.execute(
+            "INSERT INTO user_custom_word (library_id, word_text, definition) VALUES (?, ?, ?)",
+            [lib_id, wt, note]
+        )
+        saved += 1
+
+    safe_commit()
+    return {
+        "ok": True,
+        "saved": saved,
+        "skipped": skipped,
+        "lib_id": lib_id,
+        "new_lib_id": new_lib_id,
+        "lib_ids": [lib_id],
+    }
+
+
 # ==================== 自定义词库管理 ====================
 
 @router.post("/libraries")
@@ -448,17 +564,17 @@ def create_library(data: dict = Body(...)):
     import time
     key = "custom_" + str(int(time.time() * 1000))
     db = get_db()
-    # 检查同名
+    # 检查同名（prompt_library 是 VIEW，真实表为 word_card_group）
     existing = db.execute(
-        "SELECT id FROM prompt_library WHERE dimension_name=? AND category='custom'",
+        "SELECT id FROM word_card_group WHERE name=? AND group_type='seedance' AND seedance_subtype='custom' AND is_active=1",
         [name]
     ).fetchone()
     if existing:
         raise HTTPException(400, "同名自定义分组已存在")
     cur = db.execute(
-        "INSERT INTO prompt_library (dimension_key, dimension_name, category, description, sort_order) VALUES (?, ?, 'custom', ?, "
-        "(SELECT COALESCE(MAX(sort_order),0)+1 FROM prompt_library))",
-        [key, name, name]
+        "INSERT INTO word_card_group (name, group_key, group_type, seedance_subtype, description, sort_order) VALUES (?, ?, 'seedance', 'custom', ?, "
+        "(SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card_group))",
+        [name, key, name]
     )
     safe_commit()
     return {"ok": True, "id": cur.lastrowid, "dimension_key": key}
@@ -468,13 +584,13 @@ def create_library(data: dict = Body(...)):
 def delete_library(lib_id: int):
     """删除自定义分组词库（仅限 custom 类型）"""
     db = get_db()
-    lib = db.execute("SELECT * FROM prompt_library WHERE id=? AND category='custom'", [lib_id]).fetchone()
+    lib = db.execute("SELECT * FROM word_card_group WHERE id=? AND group_type='seedance' AND seedance_subtype='custom' AND is_active=1", [lib_id]).fetchone()
     if not lib:
         raise HTTPException(404, "自定义分组不存在或不可删除")
-    # 删除关联词卡
-    db.execute("DELETE FROM prompt_word_card WHERE library_id=?", [lib_id])
+    # 删除关联词卡（真实表 word_card；prompt_word_card 是 VIEW 不可 DELETE）
+    db.execute("DELETE FROM word_card WHERE group_id=?", [lib_id])
     db.execute("DELETE FROM user_custom_word WHERE library_id=?", [lib_id])
-    db.execute("DELETE FROM prompt_library WHERE id=?", [lib_id])
+    db.execute("UPDATE word_card_group SET is_active=0, updated_at=datetime('now','localtime') WHERE id=?", [lib_id])
     safe_commit()
     return {"ok": True}
 
@@ -486,10 +602,10 @@ def rename_library(lib_id: int, data: dict = Body(...)):
     if not name:
         raise HTTPException(400, "name 必填")
     db = get_db()
-    lib = db.execute("SELECT * FROM prompt_library WHERE id=? AND category='custom'", [lib_id]).fetchone()
+    lib = db.execute("SELECT * FROM word_card_group WHERE id=? AND group_type='seedance' AND seedance_subtype='custom' AND is_active=1", [lib_id]).fetchone()
     if not lib:
         raise HTTPException(404, "自定义分组不存在或不可编辑")
-    db.execute("UPDATE prompt_library SET dimension_name=? WHERE id=?", [name, lib_id])
+    db.execute("UPDATE word_card_group SET name=?, updated_at=datetime('now','localtime') WHERE id=?", [name, lib_id])
     safe_commit()
     return {"ok": True}
 

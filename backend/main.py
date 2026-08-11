@@ -225,6 +225,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log_warn(f"[main] 批量队列恢复跳过: {e}")
 
+    # 2026-08-11 v5.36.0: 即梦视频任务队列孤儿接管（重启后恢复 queued/submitting/querying）
+    try:
+        from api.seedance_v2_video import _resume_orphaned_video_tasks
+        _resume_orphaned_video_tasks()
+    except Exception as e:
+        log_warn(f"[main] 视频队列恢复跳过: {e}")
+
     # 异步重建语义搜索索引
     try:
         from semantic import _ML_OK
