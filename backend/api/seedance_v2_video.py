@@ -655,6 +655,88 @@ def video_config():
             "model_limits": {k: {"duration": v} for k, v in _MODEL_LIMITS.items()}}
 
 
+@router.post("/video/precheck")
+def precheck_video_tasks(data: dict = Body(...)):
+    """提交前预检：逐镜头检查内容/参考图/时长/会话，返回问题清单（不消耗额度）
+    body: { project_id, scope, scene_ids?, model_version, ratio, resolution, session }
+    """
+    _ensure_project_video_cols()
+    _ensure_video_task_table()
+    project_id = data.get("project_id")
+    if not project_id:
+        raise HTTPException(400, "project_id 必填")
+    db = get_db()
+    proj = db.execute("SELECT * FROM user_project WHERE id=?", [project_id]).fetchone()
+    if not proj:
+        raise HTTPException(404, "分镜项目不存在")
+    model = data.get("model_version") or proj["video_model"] or "seedance2.0fast"
+    resolution = data.get("resolution") or proj["video_resolution"] or "720p"
+    session = int(data.get("session", proj["video_session"] or 0))
+
+    issues = []
+    warnings = []
+    info = []
+
+    # 1. 会话有效性
+    valid_s = _valid_session(session, force=True)
+    if valid_s != session:
+        issues.append({"level": "warn", "item": "会话", "detail": f"会话 {session} 无效，将回退默认会话 0"})
+
+    # 2. 分辨率合规
+    res_ok = _valid_resolution(model, resolution)
+    if res_ok != resolution:
+        warnings.append({"level": "warn", "item": "分辨率", "detail": f"{resolution} 超出 {model} 上限，将降级为 {res_ok}"})
+
+    # 3. 镜头检查
+    scene_ids = data.get("scene_ids")
+    if scene_ids:
+        placeholders = ",".join("?" for _ in scene_ids)
+        rows = db.execute(
+            f"SELECT * FROM user_project_scene WHERE project_id=? AND id IN ({placeholders}) ORDER BY scene_order",
+            [project_id] + scene_ids).fetchall()
+    else:
+        rows = db.execute(
+            "SELECT * FROM user_project_scene WHERE project_id=? ORDER BY scene_order",
+            [project_id]).fetchall()
+    if not rows:
+        issues.append({"level": "error", "item": "镜头", "detail": "项目没有镜头"})
+
+    scene_items = []
+    for s in rows:
+        sp = _build_scene_prompt(dict(s), proj["global_style"] or "")
+        refs = _collect_refs(project_id, s["id"])
+        item = {"scene_id": s["id"], "scene_order": s["scene_order"],
+                "has_content": bool(sp.strip()), "ref_count": len(refs),
+                "refs": [{"ref_type": r["ref_type"], "ref_name": r["ref_name"]} for r in refs],
+                "duration": s["duration"] or 5}
+        problems = []
+        if not sp.strip():
+            problems.append("无内容（镜头字段为空）")
+        if len(refs) > 9:
+            problems.append(f"参考图 {len(refs)} 张超上限 9")
+        for r in refs:
+            if r["ref_type"] == "character" and not (r["ref_name"] or "").strip():
+                problems.append("角色参考图未命名（提示词对应弱）")
+        if problems:
+            item["problems"] = problems
+            issues.append({"level": "error" if "无内容" in problems else "warn",
+                           "item": f"镜头{s['scene_order']}", "detail": "；".join(problems)})
+        scene_items.append(item)
+
+    # 4. 时长提示
+    mn, mx, _ = _MODEL_LIMITS.get(model, _DEFAULT_LIMITS)
+    for it in scene_items:
+        dur = int(float(it["duration"] or 5))
+        if dur < mn:
+            warnings.append({"level": "info", "item": f"镜头{it['scene_order']} 时长",
+                             "detail": f"{dur}s 低于模型下限 {mn}s，将自动用 {mn}s"})
+
+    return {"ok": True, "scene_items": scene_items, "issues": issues, "warnings": warnings,
+            "summary": {"scene_count": len(scene_items),
+                        "error_count": sum(1 for i in issues if i["level"] == "error"),
+                        "warn_count": len(warnings) + sum(1 for i in issues if i["level"] == "warn")}}
+
+
 @router.post("/video/tasks")
 def create_video_tasks(data: dict = Body(...)):
     """提交视频生成任务

@@ -115,6 +115,7 @@
             '</div>' +
             '<div id="s2VideoResTip">'+resTip+'</div>' +
             '<div id="s2VideoRefsBox" style="margin-top:8px;"></div>' +
+            '<div id="s2VideoPrecheck" style="margin-top:8px;"></div>' +
             '<div style="background:var(--hover-bg);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--text-muted);margin-top:8px;">' +
             '⏱ 预计时长：整项目='+(p.total_duration||15)+'s（上限15s，超长请用逐镜头）；逐镜头=各镜头时长（自动收敛 4-15s，seedance2.5 可达 30s）<br>' +
             '📌 即梦生成异步执行，提交后可到「📺 任务面板」查看进度与结果。</div>' +
@@ -124,6 +125,16 @@
         document.body.appendChild(overlay);
         // v5.36.2: 加载将携带的参考图预览
         this._loadSubmitRefsPreview();
+        // v5.36.7: 提交前预检 + 参数变化时重检
+        this._runVideoPrecheck();
+        var self2 = this;
+        document.querySelectorAll('input[name="s2VideoScope"]').forEach(function(el){
+            el.addEventListener('change', function(){ self2._runVideoPrecheck(); });
+        });
+        var vm = document.getElementById('s2VideoModel');
+        if (vm) vm.addEventListener('change', function(){ self2._runVideoPrecheck(); });
+        var vr = document.getElementById('s2VideoRes');
+        if (vr) vr.addEventListener('change', function(){ self2._runVideoPrecheck(); });
         document.getElementById('s2VideoSubmitBtn').onclick = function() {
             var scope = document.querySelector('input[name="s2VideoScope"]:checked');
             var model = document.getElementById('s2VideoModel').value;
@@ -133,6 +144,55 @@
             var session = parseInt(sel ? sel.value : '0') || 0;
             self._doVideoSubmit(scope ? scope.value : 'scenes', model, ratio, res, session);
         };
+    };
+
+    // v5.36.7: 提交前预检（调用后端 /video/precheck，不消耗额度）
+    App.seedanceV2._runVideoPrecheck = async function() {
+        var box = document.getElementById('s2VideoPrecheck');
+        if (!box) return;
+        var self = this;
+        if (!this.currentProjectId) return;
+        box.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">🔍 提交预检中...</div>';
+        try {
+            var scope = 'scenes';
+            var rdo = document.querySelector('input[name="s2VideoScope"]:checked');
+            if (rdo) scope = rdo.value;
+            var model = document.getElementById('s2VideoModel') ? document.getElementById('s2VideoModel').value : '';
+            var res = document.getElementById('s2VideoRes') ? document.getElementById('s2VideoRes').value : '';
+            var sel = document.getElementById('s2VideoSession');
+            var session = sel ? parseInt(sel.value || '0') : 0;
+            var d = await App.fetchJSON('/api/seedance/v2/video/precheck', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ project_id: this.currentProjectId, scope: scope,
+                    model_version: model, resolution: res, session: session }),
+                _timeoutMs: 20000
+            });
+            if (!d || !d.ok) { box.innerHTML = ''; return; }
+            var h = '<div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;font-size:11px;">';
+            var errs = (d.issues || []).filter(function(i){ return i.level === 'error'; });
+            var warns = (d.issues || []).filter(function(i){ return i.level === 'warn'; });
+            if (!errs.length && !warns.length && !d.warnings.length) {
+                h += '<div style="color:#10b981;">✅ 预检通过：'+d.summary.scene_count+' 个镜头可提交（'+d.summary.warn_count+' 项提示）</div>';
+            } else {
+                if (errs.length) {
+                    h += '<div style="color:#ef4444;font-weight:600;margin-bottom:4px;">❌ 阻止提交（'+errs.length+'）：</div>';
+                    for (var i = 0; i < errs.length; i++) {
+                        h += '<div style="color:#ef4444;margin-left:8px;">· '+App._escape(errs[i].item)+': '+App._escape(errs[i].detail)+'</div>';
+                    }
+                }
+                if (warns.length) {
+                    h += '<div style="color:#f59e0b;font-weight:600;margin-top:4px;">⚠️ 注意（'+warns.length+'）：</div>';
+                    for (var j = 0; j < warns.length; j++) {
+                        h += '<div style="color:#f59e0b;margin-left:8px;">· '+App._escape(warns[j].item)+': '+App._escape(warns[j].detail)+'</div>';
+                    }
+                }
+                for (var k = 0; k < (d.warnings || []).length; k++) {
+                    h += '<div style="color:var(--text-muted);margin-left:8px;">· '+App._escape(d.warnings[k].detail)+'</div>';
+                }
+            }
+            h += '</div>';
+            box.innerHTML = h;
+        } catch (e) { box.innerHTML = ''; }
     };
 
     // v5.36.2: 提交弹窗参考图预览（全局+镜头合并，显示生产方式）
