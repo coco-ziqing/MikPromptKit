@@ -20,7 +20,8 @@
             var overlay = document.createElement('div');
             overlay.id = 'modalCardDetail';
             overlay.className = 'modal-overlay';
-            overlay.style.cssText = 'display:flex;z-index:600;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;';
+            // 2026-08-11 修复: z-index 600 被批量生成弹窗(760)盖住导致点击查看无反应; 提到 800(业务弹窗之上, 授权类 9999 之下)
+            overlay.style.cssText = 'display:flex;z-index:800;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;';
             overlay.onclick = function(e) { if (e.target === this) this.remove(); };
 
             var sf = card.structured_fields || {};
