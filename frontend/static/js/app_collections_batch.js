@@ -2391,7 +2391,15 @@ Object.assign(App, {
             }
             try {
                 var d = await self.fetchJSON('/api/v2/comfyui/batch-tasks?limit=100');
-                if (d && d.ok) self._renderBatchQueueOverview(d.items || []);
+                if (d && d.ok) {
+                    // 2026-08-11: 有活跃队列任务时自动展开进度区，弹窗内总览立即可见
+                    var hasActive = (d.items || []).some(function(t) { return t.status === 'queued' || t.status === 'running' || t.status === 'error'; });
+                    if (hasActive) {
+                        var pa = document.getElementById('bgenProgressArea');
+                        if (pa) pa.style.display = 'block';
+                    }
+                    self._renderBatchQueueOverview(d.items || []);
+                }
             } catch(e) { /* 网络抖动忽略，下轮重试 */ }
         };
         tick();
@@ -2485,14 +2493,15 @@ Object.assign(App, {
         if (this._batchBarEl) return;
         var bar = document.createElement('div');
         bar.id = 'bgenQueueBar';
-        bar.style.cssText = 'position:fixed;right:14px;bottom:12px;z-index:600;display:none;align-items:center;gap:8px;padding:6px 14px;border-radius:20px;background:var(--bg-card,#1e293b);border:1px solid #6366f1;box-shadow:0 6px 24px rgba(0,0,0,0.35);cursor:pointer;font-size:11px;color:var(--text-main,#e2e8f0);';
+        // z-index 800: 高于批量生成弹窗(760), 弹窗打开时状态条仍可见可点
+        bar.style.cssText = 'position:fixed;right:14px;bottom:12px;z-index:800;display:none;align-items:center;gap:8px;padding:6px 14px;border-radius:20px;background:var(--bg-card,#1e293b);border:1px solid #6366f1;box-shadow:0 6px 24px rgba(0,0,0,0.35);cursor:pointer;font-size:11px;color:var(--text-main,#e2e8f0);';
         bar.innerHTML = '<span style="font-weight:600;">📊 生成队列</span><span id="bgenQueueBarStats"></span>';
         bar.onclick = function() { self._toggleBatchQueuePanel(); };
         document.body.appendChild(bar);
         this._batchBarEl = bar;
         var panel = document.createElement('div');
         panel.id = 'bgenQueuePanel';
-        panel.style.cssText = 'position:fixed;right:14px;bottom:44px;width:430px;max-width:92vw;max-height:60vh;overflow-y:auto;z-index:601;display:none;background:var(--bg-card,#1e293b);border:1px solid #6366f1;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,0.4);padding:8px 10px;';
+        panel.style.cssText = 'position:fixed;right:14px;bottom:44px;width:430px;max-width:92vw;max-height:60vh;overflow-y:auto;z-index:801;display:none;background:var(--bg-card,#1e293b);border:1px solid #6366f1;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,0.4);padding:8px 10px;';
         panel.innerHTML = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">' +
             '<span style="font-size:12px;font-weight:600;">📊 生成队列总览</span>' +
             '<span style="margin-left:auto;font-size:9px;color:var(--text-muted);">3s 自动刷新 · 点击查看词卡详情</span>' +
