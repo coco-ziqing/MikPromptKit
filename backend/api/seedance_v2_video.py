@@ -153,42 +153,49 @@ def _build_scene_prompt(scene: dict, global_style: str = "") -> str:
 
 
 def _build_ref_aware_prompt(base_prompt: str, refs: list) -> str:
-    """参考图模式提示词规范（符合即梦 multimodal2video / image2video）
-    结构：
-      【参考图声明】图1=角色「名字」保持外观一致；图2=场景参考…
-      【动态描述】原有文本（动作/运镜/光影变化，画面内容由图锚定）
-    即梦 multimodal 模式下 prompt 是编辑引导语：必须显式声明每张图
-    的角色/场景对应关系与一致性要求，模型才知道如何参考。
+    """参考图模式提示词规范 — Seedance 全能参考官方 @Tag 引用语法（v5.36.6）
+    依据全网交叉验证的官方规范：
+      - 使用 @图像N 标记引用参考素材（模型训练学习的就是该语法）
+      - 每个 @Tag 后必须说明用途（"生成@图像1中角色的..."），不能只丢标签
+      - 图片负责静态层（外貌/服装/场景/色调），文字负责动态层（动作/运镜/融合）
+      - 风格/约束前置，动作运镜在后
+    结构: [参考引用段] + [动态描述段] + [约束段]
     """
     if not refs:
         return base_prompt
-    # 图编号 → 声明
-    decls = []
+    # ── 参考引用段: @图像N + 用途说明（官方语法） ──
+    refs_used = []
+    char_names = []
+    scene_names = []
     for idx, r in enumerate(refs, start=1):
         rtype = r.get("ref_type", "character")
         name = (r.get("ref_name") or "").strip()
+        tag = f"@图像{idx}"
         if rtype == "scene":
-            label = f"图{idx}为场景参考"
-            if name:
-                label += f"「{name}」"
-            label += "，保持场景环境/风格/氛围一致"
+            scene_names.append(name or f"场景{idx}")
+            refs_used.append(f"{tag}作为场景背景")
         elif rtype == "style":
-            label = f"图{idx}为风格参考"
-            if name:
-                label += f"「{name}」"
-            label += "，保持画面风格/色调一致"
+            refs_used.append(f"{tag}作为画面风格参考")
         else:
-            label = f"图{idx}为角色参考"
-            if name:
-                label += f"「{name}」"
-            label += "，严格保持该角色外貌/服装/发型/气质一致，不要改变形象"
-        decls.append(label)
-    decl_text = "；".join(decls)
+            char_names.append(name or f"角色{idx}")
+            refs_used.append(f"{tag}作为角色{idx}外观参考")
+
+    # 动态描述文本（原组装文本 = 主体/动作/场景/构图/光影）
     body = (base_prompt or "").strip()
-    # 参考图模式下，动态描述强调"动作/运镜/变化"（静态外观由图锚定）
+
+    parts = []
+    # ① 角色引用声明（显式 @图像N = 角色外观，锁脸锁造型）
+    if char_names:
+        char_usage = "，".join(refs_used)
+        parts.append(f"参考{char_usage}，严格保持各角色外貌、服装、发型一致")
+    elif refs_used:
+        parts.append(f"参考{'、'.join(refs_used)}")
+    # ② 动态描述（动作/运镜/场景变化 — 文字层）
     if body:
-        return f"【参考图声明】{decl_text}。【动态描述】{body}"
-    return f"【参考图声明】{decl_text}。请以参考图为基准生成连贯视频。"
+        parts.append(body)
+    # ③ 约束兜底（防变脸/防穿模）
+    parts.append("人物比例符合现实世界物理规律，动作流畅自然")
+    return "，".join(parts)
 
 
 def _collect_refs(project_id: int, scene_id) -> list:
@@ -218,6 +225,8 @@ def _collect_refs(project_id: int, scene_id) -> list:
                      "ref_name": r["ref_name"] or "",
                      "file_path": fp,
                      "url": r["url"] or ""})
+    # v5.36.6: 角色图优先、场景/风格随后（@图像N 编号与声明分组更清晰）
+    refs.sort(key=lambda x: 0 if x["ref_type"] == "character" else (1 if x["ref_type"] == "scene" else 2))
     return refs
 
 
