@@ -1021,6 +1021,8 @@
         App.fetchJSON('/api/seedance/v2/web-assets/assets' + q).then(function(d) {
             if (!d || !d.ok) { c.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">加载失败</div>'; return; }
             var items = d.items || [];
+            // v5.36.19: 缓存当前列表数据（复制提示词直接取缓存，不查 API）
+            this._webAssetsCache = items;
             if (!items.length) {
                 c.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">还没有网页历史资产<br><span style="font-size:11px;">点「🔄 开始拉取」同步即梦网页端作品（含 App/官网直接生成的历史）</span></div>';
                 return;
@@ -1044,7 +1046,7 @@
                         '<div style="font-size:11px;color:#d97706;font-style:italic;">⚠️ 该资产未保存提示词（即梦旧记录），可手动补全</div>') +
                     '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">' + App._escape([a.task_time, a.gen_task_type].filter(Boolean).join(' · ')) + '</div>' +
                     '<div style="display:flex;gap:6px;margin-top:6px;">' +
-                    '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._copyImportedPrompt(' + a.id + ')">📋 提示词</button>' +
+                    '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._copyWebPrompt(' + a.id + ')">📋 提示词</button>' +
                     '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._editWebPrompt(' + a.id + ')" title="补充/修改提示词" style="color:#d97706;border-color:#d97706;">✏️ ' + (a.prompt ? '编辑' : '补全') + '</button>' +
                     '<button class="btn btn-xs btn-outline" style="color:#ef4444;border-color:#ef4444;" onclick="App.seedanceV2._deleteImportedAsset(' + a.id + ')">🗑 删除</button></div></div></div>';
             }
@@ -1284,6 +1286,16 @@
         } catch (e) { c.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">加载失败: ' + App._escape(e.message) + '</div>'; }
     };
 
+    // 从网页历史列表缓存直接复制提示词（避免 API 分页查询）
+    App.seedanceV2._copyWebPrompt = function(assetId) {
+        var items = this._webAssetsCache || [];
+        var a = null;
+        for (var i = 0; i < items.length; i++) { if (items[i].id === assetId) { a = items[i]; break; } }
+        var p = a ? (a.prompt || '') : '';
+        if (!p) { App.showToast('提示词为空（该资产未保存提示词）', 'warning'); return; }
+        navigator.clipboard.writeText(p).then(function() { App.showToast('✅ 提示词已复制', 'success'); }).catch(function() { App.showToast('复制失败，请手动复制', 'error'); });
+    };
+
     // 编辑/补全网页资产提示词
     App.seedanceV2._editWebPrompt = async function(assetId) {
         var self = this;
@@ -1299,13 +1311,20 @@
         } catch (e) { App.showToast('更新异常: ' + e.message, 'error'); }
     };
 
+    // 复制已导入资产提示词（分页查 /assets，page_size 上限 200）
     App.seedanceV2._copyImportedPrompt = async function(assetId) {
         try {
-            var d = await App.fetchJSON('/api/seedance/v2/assets?page=1&page_size=500');
-            var a = null;
-            if (d && d.items) for (var i = 0; i < d.items.length; i++) { if (d.items[i].id === assetId) { a = d.items[i]; break; } }
-            var p = a ? (a.prompt || '') : '';
-            if (!p) { App.showToast('提示词为空', 'warning'); return; }
+            var found = null;
+            for (var _p = 1; _p <= 10; _p++) {
+                var d = await App.fetchJSON('/api/seedance/v2/assets?page=' + _p + '&page_size=200');
+                if (!d || !d.items) break;
+                var hit = null;
+                for (var i = 0; i < d.items.length; i++) { if (d.items[i].id === assetId) { hit = d.items[i]; break; } }
+                if (hit) { found = hit; break; }
+                if (d.items.length < 200) break;
+            }
+            var p = found ? (found.prompt || '') : '';
+            if (!p) { App.showToast('提示词为空（该资产未保存提示词）', 'warning'); return; }
             navigator.clipboard.writeText(p).then(function() { App.showToast('✅ 提示词已复制', 'success'); }).catch(function() { App.showToast('复制失败，请手动复制', 'error'); });
         } catch (e) { App.showToast('复制异常: ' + e.message, 'error'); }
     };
