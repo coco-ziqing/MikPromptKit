@@ -46,6 +46,10 @@ SKIP_EXT = (".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".m
 # 采集任务全局状态
 _pending_max_items = 0  # 单次拉取限流（测试用，0=不限）
 
+# 缩略图生成任务状态
+_thumb_state = {"running": False, "total": 0, "done": 0, "failed": 0, "message": ""}
+_thumb_thread = None
+
 _pull_state = {
     "running": False,
     "stop_requested": False,
@@ -849,3 +853,91 @@ def update_web_asset(asset_id: int, data: dict = Body(...)):
             pass
     safe_commit()
     return {"ok": True, "prompt": prompt}
+
+
+# ==================== 缩略图补全 ====================
+
+_THUMB_TARGET = (240, 160)
+
+
+def _thumb_state_snapshot():
+    with _pull_lock:
+        return dict(_thumb_state)
+
+
+def _gen_thumb_worker():
+    """后台线程：为缺少缩略图的即梦资产图片词卡生成缩略图（Pillow 本地生成）"""
+    from PIL import Image
+    _ensure_asset_table()
+    db = get_db()
+    cards = db.execute(
+        "SELECT id, preview_media FROM word_card WHERE module='dreamina_asset' AND media_type='image' "
+        "AND (thumbnail IS NULL OR thumbnail='') AND preview_media != '' AND is_deleted=0").fetchall()
+    total = len(cards)
+    with _pull_lock:
+        _thumb_state.update(running=True, total=total, done=0, failed=0, message="开始生成")
+    thumb_dir = os.path.join(_PROJECT_ROOT, "data", "thumbnails")
+    os.makedirs(thumb_dir, exist_ok=True)
+    done = failed = 0
+    for r in cards:
+        if _thumb_state.get("stop_requested"):
+            break
+        cid = r["id"]
+        fname = r["preview_media"] or ""
+        src = os.path.join(IMG_DIR, os.path.basename(fname))
+        dest = os.path.join(thumb_dir, f"{cid}.png")
+        try:
+            if not os.path.exists(src):
+                raise FileNotFoundError(src)
+            im = Image.open(src)
+            if im.mode in ("RGBA", "P", "LA"):
+                im = im.convert("RGB")
+            tw, th = _THUMB_TARGET
+            w, h = im.size
+            scale = max(tw / w, th / h)
+            nw, nh = max(1, round(w * scale)), max(1, round(h * scale))
+            im = im.resize((nw, nh), Image.LANCZOS)
+            left, top = (nw - tw) // 2, (nh - th) // 2
+            im = im.crop((left, top, left + tw, top + th))
+            im.save(dest, "PNG")
+            db.execute("UPDATE word_card SET thumbnail=?, thumb_width=?, thumb_height=?, thumb_engine='local_pillow', "
+                       "updated_at=datetime('now','localtime') WHERE id=?",
+                       [f"{cid}.png", tw, th, cid])
+            done += 1
+        except Exception as e:
+            failed += 1
+            if failed <= 5:
+                print(f"[Web Assets] 缩略图生成失败 card={cid} {fname}: {e}")
+        if (done + failed) % 50 == 0:
+            with _pull_lock:
+                _thumb_state.update(done=done, failed=failed)
+            try:
+                safe_commit()
+            except Exception:
+                pass
+    try:
+        safe_commit()
+    except Exception:
+        pass
+    with _pull_lock:
+        _thumb_state.update(running=False, done=done, failed=failed, message="完成", stop_requested=False)
+
+
+@router.post("/web-assets/gen-thumbs")
+def gen_web_thumbs():
+    """为缺少缩略图的即梦资产图片词卡生成缩略图（后台线程）"""
+    global _thumb_thread
+    st = _thumb_state_snapshot()
+    if st.get("running"):
+        return {"ok": True, "running": True, "state": st}
+    if _thumb_thread is not None and _thumb_thread.is_alive():
+        return {"ok": True, "running": True, "state": st}
+    _thumb_thread = threading.Thread(target=_gen_thumb_worker, daemon=True)
+    _thumb_thread.start()
+    return {"ok": True, "running": True}
+
+
+@router.get("/web-assets/gen-thumbs/status")
+def gen_web_thumbs_status():
+    """缩略图生成进度"""
+    return {"ok": True, "state": _thumb_state_snapshot()}

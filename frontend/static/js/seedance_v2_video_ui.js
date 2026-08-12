@@ -912,6 +912,7 @@
                     : '<button class="btn btn-sm btn-success" onclick="App.seedanceV2._webPullStart()">🔄 开始拉取</button>' +
                       '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webCheckLogin()">🔍 检测登录</button>' +
                       '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webRetryFail()" title="重试上次失败的条目">🔁 重试失败' + (p.failed ? ' (' + p.failed + ')' : '') + '</button>' +
+                      '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webGenThumbs()" title="为词库中缺少缩略图的资产词卡生成预览图">🖼 补缩略图</button>' +
                       '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webDiagnose()" title="查看采集诊断与接口命中">🧰 采集诊断</button>' +
                       (st.connected ? '<button class="btn btn-sm btn-outline" style="color:#ef4444;border-color:#ef4444;" onclick="App.seedanceV2._webStop()">⛔ 关闭实例</button>' : '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webConnect()">🔌 连接 Chrome</button>');
             }
@@ -935,6 +936,38 @@
             '<div style="flex:1;height:8px;background:var(--hover-bg);border-radius:4px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,#10b981,#8b5cf6);transition:width .5s;"></div></div>' +
             '<span>' + App._escape(p.stage || '') + ' · ' + pct + '%</span></div>' +
             '<div style="margin-top:4px;color:var(--text-muted);">发现 <strong>' + (p.found || 0) + '</strong> · 下载 <strong>' + (p.downloaded || 0) + '</strong> · 新增 <strong>' + (p.imported || 0) + '</strong> · 跳过(重复) <strong>' + (p.skipped || 0) + '</strong> · 失败 <strong style="color:#ef4444;">' + (p.failed || 0) + '</strong></div></div>';
+    };
+
+    // 为资产词卡生成缩略图（后台线程 + 进度轮询）
+    App.seedanceV2._webGenThumbs = function() {
+        var self = this;
+        App.fetchJSON('/api/seedance/v2/web-assets/gen-thumbs', { method: 'POST' }).then(function(d) {
+            if (d && d.ok) {
+                App.showToast('开始生成缩略图（后台）', 'info');
+                self._thumbPollTimer = setInterval(function() { self._thumbPoll(); }, 2000);
+            } else { App.showToast('启动失败', 'error'); }
+        }).catch(function(e) { App.showToast('启动异常: ' + e.message, 'error'); });
+    };
+
+    App.seedanceV2._thumbPoll = function() {
+        var self = this;
+        App.fetchJSON('/api/seedance/v2/web-assets/gen-thumbs/status').then(function(d) {
+            if (!d || !d.ok) return;
+            var st = d.state || {};
+            var bar = document.getElementById('s2WebProgress');
+            if (bar && st.running) {
+                var pct = st.total ? Math.round(st.done / st.total * 100) : 0;
+                bar.style.display = 'block';
+                bar.innerHTML = '<div style="display:flex;align-items:center;gap:8px;font-size:11px;">' +
+                    '<div style="flex:1;height:8px;background:var(--hover-bg);border-radius:4px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,#8b5cf6,#10b981);"></div></div>' +
+                    '<span>🖼 生成缩略图 ' + (st.done || 0) + '/' + (st.total || 0) + (st.failed ? '（失败 ' + st.failed + '）' : '') + '</span></div>';
+            } else if (!st.running && st.total) {
+                if (self._thumbPollTimer) { clearInterval(self._thumbPollTimer); self._thumbPollTimer = null; }
+                if (bar) { bar.style.display = 'none'; bar.innerHTML = ''; }
+                App.showToast('缩略图生成完成：成功 ' + (st.done || 0) + '，失败 ' + (st.failed || 0), (st.failed || 0) ? 'warning' : 'success');
+                self._webLoadAssets();
+            }
+        }).catch(function() {});
     };
 
     App.seedanceV2._webConnect = function() {

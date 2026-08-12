@@ -244,6 +244,12 @@ def serve_thumbnail(filename: str):
         if os.path.exists(wc_thumb_path):
             return FileResponse(wc_thumb_path, media_type="image/jpeg")
         raise HTTPException(404, "文件不存在")
+    # v5.36.20: 按扩展名设置 content-type（PNG/WebP 缩略图不再误标 jpeg 导致浏览器解码失败）
+    _lower = safe_name.lower()
+    if _lower.endswith(".png"):
+        return FileResponse(fpath, media_type="image/png")
+    if _lower.endswith(".webp"):
+        return FileResponse(fpath, media_type="image/webp")
     return FileResponse(fpath, media_type="image/jpeg")
 
 
