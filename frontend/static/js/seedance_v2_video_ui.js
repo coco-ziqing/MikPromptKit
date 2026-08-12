@@ -1081,6 +1081,21 @@
         if (!c) return;
         var self = this;
         try {
+            // v5.36.18: 预取已导入资产映射（submit_id → 本地文件 URL），CLI 列表已导入项显示缩略图
+            var importedMap = {};
+            try {
+                var _pg = 1;
+                while (_pg < 12) {
+                    var _ad = await App.fetchJSON('/api/seedance/v2/assets?page=' + _pg + '&page_size=200&source=cli');
+                    if (!_ad || !_ad.ok || !_ad.items || !_ad.items.length) break;
+                    for (var _i2 = 0; _i2 < _ad.items.length; _i2++) {
+                        var _x = _ad.items[_i2];
+                        if (_x.submit_id && _x.file_url) importedMap[_x.submit_id] = _x;
+                    }
+                    if (_ad.items.length < 200) break;
+                    _pg++;
+                }
+            } catch (e) {}
             var f = this._assetFilter;
             var q = '?page=' + f.page + '&page_size=60&asset_type=' + f.type + '&gen_status=' + f.status + '&imported=' + f.imported;
             var d = await App.fetchJSON('/api/seedance/v2/assets/scan' + q);
@@ -1120,9 +1135,20 @@
             for (var i = 0; i < items.length; i++) {
                 var t = items[i];
                 var stBg = t.gen_status === 'success' ? 'rgba(16,185,129,0.85)' : (t.gen_status === 'fail' ? 'rgba(239,68,68,0.85)' : 'rgba(245,158,11,0.85)');
+                // v5.36.18: 已导入项显示本地缩略图
+                var im = importedMap[t.submit_id];
+                var thumbHtml = '';
+                if (im && im.file_url) {
+                    if (im.asset_type === 'video') {
+                        thumbHtml = '<video src="' + App._escape(im.file_url) + '" muted preload="metadata" style="width:100%;height:100%;object-fit:cover;"></video>';
+                    } else {
+                        thumbHtml = '<img src="' + App._escape(im.file_url) + '" loading="lazy" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.opacity=0.2">';
+                    }
+                } else {
+                    thumbHtml = '<span style="font-size:34px;">' + (t.asset_type === 'video' ? '🎬' : '🖼') + '</span>';
+                }
                 h += '<div style="border:1px solid var(--border-color);border-radius:8px;overflow:hidden;background:var(--bg-card);">' +
-                    '<div style="height:110px;background:var(--hover-bg);display:flex;align-items:center;justify-content:center;position:relative;">' +
-                    '<span style="font-size:34px;">' + (t.asset_type === 'video' ? '🎬' : '🖼') + '</span>' +
+                    '<div style="height:110px;background:var(--hover-bg);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;">' + thumbHtml +
                     '<span style="position:absolute;top:4px;left:4px;font-size:9px;padding:1px 6px;border-radius:10px;background:rgba(0,0,0,0.55);color:#fff;">' + App._escape(t.gen_task_type || '') + '</span>' +
                     '<span style="position:absolute;top:4px;right:4px;font-size:9px;padding:1px 6px;border-radius:10px;background:' + stBg + ';color:#fff;">' + App._escape(t.gen_status) + '</span></div>' +
                     '<div style="padding:8px 10px;">' +

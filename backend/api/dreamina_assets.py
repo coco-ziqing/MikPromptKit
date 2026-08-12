@@ -375,8 +375,8 @@ def import_assets(data: dict = Body(...)):
 
 @router.get("/assets")
 def list_imported_assets(page: int = Query(1, ge=1), page_size: int = Query(60, ge=1, le=200),
-                         asset_type: str = Query("all")):
-    """本地已导入的即梦历史资产"""
+                         asset_type: str = Query("all"), source: str = Query("all")):
+    """本地已导入的即梦历史资产（source 可选 cli|web 过滤）"""
     _ensure_asset_table()
     db = get_db()
     where = "is_deleted=0"
@@ -384,6 +384,9 @@ def list_imported_assets(page: int = Query(1, ge=1), page_size: int = Query(60, 
     if asset_type != "all":
         where += " AND asset_type=?"
         params.append(asset_type)
+    if source != "all":
+        where += " AND source=?"
+        params.append(source)
     total = db.execute(f"SELECT COUNT(*) c FROM dreamina_assets WHERE {where}", params).fetchone()["c"]
     rows = db.execute(
         f"SELECT * FROM dreamina_assets WHERE {where} ORDER BY id DESC LIMIT ? OFFSET ?",
