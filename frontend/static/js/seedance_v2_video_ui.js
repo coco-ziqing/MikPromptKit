@@ -738,22 +738,284 @@
         overlay.className = 'modal-overlay';
         overlay.style.cssText = 'display:flex;z-index:716;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
         overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
-        overlay.innerHTML = '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:900px;max-height:84vh;display:flex;flex-direction:column;">' +
+        overlay.innerHTML = '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:920px;max-height:86vh;display:flex;flex-direction:column;">' +
             '<div class="modal-header"><h5>📥 即梦历史资产 <span style="font-size:10px;color:var(--text-muted);font-weight:400;">从即梦账号拉取生成数据 → 本地词卡归档</span></h5>' +
             '<button class="header-btn-sm" onclick="document.getElementById(\'s2DreaminaAssets\').remove()">&times;</button></div>' +
+            '<div style="display:flex;gap:6px;padding:8px 14px 0;">' +
+            '<button class="btn btn-sm s2-asset-tab-btn" id="s2AssetTabBtnCli" onclick="App.seedanceV2._switchAssetTab(\'cli\')" style="color:#6366f1;border-color:#6366f1;">🗂 CLI 历史</button>' +
+            '<button class="btn btn-sm btn-outline s2-asset-tab-btn" id="s2AssetTabBtnWeb" onclick="App.seedanceV2._switchAssetTab(\'web\')" style="color:#10b981;border-color:#10b981;">🌐 网页历史</button></div>' +
             '<div class="modal-body" style="flex:1;overflow-y:auto;">' +
+            '<div id="s2AssetTabCli">' +
             '<div id="s2AssetStats"></div>' +
             '<div id="s2AssetFilters" style="display:flex;gap:6px;margin:8px 0;align-items:center;flex-wrap:wrap;"></div>' +
             '<div id="s2AssetProgress" style="display:none;margin-bottom:8px;"></div>' +
-            '<div id="s2AssetList"><div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div></div></div>' +
+            '<div id="s2AssetList"><div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div></div>' +
+            '</div>' +
+            '<div id="s2AssetTabWeb" style="display:none;">' +
+            '<div id="s2WebStatus"></div>' +
+            '<div id="s2WebControls" style="display:flex;gap:6px;margin:8px 0;align-items:center;flex-wrap:wrap;"></div>' +
+            '<div id="s2WebProgress" style="display:none;margin-bottom:8px;"></div>' +
+            '<div id="s2WebFilters" style="display:flex;gap:6px;margin:8px 0;align-items:center;flex-wrap:wrap;"></div>' +
+            '<div id="s2WebList"><div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div></div>' +
+            '</div>' +
+            '</div>' +
             '<div class="modal-footer" style="justify-content:space-between;">' +
-            '<span style="font-size:11px;color:var(--text-muted);">数据源：即梦 CLI 本地任务库</span>' +
+            '<span style="font-size:11px;color:var(--text-muted);">数据源：即梦 CLI 任务库 + 网页资产页（仅本机 · 数据不上云）</span>' +
             '<span style="display:flex;gap:6px;"><button class="btn btn-sm btn-outline" onclick="App.seedanceV2._loadImportedAssets()">🗂 已导入资产</button> ' +
             '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._reloadDreaminaAssets()">🔄 刷新</button> ' +
             '<button class="btn btn-sm btn-success" onclick="App.seedanceV2._importAllDreaminaAssets()">📥 导入全部成功</button></span></div></div>';
         document.body.appendChild(overlay);
         this._assetFilter = { type: 'all', status: 'success', imported: '0', page: 1 };
+        this._webAutoSyncDone = false;
         this._loadDreaminaAssets();
+    };
+
+    // 标签页切换
+    App.seedanceV2._switchAssetTab = function(tab) {
+        var cli = document.getElementById('s2AssetTabCli');
+        var web = document.getElementById('s2AssetTabWeb');
+        var b1 = document.getElementById('s2AssetTabBtnCli');
+        var b2 = document.getElementById('s2AssetTabBtnWeb');
+        if (tab === 'web') {
+            if (cli) cli.style.display = 'none';
+            if (web) web.style.display = 'block';
+            if (b1) b1.className = 'btn btn-sm btn-outline s2-asset-tab-btn';
+            if (b2) b2.className = 'btn btn-sm s2-asset-tab-btn';
+            this._webRefresh();
+        } else {
+            if (web) web.style.display = 'none';
+            if (cli) cli.style.display = 'block';
+            if (b2) b2.className = 'btn btn-sm btn-outline s2-asset-tab-btn';
+            if (b1) b1.className = 'btn btn-sm s2-asset-tab-btn';
+            this._reloadDreaminaAssets();
+        }
+    };
+
+    // ============ 🌐 网页历史（v5.36.14） ============
+
+    // 打开面板时自动静默同步（已连接 && 未在跑）
+    App.seedanceV2._webAutoSync = function() {
+        if (this._webAutoSyncDone) return;
+        var self = this;
+        this._webAutoSyncDone = true;
+        App.fetchJSON('/api/seedance/v2/web-assets/status').then(function(st) {
+            if (st && st.ok && st.connected && !(st.progress && st.progress.running)) {
+                App.fetchJSON('/api/seedance/v2/web-assets/pull', { method: 'POST' });
+            }
+        }).catch(function() {});
+    };
+
+    App.seedanceV2._webRefresh = function() {
+        var self = this;
+        this._webLoadStatus();
+        this._webLoadAssets();
+        // 自动静默同步（仅首次激活 tab 时）
+        this._webAutoSync();
+        // 进度轮询
+        if (this._webPollTimer) clearInterval(this._webPollTimer);
+        this._webPollTimer = setInterval(function() { self._webPoll(); }, 3000);
+    };
+
+    App.seedanceV2._webPoll = function() {
+        var self = this;
+        App.fetchJSON('/api/seedance/v2/web-assets/status').then(function(st) {
+            if (!st || !st.ok) return;
+            var p = st.progress || {};
+            if (p.running) {
+                self._webRenderProgress(p);
+            } else {
+                var bar = document.getElementById('s2WebProgress');
+                if (bar) { bar.style.display = 'none'; bar.innerHTML = ''; }
+                // 结束后刷新一次状态与列表
+                if (self._webLastRunning) {
+                    self._webLoadStatus(); self._webLoadAssets();
+                }
+                self._webLastRunning = false;
+            }
+            if (p.running) self._webLastRunning = true;
+        }).catch(function() {});
+    };
+
+    App.seedanceV2._webLoadStatus = function() {
+        var c = document.getElementById('s2WebStatus');
+        if (!c) return;
+        var self = this;
+        App.fetchJSON('/api/seedance/v2/web-assets/status').then(function(st) {
+            if (!st || !st.ok) { c.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">状态获取失败</div>'; return; }
+            var p = st.progress || {};
+            var h = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:11px;">';
+            if (st.connected) {
+                h += '<span style="padding:3px 10px;border-radius:12px;background:rgba(16,185,129,0.12);color:#10b981;">🟢 Chrome 已连接（独立实例）</span>';
+            } else {
+                h += '<span style="padding:3px 10px;border-radius:12px;background:rgba(239,68,68,0.1);color:#ef4444;">🔴 Chrome 未连接</span>';
+            }
+            h += '<span style="padding:3px 10px;border-radius:12px;background:var(--hover-bg);">🌐 已导入网页资产 <strong>' + (st.imported_web_total || 0) + '</strong></span>';
+            if (p.message) h += '<span style="color:var(--text-muted);">' + App._escape(p.message) + '</span>';
+            h += '</div>';
+            c.innerHTML = h;
+            // 控制按钮
+            var ctrl = document.getElementById('s2WebControls');
+            if (ctrl) {
+                var run = p.running;
+                ctrl.innerHTML = run
+                    ? '<button class="btn btn-sm btn-danger" onclick="App.seedanceV2._webStop()">⏹ 停止拉取</button>' +
+                      '<span style="font-size:11px;color:var(--text-muted);">' + App._escape(p.stage || '') + ' 进行中...</span>'
+                    : '<button class="btn btn-sm btn-success" onclick="App.seedanceV2._webPullStart()">🔄 开始拉取</button>' +
+                      '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webCheckLogin()">🔍 检测登录</button>' +
+                      '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webRetryFail()" title="重试上次失败的条目">🔁 重试失败' + (p.failed ? ' (' + p.failed + ')' : '') + '</button>' +
+                      '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webDiagnose()" title="查看采集诊断与接口命中">🧰 采集诊断</button>' +
+                      (st.connected ? '<button class="btn btn-sm btn-outline" style="color:#ef4444;border-color:#ef4444;" onclick="App.seedanceV2._webStop()">⛔ 关闭实例</button>' : '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webConnect()">🔌 连接 Chrome</button>');
+            }
+            // 登录提示（最近一次拉取失败为未登录时）
+            if (!run && p.stage === 'error' && p.message && p.message.indexOf('未登录') >= 0) {
+                var box = document.getElementById('s2WebProgress');
+                if (box) { box.style.display = 'block'; box.innerHTML = '<div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:#d97706;border-radius:6px;padding:8px 12px;font-size:12px;">⚠️ 尚未登录即梦。请在刚打开的独立 Chrome 窗口中完成登录（手机扫码），然后点「🔄 开始拉取」。</div>'; }
+            }
+        }).catch(function() {});
+    };
+
+    App.seedanceV2._webRenderProgress = function(p) {
+        var bar = document.getElementById('s2WebProgress');
+        if (!bar) return;
+        var total = p.found || 0;
+        var done = (p.imported || 0) + (p.skipped || 0) + (p.failed || 0);
+        var pct = total ? Math.min(100, Math.round(done / total * 100)) : 0;
+        bar.style.display = 'block';
+        bar.innerHTML = '<div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:8px 12px;font-size:11px;">' +
+            '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<div style="flex:1;height:8px;background:var(--hover-bg);border-radius:4px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,#10b981,#8b5cf6);transition:width .5s;"></div></div>' +
+            '<span>' + App._escape(p.stage || '') + ' · ' + pct + '%</span></div>' +
+            '<div style="margin-top:4px;color:var(--text-muted);">发现 <strong>' + (p.found || 0) + '</strong> · 下载 <strong>' + (p.downloaded || 0) + '</strong> · 新增 <strong>' + (p.imported || 0) + '</strong> · 跳过(重复) <strong>' + (p.skipped || 0) + '</strong> · 失败 <strong style="color:#ef4444;">' + (p.failed || 0) + '</strong></div></div>';
+    };
+
+    App.seedanceV2._webConnect = function() {
+        App.showToast('正在启动独立 Chrome 实例...', 'info');
+        App.fetchJSON('/api/seedance/v2/web-assets/connect', { method: 'POST' }).then(function(d) {
+            if (d && d.ok) { App.showToast('✅ Chrome 已连接', 'success'); App.seedanceV2._webLoadStatus(); }
+            else { App.showToast('连接失败: ' + ((d && d.error) || '未知'), 'error'); }
+        }).catch(function(e) { App.showToast('连接异常: ' + e.message, 'error'); });
+    };
+
+    App.seedanceV2._webCheckLogin = function() {
+        App.showToast('检测登录态中...', 'info');
+        App.fetchJSON('/api/seedance/v2/web-assets/check-login', { method: 'POST', _timeoutMs: 30000 }).then(function(d) {
+            if (d && d.logged_in) { App.showToast('✅ 已登录即梦', 'success'); App.seedanceV2._webLoadStatus(); }
+            else { App.showToast('未登录：请在独立 Chrome 窗口扫码登录即梦后重试', 'warning'); App.seedanceV2._webLoadStatus(); }
+        }).catch(function(e) { App.showToast('检测异常: ' + e.message, 'error'); });
+    };
+
+    App.seedanceV2._webPullStart = function() {
+        var self = this;
+        App.fetchJSON('/api/seedance/v2/web-assets/pull', { method: 'POST' }).then(function(d) {
+            if (d && d.ok) {
+                App.showToast(d.running ? '开始拉取（后台）' : '已在进行中', 'success');
+                setTimeout(function() { self._webLoadStatus(); }, 1500);
+            } else { App.showToast('启动失败', 'error'); }
+        }).catch(function(e) { App.showToast('启动异常: ' + e.message, 'error'); });
+    };
+
+    App.seedanceV2._webStop = function() {
+        if (!confirm('确定停止拉取并关闭独立 Chrome 实例？')) return;
+        App.fetchJSON('/api/seedance/v2/web-assets/stop', { method: 'POST' }).then(function(d) {
+            if (d && d.ok) { App.showToast('已停止', 'info'); App.seedanceV2._webLoadStatus(); }
+        }).catch(function() {});
+    };
+
+    App.seedanceV2._webRetryFail = function() {
+        var self = this;
+        App.fetchJSON('/api/seedance/v2/web-assets/retry-fail', { method: 'POST', _timeoutMs: 300000 }).then(function(d) {
+            if (d && d.ok) {
+                App.showToast('重试完成：成功 ' + (d.imported || 0) + '，失败 ' + (d.failed || 0), (d.imported || 0) ? 'success' : 'warning');
+                self._webLoadStatus(); self._webLoadAssets();
+            }
+        }).catch(function(e) { App.showToast('重试异常: ' + e.message, 'error'); });
+    };
+
+    App.seedanceV2._webDiagnose = function() {
+        var self = this;
+        App.fetchJSON('/api/seedance/v2/web-assets/diagnose').then(function(d) {
+            if (!d || !d.ok) return;
+            var items = d.diagnose || [];
+            var prof = d.capture_profile || {};
+            var lines = items.length ? items.map(function(x) {
+                return '<div style="font-size:11px;margin:4px 0;">📡 <code>' + App._escape(x.url) + '</code><br><span style="color:var(--text-muted);">字段: ' + App._escape((x.sample_fields || []).join('、')) + ' · ' + x.count + ' 条</span></div>';
+            }).join('') : '<div style="font-size:11px;color:var(--text-muted);">暂无接口命中记录（尚未成功采集过）</div>';
+            var overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.style.cssText = 'display:flex;z-index:800;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
+            overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+            overlay.innerHTML = '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:640px;">' +
+                '<div class="modal-header"><h5>🧰 采集诊断</h5><button class="header-btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
+                '<div class="modal-body"><div style="font-size:12px;font-weight:600;margin-bottom:6px;">命中的列表接口</div>' + lines +
+                '<div style="font-size:12px;font-weight:600;margin:10px 0 6px;">采集配置（data/capture_profile.json）</div>' +
+                '<pre style="font-size:10px;background:var(--hover-bg);padding:8px;border-radius:6px;overflow:auto;max-height:200px;">' + App._escape(JSON.stringify(prof, null, 2)) + '</pre></div></div>';
+            document.body.appendChild(overlay);
+        }).catch(function() {});
+    };
+
+    App.seedanceV2._webFilter = { type: 'all', time_from: '', time_to: '', page: 1 };
+
+    App.seedanceV2._webLoadAssets = function() {
+        var c = document.getElementById('s2WebList');
+        if (!c) return;
+        var self = this;
+        var f = this._webFilter;
+        var q = '?page=' + f.page + '&page_size=60&asset_type=' + f.type + '&time_from=' + encodeURIComponent(f.time_from) + '&time_to=' + encodeURIComponent(f.time_to);
+        var fEl = document.getElementById('s2WebFilters');
+        if (fEl) fEl.innerHTML =
+            '<label style="font-size:11px;color:var(--text-muted);">类型</label><select class="s2-input" style="width:auto;font-size:11px;padding:2px 6px;" onchange="App.seedanceV2._setWebFilter(\'type\',this.value)">' +
+            '<option value="all"' + (f.type === 'all' ? ' selected' : '') + '>全部</option>' +
+            '<option value="image"' + (f.type === 'image' ? ' selected' : '') + '>图片</option>' +
+            '<option value="video"' + (f.type === 'video' ? ' selected' : '') + '>视频</option></select>' +
+            '<label style="font-size:11px;color:var(--text-muted);">时间从</label><input type="date" class="s2-input" style="width:auto;font-size:11px;padding:2px 6px;" value="' + App._escape(f.time_from) + '" onchange="App.seedanceV2._setWebFilter(\'time_from\',this.value)">' +
+            '<label style="font-size:11px;color:var(--text-muted);">至</label><input type="date" class="s2-input" style="width:auto;font-size:11px;padding:2px 6px;" value="' + App._escape(f.time_to) + '" onchange="App.seedanceV2._setWebFilter(\'time_to\',this.value)">';
+        App.fetchJSON('/api/seedance/v2/web-assets/assets' + q).then(function(d) {
+            if (!d || !d.ok) { c.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">加载失败</div>'; return; }
+            var items = d.items || [];
+            if (!items.length) {
+                c.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">还没有网页历史资产<br><span style="font-size:11px;">点「🔄 开始拉取」同步即梦网页端作品（含 App/官网直接生成的历史）</span></div>';
+                return;
+            }
+            var h = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;">';
+            for (var i = 0; i < items.length; i++) {
+                var a = items[i];
+                var media = '';
+                if (a.asset_type === 'image') {
+                    media = '<img src="' + App._escape(a.file_url) + '" onclick="window.open(this.src,\'_blank\')" style="width:100%;height:120px;object-fit:cover;cursor:pointer;" title="点击放大">';
+                } else {
+                    media = '<video src="' + App._escape(a.file_url) + '" controls preload="metadata" style="width:100%;height:120px;object-fit:cover;background:#000;"></video>';
+                }
+                h += '<div style="border:1px solid var(--border-color);border-radius:8px;overflow:hidden;background:var(--bg-card);">' +
+                    '<div style="height:120px;background:#000;position:relative;">' + media +
+                    '<span style="position:absolute;top:4px;left:4px;font-size:9px;padding:1px 6px;border-radius:10px;background:rgba(139,92,246,0.85);color:#fff;">🌐 网页</span></div>' +
+                    '<div style="padding:8px 10px;">' +
+                    '<div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + App._escape(a.prompt || '') + '">' + App._escape((a.prompt || '(无提示词)').substring(0, 42)) + '</div>' +
+                    '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">' + App._escape([a.task_time, a.gen_task_type].filter(Boolean).join(' · ')) + '</div>' +
+                    '<div style="display:flex;gap:6px;margin-top:6px;">' +
+                    '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._copyImportedPrompt(' + a.id + ')">📋 提示词</button>' +
+                    '<button class="btn btn-xs btn-outline" style="color:#ef4444;border-color:#ef4444;" onclick="App.seedanceV2._deleteImportedAsset(' + a.id + ')">🗑 删除</button></div></div></div>';
+            }
+            h += '</div>';
+            if (d.total > d.page_size) {
+                h += '<div style="text-align:center;margin-top:12px;">' +
+                    (f.page > 1 ? '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._webPage(' + (f.page - 1) + ')">← 上一页</button> ' : '') +
+                    '<span style="font-size:11px;color:var(--text-muted);margin:0 8px;">第 ' + f.page + ' / ' + Math.ceil(d.total / d.page_size) + ' 页</span>' +
+                    (f.page * d.page_size < d.total ? '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._webPage(' + (f.page + 1) + ')">下一页 →</button>' : '') +
+                    '</div>';
+            }
+            c.innerHTML = h;
+        }).catch(function(e) { c.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">加载失败: ' + App._escape(e.message) + '</div>'; });
+    };
+
+    App.seedanceV2._setWebFilter = function(k, v) {
+        this._webFilter[k] = v;
+        this._webFilter.page = 1;
+        this._webLoadAssets();
+    };
+
+    App.seedanceV2._webPage = function(p) {
+        this._webFilter.page = p;
+        this._webLoadAssets();
     };
 
     App.seedanceV2._reloadDreaminaAssets = function() {

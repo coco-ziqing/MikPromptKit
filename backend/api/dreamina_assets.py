@@ -58,6 +58,17 @@ def _ensure_asset_table():
         word_card_id INTEGER DEFAULT 0,
         is_deleted INTEGER DEFAULT 0
     )""")
+    # v5.36.14: 网页通道列（幂等 PRAGMA 探测）
+    cols = [r["name"] for r in db.execute("PRAGMA table_info(dreamina_assets)").fetchall()]
+    if "source" not in cols:
+        db.execute("ALTER TABLE dreamina_assets ADD COLUMN source TEXT DEFAULT 'cli'")
+        print("[Dreamina Assets] dreamina_assets 增加列 source")
+    if "web_asset_id" not in cols:
+        db.execute("ALTER TABLE dreamina_assets ADD COLUMN web_asset_id TEXT DEFAULT ''")
+        print("[Dreamina Assets] dreamina_assets 增加列 web_asset_id")
+    if "web_url" not in cols:
+        db.execute("ALTER TABLE dreamina_assets ADD COLUMN web_url TEXT DEFAULT ''")
+        print("[Dreamina Assets] dreamina_assets 增加列 web_url")
     safe_commit()
 
 
