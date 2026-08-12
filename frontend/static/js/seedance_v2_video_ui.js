@@ -131,10 +131,15 @@
         document.querySelectorAll('input[name="s2VideoScope"]').forEach(function(el){
             el.addEventListener('change', function(){ self2._runVideoPrecheck(); });
         });
+        // v5.36.12: 弹窗参数变更 ↔ 项目全局参数 双向联动（弹窗修改即保存回全局参数区）
         var vm = document.getElementById('s2VideoModel');
-        if (vm) vm.addEventListener('change', function(){ self2._runVideoPrecheck(); });
+        if (vm) vm.addEventListener('change', function(){ self2._syncVideoParamsFromModal(); self2._runVideoPrecheck(); });
         var vr = document.getElementById('s2VideoRes');
-        if (vr) vr.addEventListener('change', function(){ self2._runVideoPrecheck(); });
+        if (vr) vr.addEventListener('change', function(){ self2._syncVideoParamsFromModal(); self2._runVideoPrecheck(); });
+        var vratio = document.getElementById('s2VideoRatio');
+        if (vratio) vratio.addEventListener('change', function(){ self2._syncVideoParamsFromModal(); });
+        var vsess = document.getElementById('s2VideoSession');
+        if (vsess) vsess.addEventListener('change', function(){ self2._syncVideoParamsFromModal(); self2._runVideoPrecheck(); });
         document.getElementById('s2VideoSubmitBtn').onclick = function() {
             var scope = document.querySelector('input[name="s2VideoScope"]:checked');
             var model = document.getElementById('s2VideoModel').value;
@@ -243,6 +248,29 @@
     };
 
     // 模型切换时更新分辨率映射提示
+    // v5.36.12: 提交弹窗参数 ↔ 项目全局参数 双向联动 — 弹窗里修改即保存回项目（刷新/重开不丢失）
+    App.seedanceV2._syncVideoParamsFromModal = function() {
+        if (!this.currentProjectId) return;
+        var self = this;
+        var d = {};
+        var vm = document.getElementById('s2VideoModel'); if (vm && vm.value) d['video_model'] = vm.value;
+        var vr = document.getElementById('s2VideoRes'); if (vr && vr.value) d['video_resolution'] = vr.value;
+        var vs = document.getElementById('s2VideoSession'); if (vs && vs.value !== undefined && vs.value !== '') d['video_session'] = parseInt(vs.value || '0') || 0;
+        var vr2 = document.getElementById('s2VideoRatio'); if (vr2 && vr2.value) d['aspect_ratio'] = vr2.value;
+        if (!Object.keys(d).length) return;
+        // 同步内存对象，避免重渲染/重开弹窗读到旧值
+        for (var k in d) { if (this.currentProject) this.currentProject[k] = d[k]; }
+        if (this._vpSyncTimer) clearTimeout(this._vpSyncTimer);
+        this._vpSyncTimer = setTimeout(function(){
+            App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId, {
+                method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(d)
+            }).then(function(r){
+                if (r && r.ok) App.showToast('✅ 已同步到项目全局参数','success');
+                else console.warn('sync video params fail', r);
+            }).catch(function(e){ console.warn('sync video params error', e); });
+        }, 400);
+    };
+
     App.seedanceV2._videoModelChanged = function(sel) {
         var model = sel.value;
         var cfg = this._videoCfg || {};
