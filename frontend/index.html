@@ -472,6 +472,8 @@
                     <button class="viewer-btn" onclick="App.zoomImageViewer('in')" title="放大" style="font-size:12px;padding:4px 10px;border:none;background:rgba(255,255,255,0.15);color:#fff;border-radius:6px;cursor:pointer;">🔍+</button>
                     <button class="viewer-btn" onclick="App.zoomImageViewer('out')" title="缩小" style="font-size:12px;padding:4px 10px;border:none;background:rgba(255,255,255,0.15);color:#fff;border-radius:6px;cursor:pointer;">🔍-</button>
                 </div>
+                <!-- v5.36.22: 同卡多版本条 -->
+                <div id="imgViewerVersions" style="position:absolute;bottom:56px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:4px;background:rgba(0,0,0,0.72);border-radius:8px;padding:5px 8px;z-index:10;max-width:82%;overflow-x:auto;white-space:nowrap;"></div>
             </div>
             <div class="viewer-right" id="imgViewerRight">
                 <div class="viewer-right-header">
@@ -1140,7 +1142,7 @@
     <script defer src="/static/js/comfy_workflow_lib_runner.js?v=6ad72ed9"></script>
     <script defer src="/static/js/health_check.js?v=f99f6267"></script>
     <script defer src="/static/js/app_sync.js?v=b5cd1aa2"></script>
-    <script defer src="/static/js/app_editor.js?v=54e32657"></script>                
+    <script defer src="/static/js/app_editor.js?v=54e32658"></script>                
     <script defer src="/static/js/app_collections_editor.js?v=6c8bc4a8"></script>
     <script defer src="/static/js/app_collections_batch.js?v=e2f5b8d4"></script>
     <script defer src="/static/js/app_collections_collections.js?v=a5b7e065"></script>
@@ -1151,7 +1153,7 @@
     <script defer src="/static/js/app_maintenance.js?v=a1b2c3d4"></script>
 <script defer src="/static/js/app_import_export.js?v=5d30178f"></script>
     <script defer src="/static/js/app_media.js?v=54527403"></script>
-<script defer src="/static/js/app_media_viewer.js?v=f64f19b6"></script>
+<script defer src="/static/js/app_media_viewer.js?v=f64f19b7"></script>
     <script defer src="/static/js/ai_tools.js?v=96d66b1a"></script>
     <script defer src="/static/js/word_picker.js?v=18cdc0d8"></script>
     <script defer src="/static/js/word_editor.js?v=3a2e2b77"></script>

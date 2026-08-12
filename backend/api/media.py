@@ -173,6 +173,12 @@ def serve_original(filename: str):
     fpath = os.path.join(THUMB_DIR, safe)
     if os.path.exists(fpath):
         return FileResponse(fpath, media_type="image/jpeg", headers=_IMG_CACHE_HDR)
+    # v5.36.22: 即梦资产原图 fallback（词卡 original_ref 指向 data/dreamina_assets/）
+    for _ab in (os.path.join(BASE_DIR, "data", "dreamina_assets", "images"),
+                os.path.join(BASE_DIR, "data", "dreamina_assets", "videos")):
+        _af = os.path.join(_ab, safe)
+        if os.path.exists(_af):
+            return FileResponse(_af, media_type=_get_mime_type(safe), headers=_IMG_CACHE_HDR)
     # 回退 wc_media/originals/
     wc_fpath = os.path.join(WC_ORIGINAL_DIR, safe)
     if os.path.exists(wc_fpath):

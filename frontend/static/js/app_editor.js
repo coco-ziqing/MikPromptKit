@@ -289,7 +289,7 @@ Object.assign(App, {
             var videoFps = p.video_fps || '';
             var isWordCard = p._source === 'word_card';
             // 原图：word_card 用 original_ref（真原图UUID），旧prompts用缩略图
-            var origFile = (isWordCard && p.original_ref) ? p.original_ref : p.thumbnail;
+            var origFile = (isWordCard && (p.original_ref || (p.media_type === 'image' ? p.preview_media : ''))) ? (p.original_ref || p.preview_media) : p.thumbnail;
 
             html += `
                 <div class="prompt-card ${batchClass} ${selectedClass} ${editClass}" data-id="${p.id}">

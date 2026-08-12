@@ -448,14 +448,29 @@ def _import_web_asset(item: dict, prof: dict) -> str:
             t = time.strftime("%Y-%m-%d %H:%M", time.localtime(int(t) / 1000 if t > 10**12 else int(t)))
         except Exception:
             t = ""
-    name = f"web-{safe_id[:12]}"
-    meaning = " · ".join(x for x in ["即梦历史资产 · 🌐 网页来源", ("视频" if is_video else "图片"),
-                                     str(t)] if x)
-    cur = db.execute(
-        "INSERT INTO word_card (group_id, name, content, meaning, media_type, preview_media, is_builtin, heat_weight, module, category, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, 0, 0.5, 'dreamina_asset', 'history_asset_web', datetime('now','localtime'), datetime('now','localtime'))",
-        [gid, name, item.get("prompt") or "", meaning, media_type, file_names[0]])
-    card_id = cur.lastrowid
+    # v5.36.22: 同提示词自动整合 —— 已有同 prompt 词卡则挂为多版本，不重复建卡
+    merge_card = None
+    if item.get("prompt"):
+        merge_card = db.execute(
+            "SELECT wc.id FROM word_card wc JOIN dreamina_assets da ON da.word_card_id=wc.id "
+            "WHERE da.source='web' AND da.is_deleted=0 AND wc.is_deleted=0 AND wc.module='dreamina_asset' "
+            "AND da.prompt=? AND wc.media_type=? LIMIT 1",
+            [item["prompt"], media_type]).fetchone()
+    if merge_card:
+        card_id = merge_card["id"]
+        db.execute(
+            "INSERT INTO asset_card_versions (word_card_id, source, asset_id, file_name, media_type, prompt, is_active, created_at) "
+            "VALUES (?, 'web', ?, ?, ?, ?, 0, datetime('now','localtime'))",
+            [card_id, item["id"], file_names[0], media_type, item.get("prompt") or ""])
+    else:
+        name = f"web-{safe_id[:12]}"
+        meaning = " · ".join(x for x in ["即梦历史资产 · 🌐 网页来源", ("视频" if is_video else "图片"),
+                                         str(t)] if x)
+        cur = db.execute(
+            "INSERT INTO word_card (group_id, name, content, meaning, media_type, preview_media, is_builtin, heat_weight, module, category, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 0, 0.5, 'dreamina_asset', 'history_asset_web', datetime('now','localtime'), datetime('now','localtime'))",
+            [gid, name, item.get("prompt") or "", meaning, media_type, file_names[0]])
+        card_id = cur.lastrowid
     cur2 = db.execute(
         "INSERT INTO dreamina_assets (submit_id, source, web_asset_id, web_url, asset_type, gen_task_type, prompt, task_time, file_paths, file_size, gen_status, imported_at, word_card_id, cli_submit_id) "
         "VALUES (?, 'web', ?, ?, ?, ?, ?, ?, ?, ?, 'success', datetime('now','localtime'), ?, ?)",

@@ -73,6 +73,18 @@ def _ensure_asset_table():
     if "cli_submit_id" not in cols:
         db.execute("ALTER TABLE dreamina_assets ADD COLUMN cli_submit_id TEXT DEFAULT ''")
         print("[Dreamina Assets] dreamina_assets 增加列 cli_submit_id")
+    # v5.36.22: 词卡多版本表（同提示词多次生成 → 一张词卡多个版本）
+    db.execute("""CREATE TABLE IF NOT EXISTS asset_card_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        word_card_id INTEGER,
+        source TEXT DEFAULT 'web',
+        asset_id INTEGER,
+        file_name TEXT DEFAULT '',
+        media_type TEXT DEFAULT 'image',
+        prompt TEXT DEFAULT '',
+        is_active INTEGER DEFAULT 0,
+        created_at TEXT
+    )""")
     safe_commit()
 
 
@@ -466,3 +478,148 @@ def serve_asset_file(filename: str):
         if os.path.exists(p):
             return FileResponse(p)
     raise HTTPException(404, "文件不存在")
+
+
+# ==================== v5.36.22: 词卡多版本 ====================
+
+@router.get("/assets/cards/{card_id}/versions")
+def list_card_versions(card_id: int):
+    """词卡的全部生成版本（同提示词多次生成 → 多版本）"""
+    _ensure_asset_table()
+    db = get_db()
+    rows = db.execute(
+        "SELECT * FROM asset_card_versions WHERE word_card_id=? ORDER BY is_active DESC, id ASC",
+        [card_id]).fetchall()
+    items = []
+    for r in rows:
+        d = dict(r)
+        d["file_url"] = "/api/seedance/v2/assets/file/" + (d.get("file_name") or "")
+        items.append(d)
+    # 主版本（词卡 preview_media）也作为第一个版本展示
+    card = db.execute("SELECT preview_media, media_type FROM word_card WHERE id=? AND is_deleted=0",
+                      [card_id]).fetchone()
+    main = None
+    if card and card["preview_media"]:
+        main = {"id": 0, "file_name": card["preview_media"], "media_type": card["media_type"] or "image",
+                "prompt": "", "is_active": 1,
+                "file_url": "/api/seedance/v2/assets/file/" + card["preview_media"]}
+    return {"ok": True, "main": main, "versions": items, "total": len(items) + (1 if main else 0)}
+
+
+@router.post("/assets/cards/{card_id}/versions/{ver_id}/activate")
+def activate_card_version(card_id: int, ver_id: int):
+    """将某版本设为词卡默认预览（更新 preview_media/original_ref/thumbnail，缩略图重新生成）"""
+    _ensure_asset_table()
+    db = get_db()
+    card = db.execute("SELECT * FROM word_card WHERE id=? AND is_deleted=0", [card_id]).fetchone()
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    if ver_id == 0:
+        fname = card["preview_media"] or ""
+        mtype = card["media_type"] or "image"
+    else:
+        ver = db.execute("SELECT * FROM asset_card_versions WHERE id=? AND word_card_id=?",
+                         [ver_id, card_id]).fetchone()
+        if not ver:
+            raise HTTPException(404, "版本不存在")
+        fname = ver["file_name"] or ""
+        mtype = ver["media_type"] or "image"
+        db.execute("UPDATE asset_card_versions SET is_active=0 WHERE word_card_id=?", [card_id])
+        db.execute("UPDATE asset_card_versions SET is_active=1 WHERE id=?", [ver_id])
+    if not fname:
+        raise HTTPException(400, "版本无文件")
+    # 更新词卡主预览
+    db.execute(
+        "UPDATE word_card SET preview_media=?, media_type=?, original_ref=?, thumbnail='', "
+        "updated_at=datetime('now','localtime') WHERE id=?",
+        [fname, mtype, fname, card_id])
+    safe_commit()
+    # 重新生成缩略图（Pillow 本地）
+    _gen_thumb_for_card(card_id, fname)
+    return {"ok": True, "file_name": fname}
+
+
+def _gen_thumb_for_card(card_id: int, fname: str):
+    """为词卡生成缩略图（Pillow 从媒体文件 cover-crop 240x160）"""
+    try:
+        from PIL import Image
+        thumb_dir = os.path.join(_PROJECT_ROOT, "data", "thumbnails")
+        os.makedirs(thumb_dir, exist_ok=True)
+        src = None
+        for base in (IMG_DIR, VID_DIR):
+            p = os.path.join(base, os.path.basename(fname))
+            if os.path.exists(p):
+                src = p
+                break
+        if not src:
+            return
+        im = Image.open(src)
+        if im.mode in ("RGBA", "P", "LA"):
+            im = im.convert("RGB")
+        tw, th = 240, 160
+        w, h = im.size
+        scale = max(tw / w, th / h)
+        nw, nh = max(1, round(w * scale)), max(1, round(h * scale))
+        im = im.resize((nw, nh), Image.LANCZOS)
+        left, top = (nw - tw) // 2, (nh - th) // 2
+        im = im.crop((left, top, left + tw, top + th))
+        im.save(os.path.join(thumb_dir, f"{card_id}.png"), "PNG")
+        db = get_db()
+        db.execute("UPDATE word_card SET thumbnail=?, thumb_width=?, thumb_height=?, thumb_engine='local_pillow' "
+                   "WHERE id=?", [f"{card_id}.png", tw, th, card_id])
+        safe_commit()
+    except Exception as e:
+        print(f"[Dreamina Assets] 缩略图生成失败 card={card_id}: {e}")
+
+
+@router.post("/assets/integrate-versions")
+def integrate_versions():
+    """同提示词资产自动整合：多版本合并到一张词卡（主卡保留，其余挂 asset_card_versions）"""
+    _ensure_asset_table()
+    db = get_db()
+    # 按 prompt 分组（web 资产，非空 prompt）
+    groups = db.execute(
+        "SELECT prompt, COUNT(*) c FROM dreamina_assets WHERE source='web' AND is_deleted=0 AND prompt != '' "
+        "GROUP BY prompt HAVING c > 1").fetchall()
+    merged = 0
+    new_versions = 0
+    for g in groups:
+        prompt = g["prompt"]
+        assets = db.execute(
+            "SELECT id, word_card_id, asset_type, file_paths, prompt, task_time FROM dreamina_assets "
+            "WHERE source='web' AND is_deleted=0 AND prompt=? ORDER BY id ASC",
+            [prompt]).fetchall()
+        if not assets:
+            continue
+        # 主资产（最早导入）
+        main_asset = assets[0]
+        main_card_id = main_asset["word_card_id"]
+        if not main_card_id:
+            continue
+        for a in assets[1:]:
+            if not a["word_card_id"] or a["word_card_id"] == main_card_id:
+                continue
+            # 该资产独立词卡 → 合并到主卡：
+            # 1) 删除多余词卡（物理删 + FTS）
+            old_card = a["word_card_id"]
+            try:
+                db.execute("DELETE FROM word_card_fts(word_card_fts, rowid) VALUES ('delete', ?)", [old_card])
+            except Exception:
+                pass
+            db.execute("DELETE FROM word_card WHERE id=?", [old_card])
+            # 2) 资产挂到主卡 + 建版本记录
+            fnames = []
+            try:
+                fnames = json.loads(a["file_paths"] or "[]")
+            except Exception:
+                pass
+            db.execute(
+                "INSERT INTO asset_card_versions (word_card_id, source, asset_id, file_name, media_type, prompt, is_active, created_at) "
+                "VALUES (?, 'web', ?, ?, ?, ?, 0, datetime('now','localtime'))",
+                [main_card_id, a["id"], fnames[0] if fnames else "",
+                 "video" if a["asset_type"] == "video" else "image", prompt])
+            db.execute("UPDATE dreamina_assets SET word_card_id=? WHERE id=?", [main_card_id, a["id"]])
+            merged += 1
+            new_versions += 1
+    safe_commit()
+    return {"ok": True, "merged_assets": merged, "new_versions": new_versions}

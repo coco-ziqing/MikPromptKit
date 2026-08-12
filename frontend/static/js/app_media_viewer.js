@@ -29,6 +29,9 @@ Object.assign(App, {
         this._buildViewerNav(promptId);
         this._updateViewerNavUI();
 
+        // v5.36.22: 同卡多版本列表（词卡多版本查看/切换/设为主预览）
+        this._loadCardVersions(promptId);
+
         // 加载指示（大图切换时反馈）
         var loading = document.getElementById('imgViewerLoading');
         if (loading) loading.style.display = 'flex';
@@ -138,6 +141,86 @@ Object.assign(App, {
 
         // 预加载相邻两张（切到下一张时已缓存，秒开）
         this._preloadAdjacent();
+    },
+
+    // v5.36.22: 加载同卡多版本列表（词卡多版本查看/切换/设为主预览）
+    _loadCardVersions(promptId) {
+        var box = document.getElementById('imgViewerVersions');
+        if (!box) return;
+        var self = this;
+        box.style.display = 'none';
+        box.innerHTML = '';
+        if (!promptId) return;
+        App.fetchJSON('/api/seedance/v2/assets/cards/' + promptId + '/versions').then(function(d) {
+            if (!d || !d.ok) return;
+            var all = [];
+            if (d.main) all.push(d.main);
+            all = all.concat(d.versions || []);
+            if (all.length <= 1) return;  // 单版本不显示版本条
+            var h = '<span style="color:#cbd5e1;font-size:11px;margin-right:4px;white-space:nowrap;">多版本</span>';
+            for (var i = 0; i < all.length; i++) {
+                var v = all[i];
+                var isActive = v.is_active ? '1' : '0';
+                var border = isActive === '1' ? 'border:2px solid #10b981;' : 'border:2px solid transparent;opacity:0.72;';
+                var thumb = v.media_type === 'video'
+                    ? '<span style="display:inline-flex;width:56px;height:40px;align-items:center;justify-content:center;background:#1e293b;color:#fff;font-size:16px;">🎬</span>'
+                    : '<img src="' + App._escape(v.file_url || '') + '" style="width:56px;height:40px;object-fit:cover;display:block;" onerror="this.style.opacity=0.2">';
+                h += '<span class="img-ver-item" data-ver="' + v.id + '" data-url="' + App._escape(v.file_url || '') + '" data-media="' + (v.media_type || 'image') + '" title="版本 ' + (i + 1) + (v.prompt ? ' · ' + App._escape(v.prompt.substring(0, 40)) : '') + '" style="position:relative;cursor:pointer;display:inline-block;margin-right:5px;border-radius:6px;overflow:hidden;background:#0f172a;' + border + '">' + thumb +
+                    '<button class="img-ver-activate" data-ver="' + v.id + '" title="设为此版本为词卡主预览（填入预览框）" style="position:absolute;bottom:0;right:0;font-size:9px;background:rgba(16,185,129,0.92);color:#fff;border:none;border-radius:3px 0 0 0;padding:1px 5px;cursor:pointer;">✓ 主预览</button></span>';
+            }
+            box.innerHTML = h;
+            box.style.display = 'flex';
+            // 点击版本切换大图
+            box.querySelectorAll('.img-ver-item').forEach(function(el) {
+                el.addEventListener('click', function(e) {
+                    if (e.target.classList.contains('img-ver-activate')) return;
+                    var url = this.dataset.url;
+                    if (!url) return;
+                    var imgEl = document.getElementById('imageViewerImg');
+                    var ld = document.getElementById('imgViewerLoading');
+                    var seq2 = (self._viewerLoadSeq = (self._viewerLoadSeq || 0) + 1);
+                    imgEl.src = url;
+                    imgEl.style.transform = 'scale(1)';
+                    imgEl._viewScale = 1;
+                    if (ld) ld.style.display = 'flex';
+                    imgEl.onload = function() {
+                        if (self._viewerLoadSeq !== seq2) return;
+                        if (ld) ld.style.display = 'none';
+                        imgEl._fitReady = true;
+                        imgEl._fitScale = imgEl.clientWidth / (imgEl.naturalWidth || 1);
+                    };
+                    box.querySelectorAll('.img-ver-item').forEach(function(x) { x.style.borderColor = 'transparent'; x.style.opacity = '0.72'; });
+                    this.style.borderColor = '#10b981'; this.style.opacity = '1';
+                });
+            });
+            // 设为词卡主预览
+            box.querySelectorAll('.img-ver-activate').forEach(function(el) {
+                el.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var verId = parseInt(this.dataset.ver);
+                    if (!verId && verId !== 0) return;
+                    self._activateCardVersion(promptId, verId);
+                });
+            });
+        }).catch(function() {});
+    },
+
+    // 将某版本设为词卡主预览（更新 preview_media/缩略图，填入预览框）
+    _activateCardVersion(cardId, verId) {
+        var self = this;
+        App.showToast('正在设置主预览...', 'info');
+        App.fetchJSON('/api/seedance/v2/assets/cards/' + cardId + '/versions/' + verId + '/activate', {
+            method: 'POST', _timeoutMs: 30000
+        }).then(function(d) {
+            if (d && d.ok) {
+                App.showToast('✅ 已设为此版本主预览（词卡预览框已更新）', 'success');
+                self._loadCardVersions(cardId);
+                // 刷新词卡网格（若当前列表可见）
+                if (App.loadPrompts) { try { App.loadPrompts(); } catch (e) {} }
+            } else {
+                App.showToast('设置未完成: ' + (d ? (d.detail || '未知') : '无响应'), 'error');
+            }
+        }).catch(function(e) { App.showToast('设置异常: ' + e.message, 'error'); });
     },
 
     // 预加载相邻两张原图
