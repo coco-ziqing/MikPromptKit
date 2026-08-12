@@ -624,25 +624,33 @@ def _pull_worker():
                         print(f"[Web Assets] 视频取流: {len(video_srcs)} srcs / {len(video_items)} 视频资产")
                     except Exception as e:
                         print(f"[Web Assets] 视频取流异常: {e}")
-                # 下载 + 入库
+                # 下载 + 入库（并发 4 线程，get_db 线程本地连接安全）
                 with _pull_lock:
                     _pull_state["stage"] = "importing"
-                for it in items:
-                    if _pull_state.get("stop_requested"):
-                        break
-                    try:
-                        r = _import_web_asset(it, prof)
-                    except Exception as e:
-                        r = f"failed({e})"
-                    with _pull_lock:
-                        if r == "imported":
-                            _pull_state["imported"] += 1
-                        elif r == "skipped":
-                            _pull_state["skipped"] += 1
-                        else:
-                            _pull_state["failed"] += 1
-                            _pull_state["fail_list"].append({"id": it.get("id"), "reason": r,
-                                                              "prompt": (it.get("prompt") or "")[:50]})
+                try:
+                    from concurrent.futures import ThreadPoolExecutor
+
+                    def _import_one_wrapper(it):
+                        try:
+                            return it.get("id"), _import_web_asset(it, prof)
+                        except Exception as e:
+                            return it.get("id"), f"failed({e})"
+
+                    with ThreadPoolExecutor(max_workers=int(prof.get("import_workers") or 4)) as _ex:
+                        for _wid, _r in _ex.map(_import_one_wrapper, items):
+                            if _pull_state.get("stop_requested"):
+                                # 停止请求：不再启动新批次（已在跑的任务自然结束）
+                                pass
+                            with _pull_lock:
+                                if _r == "imported":
+                                    _pull_state["imported"] += 1
+                                elif _r == "skipped":
+                                    _pull_state["skipped"] += 1
+                                else:
+                                    _pull_state["failed"] += 1
+                                    _pull_state["fail_list"].append({"id": _wid, "reason": _r})
+                except Exception as e:
+                    print(f"[Web Assets] 导入阶段异常: {e}")
                 # 保存学习到的接口模式
                 if diagnose:
                     learned = {"list_api_keywords": list(set(prof.get("list_api_keywords", LIST_KEYWORDS))),
@@ -819,3 +827,25 @@ def list_web_assets(
         d["file_url"] = ("/api/seedance/v2/assets/file/" + d["file_names"][0]) if d["file_names"] else ""
         items.append(d)
     return {"ok": True, "total": total, "page": page, "page_size": page_size, "items": items}
+
+
+@router.put("/web-assets/assets/{asset_id}")
+def update_web_asset(asset_id: int, data: dict = Body(...)):
+    """补全/编辑网页资产提示词（服务端未保存 prompt 的老资产可手动补充）"""
+    _ensure_asset_table()
+    db = get_db()
+    row = db.execute(
+        "SELECT * FROM dreamina_assets WHERE id=? AND source='web' AND is_deleted=0",
+        [asset_id]).fetchone()
+    if not row:
+        raise HTTPException(404, "资产不存在")
+    prompt = (data.get("prompt") or "").strip()
+    db.execute("UPDATE dreamina_assets SET prompt=? WHERE id=?", [prompt, asset_id])
+    if row["word_card_id"] and prompt:
+        try:
+            db.execute("UPDATE word_card SET content=?, updated_at=datetime('now','localtime') WHERE id=?",
+                       [prompt, row["word_card_id"]])
+        except Exception:
+            pass
+    safe_commit()
+    return {"ok": True, "prompt": prompt}

@@ -1038,10 +1038,14 @@
                     '<div style="height:120px;background:#000;position:relative;">' + media +
                     '<span style="position:absolute;top:4px;left:4px;font-size:9px;padding:1px 6px;border-radius:10px;background:rgba(139,92,246,0.85);color:#fff;">🌐 网页</span></div>' +
                     '<div style="padding:8px 10px;">' +
-                    '<div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + App._escape(a.prompt || '') + '">' + App._escape((a.prompt || '(无提示词)').substring(0, 42)) + '</div>' +
+                    (a.prompt ?
+                        '<div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + App._escape(a.prompt) + '">' + App._escape(a.prompt.substring(0, 42)) + '</div>'
+                        :
+                        '<div style="font-size:11px;color:#d97706;font-style:italic;">⚠️ 该资产未保存提示词（即梦旧记录），可手动补全</div>') +
                     '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">' + App._escape([a.task_time, a.gen_task_type].filter(Boolean).join(' · ')) + '</div>' +
                     '<div style="display:flex;gap:6px;margin-top:6px;">' +
                     '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._copyImportedPrompt(' + a.id + ')">📋 提示词</button>' +
+                    '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._editWebPrompt(' + a.id + ')" title="补充/修改提示词" style="color:#d97706;border-color:#d97706;">✏️ ' + (a.prompt ? '编辑' : '补全') + '</button>' +
                     '<button class="btn btn-xs btn-outline" style="color:#ef4444;border-color:#ef4444;" onclick="App.seedanceV2._deleteImportedAsset(' + a.id + ')">🗑 删除</button></div></div></div>';
             }
             h += '</div>';
@@ -1252,6 +1256,21 @@
             h += '</div>';
             c.innerHTML = h;
         } catch (e) { c.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">加载失败: ' + App._escape(e.message) + '</div>'; }
+    };
+
+    // 编辑/补全网页资产提示词
+    App.seedanceV2._editWebPrompt = async function(assetId) {
+        var self = this;
+        var np = prompt('补充/修改该资产的提示词（保存后同步到词卡）：', '');
+        if (np === null) return;
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/web-assets/assets/' + assetId, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: np.trim() })
+            });
+            if (d && d.ok) { App.showToast('✅ 提示词已更新', 'success'); self._webLoadAssets(); }
+            else { App.showToast('更新未完成: ' + (d ? (d.detail || '未知') : '无响应'), 'error'); }
+        } catch (e) { App.showToast('更新异常: ' + e.message, 'error'); }
     };
 
     App.seedanceV2._copyImportedPrompt = async function(assetId) {
