@@ -299,7 +299,7 @@ def update_project(project_id: int, data: dict = Body(...)):
         raise HTTPException(404, "项目不存在")
 
     fields = {}
-    for key in ["name", "total_duration", "aspect_ratio", "resolution", "global_style", "global_transition", "negative_prompt", "audio_enabled",
+    for key in ["name", "total_duration", "aspect_ratio", "resolution", "global_style", "global_transition", "negative_prompt", "audio_enabled", "bgm", "sfx", "dialogue",
                 "video_model", "video_session", "video_resolution"]:
         if key in data:
             fields[key] = data[key]

@@ -85,7 +85,7 @@
         h+='</div>';
         // v5.36.2: 全局图像参考（所有镜头共享，上限9张）
         h+='<div class="s2-global-row" style="margin-top:6px;background:rgba(139,92,246,0.05);border:1px dashed rgba(139,92,246,0.3);border-radius:6px;padding:6px 8px;">';
-        h+='<div style="width:100%;font-size:11px;font-weight:700;color:#8b5cf6;margin-bottom:4px;">🖼 全局图像参考 <span style="font-weight:400;color:var(--text-muted);font-size:10px;">(所有镜头共享，生成视频时携带)</span><button class="s2-ref-add-btn s2-ref-add-global" style="float:right;border:1px solid #8b5cf6;color:#8b5cf6;" title="添加全局参考图（上限9张）">+ 添加</button></div>';
+        h+='<div style="width:100%;font-size:11px;font-weight:700;color:#8b5cf6;margin-bottom:4px;">🖼 全局图像参考 <span style="font-weight:400;color:var(--text-muted);font-size:10px;">(所有镜头共享，生成视频时携带)</span><button class="s2-ref-add-btn s2-ref-add-global" data-scene-id="global" style="float:right;border:1px solid #8b5cf6;color:#8b5cf6;" title="添加全局参考图（上限9张）">+ 添加</button></div>';
         h+='<div class="s2-ref-thumbs" id="s2RefThumbs_global"></div>';
         h+='</div></div></div>';
         // ③ 输出预览
@@ -116,6 +116,20 @@
         h+='<textarea id="s2Output" class="s2-output-text" readonly placeholder="切换镜头字段后实时合成…"></textarea>';
         h+='<div id="s2OutputMeta" style="font-size:11px;color:var(--text-muted);margin-top:4px;"></div></div>';
         c.innerHTML=h;
+        // v5.36.11: 全局参数变更实时保存（防刷新/重渲染丢失；即梦视频参数另有 _saveVideoParam 独立保存）
+        if (!c.dataset.gpBound) {
+            c.dataset.gpBound = '1';
+            var _gpSelIds = ['s2_name','s2_aspect_ratio','s2_resolution','s2_global_style','s2_global_transition','s2_negative_prompt','s2_bgm','s2_sfx','s2_dialogue','s2_audio_enabled'];
+            var _gpInputIds = ['s2_name','s2_global_style','s2_global_transition','s2_negative_prompt','s2_bgm','s2_sfx','s2_dialogue'];
+            c.addEventListener('change', function(e) {
+                var t = e.target;
+                if (t && t.id && _gpSelIds.indexOf(t.id) >= 0) App.seedanceV2._saveGlobalParams();
+            });
+            c.addEventListener('input', function(e) {
+                var t = e.target;
+                if (t && t.id && _gpInputIds.indexOf(t.id) >= 0) App.seedanceV2._saveGlobalParams();
+            });
+        }
         // 创建右侧面板（始终存在于布局中，类似左栏项目列表）
         var layout = document.querySelector('.s2-layout');
         if (layout && !document.getElementById('s2RightPanel')) {
@@ -1298,6 +1312,38 @@
             });
             if(r&&r.ok){App.showToast('已保存','success');}
         }catch(e){console.warn('save video param fail',e);}
+    };
+
+    // v5.36.11: 全局参数实时保存（画幅/分辨率/全局画风/全局转场/音频等，防刷新丢失）
+    App.seedanceV2._saveGlobalParams=function(){
+        if(!this.currentProjectId)return;
+        var self=this;
+        var d={};
+        var map={'s2_name':'name','s2_aspect_ratio':'aspect_ratio','s2_resolution':'resolution','s2_global_style':'global_style','s2_global_transition':'global_transition','s2_negative_prompt':'negative_prompt','s2_bgm':'bgm','s2_sfx':'sfx','s2_dialogue':'dialogue'};
+        var any=false;
+        for(var id in map){
+            var el=document.getElementById(id);
+            if(!el)continue;
+            var v=el.value;
+            if(map[id]==='name'&&!String(v||'').trim())continue;
+            if(this.currentProject)this.currentProject[map[id]]=v;
+            d[map[id]]=v;
+            any=true;
+        }
+        var cb=document.getElementById('s2_audio_enabled');
+        if(cb){
+            d['audio_enabled']=cb.checked?1:0;
+            if(this.currentProject)this.currentProject['audio_enabled']=cb.checked;
+            any=true;
+        }
+        if(!any)return;
+        if(this._gpSaveTimer)clearTimeout(this._gpSaveTimer);
+        this._gpSaveTimer=setTimeout(function(){
+            App.fetchJSON('/api/seedance/v2/projects/'+self.currentProjectId,{
+                method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)
+            }).then(function(r){if(!r||!r.ok)console.warn('global params save fail',r);})
+            .catch(function(e){console.warn('global params save error',e);});
+        },500);
     };
 
     // ========== Phase13.4: 撤销栈 ==========

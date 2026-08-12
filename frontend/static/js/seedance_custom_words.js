@@ -318,10 +318,15 @@ if (!App.seedanceV2 || App.seedanceV2._openGroupCreator) return;
         var aspectRatio=document.getElementById('s2_aspect_ratio')?.value||'16:9';
         var resolution=document.getElementById('s2_resolution')?.value||'4K';
         var totalDuration=parseInt(document.getElementById('s2_total_duration')?.value)||15;
+        // v5.36.11: 音频三要素也随全局参数传递（后端 compose 读取）
+        var bgm=document.getElementById('s2_bgm')?.value||'';
+        var sfx=document.getElementById('s2_sfx')?.value||'';
+        var dialogue=document.getElementById('s2_dialogue')?.value||'';
         var body={
             format:fmt,density:density,include_audio:includeAudio,
             global_style:globalStyle,global_transition:globalTransition,negative_prompt:negativePrompt,
-            aspect_ratio:aspectRatio,resolution:resolution,total_duration:totalDuration
+            aspect_ratio:aspectRatio,resolution:resolution,total_duration:totalDuration,
+            bgm:bgm,sfx:sfx,dialogue:dialogue
         };
         // 调用后端引擎
         var self=this;
