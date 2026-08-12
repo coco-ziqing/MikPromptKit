@@ -16,11 +16,14 @@ from api.seedance_v2_project import router as seedance_v2_project_router
 from api.seedance_v2_video import router as seedance_v2_video_router
 # v5.36.2: 图像参考子路由（全局/镜头级角色图·场景图）
 from api.seedance_v2_refs import router as seedance_v2_refs_router
+# v5.36.13: 即梦历史资产导入子路由（CLI 任务库拉取 + 本地归档）
+from api.dreamina_assets import router as dreamina_assets_router
 
 router.include_router(seedance_v2_library_router)
 router.include_router(seedance_v2_project_router)
 router.include_router(seedance_v2_video_router)
 router.include_router(seedance_v2_refs_router)
+router.include_router(dreamina_assets_router)
 from api.seedance_v2_project import _recalculate_scene_times  # noqa: F401
 
 # ==================== 反向解析（文本→结构化） ====================

@@ -349,7 +349,8 @@
             '<div id="s2VideoTaskList"><div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div></div></div>' +
             '<div class="modal-footer" style="justify-content:space-between;">' +
             '<span style="display:flex;gap:8px;align-items:center;"><span style="font-size:11px;color:var(--text-muted);" id="s2VideoPollHint">每 8 秒自动刷新</span>' +
-            '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2.openVideoTemplates()" style="color:#8b5cf6;border-color:#8b5cf6;font-size:11px;padding:2px 10px;">📚 模版库</button></span>' +
+            '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2.openVideoTemplates()" style="color:#8b5cf6;border-color:#8b5cf6;font-size:11px;padding:2px 10px;">📚 模版库</button>' +
+            '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2.openDreaminaAssets()" style="color:#10b981;border-color:#10b981;font-size:11px;padding:2px 10px;">📥 即梦资产</button></span>' +
             '<button class="btn btn-secondary btn-sm" onclick="App.seedanceV2.closeVideoPanel()">关闭</button></div></div>';
         document.body.appendChild(overlay);
         this._loadVideoTasks();
@@ -721,6 +722,255 @@
         } catch (e) {
             App.showToast('重试异常: ' + e.message, 'error');
         }
+    };
+
+    // ============ v5.36.13: 即梦历史资产导入 ============
+    // 从即梦 CLI 任务库拉取账号历史生成数据 → 下载本地 + 词卡模版式归档
+
+    App.seedanceV2._assetFilter = { type: 'all', status: 'success', imported: '0', page: 1 };
+
+    App.seedanceV2.openDreaminaAssets = function() {
+        var old = document.getElementById('s2DreaminaAssets');
+        if (old) old.remove();
+        var self = this;
+        var overlay = document.createElement('div');
+        overlay.id = 's2DreaminaAssets';
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'display:flex;z-index:716;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+        overlay.innerHTML = '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:900px;max-height:84vh;display:flex;flex-direction:column;">' +
+            '<div class="modal-header"><h5>📥 即梦历史资产 <span style="font-size:10px;color:var(--text-muted);font-weight:400;">从即梦账号拉取生成数据 → 本地词卡归档</span></h5>' +
+            '<button class="header-btn-sm" onclick="document.getElementById(\'s2DreaminaAssets\').remove()">&times;</button></div>' +
+            '<div class="modal-body" style="flex:1;overflow-y:auto;">' +
+            '<div id="s2AssetStats"></div>' +
+            '<div id="s2AssetFilters" style="display:flex;gap:6px;margin:8px 0;align-items:center;flex-wrap:wrap;"></div>' +
+            '<div id="s2AssetProgress" style="display:none;margin-bottom:8px;"></div>' +
+            '<div id="s2AssetList"><div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div></div></div>' +
+            '<div class="modal-footer" style="justify-content:space-between;">' +
+            '<span style="font-size:11px;color:var(--text-muted);">数据源：即梦 CLI 本地任务库</span>' +
+            '<span style="display:flex;gap:6px;"><button class="btn btn-sm btn-outline" onclick="App.seedanceV2._loadImportedAssets()">🗂 已导入资产</button> ' +
+            '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._reloadDreaminaAssets()">🔄 刷新</button> ' +
+            '<button class="btn btn-sm btn-success" onclick="App.seedanceV2._importAllDreaminaAssets()">📥 导入全部成功</button></span></div></div>';
+        document.body.appendChild(overlay);
+        this._assetFilter = { type: 'all', status: 'success', imported: '0', page: 1 };
+        this._loadDreaminaAssets();
+    };
+
+    App.seedanceV2._reloadDreaminaAssets = function() {
+        this._assetFilter.page = 1;
+        this._loadDreaminaAssets();
+    };
+
+    App.seedanceV2._loadDreaminaAssets = async function() {
+        var c = document.getElementById('s2AssetList');
+        if (!c) return;
+        var self = this;
+        try {
+            var f = this._assetFilter;
+            var q = '?page=' + f.page + '&page_size=60&asset_type=' + f.type + '&gen_status=' + f.status + '&imported=' + f.imported;
+            var d = await App.fetchJSON('/api/seedance/v2/assets/scan' + q);
+            if (!d || !d.ok) { c.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">扫描失败，请确认即梦 CLI 已登录</div>'; return; }
+            this._scanData = d;
+            var st = d.stats || {};
+            var statsEl = document.getElementById('s2AssetStats');
+            if (statsEl) statsEl.innerHTML =
+                '<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11px;">' +
+                '<span style="padding:3px 10px;border-radius:12px;background:var(--hover-bg);">🗂 总任务 <strong>' + st.total + '</strong></span>' +
+                '<span style="padding:3px 10px;border-radius:12px;background:var(--hover-bg);">🖼 图片 <strong>' + st.image_total + '</strong></span>' +
+                '<span style="padding:3px 10px;border-radius:12px;background:var(--hover-bg);">🎬 视频 <strong>' + st.video_total + '</strong></span>' +
+                '<span style="padding:3px 10px;border-radius:12px;background:var(--hover-bg);">✅ 成功 <strong>' + st.success_total + '</strong></span>' +
+                '<span style="padding:3px 10px;border-radius:12px;background:rgba(16,185,129,0.12);color:#10b981;">📥 已导入 <strong>' + st.imported_total + '</strong></span></div>';
+            var fh = '<label style="font-size:11px;color:var(--text-muted);">类型</label><select class="s2-input" style="width:auto;font-size:11px;padding:2px 6px;" onchange="App.seedanceV2._setAssetFilter(\'type\',this.value)">' +
+                '<option value="all"' + (f.type === 'all' ? ' selected' : '') + '>全部</option>' +
+                '<option value="image"' + (f.type === 'image' ? ' selected' : '') + '>图片</option>' +
+                '<option value="video"' + (f.type === 'video' ? ' selected' : '') + '>视频</option></select>' +
+                '<label style="font-size:11px;color:var(--text-muted);">状态</label><select class="s2-input" style="width:auto;font-size:11px;padding:2px 6px;" onchange="App.seedanceV2._setAssetFilter(\'status\',this.value)">' +
+                '<option value="success"' + (f.status === 'success' ? ' selected' : '') + '>成功</option>' +
+                '<option value="all"' + (f.status === 'all' ? ' selected' : '') + '>全部</option>' +
+                '<option value="fail"' + (f.status === 'fail' ? ' selected' : '') + '>失败</option>' +
+                '<option value="querying"' + (f.status === 'querying' ? ' selected' : '') + '>生成中</option></select>' +
+                '<label style="font-size:11px;color:var(--text-muted);">导入</label><select class="s2-input" style="width:auto;font-size:11px;padding:2px 6px;" onchange="App.seedanceV2._setAssetFilter(\'imported\',this.value)">' +
+                '<option value="0"' + (f.imported === '0' ? ' selected' : '') + '>未导入</option>' +
+                '<option value="1"' + (f.imported === '1' ? ' selected' : '') + '>已导入</option>' +
+                '<option value="all"' + (f.imported === 'all' ? ' selected' : '') + '>全部</option></select>' +
+                '<span style="flex:1;"></span><span style="font-size:11px;color:var(--text-muted);">共 ' + d.total + ' 条</span>';
+            var fEl = document.getElementById('s2AssetFilters');
+            if (fEl) fEl.innerHTML = fh;
+            var items = d.items || [];
+            if (!items.length) {
+                c.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">没有符合条件的任务<br><span style="font-size:11px;">' + (st.imported_total ? '当前筛选下已全部导入 ✅ 或切换筛选条件' : '请确认即梦 CLI 已登录且产生过生成任务') + '</span></div>';
+                return;
+            }
+            var h = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;">';
+            for (var i = 0; i < items.length; i++) {
+                var t = items[i];
+                var stBg = t.gen_status === 'success' ? 'rgba(16,185,129,0.85)' : (t.gen_status === 'fail' ? 'rgba(239,68,68,0.85)' : 'rgba(245,158,11,0.85)');
+                h += '<div style="border:1px solid var(--border-color);border-radius:8px;overflow:hidden;background:var(--bg-card);">' +
+                    '<div style="height:110px;background:var(--hover-bg);display:flex;align-items:center;justify-content:center;position:relative;">' +
+                    '<span style="font-size:34px;">' + (t.asset_type === 'video' ? '🎬' : '🖼') + '</span>' +
+                    '<span style="position:absolute;top:4px;left:4px;font-size:9px;padding:1px 6px;border-radius:10px;background:rgba(0,0,0,0.55);color:#fff;">' + App._escape(t.gen_task_type || '') + '</span>' +
+                    '<span style="position:absolute;top:4px;right:4px;font-size:9px;padding:1px 6px;border-radius:10px;background:' + stBg + ';color:#fff;">' + App._escape(t.gen_status) + '</span></div>' +
+                    '<div style="padding:8px 10px;">' +
+                    '<div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + App._escape(t.prompt || '') + '">' + App._escape((t.prompt || '(无提示词)').substring(0, 42)) + '</div>' +
+                    '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + App._escape([t.model_version, t.ratio, t.resolution, t.duration ? t.duration + 's' : '', t.task_time].filter(Boolean).join(' · ')) + '</div>' +
+                    '<div style="display:flex;gap:6px;margin-top:6px;align-items:center;">' +
+                    (t.imported ?
+                        '<span style="font-size:10px;color:#10b981;">已导入 ✅</span><button class="btn btn-xs btn-outline" onclick="App.seedanceV2._copyAssetPrompt(\'' + t.submit_id + '\')">📋 提示词</button>' :
+                        '<button class="btn btn-xs btn-success" onclick="App.seedanceV2._importOneAsset(\'' + t.submit_id + '\')">📥 导入</button>') +
+                    '</div></div></div>';
+            }
+            h += '</div>';
+            if (d.total > d.page_size) {
+                h += '<div style="text-align:center;margin-top:12px;">' +
+                    (f.page > 1 ? '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._assetPage(' + (f.page - 1) + ')">← 上一页</button> ' : '') +
+                    '<span style="font-size:11px;color:var(--text-muted);margin:0 8px;">第 ' + f.page + ' / ' + Math.ceil(d.total / d.page_size) + ' 页</span>' +
+                    (f.page * d.page_size < d.total ? '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._assetPage(' + (f.page + 1) + ')">下一页 →</button>' : '') +
+                    '</div>';
+            }
+            c.innerHTML = h;
+        } catch (e) {
+            c.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">加载失败: ' + App._escape(e.message) + '</div>';
+        }
+    };
+
+    App.seedanceV2._setAssetFilter = function(k, v) {
+        this._assetFilter[k] = v;
+        this._assetFilter.page = 1;
+        this._loadDreaminaAssets();
+    };
+
+    App.seedanceV2._assetPage = function(p) {
+        this._assetFilter.page = p;
+        this._loadDreaminaAssets();
+    };
+
+    // 导入单条
+    App.seedanceV2._importOneAsset = async function(submitId) {
+        App.showToast('正在导入...', 'info');
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/assets/import', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ submit_ids: [submitId] }), _timeoutMs: 300000
+            });
+            if (d && d.ok && d.imported && d.imported.length) {
+                App.showToast('✅ 已导入（' + (d.imported[0].files || []).length + ' 个文件）', 'success');
+            } else if (d && d.ok && d.results && d.results[0] && d.results[0].status === 'skipped') {
+                App.showToast('该任务已在本地库中', 'info');
+            } else {
+                App.showToast('导入未完成: ' + ((d && d.results && d.results[0] && d.results[0].error) || '未知错误'), 'error');
+            }
+            this._reloadDreaminaAssets();
+        } catch (e) { App.showToast('导入异常: ' + e.message, 'error'); }
+    };
+
+    // 批量导入全部成功任务（分批 5 条，串行下载）
+    App.seedanceV2._importAllDreaminaAssets = async function() {
+        var self = this;
+        if (this._assetImporting) { App.showToast('正在导入中，请稍候', 'warning'); return; }
+        // 收集全部未导入成功任务
+        var allIds = [], page = 1;
+        try {
+            while (true) {
+                var dd = await App.fetchJSON('/api/seedance/v2/assets/scan?page=' + page + '&page_size=200&asset_type=all&gen_status=success&imported=0');
+                if (!dd || !dd.ok) { App.showToast('扫描失败', 'error'); return; }
+                allIds = allIds.concat((dd.items || []).map(function(t) { return t.submit_id; }));
+                if (!dd.items || dd.items.length < 200 || page * 200 >= dd.total) break;
+                page++;
+            }
+        } catch (e) { App.showToast('扫描异常: ' + e.message, 'error'); return; }
+        if (!allIds.length) { App.showToast('没有待导入的成功任务', 'info'); return; }
+        if (!confirm('将导入 ' + allIds.length + ' 条成功任务（下载媒体 + 词卡归档），预计耗时较长，继续？')) return;
+        this._assetImporting = true;
+        var bar = document.getElementById('s2AssetProgress');
+        if (bar) bar.style.display = 'block';
+        var done = 0, failed = 0;
+        for (var i = 0; i < allIds.length; i += 5) {
+            var batch = allIds.slice(i, i + 5);
+            try {
+                var r = await App.fetchJSON('/api/seedance/v2/assets/import', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ submit_ids: batch }), _timeoutMs: 600000
+                });
+                if (r && r.ok) {
+                    (r.results || []).forEach(function(x) { if (x.status === 'imported') done++; else if (x.status === 'failed') failed++; });
+                } else { failed += batch.length; }
+            } catch (e) { failed += batch.length; }
+            var pct = Math.min(100, Math.round((i + batch.length) / allIds.length * 100));
+            if (bar) bar.innerHTML = '<div style="display:flex;align-items:center;gap:8px;font-size:11px;">' +
+                '<div style="flex:1;height:8px;background:var(--hover-bg);border-radius:4px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,#10b981,#8b5cf6);"></div></div>' +
+                '<span>导入中 ' + (i + batch.length) + '/' + allIds.length + '（成功 ' + done + '，失败 ' + failed + '）</span></div>';
+        }
+        if (bar) { bar.innerHTML = ''; bar.style.display = 'none'; }
+        this._assetImporting = false;
+        App.showToast('导入完成：成功 ' + done + '，失败 ' + failed, done ? 'success' : 'warning');
+        this._reloadDreaminaAssets();
+    };
+
+    // 已导入资产列表（本地文件预览 / 复制提示词 / 删除）
+    App.seedanceV2._loadImportedAssets = async function() {
+        var c = document.getElementById('s2AssetList');
+        if (!c) return;
+        var self = this;
+        var fEl = document.getElementById('s2AssetFilters');
+        if (fEl) fEl.innerHTML = '<span style="font-size:11px;color:#10b981;">🗂 已导入本地资产（媒体 + 提示词）</span><span style="flex:1;"></span>' +
+            '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._reloadDreaminaAssets()">← 返回任务列表</button>';
+        c.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div>';
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/assets?page=1&page_size=500');
+            if (!d || !d.ok) { c.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">加载失败</div>'; return; }
+            var items = d.items || [];
+            if (!items.length) { c.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">还没有导入任何资产<br><span style="font-size:11px;">回到列表点击「📥 导入」即可下载并归档</span></div>'; return; }
+            var h = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;">';
+            for (var i = 0; i < items.length; i++) {
+                var a = items[i];
+                var media = '';
+                if (a.asset_type === 'image') {
+                    media = '<img src="' + App._escape(a.file_url) + '" onclick="window.open(this.src,\'_blank\')" style="width:100%;height:120px;object-fit:cover;cursor:pointer;" title="点击放大">';
+                } else {
+                    media = '<video src="' + App._escape(a.file_url) + '" controls preload="metadata" style="width:100%;height:120px;object-fit:cover;background:#000;"></video>';
+                }
+                h += '<div style="border:1px solid var(--border-color);border-radius:8px;overflow:hidden;background:var(--bg-card);">' +
+                    '<div style="height:120px;background:#000;">' + media + '</div>' +
+                    '<div style="padding:8px 10px;">' +
+                    '<div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + App._escape(a.prompt || '') + '">' + App._escape((a.prompt || '(无提示词)').substring(0, 42)) + '</div>' +
+                    '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + App._escape([a.gen_task_type, a.model_version, a.ratio, a.resolution, a.task_time].filter(Boolean).join(' · ')) + '</div>' +
+                    '<div style="display:flex;gap:6px;margin-top:6px;">' +
+                    '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._copyImportedPrompt(' + a.id + ')">📋 提示词</button>' +
+                    '<button class="btn btn-xs btn-outline" style="color:#ef4444;border-color:#ef4444;" onclick="App.seedanceV2._deleteImportedAsset(' + a.id + ')">🗑 删除</button></div></div></div>';
+            }
+            h += '</div>';
+            c.innerHTML = h;
+        } catch (e) { c.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">加载失败: ' + App._escape(e.message) + '</div>'; }
+    };
+
+    App.seedanceV2._copyImportedPrompt = async function(assetId) {
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/assets?page=1&page_size=500');
+            var a = null;
+            if (d && d.items) for (var i = 0; i < d.items.length; i++) { if (d.items[i].id === assetId) { a = d.items[i]; break; } }
+            var p = a ? (a.prompt || '') : '';
+            if (!p) { App.showToast('提示词为空', 'warning'); return; }
+            navigator.clipboard.writeText(p).then(function() { App.showToast('✅ 提示词已复制', 'success'); }).catch(function() { App.showToast('复制失败，请手动复制', 'error'); });
+        } catch (e) { App.showToast('复制异常: ' + e.message, 'error'); }
+    };
+
+    App.seedanceV2._deleteImportedAsset = async function(assetId) {
+        if (!confirm('确定删除此本地资产？（媒体文件 + 词卡一并移除，不影响即梦云端）')) return;
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/assets/' + assetId, { method: 'DELETE' });
+            if (d && d.ok) { App.showToast('已删除', 'info'); this._loadImportedAssets(); }
+            else { App.showToast('删除未完成: ' + (d ? (d.detail || '未知') : '无响应'), 'error'); }
+        } catch (e) { App.showToast('删除异常: ' + e.message, 'error'); }
+    };
+
+    // 复制未导入任务提示词（scan 数据）
+    App.seedanceV2._copyAssetPrompt = function(submitId) {
+        var d = this._scanData;
+        var t = null;
+        if (d && d.items) for (var i = 0; i < d.items.length; i++) { if (d.items[i].submit_id === submitId) { t = d.items[i]; break; } }
+        var p = t ? (t.prompt || '') : '';
+        if (!p) { App.showToast('提示词为空', 'warning'); return; }
+        navigator.clipboard.writeText(p).then(function() { App.showToast('✅ 提示词已复制', 'success'); }).catch(function() { App.showToast('复制失败，请手动复制', 'error'); });
     };
 
 })();
