@@ -324,6 +324,7 @@ def _parse_asset_items(data):
             "media_urls": media_urls,   # 图片=各分辨率URL；视频=封面URL（视频流需取流补充）
             "cover": cover,
             "time": created,
+            "cli_submit_id": str(sub.get("submit_id") or ""),   # v5.36.21: 关联 CLI 提交 ID（跨通道去重）
         })
     return items
 
@@ -456,11 +457,11 @@ def _import_web_asset(item: dict, prof: dict) -> str:
         [gid, name, item.get("prompt") or "", meaning, media_type, file_names[0]])
     card_id = cur.lastrowid
     cur2 = db.execute(
-        "INSERT INTO dreamina_assets (submit_id, source, web_asset_id, web_url, asset_type, gen_task_type, prompt, task_time, file_paths, file_size, gen_status, imported_at, word_card_id) "
-        "VALUES (?, 'web', ?, ?, ?, ?, ?, ?, ?, ?, 'success', datetime('now','localtime'), ?)",
+        "INSERT INTO dreamina_assets (submit_id, source, web_asset_id, web_url, asset_type, gen_task_type, prompt, task_time, file_paths, file_size, gen_status, imported_at, word_card_id, cli_submit_id) "
+        "VALUES (?, 'web', ?, ?, ?, ?, ?, ?, ?, ?, 'success', datetime('now','localtime'), ?, ?)",
         ["web_" + safe_id, item["id"], ASSET_PAGE_URL, media_type,
          "web_asset", item.get("prompt") or "", str(t), json.dumps(file_names, ensure_ascii=False),
-         total_size, card_id])
+         total_size, card_id, item.get("cli_submit_id") or ""])
     safe_commit()
     return "imported"
 

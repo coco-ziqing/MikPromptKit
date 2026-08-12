@@ -1192,7 +1192,9 @@
                     '<div style="display:flex;gap:6px;margin-top:6px;align-items:center;">' +
                     (t.imported ?
                         '<span style="font-size:10px;color:#10b981;">已导入 ✅</span><button class="btn btn-xs btn-outline" onclick="App.seedanceV2._copyAssetPrompt(\'' + t.submit_id + '\')">📋 提示词</button>' :
-                        '<button class="btn btn-xs btn-success" onclick="App.seedanceV2._importOneAsset(\'' + t.submit_id + '\')">📥 导入</button>') +
+                        (t.web_imported ?
+                            '<span style="font-size:10px;color:#8b5cf6;" title="该任务已通过网页历史导入，无需重复拉取">已在网页历史 ✅</span><button class="btn btn-xs btn-outline" onclick="App.seedanceV2._copyAssetPrompt(\'' + t.submit_id + '\')">📋 提示词</button>' :
+                            '<button class="btn btn-xs btn-success" onclick="App.seedanceV2._importOneAsset(\'' + t.submit_id + '\')">📥 导入</button>')) +
                     '</div></div></div>';
             }
             h += '</div>';

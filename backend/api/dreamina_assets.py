@@ -69,6 +69,10 @@ def _ensure_asset_table():
     if "web_url" not in cols:
         db.execute("ALTER TABLE dreamina_assets ADD COLUMN web_url TEXT DEFAULT ''")
         print("[Dreamina Assets] dreamina_assets 增加列 web_url")
+    # v5.36.21: 网页资产关联的 CLI submit_id（跨通道去重判定）
+    if "cli_submit_id" not in cols:
+        db.execute("ALTER TABLE dreamina_assets ADD COLUMN cli_submit_id TEXT DEFAULT ''")
+        print("[Dreamina Assets] dreamina_assets 增加列 cli_submit_id")
     safe_commit()
 
 
@@ -229,6 +233,10 @@ def scan_assets(
     if not ok:
         raise HTTPException(500, "无法读取即梦 CLI 任务库，请确认已安装并登录即梦 CLI")
     imported_ids = _imported_submit_ids()
+    # v5.36.21: 跨通道去重标记 —— 该任务已通过网页通道导入（按 cli_submit_id 关联）
+    db = get_db()
+    web_sids = set(r["cli_submit_id"] for r in db.execute(
+        "SELECT cli_submit_id FROM dreamina_assets WHERE source='web' AND is_deleted=0 AND cli_submit_id != ''").fetchall())
     filtered = []
     for t in tasks:
         if asset_type != "all" and t["asset_type"] != asset_type:
@@ -236,6 +244,7 @@ def scan_assets(
         if gen_status != "all" and t["gen_status"] != gen_status:
             continue
         t["imported"] = t["submit_id"] in imported_ids
+        t["web_imported"] = t["submit_id"] in web_sids
         if imported == "1" and not t["imported"]:
             continue
         if imported == "0" and t["imported"]:
@@ -288,6 +297,13 @@ def _import_one(submit_id: str):
                 db.execute("DELETE FROM word_card WHERE id=?", [existing["word_card_id"]])
             except Exception:
                 pass
+    # v5.36.21: 跨通道去重 —— 该任务已通过网页通道导入过（cli_submit_id 关联），跳过
+    web_dup = db.execute(
+        "SELECT id, word_card_id FROM dreamina_assets WHERE source='web' AND cli_submit_id=? AND is_deleted=0",
+        [submit_id]).fetchone()
+    if web_dup:
+        return {"submit_id": submit_id, "status": "skipped", "asset_id": web_dup["id"],
+                "reason": "已在网页历史导入（跨通道去重）"}
     task = _read_cli_task(submit_id)
     if not task:
         return {"submit_id": submit_id, "status": "failed", "error": "任务不存在于即梦 CLI 本地库"}
