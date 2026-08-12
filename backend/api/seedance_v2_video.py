@@ -554,11 +554,9 @@ def list_video_templates():
     return {"items": items, "group_id": gid, "group_name": TEMPLATE_GROUP_NAME}
 
 
-@router.post("/video/tasks/{task_id}/archive-template")
-def archive_task_as_template(task_id: int, data: dict = Body(default={})):
-    """将成功的视频生成任务存档为分镜视频模版词卡
-    复制视频到 wc_media/videos（词卡预览视频机制），词卡 content=提示词
-    body: { name: 可选模版名 }
+def _archive_task_to_template(task_id: int, name: str = "", allow_dup_suffix: bool = False) -> dict:
+    """核心：将成功的视频生成任务存档为分镜视频模版词卡（单条/批量共用）
+    复制视频到 wc_media/videos，词卡 content=提示词；同名冲突可加序号（批量）或报错（单条）
     """
     _ensure_video_task_table()
     db = get_db()
@@ -568,10 +566,8 @@ def archive_task_as_template(task_id: int, data: dict = Body(default={})):
     if task["status"] != "success":
         raise HTTPException(400, "仅成功任务可存档为模版")
     src = task["result_local"] or ""
-    if not src:
-        # 尝试从 result_url 兜底（无本地文件时仅存提示词）
-        src_path = ""
-    else:
+    src_path = ""
+    if src:
         src_path = os.path.join(VIDEO_DIR, os.path.basename(src))
     if src_path and not os.path.exists(src_path):
         src_path = ""
@@ -579,7 +575,6 @@ def archive_task_as_template(task_id: int, data: dict = Body(default={})):
         raise HTTPException(400, "视频文件不存在，无法存档（任务可能未下载到本地）")
 
     gid = _ensure_template_group()
-    # 复制视频到词卡视频目录
     ext = os.path.splitext(src_path)[1].lower() or ".mp4"
     import uuid as _uuid
     dest_name = _uuid.uuid4().hex + ext
@@ -592,20 +587,29 @@ def archive_task_as_template(task_id: int, data: dict = Body(default={})):
             pass
     shutil.copy2(src_path, dest_full)
 
-    # 模版名
-    name = (data.get("name") or "").strip()
     if not name:
         proj = db.execute("SELECT name FROM user_project WHERE id=?", [task["project_id"]]).fetchone()
         proj_name = (proj["name"] if proj else "分镜")[:20]
         scene_tag = f"镜头{task['scene_id']}" if task["scene_id"] else "整项目"
         name = f"{proj_name}-{scene_tag}-{task['model_version']}"
 
-    # 查重：同名跳过
+    # 查重：同名冲突 → 报错（单条）或加序号（批量）
     dup = db.execute(
         "SELECT id FROM word_card WHERE group_id=? AND name=? AND is_deleted=0",
         [gid, name]).fetchone()
-    if dup:
+    if dup and not allow_dup_suffix:
         raise HTTPException(400, f"同名模版已存在: {name}")
+    while dup and allow_dup_suffix:
+        base = name
+        idx = 2
+        while True:
+            name = f"{base}-{idx}"
+            if not db.execute(
+                "SELECT id FROM word_card WHERE group_id=? AND name=? AND is_deleted=0",
+                [gid, name]).fetchone():
+                break
+            idx += 1
+        dup = None
 
     cur = db.execute(
         "INSERT INTO word_card (group_id, name, content, meaning, media_type, preview_media, is_builtin, heat_weight, module, category, created_at, updated_at) "
@@ -613,6 +617,70 @@ def archive_task_as_template(task_id: int, data: dict = Body(default={})):
         [gid, name, task["prompt"] or "", f"分镜视频模版 · {task['model_version']} · {task['ratio']} · {task['duration']}s", dest_name])
     safe_commit()
     return {"ok": True, "card_id": cur.lastrowid, "name": name, "video_url": "/api/seedance/v2/videos/" + dest_name}
+
+
+@router.post("/video/tasks/{task_id}/archive-template")
+def archive_task_as_template(task_id: int, data: dict = Body(default={})):
+    """将成功的视频生成任务存档为分镜视频模版词卡
+    body: { name: 可选模版名 }
+    """
+    return _archive_task_to_template(task_id, (data.get("name") or "").strip(), allow_dup_suffix=False)
+
+
+@router.post("/video/tasks/archive-batch")
+def archive_batch(data: dict = Body(default={})):
+    """批量存档：将指定/全部成功任务存档为模版词卡（同名自动加序号）
+    body: { task_ids: [可选，缺省=全部成功任务] }
+    """
+    _ensure_video_task_table()
+    ids = data.get("task_ids")
+    if not ids:
+        db = get_db()
+        rows = db.execute(
+            "SELECT id FROM seedance_video_tasks WHERE status='success' ORDER BY id DESC").fetchall()
+        ids = [r["id"] for r in rows]
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "没有可存档的成功任务")
+    if len(ids) > 200:
+        raise HTTPException(400, f"单次最多批量存档 200 条（当前 {len(ids)}）")
+    results = []
+    for tid in ids:
+        try:
+            r = _archive_task_to_template(int(tid), "", allow_dup_suffix=True)
+            results.append({"task_id": int(tid), "ok": True, "name": r["name"]})
+        except HTTPException as e:
+            results.append({"task_id": int(tid), "ok": False, "error": str(e.detail)})
+        except Exception as e:
+            results.append({"task_id": int(tid), "ok": False, "error": str(e)})
+    return {"ok": True, "results": results,
+            "success": sum(1 for r in results if r["ok"]),
+            "failed": sum(1 for r in results if not r["ok"])}
+
+
+@router.post("/video/tasks/clear")
+def clear_video_tasks(data: dict = Body(default={})):
+    """清空生成历史：删除已完成/失败任务记录（可选删除本地视频文件），进行中任务保留
+    body: { delete_files: bool(默认true), keep_active: bool(默认true) }
+    """
+    _ensure_video_task_table()
+    db = get_db()
+    delete_files = bool(data.get("delete_files", True))
+    keep_active = bool(data.get("keep_active", True))
+    cond = "status IN ('success','fail')" if keep_active else "1=1"
+    rows = db.execute(f"SELECT id, result_local FROM seedance_video_tasks WHERE {cond}").fetchall()
+    n = 0
+    for r in rows:
+        if delete_files and r["result_local"]:
+            p = os.path.join(VIDEO_DIR, os.path.basename(r["result_local"]))
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception as e:
+                    print(f"[Seedance Video] 历史视频删除失败 {p}: {e}")
+        db.execute("DELETE FROM seedance_video_tasks WHERE id=?", [r["id"]])
+        n += 1
+    safe_commit()
+    return {"ok": True, "deleted": n, "delete_files": delete_files, "keep_active": keep_active}
 
 
 @router.post("/video/templates/{card_id}/regen")

@@ -350,6 +350,8 @@
             '<div class="modal-footer" style="justify-content:space-between;">' +
             '<span style="display:flex;gap:8px;align-items:center;"><span style="font-size:11px;color:var(--text-muted);" id="s2VideoPollHint">每 8 秒自动刷新</span>' +
             '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2.openVideoTemplates()" style="color:#8b5cf6;border-color:#8b5cf6;font-size:11px;padding:2px 10px;">📚 模版库</button>' +
+            '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._archiveBatchTasks()" style="color:#8b5cf6;border-color:#8b5cf6;font-size:11px;padding:2px 10px;" title="将全部成功任务批量存档为词库模版（同名自动加序号）">📥 批量存档</button>' +
+            '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._clearVideoHistory()" style="color:#ef4444;border-color:#ef4444;font-size:11px;padding:2px 10px;" title="清空已完成/失败的生成历史（含本地视频文件）">🗑 清空历史</button>' +
             '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2.openDreaminaAssets()" style="color:#10b981;border-color:#10b981;font-size:11px;padding:2px 10px;">📥 即梦资产</button></span>' +
             '<button class="btn btn-secondary btn-sm" onclick="App.seedanceV2.closeVideoPanel()">关闭</button></div></div>';
         document.body.appendChild(overlay);
@@ -453,6 +455,8 @@
             var d = await App.fetchJSON('/api/seedance/v2/video/tasks?limit=50');
             if (!d || !d.items) return;
             var items = d.items;
+            // v5.36.16: 缓存全量任务（批量存档/清空用）
+            this._videoTasks = items;
             // 只显示当前项目相关（若无项目则全部）
             var pid = this.currentProjectId;
             if (pid) items = items.filter(function(t) { return t.project_id === pid; });
@@ -704,6 +708,51 @@
             if (d && d.ok) { App.showToast('模版已删除', 'info'); this._loadVideoTemplates(); }
             else { App.showToast('删除未完成: ' + (d ? (d.detail||'未知') : '无响应'), 'error'); }
         } catch (e) { App.showToast('删除异常: '+e.message, 'error'); }
+    };
+
+    // v5.36.16: 批量存档全部成功任务为分镜视频模版
+    App.seedanceV2._archiveBatchTasks = async function() {
+        var tasks = this._videoTasks || [];
+        var ok = tasks.filter(function(t) { return t.status === 'success' && t.result_local; });
+        if (!ok.length) { App.showToast('没有可存档的成功任务（需已下载到本地）', 'info'); return; }
+        if (!confirm('将批量存档 ' + ok.length + ' 个成功任务为分镜视频模版词卡？\n\n同名模版自动加序号，视频复制到词库模版目录。')) return;
+        App.showToast('正在批量存档...', 'info');
+        var ids = ok.map(function(t) { return t.id; });
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/video/tasks/archive-batch', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task_ids: ids }), _timeoutMs: 600000
+            });
+            if (d && d.ok) {
+                App.showToast('批量存档完成：成功 ' + (d.success || 0) + ' / ' + ids.length, (d.success || 0) ? 'success' : 'warning');
+                this._loadVideoTasks(true);
+            } else {
+                App.showToast('批量存档未完成: ' + (d ? (d.detail || '未知') : '无响应'), 'error');
+            }
+        } catch (e) { App.showToast('批量存档异常: ' + e.message, 'error'); }
+    };
+
+    // v5.36.16: 清空生成历史（已完成/失败记录 + 本地视频文件），进行中任务保留
+    App.seedanceV2._clearVideoHistory = async function() {
+        var tasks = this._videoTasks || [];
+        var done = tasks.filter(function(t) { return t.status === 'success' || t.status === 'fail'; }).length;
+        var active = tasks.length - done;
+        if (!done) { App.showToast('没有可清空的历史记录', 'info'); return; }
+        if (!confirm('清空生成历史？\n\n· 删除 ' + done + ' 条已完成/失败记录' + (active ? '（保留 ' + active + ' 条进行中）' : '') + '\n· 同时删除本地已下载的视频文件\n· 已存档的模版词卡不受影响\n\n此操作不可恢复！')) return;
+        App.showToast('正在清空...', 'info');
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/video/tasks/clear', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ delete_files: true, keep_active: true }), _timeoutMs: 120000
+            });
+            if (d && d.ok) {
+                App.showToast('已清空 ' + d.deleted + ' 条历史记录' + (d.delete_files ? '（含本地视频）' : ''), 'success');
+                this._videoTasks = [];
+                this._loadVideoTasks(true);
+            } else {
+                App.showToast('清空未完成: ' + (d ? (d.detail || '未知') : '无响应'), 'error');
+            }
+        } catch (e) { App.showToast('清空异常: ' + e.message, 'error'); }
     };
 
     // 重试任务
