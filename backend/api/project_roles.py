@@ -247,6 +247,17 @@ async def parse_role_doc(mid: int, data: dict = Body(...), request: Request = No
         "天气": "weather", "氛围": "atmosphere", "情绪": "atmosphere", "视角": "perspective",
         "构图": "composition", "细节": "details"
     }
+    # v5.36.44: LLM 英文 key 别名 → 标准 key
+    EN_KEY_MAP = {
+        "gender": "gender", "age": "age", "hairstyle": "hairstyle", "hair": "hairstyle",
+        "facial": "facial", "face": "facial", "body": "body", "height": "body", "skin": "body",
+        "clothing": "clothing", "outfit": "clothing", "dress": "clothing", "costume": "clothing",
+        "accessory": "accessory", "pose": "pose", "occupation": "occupation", "job": "occupation",
+        "temperament": "temperament", "personality": "temperament", "style": "style",
+        "background": "background", "lighting": "lighting", "color_scheme": "color_scheme",
+        "location": "location", "time": "time", "weather": "weather", "atmosphere": "atmosphere",
+        "emotion": "atmosphere", "composition": "composition", "details": "details", "name": "name"
+    }
 
     # ── 1. LLM 拆分（Ollama） ──
     settings = None
@@ -279,18 +290,30 @@ async def parse_role_doc(mid: int, data: dict = Body(...), request: Request = No
                     _vs = str(_v).strip()
                     if not _vs:
                         continue
-                    # 精确匹配 → 子串匹配（LLM 输出多为完整中文标签）
+                    # 精确匹配 → 子串匹配（LLM 输出多为完整中文标签）→ 英文别名
                     _k2 = KEY_MAP.get(_ks)
                     if not _k2:
                         for _cn, _key in KEY_MAP.items():
                             if _cn in _ks:
                                 _k2 = _key
                                 break
+                    if not _k2:
+                        _k2 = EN_KEY_MAP.get(_ks.lower())
                     settings[_k2 or _ks] = _vs
             name = str(parsed.get("name") or "").strip()
     except Exception as e:
         print(f"[ProjectRoles] LLM 解析失败，回退规则: {e}")
         settings = None
+
+    # LLM 返回但未解析出内容时也打印（ollama_chat 不抛异常但 ok=False）
+    if settings is None:
+        try:
+            _raw0 = result.get("content") if isinstance(result, dict) else ""
+            _ok0 = result.get("ok") if isinstance(result, dict) else None
+            if not _ok0:
+                print(f"[ProjectRoles] LLM 返回失败: {str(result)[:200]}")
+        except Exception:
+            pass
 
     # ── 2. 规则拆分兜底（字段格式 + 自由长文关键词提取） ──
     if settings is None:
@@ -331,8 +354,10 @@ async def parse_role_doc(mid: int, data: dict = Body(...), request: Request = No
                 if m:
                     name = m.group(1)
 
+    # 全失败兜底：绝不 400，返回全文 summary（用户可手动编辑字段）
     if not settings and not name:
-        raise HTTPException(400, "无法从文档中识别出人设字段，请检查格式（建议每行：字段：值）或稍后重试")
+        settings = {"details": text[:500]}
+        name = "未命名"
     if not name:
         name = "未命名"
 
