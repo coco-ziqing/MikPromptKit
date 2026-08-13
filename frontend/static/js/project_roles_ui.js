@@ -260,11 +260,14 @@
         var d = await (await fetch('/api/seedance/' + spid + '/roles?role_type=' + roleType)).json();
         if (!d.master_project_id) { this._toast('该分镜项目未关联总项目', 'error'); return; }
         var roles = d.roles || [];
+        var masterId = d.master_project_id;
         var ov = document.createElement('div'); ov.className = 'pk-auth-modal-overlay'; ov.id = 'rlShot';
         ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+        var emptyHtml = '<div style="padding:18px;text-align:center;color:var(--text-muted);">本总项目暂无' + (roleType === 'character' ? '角色' : '场景') + '实例，请先在「项目设定」创建</div>' +
+          (masterId ? '<div style="text-align:center;padding:0 18px 14px;"><button class="btn btn-sm btn-primary" onclick="PK_ROLES.gotoProjectSettings(' + masterId + ')" style="padding:6px 16px;">⚙️ 前往项目设定 → 创建' + (roleType === 'character' ? '角色' : '场景') + '</button></div>' : '');
         var list = roles.length ? roles.map(function (r) {
           return '<div style="padding:8px 10px;border-bottom:1px solid var(--border-color);cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="PK_ROLES.doShotApply(' + r.id + ',' + shotId + ')"><span style="font-size:13px;color:var(--text-main);">' + (roleType === 'character' ? '🎭' : '🏞') + ' ' + self._esc(r.name) + ' <span style="font-size:10px;color:var(--text-muted);">v' + (r.version_count || 1) + '</span></span><span style="font-size:11px;color:var(--primary);">应用→</span></div>';
-        }).join('') : '<div style="padding:18px;text-align:center;color:var(--text-muted);">本总项目暂无' + (roleType === 'character' ? '角色' : '场景') + '实例，请先在「项目设定」创建</div>';
+        }).join('') : emptyHtml;
         ov.innerHTML = '<div class="pk-auth-modal" style="max-width:420px;width:92vw;" onclick="event.stopPropagation()"><h4>🎬 为镜头选' + (roleType === 'character' ? '角色' : '场景') + '</h4>' +
           '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">本总项目实例（点击应用到镜头）：</div>' +
           '<div style="max-height:46vh;overflow:auto;">' + list + '</div>' +
@@ -272,6 +275,22 @@
           '<button class="btn btn-secondary" onclick="this.closest(\'.pk-auth-modal-overlay\').remove()">关闭</button></div></div>';
         document.body.appendChild(ov);
       } catch (e) { this._toast('加载未完成', 'error'); }
+    },
+    // v5.36.37: 快捷跳转 → 项目设定（打开该总项目的角色库）
+    gotoProjectSettings: function (masterId) {
+      var ov = document.getElementById('rlShot'); if (ov) ov.remove();
+      try { this.open(); } catch (e) {}
+      var self = this;
+      setTimeout(function () {
+        try {
+          var proj = null;
+          var arr = self._projects || [];
+          for (var i = 0; i < arr.length; i++) { if (arr[i].id === masterId) { proj = arr[i]; break; } }
+          var pname = proj ? proj.name : '';
+          self.openProject(masterId, pname);
+          self._toast('已打开项目设定，可创建/选择角色实例', 'info');
+        } catch (e) { self._toast('跳转未完成', 'error'); }
+      }, 150);
     },
     _browsePublic: function (shotId, roleType) {
       var ov = document.getElementById('rlShot'); if (ov) ov.remove();
