@@ -82,16 +82,18 @@
         for (var vj = 0; vj < VRESS.length; vj++) {
             vrOpts += '<option value="'+VRESS[vj]+'"'+(VRESS[vj]===vres?' selected':'')+'>'+_resLabel(VRESS[vj])+'</option>';
         }
-        h+='<div class="s2-global-row" style="margin-top:6px;background:rgba(16,185,129,0.05);border:1px dashed rgba(16,185,129,0.3);border-radius:6px;padding:6px 8px;">';
-        h+='<div style="width:100%;font-size:11px;font-weight:700;color:#10b981;margin-bottom:4px;">🎬 即梦视频参数 <span style="font-weight:400;color:var(--text-muted);font-size:10px;">(生成视频时的默认参数，提交弹窗可改)</span></div>';
+        h+='<div class="s2-sub-panel s2-video-params">';
+        h+='<div class="s2-sub-panel-title"><span>🎬 即梦视频参数</span><span class="s2-sub-note">生成视频时的默认参数，提交弹窗可改</span></div>';
+        h+='<div class="s2-global-row">';
         h+='<div class="s2-field" style="flex:1.4;"><label>模型版本</label><select id="s2_video_model" class="s2-input" onchange="App.seedanceV2._saveVideoParam(&apos;video_model&apos;,this.value)">'+vmOpts+'</select></div>';
         h+='<div class="s2-field" style="flex:1;"><label>视频分辨率</label><select id="s2_video_resolution" class="s2-input" onchange="App.seedanceV2._saveVideoParam(&apos;video_resolution&apos;,this.value)">'+vrOpts+'</select></div>';
         h+='<div class="s2-field" style="flex:0.8;"><label>即梦会话</label><input id="s2_video_session" class="s2-input" type="number" min="0" value="'+vses+'" onchange="App.seedanceV2._saveVideoParam(&apos;video_session&apos;,this.value)" title="即梦 CLI --session，默认 0"></div>';
+        h+='</div>';
         h+='<div style="width:100%;font-size:10px;color:var(--text-muted);margin-top:2px;" id="s2VideoParamHint">💡 即梦画幅取上方「画幅」设置（16:9/9:16/1:1/21:9/4:3/3:4 均支持）；分辨率超出模型上限将自动降级（如 seedance2.0fast 上限 720p）。</div>';
         h+='</div>';
         // v5.36.2: 全局图像参考（所有镜头共享，上限9张）
-        h+='<div class="s2-global-row" style="margin-top:6px;background:rgba(139,92,246,0.05);border:1px dashed rgba(139,92,246,0.3);border-radius:6px;padding:6px 8px;">';
-        h+='<div style="width:100%;font-size:11px;font-weight:700;color:#8b5cf6;margin-bottom:4px;">🖼 全局图像参考 <span style="font-weight:400;color:var(--text-muted);font-size:10px;">(所有镜头共享，生成视频时携带)</span><button class="s2-ref-add-btn s2-ref-add-global" data-scene-id="global" style="float:right;border:1px solid #8b5cf6;color:#8b5cf6;" title="添加全局参考图（上限9张）">+ 添加</button></div>';
+        h+='<div class="s2-sub-panel s2-global-refs">';
+        h+='<div class="s2-sub-panel-title"><span>🖼 全局图像参考</span><span class="s2-sub-note">所有镜头共享，生成视频时携带</span><span class="s2-sub-actions"><button class="s2-ref-add-btn s2-ref-add-global" data-scene-id="global" title="添加全局参考图（上限9张）">+ 添加</button></span></div>';
         h+='<div class="s2-ref-thumbs" id="s2RefThumbs_global"></div>';
         h+='</div></div></div>';
         // ③ 输出预览

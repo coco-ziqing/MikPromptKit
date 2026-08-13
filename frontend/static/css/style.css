@@ -3974,6 +3974,14 @@ body.dark-theme .header-divider {
 .s2-archive-item-val { color:var(--text-main); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 /* ===== v5.36.2: 图像参考样式 ===== */
+/* v5.36.31: 即梦视频参数/全局图像参考 子面板（块级容器，标题独占一行） */
+.s2-sub-panel { display:block; margin-top:6px; border-radius:6px; padding:6px 8px; }
+.s2-video-params { background:rgba(16,185,129,0.05); border:1px dashed rgba(16,185,129,0.3); }
+.s2-global-refs { background:rgba(139,92,246,0.05); border:1px dashed rgba(139,92,246,0.3); }
+.s2-sub-panel-title { display:flex; align-items:center; gap:6px; width:100%; font-size:11px; font-weight:700; color:var(--text-main); margin-bottom:6px; flex-wrap:wrap; }
+.s2-sub-panel-title .s2-sub-note { font-weight:400; color:var(--text-muted); font-size:10px; }
+.s2-sub-panel-title .s2-sub-actions { margin-left:auto; display:flex; align-items:center; gap:6px; }
+.s2-sub-panel .s2-global-row { margin-bottom:0; }
 .s2-ref-group { align-items: center; margin-top: 2px; }
 .s2-ref-add-btn { display:inline-block; font-size:11px; padding:2px 8px; border:1px dashed #8b5cf6; color:#8b5cf6; border-radius:5px; cursor:pointer; transition:0.15s; margin-right:4px; }
 .s2-ref-add-btn:hover { background:rgba(139,92,246,0.08); }
