@@ -233,21 +233,28 @@
             var refs = [];
             var gd = await App.fetchJSON('/api/seedance/v2/refs?project_id='+this.currentProjectId);
             if (gd && gd.items) refs = refs.concat(gd.items);
+            // v5.36.35: 收集全局音频（BGM/解说）
+            var audios = [];
+            try { var ag = await App.fetchJSON('/api/seedance/v2/audio-refs?project_id='+this.currentProjectId); if (ag && ag.items) audios = audios.concat(ag.items); } catch(e) {}
             // 逐镜头（scope=scenes 时前端先显示总数提示）
             var sceneTotal = 0;
+            var audioTotal = audios.length;
             var scenes = this.scenes || [];
             for (var i = 0; i < scenes.length; i++) {
                 var dd = await App.fetchJSON('/api/seedance/v2/refs?project_id='+this.currentProjectId+'&scene_id='+scenes[i].id);
                 if (dd && dd.items) sceneTotal += dd.items.length;
+                try { var da = await App.fetchJSON('/api/seedance/v2/audio-refs?project_id='+this.currentProjectId+'&scene_id='+scenes[i].id); if (da && da.items) audioTotal += da.items.length; } catch(e) {}
             }
-            if (!refs.length && !sceneTotal) {
-                box.innerHTML = '<div style="font-size:11px;color:var(--text-muted);background:var(--hover-bg);border-radius:6px;padding:6px 10px;">📝 生产方式：纯文本（无图像参考）。可在镜头卡「🖼 参考」或全局参数「🖼 全局图像参考」添加。</div>';
+            if (!refs.length && !sceneTotal && !audioTotal) {
+                box.innerHTML = '<div style="font-size:11px;color:var(--text-muted);background:var(--hover-bg);border-radius:6px;padding:6px 10px;">📝 生产方式：纯文本（无图像/音频参考）。可在镜头卡「🖼 参考」「🎵 对白」或全局参数区添加。</div>';
                 return;
             }
             var mode = '';
             var total = refs.length + sceneTotal;
-            if (total === 0) mode = '📝 纯文本';
-            else if (total === 1) mode = '🖼 单图参考 → image2video';
+            var hasAudio = audioTotal > 0;
+            if (total === 0 && !hasAudio) mode = '📝 纯文本';
+            else if (total === 1 && !hasAudio) mode = '🖼 单图参考 → image2video';
+            else if (hasAudio) mode = '🎬 图文音参考('+total+'图/'+audioTotal+'音) → multimodal2video';
             else mode = '🖼🖼 多图参考('+total+') → multimodal2video';
             var h = '<div style="font-size:11px;font-weight:600;margin-bottom:4px;color:#8b5cf6;">'+mode+'</div>';
             if (refs.length) {
@@ -263,6 +270,20 @@
             }
             if (sceneTotal) {
                 h += '<div style="font-size:10px;color:var(--text-muted);">+ '+sceneTotal+' 张镜头级参考图（逐镜头模式时随镜头携带）</div>';
+            }
+            // v5.36.35: 音频预览
+            if (audioTotal) {
+                var aType = {bgm:'🎵BGM', voice:'🗣对白', narration:'🎙解说'};
+                h += '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">🎵 音频参考 ('+audioTotal+'): ';
+                var names = [];
+                var allAud = audios.slice();
+                for (var ai2 = 0; ai2 < scenes.length; ai2++) {
+                    try { var da2 = await App.fetchJSON('/api/seedance/v2/audio-refs?project_id='+this.currentProjectId+'&scene_id='+scenes[ai2].id); if (da2 && da2.items) allAud = allAud.concat(da2.items); } catch(e) {}
+                }
+                for (var aj = 0; aj < allAud.length; aj++) {
+                    names.push((aType[allAud[aj].audio_type]||'🎵') + (allAud[aj].ref_name ? ' '+App._escape(allAud[aj].ref_name) : ''));
+                }
+                h += names.join(' · ') + '</div>';
             }
             box.innerHTML = h;
         } catch (e) {

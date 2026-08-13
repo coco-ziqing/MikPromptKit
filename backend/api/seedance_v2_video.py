@@ -91,6 +91,9 @@ def _ensure_video_task_table():
     if tbl_cols and "fail_category" not in tbl_cols:
         db.execute("ALTER TABLE seedance_video_tasks ADD COLUMN fail_category TEXT DEFAULT ''")
         print("[Seedance Video] seedance_video_tasks 增加列 fail_category")
+    if tbl_cols and "audio_refs" not in tbl_cols:
+        db.execute("ALTER TABLE seedance_video_tasks ADD COLUMN audio_refs TEXT DEFAULT ''")
+        print("[Seedance Video] seedance_video_tasks 增加列 audio_refs")
     db.execute("""CREATE TABLE IF NOT EXISTS seedance_video_tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id INTEGER,
@@ -103,6 +106,7 @@ def _ensure_video_task_table():
         video_resolution TEXT DEFAULT '720p',
         session INTEGER DEFAULT 0,
         image_refs TEXT DEFAULT '',
+        audio_refs TEXT DEFAULT '',
         progress INTEGER DEFAULT 0,
         fail_category TEXT DEFAULT '',
         submit_id TEXT DEFAULT '',
@@ -115,6 +119,16 @@ def _ensure_video_task_table():
         finished_at TEXT DEFAULT ''
     )""")
     safe_commit()
+
+
+def _ensure_video_audio_col():
+    """幂等：seedance_video_tasks 表存在 audio_refs 列（v5.36.35）"""
+    db = get_db()
+    cols = [r["name"] for r in db.execute("PRAGMA table_info(seedance_video_tasks)").fetchall()]
+    if "audio_refs" not in cols:
+        db.execute("ALTER TABLE seedance_video_tasks ADD COLUMN audio_refs TEXT DEFAULT ''")
+        print("[Seedance Video] seedance_video_tasks 增加列 audio_refs")
+        safe_commit()
 
 
 def _task_update(task_id: int, **kw):
@@ -263,6 +277,44 @@ def _collect_refs(project_id: int, scene_id) -> list:
     # v5.36.6: 角色图优先、场景/风格随后（@图像N 编号与声明分组更清晰）
     refs.sort(key=lambda x: 0 if x["ref_type"] == "character" else (1 if x["ref_type"] == "scene" else 2))
     return refs
+
+
+def _collect_audios(project_id: int, scene_id) -> list:
+    """收集音频参考：镜头级 + 全局级合并（BGM/对白/画外音）
+    返回 [{audio_type, ref_name, file_path, url, duration}]
+    """
+    db = get_db()
+    try:
+        db.execute("SELECT 1 FROM seedance_audio_refs LIMIT 1")
+    except Exception:
+        return []
+    audios = []
+    seen = set()
+    rows = []
+    try:
+        if scene_id:
+            rows += db.execute(
+                "SELECT * FROM seedance_audio_refs WHERE project_id=? AND scene_id=? ORDER BY sort_order, id",
+                [project_id, scene_id]).fetchall()
+        rows += db.execute(
+            "SELECT * FROM seedance_audio_refs WHERE project_id=? AND scene_id IS NULL ORDER BY sort_order, id",
+            [project_id]).fetchall()
+    except Exception:
+        return []
+    for r in rows:
+        fp = r["file_path"] or ""
+        if not fp or fp in seen:
+            continue
+        seen.add(fp)
+        audios.append({"audio_type": r["audio_type"] or "bgm",
+                       "ref_name": r["ref_name"] or "",
+                       "file_path": fp,
+                       "url": r["url"] or "",
+                       "duration": float(r["duration"] or 0)})
+    # 画外音/对白优先、BGM 随后
+    order = {"narration": 0, "voice": 1, "bgm": 2}
+    audios.sort(key=lambda x: order.get(x["audio_type"], 3))
+    return audios
 
 
 # 错误分类: CLI 原始错误 → 类别 + 用户引导（v5.36.7）
@@ -443,13 +495,19 @@ def _video_worker(task_id: int):
                 refs = json.loads(task["image_refs"] or "[]")
             except Exception:
                 refs = []
+            audios = []
+            try:
+                audios = json.loads(task["audio_refs"] or "[]")
+            except Exception:
+                audios = []
             ref_paths = [r.get("file_path", "") for r in refs if r.get("file_path") and os.path.exists(r.get("file_path", ""))]
+            audio_paths = [a.get("file_path", "") for a in audios if a.get("file_path") and os.path.exists(a.get("file_path", ""))]
             # v5.36.7: 提交前压缩参考图（保持顺序），解决 CLI 大图上传超时
             if ref_paths:
                 ref_paths = [_compress_ref_image(p) for p in ref_paths]
-            if ttype in ("image2video", "multimodal2video") and ref_paths:
-                # 图像参考模式：image2video(单图) / multimodal2video(多图)
-                cmd = "image2video" if (ttype == "image2video" and len(ref_paths) == 1) else "multimodal2video"
+            if (ttype in ("image2video", "multimodal2video") and ref_paths) or (ttype == "multimodal2video" and audio_paths):
+                # 图像/音频参考模式：image2video(单图) / multimodal2video(多图/含音频)
+                cmd = "image2video" if (ttype == "image2video" and len(ref_paths) == 1 and not audio_paths) else "multimodal2video"
                 args = [cmd, "--prompt", task["prompt"],
                         "--model_version", task["model_version"],
                         "--duration", str(task["duration"]),
@@ -458,6 +516,9 @@ def _video_worker(task_id: int):
                         "--poll", "0"]
                 for rp in ref_paths:
                     args += ["--image", rp]
+                # v5.36.35: 音频参考（BGM/对白/画外音）
+                for ap in audio_paths:
+                    args += ["--audio", ap]
             else:
                 args = ["text2video", "--prompt", task["prompt"],
                         "--model_version", task["model_version"],
@@ -980,10 +1041,13 @@ def create_video_tasks(data: dict = Body(...)):
             raise HTTPException(400, "项目没有可组装的镜头内容")
         refs = _collect_refs(project_id, None)
         _check_ref_limit(refs, "全局")
+        audios = _collect_audios(project_id, None)
         tt = _pick_task_type(refs, task_type)
+        if audios and tt == "text2video":
+            tt = "multimodal2video"  # v5.36.35: 有音频时走全能参考模式（可纯音频）
         if refs:
             full = _build_ref_aware_prompt(full, refs)
-        tasks.append({"scene_id": None, "prompt": full, "duration": dur, "refs": refs, "task_type": tt})
+        tasks.append({"scene_id": None, "prompt": full, "duration": dur, "refs": refs, "audios": audios, "task_type": tt})
     else:
         scene_ids = data.get("scene_ids")
         if scene_ids:
@@ -1004,23 +1068,28 @@ def create_video_tasks(data: dict = Body(...)):
             dur = _validate_duration(model, int(float(s["duration"] or 5)))
             refs = _collect_refs(project_id, s["id"])
             _check_ref_limit(refs, f"镜头{s['scene_order']}")
+            audios = _collect_audios(project_id, s["id"])
             tt = _pick_task_type(refs, task_type)
+            if audios and tt == "text2video":
+                tt = "multimodal2video"  # v5.36.35: 有音频时走全能参考模式
             # v5.36.5: 参考图模式提示词规范（图声明段 + 动态描述）
             if refs:
                 sp = _build_ref_aware_prompt(sp, refs)
-            tasks.append({"scene_id": s["id"], "prompt": sp, "duration": dur, "refs": refs, "task_type": tt})
+            tasks.append({"scene_id": s["id"], "prompt": sp, "duration": dur, "refs": refs, "audios": audios, "task_type": tt})
 
     if not tasks:
         raise HTTPException(400, "没有可生成的内容（请先填充镜头字段）")
 
-    # 写入队列（v5.36.2: 携带参考图 JSON）
+    # 写入队列（v5.36.2: 携带参考图 JSON；v5.36.35: 携带音频 JSON）
+    _ensure_video_audio_col()
     created_ids = []
     for t in tasks:
         refs_json = json.dumps(t["refs"], ensure_ascii=False)
+        audios_json = json.dumps(t.get("audios") or [], ensure_ascii=False)
         cur = db.execute(
-            "INSERT INTO seedance_video_tasks (project_id, scene_id, task_type, prompt, model_version, ratio, duration, video_resolution, session, image_refs, status, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)",
-            [project_id, t["scene_id"], t["task_type"], t["prompt"], model, ratio, t["duration"], resolution, video_session, refs_json, _now_str()]
+            "INSERT INTO seedance_video_tasks (project_id, scene_id, task_type, prompt, model_version, ratio, duration, video_resolution, session, image_refs, audio_refs, status, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)",
+            [project_id, t["scene_id"], t["task_type"], t["prompt"], model, ratio, t["duration"], resolution, video_session, refs_json, audios_json, _now_str()]
         )
         created_ids.append(cur.lastrowid)
     safe_commit()

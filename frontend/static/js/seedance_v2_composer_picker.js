@@ -95,6 +95,11 @@
         h+='<div class="s2-sub-panel s2-global-refs">';
         h+='<div class="s2-sub-panel-title"><span>🖼 全局图像参考</span><span class="s2-sub-note">所有镜头共享，生成视频时携带</span><span class="s2-sub-actions"><button class="s2-ref-add-btn s2-ref-add-global" data-scene-id="global" title="添加全局参考图（上限9张）">+ 添加</button></span></div>';
         h+='<div class="s2-ref-thumbs" id="s2RefThumbs_global"></div>';
+        h+='</div>';
+        // v5.36.35: 全局音频参考（BGM 背景音乐 + 画外音/解说旁白）
+        h+='<div class="s2-sub-panel s2-global-audio">';
+        h+='<div class="s2-sub-panel-title"><span>🎵 全局音频</span><span class="s2-sub-note">BGM 背景音乐 / 画外音解说（所有镜头共享）</span><span class="s2-sub-actions"><button class="s2-audio-add-btn s2-audio-add-global" data-scene-id="global" title="添加音频（BGM/解说）">+ 添加</button></span></div>';
+        h+='<div class="s2-audio-thumbs" id="s2AudioThumbs_global"></div>';
         h+='</div></div></div>';
         // ③ 输出预览
         h+='<div class="s2-output-section"><div class="s2-section-title" onclick="App.seedanceV2._toggleOutput()" title="点击折叠/展开"> 输出预览 <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span></div>';
@@ -444,11 +449,15 @@
             document.querySelectorAll('.s2-edit-all-archive').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=parseInt(this.dataset.sceneId);if(!sid)return;self._archiveAllFields(sid);});});
             // ===== v5.36.2: 参考图事件 =====
             document.querySelectorAll('.s2-ref-add-btn').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=this.dataset.sceneId;if(sid==='global'){self._openRefPicker(null);}else if(sid){self._openRefPicker(parseInt(sid));}else{var p=this.closest('.s2-ref-group');var pid2=p?p.dataset.sceneId:null;if(pid2==='global')self._openRefPicker(null);else if(pid2)self._openRefPicker(parseInt(pid2));}});});
+            // ===== v5.36.35: 音频参考事件 =====
+            document.querySelectorAll('.s2-audio-add-btn').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=this.dataset.sceneId;if(sid==='global'){self._openAudioPicker(null);}else if(sid){self._openAudioPicker(parseInt(sid));}else{var p=this.closest('.s2-audio-ref-group');var pid2=p?p.dataset.sceneId:null;if(pid2==='global')self._openAudioPicker(null);else if(pid2)self._openAudioPicker(parseInt(pid2));}});});
             document.querySelectorAll('.s2-ref-del').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var id=parseInt(this.dataset.refId);if(!id)return;self._deleteRef(id);});});
             document.querySelectorAll('.s2-ref-edit').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var id=parseInt(this.dataset.refId);if(!id)return;self._editRefName(id);});});
             self._loadAllRefThumbs();
             // v5.36.33: 填充即梦会话下拉（异步拉取名称）
             self._refreshVideoSessions && self._refreshVideoSessions();
+            // v5.36.35: 加载音频参考缩略条
+            self._loadAllAudioThumbs && self._loadAllAudioThumbs();
 
         },100);
         // v9.3: 每次渲染镜头卡片后刷新时间轴
@@ -526,6 +535,12 @@
         h+='<span class="s2-field-label">🖼 参考</span>';
         h+='<span class="s2-ref-add-btn" data-scene-id="'+s.id+'" title="添加角色参考图/场景参考图（上限9张）">+ 添加</span>';
         h+='<div class="s2-ref-thumbs" id="s2RefThumbs_'+s.id+'"></div>';
+        h+='</div>';
+                // == v5.36.35: 音频参考区（角色对白配音） ==
+        h+='<div class="s2-field-group s2-audio-ref-group" data-scene-id="'+s.id+'">';
+        h+='<span class="s2-field-label">🎵 对白</span>';
+        h+='<span class="s2-audio-add-btn" data-scene-id="'+s.id+'" title="添加角色对白配音音频">+ 配音</span>';
+        h+='<div class="s2-audio-thumbs" id="s2AudioThumbs_'+s.id+'"></div>';
         h+='</div>';
                 // == 拓展区：功能单元(Ext-Unit)系统 ==
         h+='<div class="s2-field-group s2-ext-group">';
@@ -1110,6 +1125,154 @@
             if (d && d.ok) {
                 App.showToast('已删除参考图', 'info');
                 await this._loadAllRefThumbs();
+            } else {
+                App.showToast('删除未完成: ' + (d ? (d.detail||'未知') : '无响应'), 'error');
+            }
+        } catch (e) { App.showToast('删除异常: '+e.message, 'error'); }
+    };
+
+    // ============ v5.36.35: 音频参考（BGM/角色对白/画外音） ============
+
+    // 加载全局 + 各镜头音频缩略条
+    App.seedanceV2._loadAllAudioThumbs = async function() {
+        if (!this.currentProjectId) return;
+        var self = this;
+        try {
+            var gd = await App.fetchJSON('/api/seedance/v2/audio-refs?project_id='+this.currentProjectId);
+            if (gd) self._renderAudioThumbs(gd.items || [], 'global');
+            var scenes = this.scenes || [];
+            for (var i = 0; i < scenes.length; i++) {
+                var sid = scenes[i].id;
+                var dd = await App.fetchJSON('/api/seedance/v2/audio-refs?project_id='+this.currentProjectId+'&scene_id='+sid);
+                if (dd) self._renderAudioThumbs(dd.items || [], sid);
+            }
+        } catch (e) { console.warn('audio refs load fail', e); }
+    };
+
+    // 渲染音频缩略条
+    App.seedanceV2._renderAudioThumbs = function(items, scopeKey) {
+        var c = document.getElementById('s2AudioThumbs_'+scopeKey);
+        if (!c) return;
+        if (!items.length) { c.innerHTML = '<span style="font-size:10px;color:var(--text-muted);">暂无音频</span>'; return; }
+        var typeIcon = {bgm: '🎵', voice: '🗣', narration: '🎙'};
+        var typeName = {bgm: 'BGM', voice: '对白', narration: '解说'};
+        var h = '';
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            var label = (typeIcon[it.audio_type]||'🎵') + ' ' + (it.ref_name ? App._escape(it.ref_name) : (typeName[it.audio_type]||'音频'));
+            h += '<span class="s2-ref-thumb" title="'+App._escape(it.file_path||'')+'">' +
+                '<span style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:rgba(16,185,129,0.08);border-radius:6px;border:1px solid var(--border-color);font-size:18px;cursor:pointer;" onclick="App.seedanceV2._playAudio(\''+encodeURIComponent(it.file_path||'')+'\',this)">'+(typeIcon[it.audio_type]||'🎵')+'</span>' +
+                '<span class="s2-ref-thumb-label">'+label+(it.duration ? ' · '+it.duration+'s' : '')+'</span>' +
+                '<button class="s2-ref-del" data-audio-id="'+it.id+'" title="删除">✕</button>' +
+                '</span>';
+        }
+        c.innerHTML = h;
+        var self = this;
+        c.querySelectorAll('.s2-ref-del[data-audio-id]').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var id = parseInt(this.dataset.audioId);
+                if (id) self._deleteAudioRef(id);
+            });
+        });
+    };
+
+    // 播放音频预览
+    App.seedanceV2._playAudio = function(encodedPath, el) {
+        var path = decodeURIComponent(encodedPath);
+        var fname = path.split(/[\\\/]/).pop();
+        var url = '/api/seedance/v2/audio-refs/file/' + encodeURIComponent(fname);
+        var a = new Audio(url);
+        a.play().catch(function(e){ App.showToast('音频播放失败', 'error'); });
+    };
+
+    // 打开音频添加弹窗（上传 / 选类型 / 命名）
+    App.seedanceV2._openAudioPicker = async function(sceneId) {
+        var old = document.getElementById('s2AudioPicker');
+        if (old) old.remove();
+        var self = this;
+        var scopeLabel = sceneId ? ('镜头 #' + (function(){ for (var i=0;i<self.scenes.length;i++){ if(self.scenes[i].id===sceneId) return self.scenes[i].scene_order; } return sceneId; })()) : '全局';
+        var overlay = document.createElement('div');
+        overlay.id = 's2AudioPicker';
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'display:flex;z-index:725;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+        overlay.innerHTML = '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:520px;">' +
+            '<div class="modal-header"><h5>🎵 添加音频 — '+scopeLabel+'</h5><button class="header-btn-sm" onclick="document.getElementById(\'s2AudioPicker\').remove()">&times;</button></div>' +
+            '<div class="modal-body">' +
+            '<div style="font-size:12px;margin-bottom:8px;">' +
+            (sceneId
+              ? '<div style="margin-bottom:6px;">🗣 <strong>角色对白配音</strong>：上传本镜头角色的台词/配音音频</div>'
+              : '<div style="margin-bottom:6px;">🎵 <strong>BGM 背景音乐</strong>：全片氛围音乐</div>' +
+                '<div>🎙 <strong>画外音/解说</strong>：旁白解说（全局共享）</div>') +
+            '</div>' +
+            '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">音频类型</label>' +
+            '<select id="s2AudioType" class="s2-input" style="width:100%;margin-bottom:10px;">' +
+            (sceneId
+              ? '<option value="voice">🗣 角色对白</option>'
+              : '<option value="bgm">🎵 BGM 背景音乐</option><option value="narration">🎙 画外音/解说</option><option value="voice">🗣 角色对白（全镜头）</option>') +
+            '</select>' +
+            '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">名称备注</label>' +
+            '<input id="s2AudioName" class="s2-input" style="width:100%;margin-bottom:10px;" placeholder="如：主角台词 / 紧张悬疑BGM" value="">' +
+            '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">音频文件 (mp3/wav/m4a/aac/flac/ogg, ≤50MB)</label>' +
+            '<input type="file" id="s2AudioFile" accept=".mp3,.wav,.m4a,.aac,.flac,.ogg,.wma,audio/*" class="s2-input" style="margin-bottom:10px;">' +
+            '<div id="s2AudioUploadTip" style="font-size:11px;color:var(--text-muted);margin-bottom:6px;"></div>' +
+            '</div>' +
+            '<div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'s2AudioPicker\').remove()">取消</button>' +
+            '<button class="btn btn-primary btn-sm" id="s2AudioUploadBtn">📤 上传并添加</button></div></div>';
+        document.body.appendChild(overlay);
+        var fileInput = document.getElementById('s2AudioFile');
+        fileInput.addEventListener('change', function() {
+            var f = fileInput.files && fileInput.files[0];
+            var tip = document.getElementById('s2AudioUploadTip');
+            if (f) tip.textContent = '已选: ' + f.name + ' (' + (f.size/1024/1024).toFixed(1) + 'MB)';
+        });
+        document.getElementById('s2AudioUploadBtn').onclick = async function() {
+            var f = fileInput.files && fileInput.files[0];
+            if (!f) { App.showToast('请选择音频文件', 'warning'); return; }
+            var btn = document.getElementById('s2AudioUploadBtn');
+            btn.disabled = true; btn.textContent = '上传中...';
+            try {
+                var fd = new FormData();
+                fd.append('file', f);
+                var up = await App.fetchJSON('/api/seedance/v2/audio-refs/upload', { method: 'POST', body: fd });
+                if (!up || !up.ok) { App.showToast('上传失败: ' + (up ? (up.detail||'') : '无响应'), 'error'); btn.disabled=false; btn.textContent='📤 上传并添加'; return; }
+                var at = document.getElementById('s2AudioType').value;
+                var nm = document.getElementById('s2AudioName').value;
+                var body = {
+                    project_id: self.currentProjectId,
+                    scene_id: sceneId || null,
+                    audio_type: at,
+                    ref_name: nm || '',
+                    file_path: up.file_path.replace(/\\/g,'/'),
+                    url: up.url,
+                    duration: up.duration || 0
+                };
+                var d = await App.fetchJSON('/api/seedance/v2/audio-refs', {
+                    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+                });
+                if (d && d.ok) {
+                    App.showToast('✅ 音频已添加', 'success');
+                    document.getElementById('s2AudioPicker').remove();
+                    await self._loadAllAudioThumbs();
+                } else {
+                    App.showToast('添加未完成: ' + (d ? (d.detail||'') : '无响应'), 'error');
+                }
+            } catch (e) {
+                App.showToast('上传异常: ' + e.message, 'error');
+            }
+            btn.disabled = false; btn.textContent = '📤 上传并添加';
+        };
+    };
+
+    // 删除音频参考
+    App.seedanceV2._deleteAudioRef = async function(refId) {
+        var self = this;
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/audio-refs/'+refId, { method:'DELETE' });
+            if (d && d.ok) {
+                App.showToast('已删除音频', 'info');
+                await this._loadAllAudioThumbs();
             } else {
                 App.showToast('删除未完成: ' + (d ? (d.detail||'未知') : '无响应'), 'error');
             }
