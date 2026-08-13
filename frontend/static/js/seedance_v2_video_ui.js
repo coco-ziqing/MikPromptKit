@@ -490,7 +490,9 @@
                     sumEl.innerHTML = '<div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;">' +
                         '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:4px;">' +
                         '<span><strong>'+done+'</strong>/'+total+' 完成'+(active?' · <span style="color:#f59e0b;">'+active+' 进行中</span>':'')+(failed?' · <span style="color:#ef4444;">'+failed+' 失败</span>':'')+'</span>' +
-                        '<span style="font-weight:700;color:'+(donePct===100?'#10b981':'var(--text-main)')+';">'+donePct+'%</span></div>' +
+                        '<span style="display:flex;align-items:center;gap:8px;">' +
+                        (done + failed > 0 ? '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._clearVideoHistory()" style="color:#ef4444;border-color:#ef4444;font-size:10px;padding:1px 8px;" title="清空已完成/失败的生成记录（含本地视频文件），进行中任务保留">🧹 清空生成记录</button>' : '') +
+                        '<span style="font-weight:700;color:'+(donePct===100?'#10b981':'var(--text-main)')+';">'+donePct+'%</span></span></div>' +
                         '<div style="height:8px;background:var(--hover-bg);border-radius:4px;overflow:hidden;">' +
                         '<div style="height:100%;width:'+donePct+'%;background:linear-gradient(90deg,#10b981,#22c55e);border-radius:4px;transition:width 0.6s;"></div></div>' +
                         '</div>';
