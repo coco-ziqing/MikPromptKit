@@ -347,7 +347,9 @@
         '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'rlInst\').remove()">✕</button></h4>' +
         '<div style="display:flex;gap:16px;flex-wrap:wrap;">' +
         '<div style="flex:1;min-width:260px;">' +
-        '<div style="font-size:13px;font-weight:700;color:var(--text-main);margin-bottom:6px;">🧩 设定字段</div>' +
+        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;"><span style="font-size:13px;font-weight:700;color:var(--text-main);">🧩 设定字段</span>' +
+        '<button class="btn btn-xs btn-outline-secondary" style="font-size:10px;" onclick="PK_ROLES.importTemplateFields(' + r.id + ')" title="从公共库角色模板导入字段">📚 从模板导入</button>' +
+        '<button class="btn btn-xs btn-outline-secondary" style="font-size:10px;" onclick="PK_ROLES.docToFields(' + r.id + ')" title="粘贴角色设定长文，自动分析提取关键信息并结构化">🤖 文档识别</button></div>' +
         '<div id="rl_fields" style="max-height:300px;overflow:auto;">' + fields + '</div>' +
         '<div style="margin-top:8px;display:flex;gap:6px;"><button class="btn btn-sm btn-outline-secondary" onclick="PK_ROLES.addField()">＋字段</button>' +
         '<button class="btn btn-sm btn-success" onclick="PK_ROLES.saveInstance(' + r.id + ')">💾 保存(生成新版本)</button></div></div>' +
@@ -361,6 +363,105 @@
         '<button class="btn btn-secondary" onclick="document.getElementById(\'rlInst\').remove()">关闭</button></div></div>';
       document.body.appendChild(ov);
     },
+    // v5.36.40: 编辑界面 — 从公共库模板导入字段（弹窗选择 → 填充 #rl_fields）
+    importTemplateFields: async function (rid) {
+      var self = this;
+      var ov = document.createElement('div'); ov.className = 'pk-auth-modal-overlay'; ov.id = 'rlTplImport';
+      ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+      ov.innerHTML = '<div class="pk-auth-modal" style="max-width:560px;width:94vw;" onclick="event.stopPropagation()">' +
+        '<h4 style="display:flex;align-items:center;justify-content:space-between;"><span>📚 从公共库模板导入字段</span>' +
+        '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'rlTplImport\').remove()">✕</button></h4>' +
+        '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">选择模板后，其设定字段将填入当前角色的「设定字段」（同名覆盖，可编辑后保存）</div>' +
+        '<div id="rlTplImportBody" style="max-height:50vh;overflow:auto;">加载中...</div>' +
+        '<div class="pk-modal-actions"><button class="btn btn-secondary" onclick="document.getElementById(\'rlTplImport\').remove()">取消</button></div></div>';
+      document.body.appendChild(ov);
+      try {
+        var d = await (await fetch('/api/character-composer/characters?page_size=100')).json();
+        var items = d.items || [];
+        var box = document.getElementById('rlTplImportBody');
+        if (!items.length) { box.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">公共库暂无角色模板</div>'; return; }
+        var h = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;">';
+        for (var i = 0; i < items.length; i++) {
+          var it = items[i];
+          var prev = (function () { try { var s = it.settings || (it.settings_json ? JSON.parse(it.settings_json) : {}); return Object.keys(s).slice(0, 3).map(function (k) { return (LABELS[k] || k) + ':' + s[k]; }).join(' · '); } catch (e) { return ''; } })();
+          h += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:8px;cursor:pointer;" onclick="PK_ROLES.applyTemplateFields(' + it.id + ',' + rid + ')" title="点击导入：' + self._esc(prev || '') + '">' +
+            '<div style="font-size:13px;font-weight:600;">' + self._esc(it.name || ('#' + it.id)) + '</div>' +
+            (prev ? '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + self._esc(prev) + '</div>' : '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">（无字段）</div>') +
+            '<div style="font-size:10px;color:var(--primary);margin-top:4px;">点击导入 →</div></div>';
+        }
+        h += '</div>';
+        box.innerHTML = h;
+      } catch (e) { document.getElementById('rlTplImportBody').innerHTML = '<div style="padding:16px;color:var(--danger);">加载失败</div>'; }
+    },
+
+    // 应用模板字段到编辑界面
+    applyTemplateFields: async function (tplId, rid) {
+      var self = this;
+      try {
+        var d = await (await fetch('/api/character-composer/characters/' + tplId)).json();
+        var card = (d && d.character) ? d.character : (d && d.card ? d.card : d);
+        var settings = card.settings || {};
+        var ov = document.getElementById('rlTplImport'); if (ov) ov.remove();
+        if (!Object.keys(settings).length) { this._toast('该模板无字段可导入', 'info'); return; }
+        this._fillFields(settings);
+        this._toast('✅ 已导入 ' + Object.keys(settings).length + ' 个字段（可编辑后保存）', 'success');
+      } catch (e) { this._toast('导入未完成', 'error'); }
+    },
+
+    // v5.36.40: 编辑界面 — 角色设定长文识别（弹窗输入 → 分析提取 → 填充字段）
+    docToFields: function (rid) {
+      var self = this;
+      var ov = document.createElement('div'); ov.className = 'pk-auth-modal-overlay'; ov.id = 'rlDocParse';
+      ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+      ov.innerHTML = '<div class="pk-auth-modal" style="max-width:560px;width:94vw;" onclick="event.stopPropagation()">' +
+        '<h4 style="display:flex;align-items:center;justify-content:space-between;"><span>🤖 角色设定长文识别</span>' +
+        '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'rlDocParse\').remove()">✕</button></h4>' +
+        '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">粘贴角色设定长文（如人物小传、人设卡），AI 自动分析提取关键信息并结构化为字段，填入当前角色的「设定字段」</div>' +
+        '<textarea id="rl_doc_text" class="s2-input" style="width:100%;min-height:180px;padding:8px;" placeholder="例如：\n林晚晴，28岁，广告公司创意总监，性格干练果敢、外冷内热。及肩短发，剪裁利落的深色西装，银色耳环。\n童年在小镇长大，大学毕业后进入广告行业……"></textarea>' +
+        '<div style="margin-top:8px;display:flex;gap:8px;align-items:center;">' +
+        '<button class="btn btn-sm btn-primary" onclick="PK_ROLES.runDocParse(' + rid + ')">🤖 分析提取 → 填入字段</button>' +
+        '<span style="font-size:11px;color:var(--text-muted);">识别结果会覆盖同名字段，可编辑后保存</span></div>' +
+        '<div id="rl_doc_result" style="margin-top:10px;"></div>' +
+        '<div class="pk-modal-actions"><button class="btn btn-secondary" onclick="document.getElementById(\'rlDocParse\').remove()">关闭</button></div></div>';
+      document.body.appendChild(ov);
+    },
+
+    // 执行文档识别并填充字段
+    runDocParse: async function (rid) {
+      var self = this;
+      var text = (document.getElementById('rl_doc_text') || {}).value || '';
+      if (!text.trim()) { this._toast('请先粘贴角色设定长文', 'error'); return; }
+      var box = document.getElementById('rl_doc_result');
+      if (box) box.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">🤖 正在分析提取中...</div>';
+      try {
+        var mid = this._mid;
+        var d = await (await fetch('/api/master/' + mid + '/roles/parse-doc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role_type: 'character', text: text }) })).json();
+        if (!d.ok) { if (box) box.innerHTML = '<div style="font-size:12px;color:var(--danger);">识别失败: ' + self._esc(d.detail || '') + '</div>'; return; }
+        if (box) box.innerHTML = '<div style="font-size:12px;color:#10b981;">✅ 已提取 ' + Object.keys(d.settings || {}).length + ' 个字段' + (d.name ? '，识别名称：' + self._esc(d.name) : '') + '</div>';
+        // 填充到当前编辑界面的设定字段
+        var ov = document.getElementById('rlDocParse'); if (ov) ov.remove();
+        self._fillFields(d.settings || {});
+        self._toast('✅ 已填入字段（可编辑后保存）', 'success');
+      } catch (e) { if (box) box.innerHTML = '<div style="font-size:12px;color:var(--danger);">识别异常: ' + self._esc(e.message) + '</div>'; }
+    },
+
+    // 填充字段到编辑界面（#rl_fields：已有同名覆盖，无则追加）
+    _fillFields: function (settings) {
+      var box = document.getElementById('rl_fields');
+      if (!box) return;
+      var keys = Object.keys(settings || {});
+      var self = this;
+      keys.forEach(function (k) {
+        var v = settings[k];
+        var ex = box.querySelector('.rl-set[data-k="' + k + '"]');
+        if (ex) { ex.value = v; return; }
+        var div = document.createElement('div'); div.style.marginBottom = '6px';
+        div.innerHTML = '<label style="font-size:11px;color:var(--text-muted);">' + self._esc(LABELS[k] || k) + '</label>' +
+          '<input class="rl-set" data-k="' + self._esc(k) + '" value="' + self._esc(v) + '" style="width:100%;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:12px;">';
+        box.appendChild(div);
+      });
+    },
+
     addField: function () {
       var k = prompt('字段名（如 gender / location 或自定义）:', ''); if (!k) return;
       var box = document.getElementById('rl_fields'); if (!box) return;
