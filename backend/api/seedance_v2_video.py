@@ -590,6 +590,31 @@ def _archive_task_to_template(task_id: int, name: str = "", allow_dup_suffix: bo
             pass
     shutil.copy2(src_path, dest_full)
 
+    # v5.36.32: 提取视频首帧生成封面缩略图（词卡预览窗口显示封面，而非空白占位）
+    thumb_name = ""
+    thumb_w = thumb_h = 0
+    try:
+        from api.thumbnails import THUMB_DIR
+        import subprocess
+        thumb_name = _uuid.uuid4().hex + ".jpg"
+        thumb_full = os.path.join(THUMB_DIR, thumb_name)
+        r = subprocess.run(
+            ['ffmpeg', '-ss', '0.1', '-i', dest_full, '-vframes', '1', '-q:v', '2', thumb_full, '-y'],
+            capture_output=True, timeout=30
+        )
+        if os.path.exists(thumb_full) and os.path.getsize(thumb_full) > 0:
+            try:
+                from PIL import Image
+                with Image.open(thumb_full) as im:
+                    thumb_w, thumb_h = im.size
+            except Exception:
+                pass
+        else:
+            thumb_name = ""
+    except Exception as e:
+        print(f"[Seedance Video] 模版封面提取失败: {e}")
+        thumb_name = ""
+
     if not name:
         proj = db.execute("SELECT name FROM user_project WHERE id=?", [task["project_id"]]).fetchone()
         proj_name = (proj["name"] if proj else "分镜")[:20]
@@ -615,9 +640,9 @@ def _archive_task_to_template(task_id: int, name: str = "", allow_dup_suffix: bo
         dup = None
 
     cur = db.execute(
-        "INSERT INTO word_card (group_id, name, content, meaning, media_type, preview_media, is_builtin, heat_weight, module, category, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, 'video', ?, 0, 0.5, 'seedance_video', 'video_template', datetime('now','localtime'), datetime('now','localtime'))",
-        [gid, name, task["prompt"] or "", f"分镜视频模版 · {task['model_version']} · {task['ratio']} · {task['duration']}s", dest_name])
+        "INSERT INTO word_card (group_id, name, content, meaning, media_type, preview_media, thumbnail, thumb_width, thumb_height, is_builtin, heat_weight, module, category, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, 'video', ?, ?, ?, ?, 0, 0.5, 'seedance_video', 'video_template', datetime('now','localtime'), datetime('now','localtime'))",
+        [gid, name, task["prompt"] or "", f"分镜视频模版 · {task['model_version']} · {task['ratio']} · {task['duration']}s", dest_name, thumb_name, thumb_w, thumb_h])
     safe_commit()
     return {"ok": True, "card_id": cur.lastrowid, "name": name, "video_url": "/api/seedance/v2/videos/" + dest_name}
 
