@@ -738,6 +738,15 @@ def regen_from_template(card_id: int):
     return {"ok": True, "project_id": pid, "project_name": name, "prompt": content}
 
 
+@router.get("/video/sessions")
+def list_video_sessions(force: bool = False):
+    """获取即梦会话列表（30s 缓存；force=true 实时刷新）
+    返回 [{id, name}]：id=0 默认会话，其余为即梦 App 内创建的对话
+    """
+    sessions = _fetch_session_list(force=bool(force))
+    return {"ok": True, "sessions": [{"id": s[0], "name": s[1]} for s in sessions]}
+
+
 @router.delete("/video/templates/{card_id}")
 def delete_video_template(card_id: int):
     """删除分镜视频模版词卡（含视频文件）"""

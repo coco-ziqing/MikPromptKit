@@ -123,11 +123,14 @@
             '<select id="s2VideoRatio" class="s2-input" style="width:100%;margin-top:2px;">'+ratioOpts+'</select></div>' +
             '<div style="flex:1;"><label style="font-size:11px;color:var(--text-muted);">分辨率</label>' +
             '<select id="s2VideoRes" class="s2-input" style="width:100%;margin-top:2px;">'+resOpts+'</select></div>' +
-            '<div style="flex:0.9;"><label style="font-size:11px;color:var(--text-muted);">即梦会话</label>' +
-            '<select id="s2VideoSession" class="s2-input" style="width:100%;margin-top:2px;" title="即梦 CLI --session">' +
-            '<option value="0">0 · 默认对话</option>' +
-            (self._videoSessions ? self._videoSessions.map(function(s){ return '<option value="'+s.id+'"'+(String(s.id)===String(defSession)?' selected':'')+'>'+s.id+' · '+App._escape((s.name||'').substring(0,12))+'</option>'; }).join('') : '') +
-            '</select></div>' +
+            '<div style="flex:1.1;"><label style="font-size:11px;color:var(--text-muted);">即梦会话 <span style="font-weight:400;">(对话上下文)</span></label>' +
+            '<div style="display:flex;gap:4px;">' +
+            '<select id="s2VideoSession" class="s2-input" style="flex:1;margin-top:2px;" title="即梦 App 内的对话上下文：同一会话内生成记录/参考素材连贯，不同会话互相独立">' +
+            '<option value="0">0 · 默认对话（通用）</option>' +
+            (self._videoSessions ? self._videoSessions.map(function(s){ return '<option value="'+s.id+'"'+(String(s.id)===String(defSession)?' selected':'')+'>'+s.id+' · '+App._escape((s.name||'').substring(0,14))+'</option>'; }).join('') : '') +
+            '</select>' +
+            '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._refreshSubmitSessions()" title="刷新会话列表" style="color:#10b981;border-color:#10b981;margin-top:2px;padding:2px 7px;">🔄</button>' +
+            '</div></div>' +
             '</div>' +
             '<div id="s2VideoResTip">'+resTip+'</div>' +
             '<div id="s2VideoRefsBox" style="margin-top:8px;"></div>' +
@@ -141,6 +144,8 @@
         document.body.appendChild(overlay);
         // v5.36.2: 加载将携带的参考图预览
         this._loadSubmitRefsPreview();
+        // v5.36.33: 打开弹窗时主动拉取会话列表（显示名称而非裸 ID）
+        this._refreshSubmitSessions && this._refreshSubmitSessions();
         // v5.36.7: 提交前预检 + 参数变化时重检
         this._runVideoPrecheck();
         var self2 = this;
@@ -265,6 +270,28 @@
 
     // 模型切换时更新分辨率映射提示
     // v5.36.12: 提交弹窗参数 ↔ 项目全局参数 双向联动 — 弹窗里修改即保存回项目（刷新/重开不丢失）
+    // v5.36.33: 提交弹窗刷新会话列表
+    App.seedanceV2._refreshSubmitSessions = async function() {
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/video/sessions?force=1');
+            var sessions = (d && d.sessions) ? d.sessions : [];
+            this._videoSessions = sessions;
+            var sel = document.getElementById('s2VideoSession');
+            if (!sel) return;
+            var cur = sel.value || '0';
+            var opts = '<option value="0">0 · 默认对话（通用）</option>';
+            for (var i = 0; i < sessions.length; i++) {
+                var s = sessions[i];
+                if (String(s.id) === '0') continue;
+                opts += '<option value="'+s.id+'"'+(String(s.id)===String(cur)?' selected':'')+'>'+s.id+' · '+App._escape(String(s.name||'').substring(0,14))+'</option>';
+            }
+            sel.innerHTML = opts;
+            App.showToast('✅ 会话列表已刷新', 'success');
+        } catch (e) {
+            App.showToast('会话刷新失败: ' + e.message, 'error');
+        }
+    };
+
     App.seedanceV2._syncVideoParamsFromModal = function() {
         if (!this.currentProjectId) return;
         var self = this;

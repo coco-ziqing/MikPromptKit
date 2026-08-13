@@ -87,9 +87,9 @@
         h+='<div class="s2-global-row">';
         h+='<div class="s2-field" style="flex:1.4;"><label>模型版本</label><select id="s2_video_model" class="s2-input" onchange="App.seedanceV2._saveVideoParam(&apos;video_model&apos;,this.value)">'+vmOpts+'</select></div>';
         h+='<div class="s2-field" style="flex:1;"><label>视频分辨率</label><select id="s2_video_resolution" class="s2-input" onchange="App.seedanceV2._saveVideoParam(&apos;video_resolution&apos;,this.value)">'+vrOpts+'</select></div>';
-        h+='<div class="s2-field" style="flex:0.8;"><label>即梦会话</label><input id="s2_video_session" class="s2-input" type="number" min="0" value="'+vses+'" onchange="App.seedanceV2._saveVideoParam(&apos;video_session&apos;,this.value)" title="即梦 CLI --session，默认 0"></div>';
+        h+='<div class="s2-field" style="flex:1.1;"><label>即梦会话 <span style="font-weight:400;color:var(--text-muted);font-size:10px;">(对话上下文)</span></label><div style="display:flex;gap:4px;"><select id="s2_video_session" class="s2-input" onchange="App.seedanceV2._saveVideoParam(&apos;video_session&apos;,this.value)" title="即梦 App 内的对话上下文：同一会话内的生成记录/参考素材连贯，不同会话互相独立"><option value="'+vses+'">'+vses+' · 加载中…</option></select><button class="s2-ref-add-btn" onclick="App.seedanceV2._refreshVideoSessions()" title="刷新会话列表" style="padding:2px 7px;border:1px solid #10b981;color:#10b981;">🔄</button></div></div>';
         h+='</div>';
-        h+='<div style="width:100%;font-size:10px;color:var(--text-muted);margin-top:2px;" id="s2VideoParamHint">💡 即梦画幅取上方「画幅」设置（16:9/9:16/1:1/21:9/4:3/3:4 均支持）；分辨率超出模型上限将自动降级（如 seedance2.0fast 上限 720p）。</div>';
+        h+='<div style="width:100%;font-size:10px;color:var(--text-muted);margin-top:2px;" id="s2VideoParamHint">💡 即梦画幅取上方「画幅」设置；分辨率超出模型上限将自动降级。<br>💬 会话=即梦 App 的对话上下文：同一会话内素材/历史连贯，不同会话互相独立；默认 0 为通用对话。</div>';
         h+='</div>';
         // v5.36.2: 全局图像参考（所有镜头共享，上限9张）
         h+='<div class="s2-sub-panel s2-global-refs">';
@@ -447,6 +447,8 @@
             document.querySelectorAll('.s2-ref-del').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var id=parseInt(this.dataset.refId);if(!id)return;self._deleteRef(id);});});
             document.querySelectorAll('.s2-ref-edit').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var id=parseInt(this.dataset.refId);if(!id)return;self._editRefName(id);});});
             self._loadAllRefThumbs();
+            // v5.36.33: 填充即梦会话下拉（异步拉取名称）
+            self._refreshVideoSessions && self._refreshVideoSessions();
 
         },100);
         // v9.3: 每次渲染镜头卡片后刷新时间轴
@@ -1305,6 +1307,35 @@
             });
         } catch (e) {
             bodyEl.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--text-muted);">角色库加载失败: '+App._escape(e.message)+'</div>';
+        }
+    };
+
+    // v5.36.33: 刷新即梦会话列表（组装器全局参数区下拉）
+    App.seedanceV2._refreshVideoSessions = async function(selectEl) {
+        var sel = selectEl || document.getElementById('s2_video_session');
+        var self = this;
+        var curVal = sel ? sel.value : '';
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/video/sessions?force=1');
+            var sessions = (d && d.sessions) ? d.sessions : [];
+            if (self._videoSessions) self._videoSessions = sessions;
+            if (!sel) sel = document.getElementById('s2_video_session');
+            if (!sel) return;
+            var cur = sel.value || curVal || '0';
+            var opts = '';
+            if (!sessions.length) sessions = [{id: 0, name: 'default'}];
+            for (var i = 0; i < sessions.length; i++) {
+                var s = sessions[i];
+                var label = (String(s.id) === '0') ? '0 · 默认对话（通用）' : (s.id + ' · ' + App._escape(String(s.name || '').substring(0, 14)));
+                opts += '<option value="'+s.id+'"'+(String(s.id)===String(cur)?' selected':'')+'>'+label+'</option>';
+            }
+            sel.innerHTML = opts;
+            if (String(cur) !== '0' && !sessions.some(function(s){ return String(s.id) === String(cur); })) {
+                sel.value = '0';
+                this._saveVideoParam('video_session', 0);
+            }
+        } catch (e) {
+            console.warn('refresh sessions fail', e);
         }
     };
 
