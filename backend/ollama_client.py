@@ -60,6 +60,7 @@ FUNCTION_MODEL_MAP = {
     "auto_tag":          "high",      # 自动标签 — 需要 JSON 输出，避开 thinking 模型
     "rerank":            "high",     # 搜索重排 — 需要语义理解
     "thumbnail_desc":    "medium",   # 缩略图描述生成
+    "role_parse":        "high",     # 角色设定解析 — 需 JSON 输出，避开 thinking 模型
     "vision_ocr":        "high",     # OCR — 视觉模型专用
     "playground":        "high",     # Playground — 用户可切换
 }

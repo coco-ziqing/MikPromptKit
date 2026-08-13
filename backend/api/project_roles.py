@@ -163,6 +163,38 @@ def adopt_role(mid: int, data: dict = Body(...), request: Request = None):
         c.close()
 
 
+# 自由长文规则提取（LLM 不可用时的兜底）
+def _rule_extract_free_text(text: str, role_type: str = "character") -> dict:
+    """从自由中文长文中按关键词提取人设字段（正则 + 就近截取）"""
+    import re as _re
+    out = {}
+    if role_type == "character":
+        rules = [
+            ("gender", r"(?:性别|男性|女性)[：:为是]?\s*([\u4e00-\u9fa5]{1,4})"),
+            ("age", r"(?:年龄|今年|现年)[：:为是]?\s*(\d{1,3}\s*岁?)"),
+            ("occupation", r"(?:职业|身份|从事|担任|就职于)[：:为是]?\s*([\u4e00-\u9fa5A-Za-z·]{2,16}(?:师|员|长|家|总监|经理|导演|编辑|设计|工程师|顾问|教师|医生|律师)?)"),
+            ("temperament", r"(?:性格|气质|个性|为人|性情)[：:为是]?\s*([\u4e00-\u9fa5、，,]{2,24})"),
+            ("hairstyle", r"(?:发型|头发|发色)[：:为是]?\s*([\u4e00-\u9fa5]{2,14})"),
+            ("clothing", r"(?:服装|穿着|穿搭|衣着|衣服|服饰)[：:为是]?\s*([\u4e00-\u9fa5、，,]{2,24})"),
+            ("accessory", r"(?:配饰|饰品|耳环|项链|戒指|眼镜)[：:为是]?\s*([\u4e00-\u9fa5]{2,16})"),
+            ("body", r"(?:体型|身材|身高)[：:为是]?\s*([\u4e00-\u9fa5]{2,12})"),
+            ("facial", r"(?:脸型|五官|长相|面容)[：:为是]?\s*([\u4e00-\u9fa5]{2,14})"),
+        ]
+    else:
+        rules = [
+            ("location", r"(?:场景类型|地点|场所)[：:为是]?\s*([\u4e00-\u9fa5]{2,14})"),
+            ("time", r"(?:时间|时刻)[：:为是]?\s*([\u4e00-\u9fa5]{2,10})"),
+            ("weather", r"(?:天气|气候)[：:为是]?\s*([\u4e00-\u9fa5]{2,12})"),
+            ("atmosphere", r"(?:氛围|情绪|气氛)[：:为是]?\s*([\u4e00-\u9fa5]{2,14})"),
+            ("architecture", r"(?:建筑|风格|结构)[：:为是]?\s*([\u4e00-\u9fa5]{2,16})"),
+        ]
+    for key, pat in rules:
+        m = _re.search(pat, text)
+        if m and m.group(1).strip() and key not in out:
+            out[key] = m.group(1).strip()
+    return out
+
+
 @router.post("/api/master/{mid}/roles")
 def create_role(mid: int, data: dict = Body(...), request: Request = None):
     u = _auth(request)
@@ -259,7 +291,7 @@ async def parse_role_doc(mid: int, data: dict = Body(...), request: Request = No
         print(f"[ProjectRoles] LLM 解析失败，回退规则: {e}")
         settings = None
 
-    # ── 2. 规则拆分兜底（按行/冒号/关键词） ──
+    # ── 2. 规则拆分兜底（字段格式 + 自由长文关键词提取） ──
     if settings is None:
         settings = {}
         for line in text.splitlines():
@@ -285,6 +317,14 @@ async def parse_role_doc(mid: int, data: dict = Body(...), request: Request = No
             elif len(k) <= 8 and len(v) <= 60 and not name:
                 # 首行短键值对视为名称
                 name = v
+
+        # 自由长文兜底：关键词 → 后续片段提取（LLM 不可用时仍可用）
+        if not settings:
+            settings = _rule_extract_free_text(text, role_type)
+            if not name:
+                m = _re.search(r"(?:姓名|名字|名称)[：:为是]\s*([\u4e00-\u9fa5A-Za-z·]{2,12})", text)
+                if m:
+                    name = m.group(1)
 
     if not settings and not name:
         raise HTTPException(400, "无法从文档中识别出人设字段，请检查格式（建议每行：字段：值）或稍后重试")
