@@ -87,7 +87,7 @@
         h+='<div class="s2-global-row">';
         h+='<div class="s2-field" style="flex:1.4;"><label>模型版本</label><select id="s2_video_model" class="s2-input" onchange="App.seedanceV2._saveVideoParam(&apos;video_model&apos;,this.value)">'+vmOpts+'</select></div>';
         h+='<div class="s2-field" style="flex:1;"><label>视频分辨率</label><select id="s2_video_resolution" class="s2-input" onchange="App.seedanceV2._saveVideoParam(&apos;video_resolution&apos;,this.value)">'+vrOpts+'</select></div>';
-        h+='<div class="s2-field" style="flex:1.1;"><label>即梦会话 <span style="font-weight:400;color:var(--text-muted);font-size:10px;">(对话上下文)</span></label><div style="display:flex;gap:4px;"><select id="s2_video_session" class="s2-input" onchange="App.seedanceV2._saveVideoParam(&apos;video_session&apos;,this.value)" title="即梦 App 内的对话上下文：同一会话内的生成记录/参考素材连贯，不同会话互相独立"><option value="'+vses+'">'+vses+' · 加载中…</option></select><button class="s2-ref-add-btn" onclick="App.seedanceV2._refreshVideoSessions()" title="刷新会话列表" style="padding:2px 7px;border:1px solid #10b981;color:#10b981;">🔄</button></div></div>';
+        h+='<div class="s2-field" style="flex:1.1;"><label>即梦会话 <span style="font-weight:400;color:var(--text-muted);font-size:10px;">(对话上下文)</span></label><div style="display:flex;gap:4px;"><select id="s2_video_session" class="s2-input" onchange="App.seedanceV2._saveVideoParam(&apos;video_session&apos;,this.value)" title="即梦 App 内的对话上下文：同一会话内的生成记录/参考素材连贯，不同会话互相独立"><option value="'+vses+'">'+vses+' · 加载中…</option></select><button class="s2-ref-add-btn" onclick="App.seedanceV2._createVideoSession()" title="新建会话" style="padding:2px 7px;border:1px solid #10b981;color:#10b981;">＋</button><button class="s2-ref-add-btn" onclick="App.seedanceV2._renameVideoSession()" title="重命名当前会话" style="padding:2px 7px;border:1px solid #f59e0b;color:#f59e0b;">✏️</button><button class="s2-ref-add-btn" onclick="App.seedanceV2._refreshVideoSessions()" title="刷新会话列表" style="padding:2px 7px;border:1px solid #10b981;color:#10b981;">🔄</button></div></div>';
         h+='</div>';
         h+='<div style="width:100%;font-size:10px;color:var(--text-muted);margin-top:2px;" id="s2VideoParamHint">💡 即梦画幅取上方「画幅」设置；分辨率超出模型上限将自动降级。<br>💬 会话=即梦 App 的对话上下文：同一会话内素材/历史连贯，不同会话互相独立；默认 0 为通用对话。</div>';
         h+='</div>';
@@ -1308,6 +1308,58 @@
         } catch (e) {
             bodyEl.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--text-muted);">角色库加载失败: '+App._escape(e.message)+'</div>';
         }
+    };
+
+    // v5.36.34: 新建即梦会话
+    App.seedanceV2._createVideoSession = async function() {
+        var name = prompt('新建即梦会话名称（可空，自动命名，≤50字符）：', '');
+        if (name === null) return;
+        name = String(name).trim();
+        if (name.length > 50) { App.showToast('会话名不能超过 50 字符', 'warning'); return; }
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/video/sessions', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name})
+            });
+            if (d && d.ok) {
+                App.showToast('✅ 已新建会话' + (d.name ? '「' + d.name + '」' : ''), 'success');
+                if (d.id) {
+                    if (this.currentProject) this.currentProject.video_session = d.id;
+                    this._saveVideoParam('video_session', d.id);
+                }
+                this._refreshVideoSessions();
+                if (this._refreshSubmitSessions) this._refreshSubmitSessions();
+            } else {
+                App.showToast('新建失败: ' + (d ? (d.detail || d.error) : '无响应'), 'error');
+            }
+        } catch (e) { App.showToast('新建会话异常: ' + e.message, 'error'); }
+    };
+
+    // v5.36.34: 重命名当前即梦会话
+    App.seedanceV2._renameVideoSession = async function() {
+        var sel = document.getElementById('s2_video_session');
+        if (!sel) return;
+        var curId = parseInt(sel.value || '0') || 0;
+        if (curId === 0) { App.showToast('默认会话（0）不可重命名', 'warning'); return; }
+        var curName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text.split(' · ')[1] || '' : '';
+        var name = prompt('重命名会话（≤50字符）：', curName || '');
+        if (name === null) return;
+        name = String(name).trim();
+        if (!name) { App.showToast('会话名必填', 'warning'); return; }
+        if (name.length > 50) { App.showToast('会话名不能超过 50 字符', 'warning'); return; }
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/video/sessions/' + curId, {
+                method: 'PUT', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name})
+            });
+            if (d && d.ok) {
+                App.showToast('✅ 已重命名', 'success');
+                this._refreshVideoSessions();
+                if (this._refreshSubmitSessions) this._refreshSubmitSessions();
+            } else {
+                App.showToast('重命名失败: ' + (d ? (d.detail || d.error) : '无响应'), 'error');
+            }
+        } catch (e) { App.showToast('重命名异常: ' + e.message, 'error'); }
     };
 
     // v5.36.33: 刷新即梦会话列表（组装器全局参数区下拉）

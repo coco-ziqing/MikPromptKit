@@ -129,6 +129,8 @@
             '<option value="0">0 · 默认对话（通用）</option>' +
             (self._videoSessions ? self._videoSessions.map(function(s){ return '<option value="'+s.id+'"'+(String(s.id)===String(defSession)?' selected':'')+'>'+s.id+' · '+App._escape((s.name||'').substring(0,14))+'</option>'; }).join('') : '') +
             '</select>' +
+            '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._createVideoSession()" title="新建会话" style="color:#10b981;border-color:#10b981;margin-top:2px;padding:2px 7px;">＋</button>' +
+            '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._renameVideoSession()" title="重命名当前会话" style="color:#f59e0b;border-color:#f59e0b;margin-top:2px;padding:2px 7px;">✏️</button>' +
             '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._refreshSubmitSessions()" title="刷新会话列表" style="color:#10b981;border-color:#10b981;margin-top:2px;padding:2px 7px;">🔄</button>' +
             '</div></div>' +
             '</div>' +

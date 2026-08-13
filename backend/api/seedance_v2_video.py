@@ -747,6 +747,55 @@ def list_video_sessions(force: bool = False):
     return {"ok": True, "sessions": [{"id": s[0], "name": s[1]} for s in sessions]}
 
 
+@router.post("/video/sessions")
+def create_video_session(data: dict = Body(default={})):
+    """新建即梦会话（v5.36.34）
+    body: { name?: 可选，1-50 字符；缺省后端自动命名 }
+    """
+    name = (data.get("name") or "").strip()
+    if len(name) > 50:
+        raise HTTPException(400, "会话名不能超过 50 字符")
+    args = ["session", "create"]
+    if name:
+        args.append(name)
+    out, err, code = _dreamina_run(args, timeout=30)
+    if code != 0:
+        raise HTTPException(500, f"新建会话失败: {err or out or 'CLI 错误'}")
+    # 刷新缓存，解析新会话 id（CLI 输出含 session id）
+    sessions = _fetch_session_list(force=True)
+    new_id = None
+    for sid, sname in sessions:
+        if name and sname == name:
+            new_id = sid
+            break
+    if new_id is None and sessions:
+        # 找不到同名则取列表第一个非 0 的最新会话
+        for sid, sname in sessions:
+            if sid != 0:
+                new_id = sid
+                break
+    return {"ok": True, "id": new_id, "name": name or "", "output": (out or "")[:200]}
+
+
+@router.put("/video/sessions/{session_id}")
+def rename_video_session(session_id: int, data: dict = Body(default={})):
+    """重命名即梦会话（v5.36.34）
+    body: { name: 必填，1-50 字符 }
+    """
+    name = (data.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "会话名必填")
+    if len(name) > 50:
+        raise HTTPException(400, "会话名不能超过 50 字符")
+    if session_id == 0:
+        raise HTTPException(400, "默认会话（0）不可重命名")
+    out, err, code = _dreamina_run(["session", "rename", str(session_id), name], timeout=30)
+    if code != 0:
+        raise HTTPException(500, f"重命名失败: {err or out or 'CLI 错误'}")
+    _fetch_session_list(force=True)  # 刷新缓存
+    return {"ok": True, "id": session_id, "name": name, "output": (out or "")[:200]}
+
+
 @router.delete("/video/templates/{card_id}")
 def delete_video_template(card_id: int):
     """删除分镜视频模版词卡（含视频文件）"""
