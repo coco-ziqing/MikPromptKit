@@ -419,12 +419,20 @@
         var emptyHtml = '<div style="padding:18px;text-align:center;color:var(--text-muted);">本总项目暂无' + (roleType === 'character' ? '角色' : '场景') + '实例，请先在「项目设定」创建</div>' +
           (masterId ? '<div style="text-align:center;padding:0 18px 14px;"><button class="btn btn-sm btn-primary" onclick="PK_ROLES.gotoProjectSettings(' + masterId + ')" style="padding:6px 16px;">⚙️ 前往项目设定 → 创建' + (roleType === 'character' ? '角色' : '场景') + '</button></div>' : '');
         var list = roles.length ? roles.map(function (r) {
-          return '<div style="padding:8px 10px;border-bottom:1px solid var(--border-color);cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="PK_ROLES.doShotApply(' + r.id + ',' + shotId + ')"><span style="font-size:13px;color:var(--text-main);">' + (roleType === 'character' ? '🎭' : '🏞') + ' ' + self._esc(r.name) + ' <span style="font-size:10px;color:var(--text-muted);">v' + (r.version_count || 1) + '</span></span><span style="font-size:11px;color:var(--primary);">应用→</span></div>';
+          return '<div style="padding:8px 10px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">' +
+            '<span style="flex:1;cursor:pointer;font-size:13px;color:var(--text-main);" onclick="PK_ROLES.doShotApply(' + r.id + ',' + shotId + ')">' + (roleType === 'character' ? '🎭' : '🏞') + ' ' + self._esc(r.name) + ' <span style="font-size:10px;color:var(--text-muted);">v' + (r.version_count || 1) + '</span></span>' +
+            '<span style="display:flex;gap:6px;align-items:center;">' +
+            '<button class="btn btn-xs btn-outline" style="font-size:10px;padding:1px 8px;" onclick="event.stopPropagation();PK_ROLES.shotEditRole(' + r.id + ',' + masterId + ')" title="编辑此角色">✏️ 编辑</button>' +
+            '<span style="font-size:11px;color:var(--primary);cursor:pointer;" onclick="PK_ROLES.doShotApply(' + r.id + ',' + shotId + ')">应用→</span>' +
+            '</span></div>';
         }).join('') : emptyHtml;
         ov.innerHTML = '<div class="pk-auth-modal" style="max-width:420px;width:92vw;" onclick="event.stopPropagation()"><h4>🎬 为镜头选' + (roleType === 'character' ? '角色' : '场景') + '</h4>' +
           '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">本总项目实例（点击应用到镜头）：</div>' +
           '<div style="max-height:46vh;overflow:auto;">' + list + '</div>' +
-          '<div class="pk-modal-actions"><button class="btn btn-outline-secondary" style="margin-right:auto;" onclick="PK_ROLES._browsePublic(' + shotId + ',\'' + roleType + '\')">📚 浏览公共库</button>' +
+          '<div class="pk-modal-actions">' +
+          '<button class="btn btn-sm btn-outline-secondary" style="margin-right:auto;" onclick="PK_ROLES._browsePublic(' + shotId + ',\'' + roleType + '\')">📚 浏览公共库</button>' +
+          '<button class="btn btn-sm btn-outline-secondary" style="color:#10b981;border-color:#10b981;" onclick="PK_ROLES.shotNewRole(' + masterId + ',\'' + roleType + '\')" title="新建' + (roleType === 'character' ? '角色' : '场景') + '">＋ 新建</button>' +
+          '<button class="btn btn-sm btn-outline-secondary" style="color:#f59e0b;border-color:#f59e0b;" onclick="PK_ROLES.gotoProjectSettings(' + masterId + ')" title="跳转到项目设定面板">⚙️ 项目设定</button>' +
           '<button class="btn btn-secondary" onclick="this.closest(\'.pk-auth-modal-overlay\').remove()">关闭</button></div></div>';
         document.body.appendChild(ov);
       } catch (e) { this._toast('加载未完成', 'error'); }
@@ -444,6 +452,22 @@
           self._toast('已打开项目设定，可创建/选择角色实例', 'info');
         } catch (e) { self._toast('跳转未完成', 'error'); }
       }, 150);
+    },
+    // v5.36.39: 选角色弹窗 → 编辑指定角色（跳转面板 + 打开角色编辑）
+    shotEditRole: function (rid, masterId) {
+      var self = this;
+      this.gotoProjectSettings(masterId);
+      setTimeout(function () {
+        try { self.openInstance(rid); } catch (e) { self._toast('打开角色编辑未完成', 'error'); }
+      }, 400);
+    },
+    // v5.36.39: 选角色弹窗 → 新建角色（跳转面板 + 打开新建弹窗）
+    shotNewRole: function (masterId, roleType) {
+      var self = this;
+      this.gotoProjectSettings(masterId);
+      setTimeout(function () {
+        try { self._rt = roleType; self.newInstance(); } catch (e) { self._toast('打开新建未完成', 'error'); }
+      }, 400);
     },
     _browsePublic: function (shotId, roleType) {
       var ov = document.getElementById('rlShot'); if (ov) ov.remove();
