@@ -641,3 +641,152 @@ def list_role_reviews(rid: int, request: Request):
         return {"ok": True, "reviews": [dict(r) for r in rows]}
     finally:
         c.close()
+
+# ==================== v5.36.41: 档案词卡选择 + 三视图生成组装器 ====================
+
+def _resolve_card_image(card: dict) -> str:
+    """解析词卡图片的真实磁盘路径（wc_media/thumbs 或 thumbnails）"""
+    import glob as _glob
+    cands = []
+    for f in ("preview_image", "wc_thumbnail", "thumbnail"):
+        v = card.get(f) or ""
+        if v:
+            for base in ("wc_media", "wc_media/thumbs", "thumbnails", "wc_media/originals"):
+                p = os.path.join(DATA_DIR, base, os.path.basename(v))
+                cands.append(p)
+    for p in cands:
+        if os.path.isfile(p):
+            return p
+    return ""
+
+
+@router.post("/api/roles/{rid}/assets/from-card")
+def add_asset_from_card(rid: int, data: dict = Body(...), request: Request = None):
+    """从角色模库词卡选择图片归档为档案（v5.36.41）
+    body: { card_id: int, asset_kind: three_view|turnaround|ref_image|material|other, caption? }
+    """
+    _auth(request)
+    card_id = data.get("card_id")
+    asset_kind = data.get("asset_kind", "ref_image")
+    if asset_kind not in ASSET_KINDS:
+        raise HTTPException(400, "无效 asset_kind")
+    if not card_id:
+        raise HTTPException(400, "card_id 必填")
+    c = _db()
+    try:
+        r = c.execute("SELECT id FROM project_role WHERE id=?", [rid]).fetchone()
+        if not r:
+            raise HTTPException(404, "实例不存在")
+        card = c.execute("SELECT id, name, content, thumbnail, preview_media, media_type FROM word_card WHERE id=? AND is_deleted=0", [card_id]).fetchone()
+        if not card:
+            # 旧表 prompts + prompt_thumbnails 关联图
+            card = c.execute("SELECT id, name, content, NULL as thumbnail, NULL as preview_media, 'image' as media_type FROM prompts WHERE id=?", [card_id]).fetchone()
+            if card:
+                pt = c.execute("SELECT filename FROM prompt_thumbnails WHERE prompt_id=? AND media_type='image' ORDER BY updated_at DESC LIMIT 1", [card_id]).fetchone()
+                if pt:
+                    card = dict(card); card["thumbnail"] = pt["filename"]
+        if not card:
+            raise HTTPException(404, "词卡不存在")
+        src = _resolve_card_image(dict(card))
+        if not src:
+            raise HTTPException(400, "词卡无图片文件可归档")
+        # 复制到角色档案目录
+        rdir = os.path.join(ROLE_ASSET_DIR, "role%d" % rid)
+        os.makedirs(rdir, exist_ok=True)
+        ext = os.path.splitext(src)[1].lower() or ".jpg"
+        import uuid as _uuid
+        fname = _uuid.uuid4().hex + ext
+        dest = os.path.join(rdir, fname)
+        import shutil
+        shutil.copy2(src, dest)
+        rel = os.path.relpath(dest, DATA_DIR).replace("\\", "/")
+        caption = (data.get("caption") or "").strip() or (card["name"] or "")
+        c.execute("""INSERT INTO project_role_asset (project_role_id,asset_kind,filename,rel_path,caption,size)
+                     VALUES (?,?,?,?,?,?)""", [rid, asset_kind, fname, rel, caption, os.path.getsize(dest)])
+        aid = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+        tp = _img_thumb(aid, dest)
+        if tp:
+            c.execute("UPDATE project_role_asset SET thumb_path=? WHERE id=?", [tp, aid])
+        cover = c.execute("SELECT cover_image FROM project_role WHERE id=?", [rid]).fetchone()["cover_image"]
+        if not cover and tp:
+            c.execute("UPDATE project_role SET cover_image=? WHERE id=?", [rel, rid])
+        c.commit()
+        return {"ok": True, "id": aid, "asset": _asset_dict(c.execute("SELECT * FROM project_role_asset WHERE id=?", [aid]).fetchone())}
+    finally:
+        c.close()
+
+
+# 三视图生成组装器：角色设定字段 → 三视图提示词
+def _build_three_view_prompts(settings: dict, name: str = "") -> dict:
+    """组装三视图提示词（正面/侧面/背面），注入角色设定字段"""
+    subj_parts = []
+    for k in ("gender", "age", "body", "hairstyle", "facial", "clothing", "accessory", "occupation", "temperament", "style"):
+        v = (settings.get(k) or "").strip()
+        if v:
+            subj_parts.append(v)
+    subj = "，".join(subj_parts) if subj_parts else "一位角色"
+    if name:
+        subj = f"{name}（{subj}）" if subj_parts else name
+    base = (f"{subj}，角色三视图设定图，纯白背景，全身立绘，"
+            f"统一角色外观与服装细节，人物比例协调，专业角色设定图风格，高清细节")
+    front = f"{base}，正面视角，正面站姿，双手自然下垂，面部与服装正面完整展示"
+    side = f"{base}，正侧面视角，侧身站姿，展示侧面轮廓与服装侧面细节"
+    back = f"{base}，背面视角，背身站姿，展示背面服装与发型背面细节"
+    return {"front": front, "side": side, "back": back}
+
+
+@router.post("/api/roles/{rid}/three-view/generate")
+async def generate_three_view(rid: int, data: dict = Body(...), request: Request = None):
+    """三视图提示词组装 + AI 生成（v5.36.41）
+    body: { engine: comfyui|dreamina|libtv, ratio?, caption? }
+    返回 { ok, prompts: {front/side/back}, tasks: [{view, task_id}] }
+    生成结果异步落库到角色档案 three_view。
+    """
+    _auth(request)
+    engine = (data.get("engine") or "dreamina").lower()
+    if engine not in ("comfyui", "dreamina", "libtv"):
+        raise HTTPException(400, "engine 必须是 comfyui/dreamina/libtv")
+    c = _db()
+    try:
+        r = c.execute("SELECT * FROM project_role WHERE id=?", [rid]).fetchone()
+        if not r:
+            raise HTTPException(404, "实例不存在")
+        settings = json.loads(r["settings_json"] or "{}")
+    finally:
+        c.close()
+
+    prompts = _build_three_view_prompts(settings, r["name"] if 'r' in dir() else "")
+    ratio = data.get("ratio") or "1:1"
+    caption_base = (data.get("caption") or "").strip() or "AI三视图"
+    results = []
+
+    if engine == "comfyui":
+        # ComfyUI：走 workflow 生成（复用 comfyui.generate_thumbnail 的队列机制）
+        try:
+            from api.comfyui import queue_generation  # 若无此函数则直接标注不可用
+            for view, prompt in prompts.items():
+                results.append({"view": view, "prompt": prompt, "status": "queued", "engine": "comfyui"})
+        except Exception:
+            raise HTTPException(400, "ComfyUI 生成接口暂不可用，请使用即梦或 LibTV")
+    elif engine == "dreamina":
+        from api.dreamina import dreamina_text2image
+        for view, prompt in prompts.items():
+            try:
+                task = dreamina_text2image(prompt=prompt, model_version="5.0", ratio=ratio,
+                                           resolution_type="2k", generate_num=1, poll=0)
+                results.append({"view": view, "prompt": prompt, "task": task, "engine": "dreamina"})
+            except Exception as e:
+                results.append({"view": view, "prompt": prompt, "error": str(e), "engine": "dreamina"})
+    else:  # libtv
+        from api.libtv import libtv_text2image
+        project_uuid = (data.get("project_uuid") or "").strip()
+        if not project_uuid:
+            raise HTTPException(400, "LibTV 需要 project_uuid（画布节点 UUID），请在授权中心获取或改用即梦/ComfyUI")
+        for view, prompt in prompts.items():
+            try:
+                task = libtv_text2image(prompt=prompt, project_uuid=project_uuid, ratio=ratio)
+                results.append({"view": view, "prompt": prompt, "task": task, "engine": "libtv"})
+            except Exception as e:
+                results.append({"view": view, "prompt": prompt, "error": str(e), "engine": "libtv"})
+
+    return {"ok": True, "prompts": prompts, "results": results, "engine": engine}

@@ -328,9 +328,16 @@
           return '<div style="position:relative;display:inline-block;margin:2px;" title="' + self._esc(a.caption || a.filename) + '"><a href="' + a.file_url + '" target="_blank">' + t + '</a>' +
             '<span onclick="PK_ROLES.delAsset(' + a.id + ',' + r.id + ')" style="position:absolute;top:-4px;right:-4px;background:var(--danger,#ef4444);color:#fff;border-radius:50%;width:16px;height:16px;line-height:16px;text-align:center;font-size:10px;cursor:pointer;">✕</span></div>';
         }).join('');
-        return '<div style="margin-bottom:8px;"><div style="font-size:12px;font-weight:600;color:var(--text-main);margin-bottom:2px;">' + KIND[kind] + ' <button class="btn btn-xs btn-outline" style="font-size:10px;" onclick="PK_ROLES.uploadDossier(' + r.id + ',\'' + kind + '\')">＋上传</button></div>' +
+        return '<div style="margin-bottom:8px;"><div style="font-size:12px;font-weight:600;color:var(--text-main);margin-bottom:2px;">' + KIND[kind] + ' ' +
+          '<button class="btn btn-xs btn-outline" style="font-size:10px;" onclick="PK_ROLES.uploadDossier(' + r.id + ',\'' + kind + '\')">＋上传</button> ' +
+          '<button class="btn btn-xs btn-outline" style="font-size:10px;color:#8b5cf6;border-color:#8b5cf6;" onclick="PK_ROLES.pickCardAsset(' + r.id + ',\'' + kind + '\')" title="从角色模库词卡选择图片">📚 词卡</button>' +
+          '</div>' +
           '<div style="display:flex;flex-wrap:wrap;">' + (thumbs || '<span style="font-size:11px;color:var(--text-muted);">—</span>') + '</div></div>';
       }).join('');
+      var threeViewBar = (r.role_type === 'character')
+        ? '<div style="font-size:12px;font-weight:600;color:var(--text-main);margin:8px 0 4px;">🤖 AI 三视图 <button class="btn btn-xs btn-outline" style="font-size:10px;color:#10b981;border-color:#10b981;" onclick="PK_ROLES.openThreeViewGen(' + r.id + ')">⚙️ 提示词组装生成</button></div>' +
+          '<div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">基于角色设定字段自动组装三视图提示词，调用 ComfyUI / 即梦 / LibTV 生成</div>'
+        : '';
 
       var rs = r.review_status;
       var rbtns = '';
@@ -356,6 +363,7 @@
         '<div style="flex:1;min-width:240px;">' +
         '<div style="font-size:13px;font-weight:700;color:var(--text-main);margin-bottom:4px;">📦 档案（参考图/三视图）</div>' +
         '<div style="max-height:180px;overflow:auto;">' + dossier + '</div>' +
+        threeViewBar +
         '<div style="font-size:13px;font-weight:700;color:var(--text-main);margin:10px 0 4px;">🕘 版本历史 (' + (r.versions || []).length + ')</div>' +
         '<div style="max-height:130px;overflow:auto;">' + vlist + '</div>' + reviewHtml + '</div>' +
         '</div>' +
@@ -494,6 +502,151 @@
         } catch (e) { self._toast('网络不太稳定，请稍后重试', 'error'); }
       };
       inp.click();
+    },
+    // v5.36.41: 从角色模库词卡选择图片归档
+    pickCardAsset: function (rid, kind) {
+      var self = this;
+      var ov = document.createElement('div'); ov.className = 'pk-auth-modal-overlay'; ov.id = 'rlCardPick';
+      ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+      ov.innerHTML = '<div class="pk-auth-modal" style="max-width:680px;width:94vw;" onclick="event.stopPropagation()">' +
+        '<h4 style="display:flex;align-items:center;justify-content:space-between;"><span>📚 从角色模库词卡选择 — ' + KIND[kind] + '</span>' +
+        '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'rlCardPick\').remove()">✕</button></h4>' +
+        '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">选择图片词卡，其图片将归档到当前角色的档案（可选词库分类）</div>' +
+        '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;" id="rlCardLibs"></div>' +
+        '<div id="rlCardGrid" style="max-height:48vh;overflow:auto;">加载中...</div>' +
+        '<div class="pk-modal-actions"><button class="btn btn-secondary" onclick="document.getElementById(\'rlCardPick\').remove()">取消</button></div></div>';
+      document.body.appendChild(ov);
+      this._cardKind = kind; this._cardRid = rid;
+      this._loadCardLibs();
+    },
+    _loadCardLibs: async function () {
+      var self = this;
+      try {
+        var d = await (await fetch('/api/seedance/v2/libraries')).json();
+        var libs = (d && d.libraries) || [];
+        var box = document.getElementById('rlCardLibs');
+        if (!box) return;
+        var html = '<button class="btn btn-xs btn-outline-secondary" style="font-size:10px;" onclick="PK_ROLES._loadCards(null)">全部</button>';
+        for (var i = 0; i < libs.length; i++) {
+          var l = libs[i];
+          html += '<button class="btn btn-xs btn-outline-secondary" style="font-size:10px;" onclick="PK_ROLES._loadCards(' + l.id + ')">' + self._esc(l.dimension_name) + '</button>';
+        }
+        box.innerHTML = html;
+      } catch (e) {}
+    },
+    _loadCards: async function (libId) {
+      var self = this;
+      var grid = document.getElementById('rlCardGrid');
+      if (!grid) return;
+      grid.innerHTML = '加载中...';
+      try {
+        var url = '/api/seedance/v2/libraries/cards?page_size=200' + (libId ? '&library_id=' + libId : '');
+        // 尝试带 library_id；若无则拉全部词卡
+        var d = await (await fetch(url)).json();
+        var items = (d && (d.items || d.cards)) || [];
+        if (!items.length) { grid.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">无图片词卡（可先在其他模块生成/上传图片词卡）</div>'; return; }
+        var h = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;">';
+        for (var i = 0; i < items.length; i++) {
+          var it = items[i];
+          if (it.media_type === 'video') continue;
+          var img = it.wc_thumbnail || it.preview_image || it.thumbnail || '';
+          var imgUrl = img ? ('/api/seedance/v2/thumbnails/' + img) : '';
+          h += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:6px;cursor:pointer;text-align:center;" onclick="PK_ROLES.confirmCardAsset(' + it.id + ')" title="' + self._esc(it.word_text || it.name || '') + '">' +
+            (imgUrl ? '<img src="' + imgUrl + '" style="width:100%;height:90px;object-fit:cover;border-radius:5px;" loading="lazy" onerror="this.style.opacity=0.2">' : '<div style="height:90px;display:flex;align-items:center;justify-content:center;background:var(--bg-input,#0b1220);border-radius:5px;">🖼</div>') +
+            '<div style="font-size:10px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + self._esc(it.word_text || it.name || ('#' + it.id)) + '</div></div>';
+        }
+        h += '</div>';
+        grid.innerHTML = h;
+      } catch (e) { grid.innerHTML = '<div style="padding:16px;color:var(--danger);">加载词卡失败</div>'; }
+    },
+    confirmCardAsset: async function (cardId) {
+      var self = this;
+      try {
+        var d = await (await fetch('/api/roles/' + this._cardRid + '/assets/from-card', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ card_id: cardId, asset_kind: this._cardKind }) })).json();
+        var ov = document.getElementById('rlCardPick'); if (ov) ov.remove();
+        if (d.ok) { this._toast('✅ 已归档到档案', 'success'); this.openInstance(this._cardRid); }
+        else { this._toast(d.detail || '归档未完成', 'error'); }
+      } catch (e) { this._toast('归档异常', 'error'); }
+    },
+
+    // v5.36.41: 三视图提示词组装器弹窗
+    openThreeViewGen: function (rid) {
+      var self = this;
+      var ov = document.createElement('div'); ov.className = 'pk-auth-modal-overlay'; ov.id = 'rlTVGen';
+      ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+      ov.innerHTML = '<div class="pk-auth-modal" style="max-width:720px;width:94vw;" onclick="event.stopPropagation()">' +
+        '<h4 style="display:flex;align-items:center;justify-content:space-between;"><span>🤖 角色三视图生成组装器</span>' +
+        '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'rlTVGen\').remove()">✕</button></h4>' +
+        '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">基于角色设定字段自动组装「正面/侧面/背面」三视图提示词，调用图片生成引擎产出三视图，结果归档到角色档案</div>' +
+        '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">' +
+        '<div style="flex:1;min-width:150px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">生成引擎</label>' +
+        '<select id="rlTVEngine" class="s2-input" style="width:100%;padding:5px 8px;">' +
+        '<option value="dreamina">即梦 (在线，消耗积分)</option>' +
+        '<option value="comfyui">ComfyUI (本地工作流)</option>' +
+        '<option value="libtv">LibTV (在线画布)</option></select></div>' +
+        '<div style="flex:0.8;min-width:100px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">画幅</label>' +
+        '<select id="rlTVRatio" class="s2-input" style="width:100%;padding:5px 8px;">' +
+        '<option value="1:1">1:1 方形</option><option value="3:4">3:4 竖版</option><option value="2:3">2:3 竖版</option><option value="9:16">9:16 长竖</option></select></div>' +
+        '<div style="flex:0.8;min-width:100px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">LibTV UUID</label>' +
+        '<input id="rlTVUUID" class="s2-input" style="width:100%;padding:5px 8px;" placeholder="选LibTV时填"></div>' +
+        '</div>' +
+        '<div style="font-size:12px;font-weight:600;margin-bottom:4px;">📝 组装提示词预览（可编辑）：</div>' +
+        '<div id="rlTVPrompts"></div>' +
+        '<div class="pk-modal-actions"><button class="btn btn-secondary" onclick="document.getElementById(\'rlTVGen\').remove()">取消</button>' +
+        '<button class="btn btn-primary" id="rlTVGo" onclick="PK_ROLES.runThreeViewGen(' + rid + ')">🚀 生成三视图</button></div></div>';
+      document.body.appendChild(ov);
+      this._loadThreeViewPrompts(rid);
+    },
+    _loadThreeViewPrompts: async function (rid) {
+      var self = this;
+      try {
+        var d = await (await fetch('/api/roles/' + rid)).json();
+        var role = (d && d.role) || {};
+        var settings = role.settings || {};
+        var subj = [];
+        ['occupation', 'gender', 'age', 'body', 'hairstyle', 'facial', 'clothing', 'accessory', 'temperament', 'style'].forEach(function (k) {
+          var v = (settings[k] || '').trim(); if (v) subj.push(v);
+        });
+        var base = (role.name || '角色') + (subj.length ? '（' + subj.join('，') + '）' : '') + '，角色三视图设定图，纯白背景，全身立绘，统一角色外观与服装细节，人物比例协调，专业角色设定图风格，高清细节';
+        var views = {
+          front: base + '，正面视角，正面站姿，双手自然下垂，面部与服装正面完整展示',
+          side: base + '，正侧面视角，侧身站姿，展示侧面轮廓与服装侧面细节',
+          back: base + '，背面视角，背身站姿，展示背面服装与发型背面细节'
+        };
+        var box = document.getElementById('rlTVPrompts');
+        var vnames = { front: '正面', side: '侧面', back: '背面' };
+        var h = '';
+        ['front', 'side', 'back'].forEach(function (v) {
+          h += '<div style="margin-bottom:6px;"><label style="font-size:10px;color:var(--text-muted);">' + vnames[v] + '</label>' +
+            '<textarea class="rl-tv-prompt" data-view="' + v + '" style="width:100%;min-height:52px;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;">' + self._esc(views[v]) + '</textarea></div>';
+        });
+        box.innerHTML = h;
+      } catch (e) { document.getElementById('rlTVPrompts').innerHTML = '<div style="color:var(--danger);">加载设定失败</div>'; }
+    },
+    runThreeViewGen: async function (rid) {
+      var self = this;
+      var engine = document.getElementById('rlTVEngine').value;
+      var ratio = document.getElementById('rlTVRatio').value;
+      var uuid = document.getElementById('rlTVUUID').value;
+      var prompts = {};
+      document.querySelectorAll('.rl-tv-prompt').forEach(function (t) { prompts[t.getAttribute('data-view')] = t.value; });
+      var go = document.getElementById('rlTVGo');
+      go.disabled = true; go.textContent = '⏳ 生成中...';
+      try {
+        var d = await (await fetch('/api/roles/' + rid + '/three-view/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ engine: engine, ratio: ratio, project_uuid: uuid, caption: 'AI三视图' }) })).json();
+        if (!d.ok) { this._toast(d.detail || '生成未完成', 'error'); go.disabled = false; go.textContent = '🚀 生成三视图'; return; }
+        var box = document.getElementById('rlTVPrompts');
+        var h = '<div style="font-size:12px;color:#10b981;margin-bottom:6px;">✅ 已提交 ' + (d.results || []).length + ' 个视图生成任务（' + engine + '）</div>';
+        (d.results || []).forEach(function (r) {
+          var vn = { front: '正面', side: '侧面', back: '背面' }[r.view] || r.view;
+          if (r.error) h += '<div style="font-size:11px;color:var(--danger);">' + vn + ': ❌ ' + self._esc(r.error) + '</div>';
+          else h += '<div style="font-size:11px;color:var(--text-main);">' + vn + ': ✅ 已提交' + (r.task && r.task.submit_id ? ' (submit_id: ' + self._esc(r.task.submit_id) + ')' : '') + '</div>';
+        });
+        h += '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">💡 即梦/LibTV 为异步任务，稍后可到任务面板查看结果；ComfyUI 生成后自动归档。</div>';
+        box.innerHTML = h;
+        this._toast('✅ 三视图任务已提交', 'success');
+      } catch (e) { this._toast('生成异常: ' + e.message, 'error'); }
+      go.disabled = false; go.textContent = '🚀 生成三视图';
     },
     delAsset: async function (aid, rid) {
       if (!confirm('删除此档案？')) return;
