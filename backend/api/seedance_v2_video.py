@@ -1034,6 +1034,14 @@ def create_video_tasks(data: dict = Body(...)):
         prompt_parts = []
         for s in scenes:
             sp = _build_scene_prompt(dict(s), proj["global_style"] or "")
+            # v5.36.36: 追加角色对白行
+            try:
+                from api.seedance_v2_project import _dialogue_lines_for_scene, _format_dialogue_lines
+                _dlg = _format_dialogue_lines(_dialogue_lines_for_scene(db, s["id"]))
+                if _dlg:
+                    sp = (sp + "；" + _dlg) if sp else _dlg
+            except Exception:
+                pass
             if sp:
                 prompt_parts.append(f"镜头{s['scene_order']}: {sp}")
         full = "；".join(prompt_parts)
@@ -1063,6 +1071,14 @@ def create_video_tasks(data: dict = Body(...)):
             raise HTTPException(400, "项目没有镜头")
         for s in rows:
             sp = _build_scene_prompt(dict(s), proj["global_style"] or "")
+            # v5.36.36: 追加角色对白行
+            try:
+                from api.seedance_v2_project import _dialogue_lines_for_scene, _format_dialogue_lines
+                _dlg = _format_dialogue_lines(_dialogue_lines_for_scene(db, s["id"]))
+                if _dlg:
+                    sp = (sp + "；" + _dlg) if sp else _dlg
+            except Exception:
+                pass
             if not sp.strip():
                 continue
             dur = _validate_duration(model, int(float(s["duration"] or 5)))

@@ -759,6 +759,47 @@ def compose_project(project_id: int, data: dict = Body({})):
         except Exception as e:
             print(f"[Seedance Compose] 参考图模式拼接失败: {e}")
 
+    # v5.36.36: 角色对白行拼接（每个镜头追加对白/情绪说明）
+    try:
+        _ensure_dialogue_table()
+        shots = (result.get("json") or {}).get("shots") or []
+        if shots:
+            for _shot in shots:
+                _sid = None
+                # 通过 scene_order 匹配镜头 id
+                so = _shot.get("shot")
+                for _s in scenes:
+                    if int(_s["scene_order"]) == int(so):
+                        _sid = _s["id"]
+                        break
+                if not _sid:
+                    continue
+                _lines = _dialogue_lines_for_scene(db, _sid)
+                _dlg_txt = _format_dialogue_lines(_lines)
+                if _dlg_txt:
+                    _shot["dialogue"] = _dlg_txt
+                    _old = _shot.get("text") or ""
+                    _shot["text"] = (_old + "；" + _dlg_txt) if _old else _dlg_txt
+                    flds = _shot.get("fields") or {}
+                    flds["dialogue"] = _dlg_txt
+            # 同步更新整体 text（重拼 shots 段）
+            try:
+                full2 = (result.get("text") or "")
+                # 在末尾追加对白汇总（简化：全部镜头对白）
+                _all_dlg = []
+                for _s2 in scenes:
+                    _l2 = _dialogue_lines_for_scene(db, _s2["id"])
+                    _t2 = _format_dialogue_lines(_l2)
+                    if _t2:
+                        _all_dlg.append(f"镜头{_s2['scene_order']}对白：{_t2}")
+                if _all_dlg:
+                    full2 = full2.rstrip() + "\n\n" + "\n".join(_all_dlg)
+                    result["text"] = full2
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[Seedance Compose] 对白拼接失败: {e}")
+
     # 添加遗留兼容字段（注意 scenes 是 Row 对象，不能用 .get）
     if include_audio:
         audio_shots = []
@@ -857,5 +898,112 @@ def update_config(key: str, data: dict = Body(...)):
         "ON CONFLICT(config_key) DO UPDATE SET config_value=excluded.config_value, updated_at=datetime('now','localtime')",
         [key, value]
     )
+    safe_commit()
+    return {"ok": True}
+
+# ==================== 角色对白行（v5.36.36） ====================
+
+_DIALOGUE_TABLE_DDL = """CREATE TABLE IF NOT EXISTS scene_dialogue_lines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scene_id INTEGER NOT NULL,
+    character_name TEXT DEFAULT '',
+    dialogue TEXT DEFAULT '',
+    emotion TEXT DEFAULT '',
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT
+)"""
+
+def _ensure_dialogue_table():
+    db = get_db()
+    db.execute(_DIALOGUE_TABLE_DDL)
+    safe_commit()
+
+
+def _dialogue_lines_for_scene(db, scene_id: int) -> list:
+    """读取镜头对白行列表（供 compose/提交拼接）"""
+    try:
+        return db.execute(
+            "SELECT * FROM scene_dialogue_lines WHERE scene_id=? ORDER BY sort_order, id",
+            [scene_id]).fetchall()
+    except Exception:
+        return []
+
+
+def _format_dialogue_lines(lines) -> str:
+    """将对白行拼为提示词片段：角色「名」说：内容（情绪）"""
+    parts = []
+    for ln in lines:
+        name = (ln["character_name"] or "").strip()
+        text = (ln["dialogue"] or "").strip()
+        if not text:
+            continue
+        emo = (ln["emotion"] or "").strip()
+        if name and emo:
+            parts.append(f"{name}说：「{text}」（语气/情绪：{emo}）")
+        elif name:
+            parts.append(f"{name}说：「{text}」")
+        elif emo:
+            parts.append(f"旁白：「{text}」（{emo}）")
+        else:
+            parts.append(f"对白：「{text}」")
+    return "；".join(parts)
+
+
+@router.get("/projects/{project_id}/scenes/{scene_id}/dialogues")
+def list_scene_dialogues(project_id: int, scene_id: int):
+    """列出镜头对白行"""
+    _ensure_dialogue_table()
+    db = get_db()
+    rows = _dialogue_lines_for_scene(db, scene_id)
+    return {"items": [dict(r) for r in rows]}
+
+
+@router.post("/projects/{project_id}/scenes/{scene_id}/dialogues")
+def add_scene_dialogue(project_id: int, scene_id: int, data: dict = Body(...)):
+    """新增对白行 body: { character_name?, dialogue, emotion? }"""
+    _ensure_dialogue_table()
+    dialogue = (data.get("dialogue") or "").strip()
+    if not dialogue:
+        raise HTTPException(400, "对白内容必填")
+    db = get_db()
+    sc = db.execute("SELECT id FROM user_project_scene WHERE id=? AND project_id=?", [scene_id, project_id]).fetchone()
+    if not sc:
+        raise HTTPException(404, "镜头不存在")
+    mx = db.execute("SELECT COALESCE(MAX(sort_order),0) as m FROM scene_dialogue_lines WHERE scene_id=?", [scene_id]).fetchone()["m"]
+    cur = db.execute(
+        "INSERT INTO scene_dialogue_lines (scene_id, character_name, dialogue, emotion, sort_order, created_at) "
+        "VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))",
+        [scene_id, (data.get("character_name") or "").strip(), dialogue, (data.get("emotion") or "").strip(), mx + 1])
+    safe_commit()
+    return {"ok": True, "id": cur.lastrowid}
+
+
+@router.put("/projects/{project_id}/scenes/{scene_id}/dialogues/{dlg_id}")
+def update_scene_dialogue(project_id: int, scene_id: int, dlg_id: int, data: dict = Body(...)):
+    """更新对白行（角色/内容/情绪）"""
+    _ensure_dialogue_table()
+    db = get_db()
+    row = db.execute("SELECT id FROM scene_dialogue_lines WHERE id=? AND scene_id=?", [dlg_id, scene_id]).fetchone()
+    if not row:
+        raise HTTPException(404, "对白行不存在")
+    sets, params = [], []
+    if "character_name" in data:
+        sets.append("character_name=?"); params.append((data.get("character_name") or "").strip())
+    if "dialogue" in data:
+        sets.append("dialogue=?"); params.append((data.get("dialogue") or "").strip())
+    if "emotion" in data:
+        sets.append("emotion=?"); params.append((data.get("emotion") or "").strip())
+    if sets:
+        db.execute(f"UPDATE scene_dialogue_lines SET {', '.join(sets)} WHERE id=?", params + [dlg_id])
+        safe_commit()
+    return {"ok": True}
+
+
+@router.delete("/projects/{project_id}/scenes/{scene_id}/dialogues/{dlg_id}")
+def delete_scene_dialogue(project_id: int, scene_id: int, dlg_id: int):
+    """删除对白行"""
+    _ensure_dialogue_table()
+    db = get_db()
+    db.execute("DELETE FROM scene_dialogue_lines WHERE id=? AND scene_id=?", [dlg_id, scene_id])
     safe_commit()
     return {"ok": True}

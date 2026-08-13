@@ -3994,6 +3994,13 @@ body.dark-theme .header-divider {
 .s2-ref-tab { font-size:12px; }
 .s2-media-pick:hover img, .s2-char-pick:hover img { border-color:#8b5cf6 !important; box-shadow:0 0 0 2px rgba(139,92,246,0.2); }
 
+/* ===== v5.36.36: 文字对白行 ===== */
+.s2-dlg-lines { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
+.s2-dlg-line { display:inline-flex; align-items:center; gap:4px; font-size:10px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.2); border-radius:5px; padding:2px 6px; cursor:pointer; max-width:100%; }
+.s2-dlg-line:hover { border-color:#10b981; }
+.s2-dlg-del { margin-left:auto; color:#ef4444; font-size:10px; padding:0 2px; }
+.s2-dlg-del:hover { color:#dc2626; }
+
 /* ===== v5.36.2: 视频任务进度条动画 ===== */
 @keyframes s2ProgressStripe { 0% { background-position: 0 0; } 100% { background-position: 20px 0; } }
 

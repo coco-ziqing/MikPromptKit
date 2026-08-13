@@ -451,6 +451,8 @@
             document.querySelectorAll('.s2-ref-add-btn').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=this.dataset.sceneId;if(sid==='global'){self._openRefPicker(null);}else if(sid){self._openRefPicker(parseInt(sid));}else{var p=this.closest('.s2-ref-group');var pid2=p?p.dataset.sceneId:null;if(pid2==='global')self._openRefPicker(null);else if(pid2)self._openRefPicker(parseInt(pid2));}});});
             // ===== v5.36.35: 音频参考事件 =====
             document.querySelectorAll('.s2-audio-add-btn').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=this.dataset.sceneId;if(sid==='global'){self._openAudioPicker(null);}else if(sid){self._openAudioPicker(parseInt(sid));}else{var p=this.closest('.s2-audio-ref-group');var pid2=p?p.dataset.sceneId:null;if(pid2==='global')self._openAudioPicker(null);else if(pid2)self._openAudioPicker(parseInt(pid2));}});});
+            // ===== v5.36.36: 文字对白事件 =====
+            document.querySelectorAll('.s2-dlg-add-btn').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var sid=parseInt(this.dataset.sceneId);if(sid)self._addDialogue(sid);});});
             document.querySelectorAll('.s2-ref-del').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var id=parseInt(this.dataset.refId);if(!id)return;self._deleteRef(id);});});
             document.querySelectorAll('.s2-ref-edit').forEach(function(el){el.addEventListener('click',function(e){e.stopPropagation();var id=parseInt(this.dataset.refId);if(!id)return;self._editRefName(id);});});
             self._loadAllRefThumbs();
@@ -458,6 +460,8 @@
             self._refreshVideoSessions && self._refreshVideoSessions();
             // v5.36.35: 加载音频参考缩略条
             self._loadAllAudioThumbs && self._loadAllAudioThumbs();
+            // v5.36.36: 加载文字对白行
+            self._loadAllDialogues && self._loadAllDialogues();
 
         },100);
         // v9.3: 每次渲染镜头卡片后刷新时间轴
@@ -541,6 +545,12 @@
         h+='<span class="s2-field-label">🎵 对白</span>';
         h+='<span class="s2-audio-add-btn" data-scene-id="'+s.id+'" title="添加角色对白配音音频">+ 配音</span>';
         h+='<div class="s2-audio-thumbs" id="s2AudioThumbs_'+s.id+'"></div>';
+        h+='</div>';
+                // == v5.36.36: 文字对白行（角色对白 + 情绪说明） ==
+        h+='<div class="s2-field-group s2-dlg-group" data-scene-id="'+s.id+'">';
+        h+='<span class="s2-field-label">💬 对白</span>';
+        h+='<span class="s2-dlg-add-btn" data-scene-id="'+s.id+'" title="添加角色对白（含情绪说明）">+ 对白</span>';
+        h+='<div class="s2-dlg-lines" id="s2DlgLines_'+s.id+'"></div>';
         h+='</div>';
                 // == 拓展区：功能单元(Ext-Unit)系统 ==
         h+='<div class="s2-field-group s2-ext-group">';
@@ -1273,6 +1283,138 @@
             if (d && d.ok) {
                 App.showToast('已删除音频', 'info');
                 await this._loadAllAudioThumbs();
+            } else {
+                App.showToast('删除未完成: ' + (d ? (d.detail||'未知') : '无响应'), 'error');
+            }
+        } catch (e) { App.showToast('删除异常: '+e.message, 'error'); }
+    };
+
+    // ============ v5.36.36: 文字对白行（角色对白 + 情绪说明） ============
+
+    // 加载所有镜头对白行
+    App.seedanceV2._loadAllDialogues = async function() {
+        if (!this.currentProjectId) return;
+        var self = this;
+        var scenes = this.scenes || [];
+        for (var i = 0; i < scenes.length; i++) {
+            var sid = scenes[i].id;
+            try {
+                var d = await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sid+'/dialogues');
+                if (d) self._renderDialogues(d.items || [], sid);
+            } catch (e) {}
+        }
+    };
+
+    // 渲染镜头对白行
+    App.seedanceV2._renderDialogues = function(items, sceneId) {
+        var c = document.getElementById('s2DlgLines_'+sceneId);
+        if (!c) return;
+        if (!items.length) { c.innerHTML = '<span style="font-size:10px;color:var(--text-muted);">无对白</span>'; return; }
+        var h = '';
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            var name = it.character_name || '旁白';
+            var emo = it.emotion ? ' <span style="color:#f59e0b;">('+App._escape(it.emotion)+')</span>' : '';
+            h += '<span class="s2-dlg-line" data-dlg-id="'+it.id+'" title="点击编辑">' +
+                '<span style="font-weight:600;color:#10b981;">'+App._escape(name)+'</span>：' +
+                '<span>'+App._escape(it.dialogue)+'</span>'+emo +
+                '<span class="s2-dlg-del" data-dlg-id="'+it.id+'" title="删除">✕</span>' +
+                '</span>';
+        }
+        c.innerHTML = h;
+        var self = this;
+        c.querySelectorAll('.s2-dlg-line[data-dlg-id]').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                if (e.target.classList.contains('s2-dlg-del')) return;
+                e.stopPropagation();
+                self._editDialogue(parseInt(this.dataset.dlgId), sceneId);
+            });
+        });
+        c.querySelectorAll('.s2-dlg-del').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var id = parseInt(this.dataset.dlgId);
+                if (id) self._deleteDialogue(id, sceneId);
+            });
+        });
+    };
+
+    // 对白编辑弹窗（新增/编辑共用）
+    App.seedanceV2._openDialogueEditor = function(sceneId, dlg) {
+        var old = document.getElementById('s2DlgEditor');
+        if (old) old.remove();
+        var self = this;
+        var isEdit = !!dlg;
+        var overlay = document.createElement('div');
+        overlay.id = 's2DlgEditor';
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'display:flex;z-index:728;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+        overlay.innerHTML = '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:480px;">' +
+            '<div class="modal-header"><h5>💬 '+(isEdit?'编辑':'添加')+' 角色对白</h5><button class="header-btn-sm" onclick="document.getElementById(\'s2DlgEditor\').remove()">&times;</button></div>' +
+            '<div class="modal-body">' +
+            '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">角色名称（留空=旁白/画外音）</label>' +
+            '<input id="s2DlgChar" class="s2-input" style="width:100%;margin-bottom:10px;" placeholder="如：主角 / 反派 / (留空=旁白)" value="'+App._escape((dlg&&dlg.character_name)||'')+'">' +
+            '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">对白内容 *</label>' +
+            '<textarea id="s2DlgText" class="s2-input" style="width:100%;margin-bottom:10px;min-height:70px;" placeholder="角色要说的话...">'+App._escape((dlg&&dlg.dialogue)||'')+'</textarea>' +
+            '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">情绪说明（可空）</label>' +
+            '<input id="s2DlgEmo" class="s2-input" style="width:100%;margin-bottom:4px;" placeholder="如：愤怒 / 轻声耳语 / 哽咽 / 平静叙述" value="'+App._escape((dlg&&dlg.emotion)||'')+'">' +
+            '</div>' +
+            '<div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'s2DlgEditor\').remove()">取消</button>' +
+            '<button class="btn btn-primary btn-sm" id="s2DlgSaveBtn">'+(isEdit?'保存修改':'添加')+'</button></div></div>';
+        document.body.appendChild(overlay);
+        document.getElementById('s2DlgSaveBtn').onclick = async function() {
+            var name = document.getElementById('s2DlgChar').value;
+            var text = document.getElementById('s2DlgText').value;
+            var emo = document.getElementById('s2DlgEmo').value;
+            if (!String(text||'').trim()) { App.showToast('对白内容必填', 'warning'); return; }
+            var body = { character_name: name || '', dialogue: text, emotion: emo || '' };
+            var url = '/api/seedance/v2/projects/'+self.currentProjectId+'/scenes/'+sceneId+'/dialogues';
+            try {
+                var d;
+                if (isEdit) {
+                    d = await App.fetchJSON(url + '/' + dlg.id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                } else {
+                    d = await App.fetchJSON(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                }
+                if (d && d.ok) {
+                    App.showToast(isEdit ? '✅ 对白已更新' : '✅ 对白已添加', 'success');
+                    document.getElementById('s2DlgEditor').remove();
+                    var lst = await App.fetchJSON(url);
+                    if (lst) self._renderDialogues(lst.items || [], sceneId);
+                    self._debouncedCompose();
+                } else {
+                    App.showToast('保存未完成: ' + (d ? (d.detail||'') : '无响应'), 'error');
+                }
+            } catch (e) { App.showToast('保存异常: '+e.message, 'error'); }
+        };
+    };
+
+    // 打开添加对白
+    App.seedanceV2._addDialogue = function(sceneId) { this._openDialogueEditor(sceneId, null); };
+
+    // 编辑对白
+    App.seedanceV2._editDialogue = function(dlgId, sceneId) {
+        var self = this;
+        App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sceneId+'/dialogues').then(function(d) {
+            var items = (d && d.items) || [];
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].id === dlgId) { self._openDialogueEditor(sceneId, items[i]); return; }
+            }
+            App.showToast('对白不存在', 'error');
+        });
+    };
+
+    // 删除对白
+    App.seedanceV2._deleteDialogue = async function(dlgId, sceneId) {
+        var self = this;
+        try {
+            var d = await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sceneId+'/dialogues/'+dlgId, { method:'DELETE' });
+            if (d && d.ok) {
+                App.showToast('已删除对白', 'info');
+                var lst = await App.fetchJSON('/api/seedance/v2/projects/'+this.currentProjectId+'/scenes/'+sceneId+'/dialogues');
+                if (lst) self._renderDialogues(lst.items || [], sceneId);
+                self._debouncedCompose();
             } else {
                 App.showToast('删除未完成: ' + (d ? (d.detail||'未知') : '无响应'), 'error');
             }
