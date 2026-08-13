@@ -70,7 +70,7 @@ try{localStorage.setItem('promptkit_seedance_project',id);
 if(this._currentMasterId)localStorage.setItem('promptkit_seedance_master',this._currentMasterId);
 else localStorage.removeItem('promptkit_seedance_master');}catch(e){}
 var d=await App.fetchJSON('/api/seedance/v2/projects/'+id);
-if(d){this.currentProject=d;this.scenes=d.scenes||[];this.renderProjectEditor();}
+if(d&&d.project){this.currentProject=d.project;this.scenes=d.scenes||[];this._restoreExtUnitConfig&&this._restoreExtUnitConfig();this._renderList&&this._renderList();this.renderProjectEditor();this.renderScenes&&this.renderScenes();this.compose&&this.compose();}else if(d){this.currentProject=d;this.scenes=d.scenes||[];this.renderProjectEditor();}
 };
 
 // ── 覆盖 renderProjectList: 两级导航 ──
