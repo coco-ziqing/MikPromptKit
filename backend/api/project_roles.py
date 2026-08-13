@@ -272,7 +272,9 @@ async def parse_role_doc(mid: int, data: dict = Body(...), request: Request = No
             f"你是影视角色/场景设定拆解助手。从用户提供的人设文档中提取关键信息，"
             f"输出 JSON 对象：{{name: 角色/场景名称, settings: {{字段key: 值}}}}。\n"
             f"可用字段 keys（仅用这些，值用简短中文）：{fields_note}。\n"
-            f"文档中未提到的字段省略；不要编造。只输出 JSON，不要额外文字。"
+            f"规则：1) 必须把文档内容拆分到各对应字段，禁止把大段内容塞进单个字段或 details；"
+            f"2) 每个字段只放最相关的简短值（≤40字）；3) 文档中未提到的字段省略；4) 不要编造。\n"
+            f"只输出 JSON，不要额外文字。"
         )
         result = await ollama_chat([
             {"role": "system", "content": sys_prompt},
