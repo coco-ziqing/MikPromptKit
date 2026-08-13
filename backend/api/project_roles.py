@@ -173,12 +173,12 @@ def _rule_extract_free_text(text: str, role_type: str = "character") -> dict:
             ("gender", r"(?:性别|男性|女性)[：:为是]?\s*([\u4e00-\u9fa5]{1,4})"),
             ("age", r"(?:年龄|今年|现年)[：:为是]?\s*(\d{1,3}\s*岁?)"),
             ("occupation", r"(?:职业|身份|从事|担任|就职于)[：:为是]?\s*([\u4e00-\u9fa5A-Za-z·]{2,16}(?:师|员|长|家|总监|经理|导演|编辑|设计|工程师|顾问|教师|医生|律师)?)"),
-            ("temperament", r"(?:性格|气质|个性|为人|性情)[：:为是]?\s*([\u4e00-\u9fa5、，,]{2,24})"),
-            ("hairstyle", r"(?:发型|头发|发色)[：:为是]?\s*([\u4e00-\u9fa5]{2,14})"),
-            ("clothing", r"(?:服装|穿着|穿搭|衣着|衣服|服饰)[：:为是]?\s*([\u4e00-\u9fa5、，,]{2,24})"),
-            ("accessory", r"(?:配饰|饰品|耳环|项链|戒指|眼镜)[：:为是]?\s*([\u4e00-\u9fa5]{2,16})"),
+            ("temperament", r"(?:性格|气质|个性|为人|性情)(?!关键词)[：:为是]?\s*([\u4e00-\u9fa5、，,]{2,24})"),
+            ("hairstyle", r"(?:发型|头发|发色)(?!设计)[：:为是]?\s*([\u4e00-\u9fa5]{2,14})"),
+            ("clothing", r"(?:服装|穿着|穿搭|衣着|衣服|服饰)(?!风格)[：:为是]?\s*([\u4e00-\u9fa5、，,]{2,24})"),
+            ("accessory", r"(?:配饰|饰品|耳环|项链|戒指|眼镜)(?!与细节)[：:为是]?\s*([\u4e00-\u9fa5]{2,16})"),
             ("body", r"(?:体型|身材|身高)[：:为是]?\s*([\u4e00-\u9fa5]{2,12})"),
-            ("facial", r"(?:脸型|五官|长相|面容)[：:为是]?\s*([\u4e00-\u9fa5]{2,14})"),
+            ("facial", r"(?:脸型|五官|长相|面容)(?!与轮廓)[：:为是]?\s*([\u4e00-\u9fa5]{2,14})"),
         ]
     else:
         rules = [
@@ -186,7 +186,7 @@ def _rule_extract_free_text(text: str, role_type: str = "character") -> dict:
             ("time", r"(?:时间|时刻)[：:为是]?\s*([\u4e00-\u9fa5]{2,10})"),
             ("weather", r"(?:天气|气候)[：:为是]?\s*([\u4e00-\u9fa5]{2,12})"),
             ("atmosphere", r"(?:氛围|情绪|气氛)[：:为是]?\s*([\u4e00-\u9fa5]{2,14})"),
-            ("architecture", r"(?:建筑|风格|结构)[：:为是]?\s*([\u4e00-\u9fa5]{2,16})"),
+            ("architecture", r"(?:建筑|风格|结构)(?!风格)[：:为是]?\s*([\u4e00-\u9fa5]{2,16})"),
         ]
     for key, pat in rules:
         m = _re.search(pat, text)
@@ -237,7 +237,8 @@ async def parse_role_doc(mid: int, data: dict = Body(...), request: Request = No
     KEY_MAP = {
         "性别": "gender", "年龄": "age", "发型": "hairstyle", "发色": "hairstyle",
         "脸型": "facial", "五官": "facial", "表情": "expression", "神态": "expression",
-        "体型": "body", "身材": "body", "服装": "clothing", "服饰": "clothing", "穿搭": "clothing",
+        "体型": "body", "身材": "body", "身高": "body", "肤色": "body",
+        "服装": "clothing", "服饰": "clothing", "穿搭": "clothing", "衣着": "clothing",
         "配饰": "accessory", "道具": "accessory", "姿态": "pose", "动作": "pose",
         "职业": "occupation", "身份": "occupation", "气质": "temperament", "性格": "temperament",
         "画风": "style", "背景": "background", "光照": "lighting", "色调": "color_scheme",
@@ -265,7 +266,7 @@ async def parse_role_doc(mid: int, data: dict = Body(...), request: Request = No
         result = await ollama_chat([
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": text}
-        ], function="role_parse", temperature=0.2, timeout_s=60)
+        ], function="role_parse", temperature=0.2, timeout_s=120)
         raw = (result or {}).get("content") if isinstance(result, dict) else ""
         parsed = extract_json(raw or "")
         if isinstance(parsed, dict):
@@ -303,7 +304,11 @@ async def parse_role_doc(mid: int, data: dict = Body(...), request: Request = No
             elif ":" in line:
                 k, v = line.split(":", 1)
             else:
-                continue
+                # v5.36.43: 支持「字段 值」空格分隔（如：姓名 墨小萤 / 年龄 19 岁）
+                m2 = _re.match(r"^([\u4e00-\u9fa5A-Za-z]{2,6})\s+(.+)$", line)
+                if not m2:
+                    continue
+                k, v = m2.group(1), m2.group(2)
             k, v = k.strip(), v.strip()
             if not v:
                 continue
