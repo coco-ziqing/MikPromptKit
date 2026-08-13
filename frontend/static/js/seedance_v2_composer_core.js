@@ -166,8 +166,8 @@
                 if (found) this.openProject(parseInt(lastPid));
             }
         } catch (e) { console.warn('restore last project fail', e); }
-        // 设置切换 tab 为 composer
-        this.switchSeedanceTab('composer');
+        // 设置切换 tab 为 composer（v5.36.29 修复：switchSeedanceTab 定义在 App 上，this 是 seedanceV2）
+        if (typeof App.switchSeedanceTab === 'function') App.switchSeedanceTab('composer');
     };
 
     // 独立模板列表渲染（简化版，去除项目关联信息）
