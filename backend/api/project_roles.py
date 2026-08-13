@@ -186,7 +186,112 @@ def create_role(mid: int, data: dict = Body(...), request: Request = None):
         c.close()
 
 
-@router.put("/api/roles/{rid}")
+@router.post("/api/master/{mid}/roles/parse-doc")
+async def parse_role_doc(mid: int, data: dict = Body(...), request: Request = None):
+    """识别人设文档 → 自动拆分人设字段（v5.36.38）
+    body: { role_type, text: 人设文档内容 }
+    返回 { ok, name, settings: {...} }：settings 为拆分后的字段字典
+    LLM(Ollama) 优先，失败回退规则拆分。
+    """
+    _auth(request)
+    role_type = data.get("role_type", "character")
+    text = (data.get("text") or "").strip()
+    if len(text) < 4:
+        raise HTTPException(400, "人设文档内容太短")
+    if len(text) > 8000:
+        raise HTTPException(400, "人设文档不能超过 8000 字符")
+
+    # 字段中文标签 → key 映射（对齐前端 LABELS）
+    KEY_MAP = {
+        "性别": "gender", "年龄": "age", "发型": "hairstyle", "发色": "hairstyle",
+        "脸型": "facial", "五官": "facial", "表情": "expression", "神态": "expression",
+        "体型": "body", "身材": "body", "服装": "clothing", "服饰": "clothing", "穿搭": "clothing",
+        "配饰": "accessory", "道具": "accessory", "姿态": "pose", "动作": "pose",
+        "职业": "occupation", "身份": "occupation", "气质": "temperament", "性格": "temperament",
+        "画风": "style", "背景": "background", "光照": "lighting", "色调": "color_scheme",
+        "画质": "quality", "负面": "negative",
+        "场景类型": "location", "建筑风格": "architecture", "时间": "time", "季节": "season",
+        "天气": "weather", "氛围": "atmosphere", "情绪": "atmosphere", "视角": "perspective",
+        "构图": "composition", "细节": "details"
+    }
+
+    # ── 1. LLM 拆分（Ollama） ──
+    settings = None
+    name = ""
+    try:
+        from ollama_client import ollama_chat, extract_json
+        if role_type == "character":
+            fields_note = "性别/年龄/发型发色/脸型五官/体型身材/服装服饰/配饰道具/姿态动作/职业身份/气质性格/画风"
+        else:
+            fields_note = "场景类型/建筑风格/时间时刻/季节气候/天气现象/氛围情绪/视角取景/构图布局/细节元素/光照"
+        sys_prompt = (
+            f"你是影视角色/场景设定拆解助手。从用户提供的人设文档中提取关键信息，"
+            f"输出 JSON 对象：{{name: 角色/场景名称, settings: {{字段key: 值}}}}。\n"
+            f"可用字段 keys（仅用这些，值用简短中文）：{fields_note}。\n"
+            f"文档中未提到的字段省略；不要编造。只输出 JSON，不要额外文字。"
+        )
+        result = await ollama_chat([
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": text}
+        ], function="role_parse", temperature=0.2, timeout_s=60)
+        raw = (result or {}).get("content") if isinstance(result, dict) else ""
+        parsed = extract_json(raw or "")
+        if isinstance(parsed, dict):
+            # LLM 可能输出中文标签 key → 映射回英文 key（对齐前端 LABELS）
+            _raw_settings = parsed.get("settings", {})
+            if isinstance(_raw_settings, dict):
+                settings = {}
+                for _k, _v in _raw_settings.items():
+                    _ks = str(_k).strip()
+                    _vs = str(_v).strip()
+                    if not _vs:
+                        continue
+                    # 精确匹配 → 子串匹配（LLM 输出多为完整中文标签）
+                    _k2 = KEY_MAP.get(_ks)
+                    if not _k2:
+                        for _cn, _key in KEY_MAP.items():
+                            if _cn in _ks:
+                                _k2 = _key
+                                break
+                    settings[_k2 or _ks] = _vs
+            name = str(parsed.get("name") or "").strip()
+    except Exception as e:
+        print(f"[ProjectRoles] LLM 解析失败，回退规则: {e}")
+        settings = None
+
+    # ── 2. 规则拆分兜底（按行/冒号/关键词） ──
+    if settings is None:
+        settings = {}
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if "：" in line:
+                k, v = line.split("：", 1)
+            elif ":" in line:
+                k, v = line.split(":", 1)
+            else:
+                continue
+            k, v = k.strip(), v.strip()
+            if not v:
+                continue
+            matched = None
+            for cn, key in KEY_MAP.items():
+                if cn in k:
+                    matched = key
+                    break
+            if matched:
+                settings[matched] = v
+            elif len(k) <= 8 and len(v) <= 60 and not name:
+                # 首行短键值对视为名称
+                name = v
+
+    if not settings and not name:
+        raise HTTPException(400, "无法从文档中识别出人设字段，请检查格式（建议每行：字段：值）或稍后重试")
+    if not name:
+        name = "未命名"
+
+    return {"ok": True, "name": name, "settings": settings, "source": "llm" if settings else "rule"}
 def update_role(rid: int, data: dict = Body(...), request: Request = None):
     u = _auth(request)
     c = _db()

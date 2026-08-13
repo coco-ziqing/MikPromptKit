@@ -133,12 +133,165 @@
         if (d.ok) { this._toast('已继承', 'success'); this.loadRoles(); this.openInstance(d.id); } else this._toast(d.detail || '继承未完成', 'error');
       } catch (e) { this._toast('网络不太稳定，请稍后重试', 'error'); }
     },
+    // v5.36.38: 新建实例弹窗（手动 / 预设模板 / 人设文档识别）
     newInstance: async function () {
-      var name = prompt('名称:', this._rt === 'character' ? '新角色' : '新场景'); if (!name) return;
+      var self = this;
+      var rt = this._rt;
+      var ov = document.createElement('div'); ov.className = 'pk-auth-modal-overlay'; ov.id = 'rlNew';
+      ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+      var tabs = ['manual', 'template', 'doc'];
+      var tabNames = { manual: '📝 手动填写', template: '📚 预设模板', doc: '🤖 人设文档识别' };
+      ov.innerHTML = '<div class="pk-auth-modal" style="max-width:640px;width:94vw;" onclick="event.stopPropagation()">' +
+        '<h4 style="display:flex;align-items:center;justify-content:space-between;"><span>＋ 新建' + (rt === 'character' ? '角色' : '场景') + '实例</span>' +
+        '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'rlNew\').remove()">✕</button></h4>' +
+        '<div style="display:flex;gap:4px;margin-bottom:10px;border-bottom:1px solid var(--border-color);">' +
+        tabs.map(function (t) {
+          return '<button class="rl-new-tab" data-tab="' + t + '" style="padding:6px 12px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-muted);border-bottom:2px solid transparent;">' + tabNames[t] + '</button>';
+        }).join('') + '</div>' +
+        '<div id="rlNewBody"></div>' +
+        '<div class="pk-modal-actions"><button class="btn btn-secondary" onclick="document.getElementById(\'rlNew\').remove()">取消</button>' +
+        '<button class="btn btn-primary" id="rlNewGo" style="display:none;">创建</button></div></div>';
+      document.body.appendChild(ov);
+      var curTab = 'manual';
+      function switchTab(t) {
+        curTab = t;
+        ov.querySelectorAll('.rl-new-tab').forEach(function (b) {
+          var on = b.dataset.tab === t;
+          b.style.color = on ? 'var(--primary,#3b82f6)' : 'var(--text-muted)';
+          b.style.borderBottomColor = on ? 'var(--primary,#3b82f6)' : 'transparent';
+        });
+        var go = document.getElementById('rlNewGo');
+        if (t === 'manual') {
+          go.style.display = 'inline-block'; go.textContent = '创建';
+          document.getElementById('rlNewBody').innerHTML =
+            '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">填写名称，创建后可在详情中继续添加设定字段</div>' +
+            '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">名称</label>' +
+            '<input id="rl_new_name" class="s2-input" style="width:100%;padding:7px 10px;" placeholder="' + (rt === 'character' ? '如：林晚晴' : '如：雨夜小巷') + '" value="' + (rt === 'character' ? '新角色' : '新场景') + '">';
+        } else if (t === 'template') {
+          go.style.display = 'none';
+          document.getElementById('rlNewBody').innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:10px 0;">加载预设模板...</div>';
+          self._loadTemplatePicker(rt);
+        } else {
+          go.style.display = 'none';
+          document.getElementById('rlNewBody').innerHTML =
+            '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">粘贴' + (rt === 'character' ? '人设' : '场景设定') + '文档，自动拆分字段填入（可用 Ollama 识别，也可手动修正）</div>' +
+            '<textarea id="rl_new_doc" class="s2-input" style="width:100%;min-height:160px;padding:8px;" placeholder="如：\n姓名：林晚晴\n年龄：28岁\n职业：广告公司创意总监\n性格：干练果敢、外冷内热\n发型：及肩短发\n服装：剪裁利落的深色西装\n..."></textarea>' +
+            '<div style="margin-top:8px;"><button class="btn btn-sm btn-primary" onclick="PK_ROLES._parseDoc()">🤖 识别并拆分为字段</button> ' +
+            '<span style="font-size:11px;color:var(--text-muted);">识别结果将填入下方字段，可编辑后创建</span></div>' +
+            '<div id="rl_parse_result" style="margin-top:8px;"></div>';
+        }
+      }
+      ov.querySelectorAll('.rl-new-tab').forEach(function (b) { b.onclick = function () { switchTab(b.dataset.tab); }; });
+      document.getElementById('rlNewGo').onclick = function () {
+        var name = (document.getElementById('rl_new_name') || {}).value || '';
+        if (!name.trim()) { self._toast('名称必填', 'error'); return; }
+        self._createInstance(name, {});
+      };
+      switchTab('manual');
+    },
+
+    // 创建实例（手动/文档共用）
+    _createInstance: async function (name, settings) {
+      var self = this;
       try {
-        var d = await (await fetch('/api/master/' + this._mid + '/roles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role_type: this._rt, name: name, settings: {} }) })).json();
-        if (d.ok) { this.loadRoles(); this.openInstance(d.id); }
+        var d = await (await fetch('/api/master/' + this._mid + '/roles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role_type: this._rt, name: name, settings: settings || {} }) })).json();
+        if (d.ok) {
+          var ov = document.getElementById('rlNew'); if (ov) ov.remove();
+          this._toast('✅ 已创建', 'success'); this.loadRoles(); this.openInstance(d.id);
+        } else { this._toast(d.detail || '创建未完成', 'error'); }
       } catch (e) { this._toast('创建未完成', 'error'); }
+    },
+
+    // 预设模板列表（公共库）
+    _loadTemplatePicker: async function (rt) {
+      var self = this;
+      var api = rt === 'character' ? '/api/character-composer/characters' : '/api/scene-composer/scenes';
+      try {
+        var d = await (await fetch(api + '?page_size=100')).json();
+        var items = d.items || [];
+        var box = document.getElementById('rlNewBody');
+        if (!box) return;
+        if (!items.length) {
+          box.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">公共库暂无' + (rt === 'character' ? '角色' : '场景') + '模板，可切到「📝 手动填写」创建</div>';
+          return;
+        }
+        var h = '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">从公共库选择预设' + (rt === 'character' ? '角色' : '场景') + '模板（点击预览，选中即继承创建）：</div>' +
+          '<div style="max-height:340px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">';
+        for (var i = 0; i < items.length; i++) {
+          var it = items[i];
+          var prev = (function () { try { var s = it.settings || (it.settings_json ? JSON.parse(it.settings_json) : {}); return Object.keys(s).slice(0, 3).map(function (k) { return (LABELS[k] || k) + ':' + s[k]; }).join(' · '); } catch (e) { return ''; } })();
+          h += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:8px;cursor:pointer;" onclick="PK_ROLES._adoptTemplate(' + it.id + ')" title="点击创建：' + self._esc(prev || '') + '">' +
+            '<div style="font-size:13px;font-weight:600;">' + self._esc(it.name || ('#' + it.id)) + '</div>' +
+            (prev ? '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + self._esc(prev) + '</div>' : '') +
+            '<div style="font-size:10px;color:var(--primary);margin-top:4px;">点击创建 →</div></div>';
+        }
+        h += '</div>';
+        box.innerHTML = h;
+      } catch (e) { box.innerHTML = '<div style="padding:16px;color:var(--danger);">加载模板失败</div>'; }
+    },
+
+    // 从预设模板继承创建
+    _adoptTemplate: async function (srcId) {
+      var self = this;
+      try {
+        var d = await (await fetch('/api/master/' + this._mid + '/roles/adopt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role_type: this._rt, source_profile_id: srcId }) })).json();
+        var ov = document.getElementById('rlNew'); if (ov) ov.remove();
+        if (d.ok) { this._toast('✅ 已从模板创建', 'success'); this.loadRoles(); this.openInstance(d.id); }
+        else { this._toast(d.detail || '创建未完成', 'error'); }
+      } catch (e) { this._toast('创建未完成', 'error'); }
+    },
+
+    // 人设文档识别 → 拆字段
+    _parseDoc: async function () {
+      var self = this;
+      var text = (document.getElementById('rl_new_doc') || {}).value || '';
+      if (!text.trim()) { this._toast('请先粘贴人设文档', 'error'); return; }
+      var btn = document.querySelector('#rlNewBody button');
+      var box = document.getElementById('rl_parse_result');
+      if (box) box.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">🤖 正在识别拆分中...</div>';
+      try {
+        var d = await (await fetch('/api/master/' + this._mid + '/roles/parse-doc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role_type: this._rt, text: text }) })).json();
+        if (!d.ok) { if (box) box.innerHTML = '<div style="font-size:12px;color:var(--danger);">识别失败: ' + self._esc(d.detail || '') + '</div>'; return; }
+        // 渲染可编辑字段
+        var html = '<div style="font-size:12px;font-weight:600;margin-bottom:4px;">✅ 识别结果（可修改）：</div>' +
+          '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">名称</label>' +
+          '<input id="rl_pn" class="s2-input" style="width:100%;padding:5px 8px;margin-bottom:6px;" value="' + self._esc(d.name || '未命名') + '">' +
+          '<div style="max-height:200px;overflow:auto;">';
+        var keys = Object.keys(d.settings || {});
+        if (!keys.length) {
+          html += '<div style="font-size:11px;color:var(--text-muted);">未识别到字段，可手动添加</div>';
+        }
+        for (var i = 0; i < keys.length; i++) {
+          var k = keys[i];
+          html += '<div style="margin-bottom:4px;"><label style="font-size:10px;color:var(--text-muted);">' + self._esc(LABELS[k] || k) + '</label>' +
+            '<input class="rl-pf" data-k="' + self._esc(k) + '" value="' + self._esc(d.settings[k]) + '" style="width:100%;padding:4px 8px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-input,transparent);color:var(--text-main);font-size:12px;"></div>';
+        }
+        html += '</div><div style="margin-top:6px;display:flex;gap:6px;">' +
+          '<button class="btn btn-sm btn-outline-secondary" onclick="PK_ROLES._addParseField()">＋字段</button>' +
+          '<button class="btn btn-sm btn-success" onclick="PK_ROLES._createFromParse()">✅ 创建' + (this._rt === 'character' ? '角色' : '场景') + '</button></div>';
+        box.innerHTML = html;
+      } catch (e) { if (box) box.innerHTML = '<div style="font-size:12px;color:var(--danger);">识别异常: ' + self._esc(e.message) + '</div>'; }
+    },
+
+    // 识别结果添加字段
+    _addParseField: function () {
+      var k = prompt('字段名（如 gender / 自定义中文）:', ''); if (!k) return;
+      var box = document.getElementById('rl_parse_result');
+      if (!box) return;
+      var div = document.createElement('div'); div.style.marginBottom = '4px';
+      div.innerHTML = '<label style="font-size:10px;color:var(--text-muted);">' + this._esc(LABELS[k] || k) + '</label>' +
+        '<input class="rl-pf" data-k="' + this._esc(k) + '" value="" style="width:100%;padding:4px 8px;border:1px solid var(--border-color);border-radius:5px;background:var(--bg-input,transparent);color:var(--text-main);font-size:12px;">';
+      box.appendChild(div);
+    },
+
+    // 从识别结果创建实例
+    _createFromParse: function () {
+      var self = this;
+      var name = (document.getElementById('rl_pn') || {}).value || '未命名';
+      var settings = {};
+      document.querySelectorAll('.rl-pf').forEach(function (i) { var k = i.getAttribute('data-k'); if (k) settings[k] = i.value; });
+      var ov = document.getElementById('rlNew'); if (ov) ov.remove();
+      this._createInstance(name, settings);
     },
 
     // ---------- 实例详情 ----------
