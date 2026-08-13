@@ -267,6 +267,8 @@ def _collect_refs(project_id: int, scene_id) -> list:
 # 错误分类: CLI 原始错误 → 类别 + 用户引导（v5.36.7）
 _ERROR_CATEGORIES = [
     ("ExceedConcurrencyLimit", "concurrency", "即梦账户并发任务超限。请等待当前生成完成后再提交，或稍后重试（系统会自动重试）。"),
+    ("final generation failed", "gen_failed", "即梦服务端生成失败（图片生成环节）。请稍后重试，或减少参考图数量/改用较短时长。"),
+    ("generation failed", "gen_failed", "即梦服务端生成失败。请稍后重试，或减少参考图数量/改用较短时长。"),
     ("ret=1001", "param", "参数错误（可能为无效会话/画幅/分辨率）。请检查会话与参数设置后重试。"),
     ("AigcComplianceConfirmationRequired", "compliance", "该模型首次使用需先在即梦网页端完成一次模型授权确认，然后重试。"),
     ("no file upload", "upload", "参考图上传失败（大图可能超时，系统已自动压缩后重试）。"),

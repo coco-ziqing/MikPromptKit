@@ -376,6 +376,22 @@ def update_project_to_template(project_id: int, data: dict = Body(...)):
         return {"ok": True, "template_id": proj["template_id"], "duplicate": False}
 
 
+# ==================== 项目删除 ====================
+
+def _rollback_prompt_usage(db, scene_ids: list):
+    """删除场景前回滚词卡使用计数（v5.36.23 修复：删除项目/镜头时 usage_count 不回落）"""
+    if not scene_ids:
+        return
+    placeholders = ",".join("?" for _ in scene_ids)
+    rows = db.execute(
+        f"SELECT DISTINCT word_card_id FROM user_scene_prompt WHERE scene_id IN ({placeholders})",
+        scene_ids).fetchall()
+    for r in rows:
+        db.execute(
+            "UPDATE prompt_word_card SET usage_count=MAX(0, usage_count-1) WHERE id=?",
+            [r["word_card_id"]])
+
+
 @router.delete("/projects/{project_id}")
 def delete_project(project_id: int):
     """删除项目"""
@@ -386,7 +402,9 @@ def delete_project(project_id: int):
     # 关闭外键检查（user_scene_prompt 有残留FK引用已删除的表）
     db.execute("PRAGMA foreign_keys = OFF")
     try:
-        # 级联删除镜头和关联 + 清理总项目关联
+        # 回滚词卡使用计数 + 级联删除镜头和关联 + 清理总项目关联
+        _rollback_prompt_usage(db, [r["id"] for r in db.execute(
+            "SELECT id FROM user_project_scene WHERE project_id=?", [project_id]).fetchall()])
         db.execute("DELETE FROM master_sub_project WHERE seedance_project_id=?", [project_id])
         db.execute("DELETE FROM user_scene_prompt WHERE scene_id IN (SELECT id FROM user_project_scene WHERE project_id=?)", [project_id])
         db.execute("DELETE FROM user_project_scene WHERE project_id=?", [project_id])
@@ -584,6 +602,8 @@ def delete_scene(project_id: int, scene_id: int):
     # 关闭外键检查（user_scene_prompt 有残留FK引用已删除的表）
     db.execute("PRAGMA foreign_keys = OFF")
     try:
+        # 回滚词卡使用计数
+        _rollback_prompt_usage(db, [scene_id])
         db.execute("DELETE FROM user_scene_prompt WHERE scene_id=?", [scene_id])
         db.execute("DELETE FROM user_project_scene WHERE id=?", [scene_id])
         # 重排序号
