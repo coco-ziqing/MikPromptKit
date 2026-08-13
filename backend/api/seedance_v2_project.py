@@ -738,6 +738,27 @@ def compose_project(project_id: int, data: dict = Body({})):
     result = compose_full(scenes, proj_dict, fmt=fmt, density=density,
                           include_audio=include_audio, db=db)
 
+    # v5.36.26: seedance 模式 + include_refs → 应用参考图模式完整文本
+    # （与视频提交 create_video_tasks 的 _build_ref_aware_prompt 完全一致）
+    if fmt == "seedance" and data.get("include_refs", False):
+        try:
+            from api.seedance_v2_video import _collect_refs, _build_ref_aware_prompt
+            # 合并全局 + 所有镜头级参考图（去重），预览与提交链路一致且完整
+            refs = _collect_refs(project_id, None)
+            seen_fp = {r.get("file_path") or "" for r in refs}
+            for s in scenes:
+                for r in _collect_refs(project_id, s["id"]):
+                    fp = r.get("file_path") or ""
+                    if fp and fp not in seen_fp:
+                        seen_fp.add(fp)
+                        refs.append(r)
+            if refs:
+                result["text"] = _build_ref_aware_prompt(result["text"], refs)
+                result["json"]["ref_mode"] = True
+                result["json"]["ref_count"] = len(refs)
+        except Exception as e:
+            print(f"[Seedance Compose] 参考图模式拼接失败: {e}")
+
     # 添加遗留兼容字段（注意 scenes 是 Row 对象，不能用 .get）
     if include_audio:
         audio_shots = []

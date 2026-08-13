@@ -181,8 +181,9 @@ def _build_ref_aware_prompt(base_prompt: str, refs: list) -> str:
         elif rtype == "style":
             refs_used.append(f"{tag}作为画面风格参考")
         else:
-            char_names.append(name or f"角色{idx}")
-            refs_used.append(f"{tag}作为角色{idx}外观参考")
+            cname = name or f"角色{idx}"
+            char_names.append(cname)
+            refs_used.append(f"{tag}作为角色「{cname}」外观参考")
 
     # 动态描述文本（原组装文本 = 主体/动作/场景/构图/光影）
     body = (base_prompt or "").strip()

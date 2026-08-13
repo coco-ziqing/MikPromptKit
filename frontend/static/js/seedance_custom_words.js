@@ -326,7 +326,9 @@ if (!App.seedanceV2 || App.seedanceV2._openGroupCreator) return;
             format:fmt,density:density,include_audio:includeAudio,
             global_style:globalStyle,global_transition:globalTransition,negative_prompt:negativePrompt,
             aspect_ratio:aspectRatio,resolution:resolution,total_duration:totalDuration,
-            bgm:bgm,sfx:sfx,dialogue:dialogue
+            bgm:bgm,sfx:sfx,dialogue:dialogue,
+            // v5.36.26: seedance 模式预览输出与真实提交一致（参考图完整文本）
+            include_refs: (fmt==='seedance')
         };
         // 调用后端引擎
         var self=this;
@@ -340,7 +342,7 @@ if (!App.seedanceV2 || App.seedanceV2._openGroupCreator) return;
             if(o)o.value=r.text;
             // 显示元信息
             var meta=document.getElementById('s2OutputMeta');
-            if(meta)meta.textContent=(r.shot_count||0)+App._t('auto.str_5a8391a9', '镜头 · ')+(r.pixel_res||'')+' · '+(r.density||'standard');
+            if(meta)meta.textContent=(r.shot_count||0)+App._t('auto.str_5a8391a9', '镜头 · ')+(r.pixel_res||'')+' · '+(r.density||'standard')+(r.ref_mode?(' · 🖼 参考图 '+r.ref_count+' 张'):'');
         }).catch(function(e){
             if(o)o.value='合成未完成: '+e.message;
         });
