@@ -155,6 +155,17 @@
         this.renderStandaloneList();
         this.currentProjectId = null; this.currentProject = null; this.scenes = [];
         this.renderComposerEmpty();
+        // v5.36.27: 刷新后自动恢复上次打开的分镜项目（全局参数/视频参数不丢）
+        try {
+            var lastPid = localStorage.getItem('promptkit_seedance_project');
+            if (lastPid) {
+                var found = false;
+                for (var li = 0; li < this.projects.length; li++) {
+                    if (String(this.projects[li].id) === String(lastPid)) { found = true; break; }
+                }
+                if (found) this.openProject(parseInt(lastPid));
+            }
+        } catch (e) { console.warn('restore last project fail', e); }
         // 设置切换 tab 为 composer
         this.switchSeedanceTab('composer');
     };

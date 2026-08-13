@@ -70,8 +70,24 @@
             ratioOpts += '<option value="'+r+'"'+(r===defRatio?' selected':'')+'>'+r+'</option>';
         }
         var resOpts = '';
-        for (var k = 0; k < cfg.resolutions.length; k++) {
-            resOpts += '<option value="'+cfg.resolutions[k]+'"'+(cfg.resolutions[k]===defRes?' selected':'')+'>'+cfg.resolutions[k]+'</option>';
+        // v5.36.27: 按模型过滤分辨率档位（与 _videoModelChanged 一致，避免选了模型不支持的值）
+        var _allowedRes = ['480p','720p','1080p','4k'];
+        if (defModel === 'seedance2.5') _allowedRes = ['480p','720p'];
+        else if (defModel === 'seedance2.0_vip') _allowedRes = ['720p','1080p','4k'];
+        else _allowedRes = ['720p'];
+        var _resValid = false;
+        function _resLabel2(v){ return v==='4k' ? '4K' : v; }
+        for (var k = 0; k < _allowedRes.length; k++) {
+            if (_allowedRes[k] === defRes) _resValid = true;
+            resOpts += '<option value="'+_allowedRes[k]+'"'+(_allowedRes[k]===defRes?' selected':'')+'>'+_resLabel2(_allowedRes[k])+'</option>';
+        }
+        // 项目保存的分辨率不被当前模型支持 → 自动回退到模型允许的最高档
+        if (!_resValid) {
+            defRes = _allowedRes[_allowedRes.length - 1];
+            resOpts = '';
+            for (var k2 = 0; k2 < _allowedRes.length; k2++) {
+                resOpts += '<option value="'+_allowedRes[k2]+'"'+(_allowedRes[k2]===defRes?' selected':'')+'>'+_resLabel2(_allowedRes[k2])+'</option>';
+            }
         }
 
         // ===== 参数映射提示（项目分辨率 → 即梦建议） =====

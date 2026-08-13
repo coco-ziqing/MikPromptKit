@@ -72,9 +72,15 @@
             vmOpts += '<option value="'+VMODELS[vi]+'"'+(VMODELS[vi]===vm?' selected':'')+'>'+VMODELS[vi]+'</option>';
         }
         var VRESS = ['480p','720p','1080p','4k'];
+        // v5.36.27: 按当前模型过滤分辨率档位（与提交弹窗/CLI 支持一致）
+        if (vm === 'seedance2.5') VRESS = ['480p','720p'];
+        else if (vm === 'seedance2.0_vip') VRESS = ['720p','1080p','4k'];
+        else VRESS = ['720p'];
+        if (VRESS.indexOf(vres) < 0) vres = VRESS[VRESS.length - 1];
         var vrOpts = '';
+        function _resLabel(v){ return v==='4k' ? '4K' : v; }
         for (var vj = 0; vj < VRESS.length; vj++) {
-            vrOpts += '<option value="'+VRESS[vj]+'"'+(VRESS[vj]===vres?' selected':'')+'>'+VRESS[vj]+'</option>';
+            vrOpts += '<option value="'+VRESS[vj]+'"'+(VRESS[vj]===vres?' selected':'')+'>'+_resLabel(VRESS[vj])+'</option>';
         }
         h+='<div class="s2-global-row" style="margin-top:6px;background:rgba(16,185,129,0.05);border:1px dashed rgba(16,185,129,0.3);border-radius:6px;padding:6px 8px;">';
         h+='<div style="width:100%;font-size:11px;font-weight:700;color:#10b981;margin-bottom:4px;">🎬 即梦视频参数 <span style="font-weight:400;color:var(--text-muted);font-size:10px;">(生成视频时的默认参数，提交弹窗可改)</span></div>';
@@ -1311,7 +1317,26 @@
                 method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)
             });
             if(r&&r.ok){App.showToast('已保存','success');}
+            // v5.36.27: 模型切换后同步过滤分辨率下拉（避免保存模型不支持的分辨率）
+            if(key==='video_model') this._syncVideoResOptions(val);
         }catch(e){console.warn('save video param fail',e);}
+    };
+
+    // v5.36.27: 模型切换 → 分辨率下拉按模型支持档位重渲染
+    App.seedanceV2._syncVideoResOptions=function(model){
+        var sel=document.getElementById('s2_video_resolution');
+        if(!sel)return;
+        var allowed=['480p','720p','1080p','4k'];
+        if(model==='seedance2.5')allowed=['480p','720p'];
+        else if(model==='seedance2.0_vip')allowed=['720p','1080p','4k'];
+        else allowed=['720p'];
+        var cur=sel.value||'';
+        var opts='';
+        for(var i=0;i<allowed.length;i++){
+            opts+='<option value="'+allowed[i]+'"'+(allowed[i]===cur?' selected':'')+'>'+allowed[i]+'</option>';
+        }
+        sel.innerHTML=opts;
+        if(allowed.indexOf(cur)<0){sel.value=allowed[allowed.length-1];this._saveVideoParam('video_resolution',sel.value);}
     };
 
     // v5.36.11: 全局参数实时保存（画幅/分辨率/全局画风/全局转场/音频等，防刷新丢失）
