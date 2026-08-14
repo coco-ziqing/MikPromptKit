@@ -506,9 +506,12 @@
                 tasks.forEach(function (t) {
                     var prev = '';
                     if (t.status === 'success' && t.result_filename) {
+                        var openFn = t.media_type === 'video'
+                            ? 'App.openVideoViewer(\'' + t.result_filename + '\',' + t.card_id + ')'
+                            : 'App.openImageViewer(\'' + (t.result_original || t.result_filename) + '\',' + t.card_id + ')';
                         prev = t.media_type === 'video'
-                            ? '<video src="/api/thumbnails/video/' + t.result_filename + '" style="width:72px;height:46px;object-fit:cover;border-radius:6px;" muted loop preload="metadata"></video>'
-                            : '<img src="/api/thumbnails/file/' + t.result_filename + '" style="width:72px;height:46px;object-fit:cover;border-radius:6px;">';
+                            ? '<video src="/api/thumbnails/video/' + t.result_filename + '" style="width:72px;height:46px;object-fit:cover;border-radius:6px;cursor:pointer;" muted loop preload="metadata" title="点击查看原视频" onclick="' + openFn + '"></video>'
+                            : '<img src="/api/thumbnails/file/' + t.result_filename + '" style="width:72px;height:46px;object-fit:cover;border-radius:6px;cursor:pointer;" title="点击查看原图" onclick="' + openFn + '">';
                     }
                     h += '<div style="display:flex;gap:10px;align-items:center;padding:7px 8px;border:1px solid var(--border-color);border-radius:10px;margin-bottom:6px;">' +
                         (prev || '<div style="width:72px;height:46px;display:flex;align-items:center;justify-content:center;font-size:20px;background:rgba(127,127,127,.08);border-radius:6px;">' + (self._icons[t.task_type] || '🎨') + '</div>') +
@@ -517,7 +520,7 @@
                         (t.error ? '<div style="font-size:10px;color:#ef4444;margin-top:2px;">' + self._esc(t.error) + '</div>' : '') + '</div></div>' +
                         (t.status === 'success' ? (t.is_current ? '<span style="font-size:9px;color:#10b981;">当前显示</span>' : '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#10b981;color:#10b981;" onclick="App.cardGen.activate(' + t.id + ',' + t.card_id + ',null)">设为当前</button>') : '') +
                         (t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;" onclick="App.cardGen.retry(' + t.id + ')">🔄 重试</button>' : '') +
-                        (t.status === 'success' || t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.cardGen.regen(' + t.id + ')" title="用相同参数再次生成">♻ 重生</button>' : '') +
+                        (t.status === 'success' || t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.cardGen.regen(' + t.id + ')" title="用相同参数再次生成">♻ 重新生成</button>' : '') +
                         '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;" onclick="App.cardGen.locateCard(' + t.card_id + ',' + (t.group_id || 0) + ')" title="在词库中定位到此词卡">📍 词卡</button>' +
                         (t.status === 'success' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.delTask(' + t.id + ',null)">🗑</button>' : '') +
                         '</div>';
