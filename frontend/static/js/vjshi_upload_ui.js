@@ -11,6 +11,25 @@
         _teamActive: function () {
             return !!(App._activeTiers && App._activeTiers.team);
         },
+        // v5.38.3: 当前用户上传权限（团队开启后按成员开关）
+        _uploadPerm: null,
+        _loadPerm: function (force) {
+            var self = this;
+            if (this._uploadPerm !== null && !force) return Promise.resolve(this._uploadPerm);
+            return App.fetchJSON('/api/team/permissions').then(function (d) {
+                self._uploadPerm = (d && d.me && d.me.upload) ? true : false;
+                self._permMembers = (d && d.members) || [];
+                self._isAdmin = !!(d && d.is_admin);
+                return self._uploadPerm;
+            }).catch(function () {
+                self._uploadPerm = null;  // 失败保持 null，由周期重试继续拉取
+                return false;
+            });
+        },
+        // 按钮显示条件：团队版 + 上传权限
+        canUpload: function () {
+            return this._teamActive() && this._uploadPerm === true;
+        },
         _toast: function (msg, type) {
             if (App.showToast) App.showToast(msg, type || 'info');
         },
@@ -28,7 +47,7 @@
         // ============ 投稿弹窗 ============
         openSubmit: function (genTaskId, cardId, videoFile, meta) {
             var self = this;
-            if (!this._teamActive()) { this._toast('光厂投稿为团队版功能', 'error'); return; }
+            if (!this.canUpload()) { this._toast('未开通上传权限，请联系主理人开启', 'error'); return; }
             // meta 为空时自动拉取后端生成字段
             if (!meta || !meta.title) {
                 App.fetchJSON('/api/vjshi/meta?gen_task_id=' + (genTaskId || 0) + '&card_id=' + (cardId || 0) + '&video_file=' + encodeURIComponent(videoFile || '')).then(function (d) {
@@ -127,6 +146,7 @@
                 '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-size:14px;font-weight:600;">📤 光厂上传队列</span>' +
                 '<span style="display:flex;gap:6px;">' +
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openLogin()" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;">🔑 登录光厂</button>' +
+                '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openPermPanel()" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;">🔐 权限设置</button>' +
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openPanel()" style="font-size:10px;">🔄 刷新</button>' +
                 '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></span></div>' +
                 '<div id="vjPanelBody" style="min-height:100px;">加载中...</div></div>';
@@ -191,11 +211,52 @@
         }
     };
     App.vjshi = VJ;
+    // v5.38.3: 页面加载拉取上传权限（不依赖 _activeTiers 时序；非团队会 403 → false）
+    VJ._loadPerm();
+    setInterval(function () { if (VJ._uploadPerm === null) VJ._loadPerm(); }, 5000);
 
     // 投稿按钮注入：任务面板/历史弹窗的视频产物行（由 card_gen_ui 调用）
     VJ.submitBtnHtml = function (t) {
-        if (!VJ._teamActive()) return '';
+        if (!VJ.canUpload()) return '';
         if (t.media_type !== 'video' || !t.result_filename) return '';
-        return '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;" onclick="App.vjshi.openSubmit(' + t.id + ',' + t.card_id + ',\'' + (t.result_filename || '') + '\',{title:\'\',keywords:\'\',description:\'\',category:\'\'})" title="投稿光厂（AI视频素材）">📤 光厂</button>';
+        return '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;" onclick="App.vjshi.openSubmit(' + t.id + ',' + t.card_id + ',\'' + (t.result_filename || '') + '\',{title:\'\',keywords:\'\',description:\'\',category:\'\'})" title="上传到光厂（AI视频素材，需团队上传权限）">📤 上传</button>';
+    };
+
+    // ============ 团队上传权限设置（v5.38.3，仅主理人） ============
+    VJ.openPermPanel = function () {
+        var self = this;
+        this._loadPerm(true).then(function () {
+            var ov = document.createElement('div');
+            ov.className = 'modal-overlay';
+            ov.style.cssText = 'display:flex;z-index:910;background:rgba(0,0,0,.55);align-items:center;justify-content:center;';
+            ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+            var members = self._permMembers || [];
+            var rows = members.map(function (m) {
+                var isAdmin = m.role === 'admin' || m.id === 1;
+                var chk = '<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" ' + (m.upload || isAdmin ? 'checked' : '') + (isAdmin ? ' disabled' : '') + ' onchange="App.vjshi.setPerm(' + m.id + ', this.checked)" style="accent-color:#f59e0b;"> ' + (isAdmin ? '（主理人默认）' : '') + '</label>';
+                return '<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border:1px solid var(--border-color);border-radius:8px;margin-bottom:5px;">' +
+                    '<span style="flex:1;font-size:12px;">' + self._esc(m.display_name || m.username || ('用户#' + m.id)) + '</span>' +
+                    '<span style="font-size:10px;color:#94a3b8;">' + (m.role === 'admin' ? '主理人' : '成员') + '</span>' + chk + '</div>';
+            }).join('');
+            ov.innerHTML = '<div class="modal-content" style="max-width:460px;border-radius:14px;padding:16px;" onclick="event.stopPropagation()">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-size:14px;font-weight:600;">🔑 团队上传权限</span>' +
+                '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></div>' +
+                '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">开启后成员在任务队列中可见「📤 上传」按钮（上传到光厂）；仅主理人可设置。</div>' +
+                (self._isAdmin ? rows : '<div style="font-size:12px;color:#94a3b8;padding:12px;text-align:center;">仅主理人可管理成员权限</div>') +
+                '</div>';
+            document.body.appendChild(ov);
+        });
+    },
+    VJ.setPerm = async function (userId, on) {
+        var d = await App.fetchJSON('/api/team/permissions/' + userId, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ upload: on })
+        });
+        if (d && d.ok) this._toast('✅ 已' + (on ? '开启' : '关闭') + '上传权限', 'success');
+        else this._toast((d && d.detail) || '设置未完成', 'error');
+    },
+    // 页面加载时拉取权限（控制按钮显示）
+    VJ.initPerm = function () {
+        if (VJ._teamActive()) VJ._loadPerm();
     };
 })();

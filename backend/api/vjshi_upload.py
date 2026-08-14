@@ -529,6 +529,98 @@ def vjshi_login_status(request: Request):
     return check_login()
 
 
+# ==================== 团队上传权限（v5.38.3） ====================
+
+def _ensure_perm_table():
+    c = _db()
+    try:
+        c.execute("""CREATE TABLE IF NOT EXISTS team_permissions (
+            user_id INTEGER PRIMARY KEY,
+            upload INTEGER DEFAULT 0,   -- 光厂上传权限
+            updated_by INTEGER DEFAULT 0,
+            updated_at TEXT DEFAULT (datetime('now','localtime'))
+        )""")
+        c.commit()
+    finally:
+        c.close()
+
+
+def _is_admin(request) -> bool:
+    u = _auth(request)
+    return bool(u and u.get("role") == "admin")
+
+
+def _user_upload_perm(user_id: int) -> bool:
+    """用户是否有光厂上传权限（admin 恒有）"""
+    if user_id == 1:
+        return True
+    try:
+        c = _db()
+        try:
+            r = c.execute("SELECT upload FROM team_permissions WHERE user_id=?", [user_id]).fetchone()
+            return bool(r and r["upload"])
+        finally:
+            c.close()
+    except Exception:
+        return False
+
+
+def _has_upload_perm(request) -> bool:
+    u = _auth(request)
+    return _user_upload_perm(u.get("id") or 0)
+
+
+@router.get("/api/team/permissions")
+def team_permissions_list(request: Request):
+    """团队权限列表（成员 + 上传权限状态）；当前用户权限 always 返回"""
+    _team_guard(request)
+    _ensure_perm_table()
+    c = _db()
+    try:
+        rows = c.execute(
+            "SELECT u.id, u.username, u.display_name, u.role, COALESCE(tp.upload, 0) as upload "
+            "FROM users u LEFT JOIN team_permissions tp ON tp.user_id = u.id "
+            "ORDER BY u.id").fetchall()
+        members = [dict(r) for r in rows]
+        me = _auth(request)
+        return {"ok": True, "members": members,
+                "me": {"id": me.get("id"), "role": me.get("role"),
+                        "upload": _user_upload_perm(me.get("id") or 0)},
+                "is_admin": _is_admin(request)}
+    finally:
+        c.close()
+
+
+@router.put("/api/team/permissions/{user_id}")
+def team_permissions_set(user_id: int, request: Request, data: dict = Body(...)):
+    """设置成员上传权限（仅 admin）"""
+    _team_guard(request)
+    if not _is_admin(request):
+        raise HTTPException(403, "仅主理人可设置权限")
+    _ensure_perm_table()
+    upload = 1 if data.get("upload") else 0
+    c = _db()
+    try:
+        exists = c.execute("SELECT 1 FROM users WHERE id=?", [user_id]).fetchone()
+        if not exists:
+            raise HTTPException(404, "用户不存在")
+        c.execute(
+            "INSERT INTO team_permissions (user_id, upload, updated_by) VALUES (?,?,?) "
+            "ON CONFLICT(user_id) DO UPDATE SET upload=?, updated_by=?",
+            [user_id, upload, _auth(request).get("id"), upload, _auth(request).get("id")])
+        c.commit()
+        return {"ok": True, "user_id": user_id, "upload": bool(upload)}
+    finally:
+        c.close()
+
+
+def _upload_perm_guard(request):
+    """上传权限守卫：团队版 + 用户有上传权限"""
+    _team_guard(request)
+    if not _has_upload_perm(request):
+        raise HTTPException(403, "未开通光厂上传权限，请联系主理人在团队空间权限设置中开启")
+
+
 @router.post("/api/vjshi/open-login")
 def vjshi_open_login(request: Request):
     """打开光厂浏览器窗口（人工手机验证码登录，一次即可）"""
@@ -545,7 +637,7 @@ def vjshi_open_login(request: Request):
 @router.get("/api/vjshi/meta")
 def vjshi_meta(request: Request, card_id: int = 0, gen_task_id: int = 0, video_file: str = ""):
     """预览自动生成的素材字段（投稿弹窗编辑用）"""
-    _team_guard(request)
+    _upload_perm_guard(request)
     return {"ok": True, "meta": _build_meta(card_id, gen_task_id, video_file)}
 
 
@@ -588,7 +680,7 @@ async def vjshi_llm_description(request: Request, data: dict = Body(...)):
 @router.post("/api/vjshi/tasks")
 def vjshi_create(data: VjshiUploadRequest, request: Request):
     """单条投稿入队"""
-    _team_guard(request)
+    _upload_perm_guard(request)
     _ensure_table()
     if not data.video_file:
         raise HTTPException(400, "video_file 必填")
@@ -615,7 +707,7 @@ def vjshi_create(data: VjshiUploadRequest, request: Request):
 @router.post("/api/vjshi/batch")
 def vjshi_batch(data: VjshiBatchRequest, request: Request):
     """批量投稿入队（items: [{card_id, gen_task_id, video_file}]）"""
-    _team_guard(request)
+    _upload_perm_guard(request)
     _ensure_table()
     if not data.items:
         raise HTTPException(400, "items 不能为空")
