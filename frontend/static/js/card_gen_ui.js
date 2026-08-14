@@ -500,7 +500,8 @@
                 var act = tasks.filter(function (t) { return t.status !== 'success' && t.status !== 'fail'; });
                 var okc = tasks.filter(function (t) { return t.status === 'success'; }).length;
                 var fai = tasks.filter(function (t) { return t.status === 'fail'; }).length;
-                var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">进行中 ' + act.length + ' · 成功 ' + okc + ' · 失败 ' + fai + '</div>';
+                var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">进行中 ' + act.length + ' · 成功 ' + okc + ' · 失败 ' + fai +
+                    '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;margin-left:8px;" onclick="App.cardGen.clearAll()" title="清空全部生成记录（成功/失败；正在进行的保留）">🧹 清空生成记录</button></div>';
                 if (!tasks.length) h += '<div style="color:var(--text-muted);font-size:12px;padding:20px;text-align:center;">暂无任务</div>';
                 tasks.forEach(function (t) {
                     var prev = '';
@@ -516,6 +517,8 @@
                         (t.error ? '<div style="font-size:10px;color:#ef4444;margin-top:2px;">' + self._esc(t.error) + '</div>' : '') + '</div></div>' +
                         (t.status === 'success' ? (t.is_current ? '<span style="font-size:9px;color:#10b981;">当前显示</span>' : '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#10b981;color:#10b981;" onclick="App.cardGen.activate(' + t.id + ',' + t.card_id + ',null)">设为当前</button>') : '') +
                         (t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;" onclick="App.cardGen.retry(' + t.id + ')">🔄 重试</button>' : '') +
+                        (t.status === 'success' || t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.cardGen.regen(' + t.id + ')" title="用相同参数再次生成">♻ 重生</button>' : '') +
+                        '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;" onclick="App.cardGen.locateCard(' + t.card_id + ',' + (t.group_id || 0) + ')" title="在词库中定位到此词卡">📍 词卡</button>' +
                         (t.status === 'success' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.delTask(' + t.id + ',null)">🗑</button>' : '') +
                         '</div>';
                 });
@@ -527,6 +530,50 @@
             var d = await App.fetchJSON('/api/card-gen/tasks/' + tid + '/retry', { method: 'POST' });
             if (d && d.ok) { this._toast('🔄 已重新入队', 'success'); this.openPanel(); }
             else this._toast((d && d.detail) || '重试未完成', 'error');
+        },
+        // v5.37.5: 重生（同参数再次生成）/ 清空记录 / 词卡定位
+        regen: async function (tid) {
+            var d = await App.fetchJSON('/api/card-gen/tasks/' + tid + '/regen', { method: 'POST' });
+            if (d && d.ok) { this._toast('♻ 已重新入队（同参数）', 'success'); this._ensureQueueBar(); }
+            else this._toast((d && d.detail) || '重生未完成', 'error');
+        },
+        clearAll: async function () {
+            if (!confirm('清空全部生成记录？（成功/失败记录及其产物文件将删除，词卡当前预览引用的文件保留；正在进行的任务不受影响）')) return;
+            var d = await App.fetchJSON('/api/card-gen/tasks?clear=1', { method: 'DELETE' });
+            if (d && d.ok) {
+                this._toast('🧹 已清空 ' + (d.cleared || 0) + ' 条记录', 'success');
+                this.openPanel();
+            } else {
+                this._toast((d && d.detail) || '清空未完成', 'error');
+            }
+        },
+        locateCard: async function (cardId, groupId) {
+            var self = this;
+            try {
+                if (App.state && App.state.currentGroupId !== groupId && groupId && typeof App.switchGroup === 'function') {
+                    await App.switchGroup(groupId, '');
+                } else if (typeof App.loadPrompts === 'function') {
+                    await App.loadPrompts();
+                }
+                var tries = 0;
+                var timer = setInterval(function () {
+                    tries++;
+                    var card = document.querySelector('#promptList .prompt-card[data-id="' + cardId + '"], #collectionItemList .prompt-card[data-id="' + cardId + '"]');
+                    if (card) {
+                        clearInterval(timer);
+                        try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { card.scrollIntoView(); }
+                        card.style.boxShadow = '0 0 0 3px #6366f1, 0 0 18px rgba(99,102,241,.6)';
+                        card.style.transition = 'box-shadow .8s';
+                        setTimeout(function () { card.style.boxShadow = ''; }, 2600);
+                        self._toast('📍 已定位到词卡', 'success');
+                    } else if (tries > 30) {
+                        clearInterval(timer);
+                        self._toast('未找到该词卡（可能不在当前视图）', 'warning');
+                    }
+                }, 300);
+            } catch (e) {
+                this._toast('定位未完成: ' + e.message, 'error');
+            }
         },
 
         // ============ 队列悬浮条（右下角，3s 轮询） ============

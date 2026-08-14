@@ -264,6 +264,19 @@ def _task_dict(r, with_card_name=True):
         d["preview_url"] = f"/api/thumbnails/video/{d['result_filename']}"
     elif d.get("media_type") == "image" and d.get("result_filename"):
         d["preview_url"] = f"/api/thumbnails/file/{d['result_filename']}"
+    # v5.37.5: 词卡所在分组（前端定位跳转用）
+    d["group_id"] = 0
+    if with_card_name and d.get("card_id"):
+        try:
+            c2 = _db()
+            try:
+                g = c2.execute("SELECT group_id FROM word_card WHERE id=?", [d["card_id"]]).fetchone()
+                if g:
+                    d["group_id"] = g["group_id"] or 0
+            finally:
+                c2.close()
+        except Exception:
+            pass
     d.pop("source_image", None)
     return d
 
@@ -950,28 +963,84 @@ def retry_card_gen_task(tid: int, request: Request):
 
 @router.delete("/api/card-gen/tasks/{tid}")
 def delete_card_gen_task(tid: int, request: Request):
-    """删除生成记录（含产物文件；不影响词卡当前预览）"""
+    """删除生成记录；产物文件若被词卡当前预览引用则保留（防坏图）"""
     _team_guard(request)
     c = _db()
     try:
         t = c.execute("SELECT * FROM card_gen_tasks WHERE id=?", [tid]).fetchone()
         if not t:
             raise HTTPException(404, "任务不存在")
-        for f in (t["result_filename"], t["result_original"], t["poster_filename"]):
-            if not f:
-                continue
-            for d in (THUMB_DIR, ORIGINALS_DIR, CARD_GEN_VIDEO_DIR):
-                p = os.path.join(d, f)
-                if os.path.isfile(p) and os.path.abspath(p).startswith(DATA_DIR):
-                    try:
-                        os.remove(p)
-                    except Exception:
-                        pass
+        _remove_task_files(c, t)
         c.execute("DELETE FROM card_gen_tasks WHERE id=?", [tid])
         c.commit()
         return {"ok": True}
     finally:
         c.close()
+
+
+def _remove_task_files(c, t):
+    """删除任务产物文件（被词卡字段引用的保留）。c: DB 连接（须开启事务）"""
+    card_id = t["card_id"]
+    try:
+        row = c.execute("SELECT thumbnail, original_ref, preview_media FROM word_card WHERE id=?", [card_id]).fetchone()
+        in_use = {row["thumbnail"], row["original_ref"], row["preview_media"]} if row else set()
+    except Exception:
+        in_use = set()
+    for f in (t["result_filename"], t["result_original"], t["poster_filename"]):
+        if not f:
+            continue
+        if f in in_use:
+            continue  # 词卡当前预览引用中，保留文件
+        for d in (THUMB_DIR, ORIGINALS_DIR, CARD_GEN_VIDEO_DIR):
+            p = os.path.join(d, f)
+            if os.path.isfile(p) and os.path.abspath(p).startswith(DATA_DIR):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+
+
+@router.delete("/api/card-gen/tasks")
+def clear_card_gen_tasks(request: Request, clear: int = Query(1)):
+    """一键清空生成记录（终态 success/fail；活动任务保留）。文件被词卡引用时保留"""
+    _team_guard(request)
+    _ensure_card_gen_table()
+    c = _db()
+    try:
+        rows = c.execute("SELECT * FROM card_gen_tasks WHERE status IN ('success','fail')").fetchall()
+        for t in rows:
+            _remove_task_files(c, t)
+        c.execute("DELETE FROM card_gen_tasks WHERE status IN ('success','fail')")
+        c.commit()
+        return {"ok": True, "cleared": len(rows)}
+    finally:
+        c.close()
+
+
+@router.post("/api/card-gen/tasks/{tid}/regen")
+def regen_card_gen_task(tid: int, request: Request):
+    """重生：用原任务相同参数新建任务入队（成功/失败记录均可再次生成）"""
+    _team_guard(request)
+    _ensure_card_gen_table()
+    c = _db()
+    try:
+        t = c.execute("SELECT * FROM card_gen_tasks WHERE id=?", [tid]).fetchone()
+        if not t:
+            raise HTTPException(404, "任务不存在")
+        if not t["prompt"] and not t["source_image"]:
+            raise HTTPException(400, "原任务无可复制参数")
+        cur = c.execute(
+            """INSERT INTO card_gen_tasks (card_id, task_type, prompt, source_image, model_version,
+               ratio, resolution_type, duration, video_resolution, session, creator_id, status)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,'queued')""",
+            [t["card_id"], t["task_type"], t["prompt"], t["source_image"], t["model_version"],
+             t["ratio"], t["resolution_type"], t["duration"], t["video_resolution"], t["session"], t["creator_id"]])
+        new_id = cur.lastrowid
+        c.commit()
+    finally:
+        c.close()
+    threading.Thread(target=_card_gen_worker, args=(new_id,), daemon=True).start()
+    return {"ok": True, "task_id": new_id}
 
 
 # 启动时接管孤儿任务（幂等）
