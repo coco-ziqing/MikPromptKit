@@ -129,7 +129,8 @@
                     var btn = document.createElement('span');
                     btn.className = 'cg-history-btn';
                     btn.style.cssText = 'display:inline-flex;gap:3px;align-items:center;font-size:10px;padding:1px 7px;border-radius:9px;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.5);color:#818cf8;cursor:pointer;margin-left:2px;user-select:none;';
-                    btn.innerHTML = icon + ' ' + s.count;
+                    // v5.37.12: 不直接显示数量，悬浮提示里展示（title 已有）
+                    btn.innerHTML = icon;
                     btn.title = '生成历史 ' + s.count + ' 条，点击切换显示';
                     btn.onclick = function (e) {
                         e.stopPropagation();
