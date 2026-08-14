@@ -155,6 +155,25 @@
                         } else {
                             row.insertBefore(modeBtn, btn);
                         }
+                        // v5.37.14: 缩略预览框右上角快捷切换按钮（hover 显示，点击直接切换）
+                        if (!card.querySelector('.cg-thumb-switch')) {
+                            var thumb = card.querySelector('.card-thumb');
+                            if (thumb) {
+                                var ts = document.createElement('span');
+                                ts.className = 'cg-thumb-switch';
+                                ts.style.cssText = 'position:absolute;right:4px;top:4px;z-index:6;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.25;transition:opacity .2s;';
+                                ts.innerHTML = '⇄';
+                                ts.title = '快捷切换图片/视频预览';
+                                ts.onmouseenter = function () { ts.style.opacity = '1'; };
+                                ts.onmouseleave = function () { ts.style.opacity = '.25'; };
+                                ts.onclick = function (e) {
+                                    e.stopPropagation();
+                                    self._toggleCardMode(parseInt(cid, 10));
+                                };
+                                thumb.style.position = thumb.style.position || 'relative';
+                                thumb.appendChild(ts);
+                            }
+                        }
                     }
                     // v5.37.9: 插入到「下载 ⬇」与「收藏 +」之间（下载按钮之前）
                     var dlBtn = row.querySelector('.coll-add-btn[title*="下载"]');
@@ -212,10 +231,43 @@
             var r = await App.fetchJSON('/api/card-gen/tasks/' + t.id + '/activate', { method: 'POST' });
             if (r && r.ok) {
                 this._toast('✅ 已切换为' + (target === 'video' ? '视频' : '图片') + '预览', 'success');
-                this._refreshCardList();
+                // v5.37.14: 局部更新缩略预览（不整页刷新）
+                this._updateCardThumb(cardId, t);
             } else {
                 this._toast((r && r.detail) || '切换未完成', 'error');
             }
+        },
+        // v5.37.14: 局部更新卡片缩略预览（图片↔视频）+ 查看按钮 + 模式按钮文字
+        _updateCardThumb: function (cardId, task) {
+            var card = document.querySelector('#promptList .prompt-card[data-id="' + cardId + '"], #collectionItemList .prompt-card[data-id="' + cardId + '"]');
+            if (!card) return;
+            var inner = card.querySelector('.card-thumb-inner');
+            if (inner) {
+                if (task.media_type === 'video') {
+                    inner.innerHTML = '<div class="thumb-video-wrap-preview">' +
+                        (task.poster_filename ? '<img class="thumb-video-poster" src="/api/thumbnails/file/' + task.poster_filename + '" alt="" loading="lazy">' : '<div class="thumb-placeholder thumb-video-placeholder"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg></div>') +
+                        '<div class="thumb-play-overlay"><svg viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19"/></svg></div>' +
+                        '<video class="thumb-video" src="/api/thumbnails/video/' + task.result_filename + '" loop muted playsinline preload="none"></video></div>';
+                } else {
+                    inner.innerHTML = '<img src="/api/thumbnails/file/' + task.result_filename + '" alt="缩略图">';
+                }
+            }
+            // 查看按钮（▶/🔍）同步更新
+            var zb = card.querySelector('.thumb-zoom-btn');
+            if (zb) {
+                var openFn = task.media_type === 'video'
+                    ? "event.stopPropagation();App.openVideoViewer('" + task.result_filename + "', '" + (task.poster_filename || '') + "', " + cardId + ", '')"
+                    : "event.stopPropagation();App.openImageViewer('" + (task.result_original || task.result_filename) + "', " + cardId + ")";
+                zb.textContent = task.media_type === 'video' ? '▶' : '🔍';
+                zb.title = task.media_type === 'video' ? '查看原视频' : '查看原图';
+                zb.setAttribute('onclick', openFn);
+            }
+            // 模式按钮文字同步
+            var mb = card.querySelector('.cg-mode-btn');
+            if (mb) mb.innerHTML = task.media_type === 'video' ? '🖼 图预览' : '🎬 视频预览';
+            // 历史按钮图标同步
+            var hb = card.querySelector('.cg-history-btn');
+            if (hb) hb.innerHTML = task.media_type === 'video' ? '🎬' : '🖼';
         },
         activate: async function (taskId, cardId, btn) {
             var d = await App.fetchJSON('/api/card-gen/tasks/' + taskId + '/activate', { method: 'POST' });
