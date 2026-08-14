@@ -468,6 +468,8 @@
         _refreshCardList: function () {
             try {
                 var st = App.state || {};
+                // 仅词库/收藏夹视图刷新（其他视图无害但无意义）
+                if (st.currentView !== 'home' && st.currentView !== 'collections') return;
                 if (st.currentGroupId && typeof App.loadPrompts === 'function') {
                     App.loadPrompts();
                 } else if (st.currentCollection && typeof App.loadCollectionItems === 'function') {
@@ -586,6 +588,14 @@
         },
 
         // ============ 队列悬浮条（右下角，3s 轮询） ============
+        // v5.37.10: 页面加载时检测活动任务 → 恢复悬浮条轮询（刷新页面后仍能自动刷新词卡）
+        _checkActiveTasks: function () {
+            var self = this;
+            App.fetchJSON('/api/card-gen/tasks?active=1&limit=10').then(function (d) {
+                var ts = (d && d.tasks) || [];
+                if (ts.length) self._ensureQueueBar();
+            }).catch(function () {});
+        },
         _ensureQueueBar: function () {
             var self = this;
             if (this._qBar) return;
@@ -597,12 +607,18 @@
             document.body.appendChild(bar);
             this._qBar = bar;
             var tick = function () {
-                App.fetchJSON('/api/card-gen/tasks?active=1&limit=50').then(function (d) {
+                App.fetchJSON('/api/card-gen/tasks?limit=60').then(function (d) {
                     var ts = (d && d.tasks) || [];
+                    // v5.37.10: 面板关闭时也检测新完成任务 → 自动刷新词卡显示
+                    self._seenDone = self._seenDone || {};
+                    var newDone = ts.filter(function (t) { return t.status === 'success' && !self._seenDone[t.id]; });
+                    ts.forEach(function (t) { if (t.status === 'success') self._seenDone[t.id] = 1; });
+                    if (newDone.length) self._refreshCardList();
+                    var act = ts.filter(function (t) { return t.status === 'queued' || t.status === 'submitting' || t.status === 'querying'; });
                     var st = document.getElementById('cgQStats');
-                    if (!ts.length) { bar.style.display = 'none'; return; }
-                    var run = ts.filter(function (t) { return t.status === 'querying' || t.status === 'submitting'; }).length;
-                    var que = ts.filter(function (t) { return t.status === 'queued'; }).length;
+                    if (!act.length) { bar.style.display = 'none'; return; }
+                    var run = act.filter(function (t) { return t.status === 'querying' || t.status === 'submitting'; }).length;
+                    var que = act.filter(function (t) { return t.status === 'queued'; }).length;
                     bar.style.display = 'flex';
                     if (st) st.textContent = '· 运行 ' + run + ' · 排队 ' + que;
                 }).catch(function () {});
@@ -649,6 +665,9 @@
         _observe();
         // 容器可能延迟创建，周期补注册 observer
         setInterval(_observe, 3000);
+        // v5.37.10: 页面加载后有活动任务 → 恢复悬浮条轮询（自动刷新依赖它）
+        try { if (App.cardGen) App.cardGen._checkActiveTasks(); } catch (e) {}
+        setInterval(function () { try { if (App.cardGen) App.cardGen._checkActiveTasks(); } catch (e) {} }, 20000);
     };
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () { setTimeout(_boot, 600); });
