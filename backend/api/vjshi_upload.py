@@ -143,8 +143,13 @@ def _build_meta(card_id, gen_task_id, video_file):
     title = card_name.strip()[:24]
     if len(title) < 4 and prompt:
         title = prompt[:24]
-    # 关键词：prompt 名词/场景词提取
-    keywords = _extract_keywords(prompt) or [card_name[:6]]
+    # 关键词：prompt 名词/场景词提取（光厂要求空格分隔 ≥5 个）
+    keywords = _extract_keywords(prompt)
+    if not keywords:
+        keywords = [card_name[:6]]
+    kws = keywords[:8]
+    while len(kws) < 5:
+        kws.append(f"AI{kws[0][:2]}" if kws else "AI视频")
     # 简介
     parts = ["AI生成视频素材"]
     if prompt:
@@ -157,7 +162,7 @@ def _build_meta(card_id, gen_task_id, video_file):
     description = "，".join(parts)[:200]
     # 分类：词卡 category 映射（首期常见类目，实测表单后校准）
     category = _map_category((card["category"] if card else "") or (card["module"] if card else "") or "")
-    return {"title": title, "keywords": ",".join(keywords[:8]), "description": description, "category": category}
+    return {"title": title, "keywords": " ".join(kws), "description": description, "category": category}
 
 
 def _extract_keywords(text):
@@ -324,11 +329,12 @@ def _wait_upload_done(page, cfg, timeout_sec=600):
 
 
 def _fill_form(page, t, cfg):
-    """按配置填表（人类节奏：逐字段 + 随机延迟）"""
+    """按配置填表（真实表单：弹窗内标题/关键词/描述/价格/AI标注/提交；人类节奏）"""
     fields = [
         ("title", "title", t["title"]),
         ("keywords", "keywords", t["keywords"]),
         ("description", "description", t["description"]),
+        ("price", "price", str(t["price"])),
     ]
     for key, fname, value in fields:
         sel = cfg.get(key, "")
@@ -341,40 +347,41 @@ def _fill_form(page, t, cfg):
             el.click(timeout=3000)
             el.fill("")
             for ch in value[:300]:
-                el.type(ch, delay=20)
-            time.sleep(0.3 + (id(value) % 5) / 10)
+                el.type(ch, delay=15)
+            time.sleep(0.3 + (id(value) % 4) / 10)
         except Exception as e:
             return False, f"填写 {key} 失败: {e}"
-    # 分类
-    cat_sel = cfg.get("category", "")
-    if cat_sel and t["category"]:
+    # AI 生成标注（hasAIGC）/ 循环（isLoop）——光厂 dioa-checkbox 自定义组件，用 JS 点关联 label
+    def _check_box(page, sel):
+        if not sel:
+            return False
         try:
-            el = page.query_selector(cat_sel)
-            if el:
-                el.select_option(label=t["category"])
-                time.sleep(0.3)
+            return page.evaluate(
+                """(sel) => {
+                    const el = document.querySelector(sel);
+                    if (!el) return false;
+                    if (el.checked) return true;
+                    const lab = el.closest('label');
+                    if (lab) { lab.click(); return true; }
+                    el.click();
+                    return true;
+                }""", sel)
         except Exception:
-            pass  # 分类失败不阻断
-    # 价格
-    price_sel = cfg.get("price", "")
-    if price_sel:
+            return False
+
+    for key in ("hasAIGC", "isLoop"):
+        if cfg.get(key):
+            _check_box(page, cfg[key])
+            time.sleep(0.3)
+    # 创作时间（当前日期）
+    ct_sel = cfg.get("creationTime", "")
+    if ct_sel:
         try:
-            el = page.query_selector(price_sel)
+            import datetime
+            el = page.query_selector(ct_sel)
             if el:
                 el.click(timeout=3000)
-                el.fill("")
-                el.type(str(t["price"]), delay=30)
-                time.sleep(0.3)
-        except Exception:
-            pass
-    # AI 标注
-    ai_sel = cfg.get("ai_checkbox", "")
-    if ai_sel and t["is_ai"]:
-        try:
-            el = page.query_selector(ai_sel)
-            if el:
-                if not el.is_checked():
-                    el.check()
+                el.fill(datetime.date.today().strftime("%Y-%m-%d"))
                 time.sleep(0.3)
         except Exception:
             pass
