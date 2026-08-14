@@ -9,6 +9,47 @@
 
 Object.assign(App, {
 
+    // ============ v5.37.4: 预览模式切换（图片↔视频，词卡生成历史） ============
+    // 拉取词卡生成历史，注入切换栏；图片产物用原图(result_original)，视频用 result_filename
+    _loadViewerSwitch(promptId, currentType) {
+        var self = this;
+        if (!promptId) return;
+        App.fetchJSON('/api/card-gen/tasks?card_id=' + promptId + '&limit=50').then(function (d) {
+            var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename; });
+            var images = tasks.filter(function (t) { return t.media_type === 'image'; });
+            var videos = tasks.filter(function (t) { return t.media_type === 'video'; });
+            // 仅两类产物都有时才显示切换栏（否则无意义）
+            if (!images.length || !videos.length) return;
+            var box = document.getElementById(currentType === 'video' ? 'vidViewerSwitch' : 'imgViewerSwitch');
+            if (!box) return;
+            var btn = function (label, type, active) {
+                return '<button type="button" onclick="App._switchViewerMode(' + promptId + ',\'' + type + '\')" style="font-size:11px;padding:3px 12px;border-radius:14px;border:1px solid ' + (active ? '#6366f1' : 'rgba(255,255,255,0.3)') + ';background:' + (active ? 'rgba(99,102,241,0.35)' : 'transparent') + ';color:#fff;cursor:pointer;">' + label + (active ? ' ✓' : '') + '</button>';
+            };
+            box.style.display = 'flex';
+            box.innerHTML = '<span style="font-size:10px;color:#94a3b8;margin-right:2px;">预览:</span>' +
+                btn('🖼 图片 (' + images.length + ')', 'image', currentType !== 'video') +
+                btn('🎬 视频 (' + videos.length + ')', 'video', currentType === 'video');
+        }).catch(function () {});
+    },
+    // 切换查看器模式：image → openImageViewer(原图)；video → openVideoViewer(视频)
+    _switchViewerMode: function (promptId, type) {
+        App.fetchJSON('/api/card-gen/tasks?card_id=' + promptId + '&limit=50').then(function (d) {
+            var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename; });
+            var pick = tasks.filter(function (t) { return t.media_type === type; });
+            if (!pick.length) { App.showToast('无' + (type === 'video' ? '视频' : '图片') + '产物', 'warning'); return; }
+            // 优先当前显示(is_current)，否则最新
+            var cur = pick.filter(function (t) { return t.is_current; });
+            var t = (cur[0] || pick[0]);
+            if (type === 'video') {
+                App.closeImageViewer();
+                App.openVideoViewer(t.result_filename, promptId);
+            } else {
+                App.closeVideoViewer();
+                App.openImageViewer(t.result_original || t.result_filename, promptId);
+            }
+        }).catch(function () {});
+    },
+
     // ============ 原图查看器(滚轮缩放 + 拖拽移动) ============
 
     openImageViewer(filename, promptId) {
@@ -31,6 +72,9 @@ Object.assign(App, {
 
         // v5.36.22: 同卡多版本列表（词卡多版本查看/切换/设为主预览）
         this._loadCardVersions(promptId);
+
+        // v5.37.4: 预览模式切换（图片↔视频）
+        this._loadViewerSwitch(promptId, 'image');
 
         // 加载指示（大图切换时反馈）
         var loading = document.getElementById('imgViewerLoading');
@@ -333,6 +377,9 @@ Object.assign(App, {
 
         video.src = '/api/thumbnails/video/' + filename + '?t=' + Date.now();
         video.load();
+
+        // v5.37.4: 预览模式切换（图片↔视频）
+        this._loadViewerSwitch(promptId, 'video');
 
         // 加载右侧提示词详情
         if (promptId && App._renderViewerRight) {

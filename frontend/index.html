@@ -367,6 +367,8 @@
     <div class="modal-overlay viewer-modal" id="modalVideoViewer" style="display:none;z-index:3000;background:rgba(0,0,0,0.85);">
         <div class="viewer-split">
             <div class="viewer-left" style="flex-direction:column;">
+                <!-- v5.37.4: 预览模式切换（图片/视频自由切换，词卡生成历史） -->
+                <div id="vidViewerSwitch" style="display:none;padding:8px 10px 4px;gap:6px;align-items:center;flex-wrap:wrap;"></div>
                 <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px 10px 0 10px;">
                     <div id="vidStage" style="width:100%;flex:1;display:flex;align-items:center;justify-content:center;background:#000;border-radius:10px 10px 0 0;overflow:hidden;"><video id="vidViewerPlayer" style="width:100%;height:100%;object-fit:contain;display:block;" playsinline></video></div>
                 </div>
@@ -458,6 +460,8 @@
     <div class="modal-overlay viewer-modal" id="modalImageViewer" style="display:none;z-index:3000;background:rgba(0,0,0,0.92);">
         <div class="viewer-split" style="height:96vh;margin:2vh;">
             <div class="viewer-left" style="flex:1;position:relative;">
+                <!-- v5.37.4: 预览模式切换（图片/视频自由切换，词卡生成历史） -->
+                <div id="imgViewerSwitch" style="display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);gap:6px;align-items:center;background:rgba(0,0,0,0.7);border-radius:8px;padding:4px 6px;z-index:12;"></div>
                 <div id="imgViewerNavPrev" onclick="App._viewerNavGo(-1)" title="上一张（←）" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;background:rgba(0,0,0,0.55);color:#fff;font-size:20px;display:none;align-items:center;justify-content:center;cursor:pointer;z-index:10;user-select:none;">◀</div>
                 <div id="imgViewerNavNext" onclick="App._viewerNavGo(1)" title="下一张（→）" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;background:rgba(0,0,0,0.55);color:#fff;font-size:20px;display:none;align-items:center;justify-content:center;cursor:pointer;z-index:10;user-select:none;">▶</div>
                 <div id="imgViewerNavCount" style="position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.55);color:#fff;font-size:12px;padding:3px 10px;border-radius:12px;display:none;z-index:10;">1 / 1</div>
@@ -1130,7 +1134,7 @@
     <script defer src="/static/js/presence_client.js?v=ad8634f6"></script>
     <script defer src="/static/js/asset_library_ui.js?v=368d785f"></script>
     <script defer src="/static/js/project_roles_ui.js?v=53604600"></script>
-    <script defer src="/static/js/card_gen_ui.js?v=53700003"></script>
+    <script defer src="/static/js/card_gen_ui.js?v=53700004"></script>
 <script defer src="/static/js/device_manager_ui.js?v=5a25b28b"></script>
 <script defer src="/static/js/file_steward_ui.js?v=5482b47c"></script>
 <script defer src="/static/js/notif_center.js?v=46bc22ed"></script>
@@ -1154,7 +1158,7 @@
     <script defer src="/static/js/app_maintenance.js?v=a1b2c3d4"></script>
 <script defer src="/static/js/app_import_export.js?v=5d30178f"></script>
     <script defer src="/static/js/app_media.js?v=54527403"></script>
-<script defer src="/static/js/app_media_viewer.js?v=f64f19b7"></script>
+<script defer src="/static/js/app_media_viewer.js?v=53700004"></script>
     <script defer src="/static/js/ai_tools.js?v=5370001a"></script>
     <script defer src="/static/js/word_picker.js?v=18cdc0d8"></script>
     <script defer src="/static/js/word_editor.js?v=3a2e2b77"></script>

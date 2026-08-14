@@ -458,6 +458,20 @@
             });
         },
 
+        // 刷新当前词卡列表（任务完成后缩略预览框自动载入新产物）
+        _refreshCardList: function () {
+            try {
+                var st = App.state || {};
+                if (st.currentGroupId && typeof App.loadPrompts === 'function') {
+                    App.loadPrompts();
+                } else if (st.currentCollection && typeof App.loadCollectionItems === 'function') {
+                    App.loadCollectionItems();
+                } else if (typeof App.loadPrompts === 'function') {
+                    App.loadPrompts();
+                }
+            } catch (e) {}
+        },
+
         // ============ 任务面板 + 队列悬浮条 ============
         openPanel: function () {
             var self = this;
@@ -476,6 +490,11 @@
             if (!this._panelOv || !document.body.contains(this._panelOv)) return;
             App.fetchJSON('/api/card-gen/tasks?limit=60').then(function (d) {
                 var tasks = (d && d.tasks) || [];
+                // v5.37.4: 新完成的任务 → 刷新词卡列表（缩略预览框自动载入产物）
+                self._seenDone = self._seenDone || {};
+                var newDone = tasks.filter(function (t) { return t.status === 'success' && !self._seenDone[t.id]; });
+                tasks.forEach(function (t) { if (t.status === 'success') self._seenDone[t.id] = 1; });
+                if (newDone.length) self._refreshCardList();
                 var box = self._panelOv.querySelector('#cgPanelBody');
                 if (!box) return;
                 var act = tasks.filter(function (t) { return t.status !== 'success' && t.status !== 'fail'; });
