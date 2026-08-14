@@ -54,6 +54,7 @@ from api.thumbnails import router as thumbnails_router
 from api.translate import router as translate_router
 from api.users import router as users_router
 from api.v2 import router as v2_router
+from api.vjshi_upload import router as vjshi_router  # v5.38.0 光厂素材上传
 from api.versions import router as versions_router
 from api.word_cards import router as word_card_router
 from api.workflow import router as workflow_router
@@ -68,6 +69,7 @@ def register_routers(app: FastAPI) -> None:
     """将全部业务路由挂载到 app（保持 main.py 原始注册顺序）"""
     app.include_router(prompts_router)
     app.include_router(v2_router)
+    app.include_router(vjshi_router)  # v5.38.0 光厂素材上传
     app.include_router(seedance_router)
     app.include_router(thumbnails_router)
     app.include_router(exporter_router)

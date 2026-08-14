@@ -621,6 +621,7 @@
                         '<div style="margin-top:3px;">' + self._statusBadge(t.status) + (t.progress && t.status === 'querying' ? ' ' + t.progress + '%' : '') + self._bar(t.status === 'querying' ? t.progress : (t.status === 'success' ? 100 : 0)) +
                         (t.error ? '<div style="font-size:10px;color:#ef4444;margin-top:2px;">' + self._esc(t.error) + '</div>' : '') + '</div></div>' +
                         (t.status === 'success' ? (t.is_current ? '<span style="font-size:9px;color:#10b981;">当前显示</span>' : '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#10b981;color:#10b981;" onclick="App.cardGen.activate(' + t.id + ',' + t.card_id + ',null)">设为当前</button>') : '') +
+                        (App.vjshi && App.vjshi.submitBtnHtml ? App.vjshi.submitBtnHtml(t) : '') +
                         (t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;" onclick="App.cardGen.retry(' + t.id + ')">🔄 重试</button>' : '') +
                         (t.status === 'success' || t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.cardGen.regen(' + t.id + ')" title="用相同参数再次生成">♻ 重新生成</button>' : '') +
                         '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;" onclick="App.cardGen.locateCard(' + t.card_id + ',' + (t.group_id || 0) + ')" title="在词库中定位到此词卡">📍 词卡</button>' +
