@@ -169,7 +169,7 @@
         _openHistoryPicker: function (cardId, anchor) {
             var self = this;
             App.fetchJSON('/api/card-gen/tasks?card_id=' + cardId + '&limit=20').then(function (d) {
-                var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename; });
+                var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename && t.task_type !== 'original'; });
                 if (!tasks.length) return;
                 var ov = document.createElement('div');
                 ov.className = 'modal-overlay';
@@ -181,13 +181,14 @@
                     '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">点击产物切换词卡当前预览（原图文件保留，可随时切回）</div>';
                 tasks.forEach(function (t) {
                     var cur = t.is_current ? '<span style="font-size:9px;background:#10b981;color:#fff;border-radius:8px;padding:1px 6px;margin-left:4px;">当前显示</span>' : '';
+                    var origTag = t.task_type === 'original' ? '<span style="font-size:9px;color:#94a3b8;margin-left:4px;">（生成前保留的素材）</span>' : '';
                     var prev = t.media_type === 'video'
                         ? '<video src="/api/thumbnails/video/' + t.result_filename + '" style="width:84px;height:56px;object-fit:cover;border-radius:6px;" muted loop preload="metadata"></video>'
                         : '<img src="/api/thumbnails/file/' + t.result_filename + '" style="width:84px;height:56px;object-fit:cover;border-radius:6px;">';
                     var meta = (t.task_type_label || t.task_type) + (t.media_type === 'video' ? ' · ' + (t.duration || 5) + 's' : '') + ' · ' + (t.created_at || '').slice(0, 16);
                     h += '<div style="display:flex;gap:10px;align-items:center;padding:8px;border:1px solid var(--border-color);border-radius:10px;margin-bottom:6px;' + (t.is_current ? 'border-color:#10b981;' : '') + '">' +
                         prev +
-                        '<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:600;">' + self._icons[t.task_type] + ' ' + meta + '</div>' +
+                        '<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:600;">' + self._icons[t.task_type] + ' ' + meta + origTag + '</div>' +
                         '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">' + self._esc((t.prompt || '').slice(0, 60)) + '</div></div>' +
                         (t.is_current ? '' : '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#10b981;color:#10b981;" onclick="App.cardGen.activate(' + t.id + ',' + cardId + ',this)">设为当前</button>') +
                         '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.delTask(' + t.id + ',this)">🗑</button></div>';
@@ -205,7 +206,11 @@
             var cur = tasks.filter(function (t) { return t.is_current; });
             var curType = (cur[0] || {}).media_type;
             var target = curType === 'video' ? 'image' : 'video';
-            var pick = tasks.filter(function (t) { return t.media_type === target; });
+            // v5.38.12: 图片侧优先真实图片产物，无则 fallback 输入原图（恢复原图预览）
+            var pick = tasks.filter(function (t) { return t.media_type === target && t.task_type !== 'original'; });
+            if (!pick.length && target === 'image') {
+                pick = tasks.filter(function (t) { return t.task_type === 'original'; });
+            }
             if (!pick.length) { this._toast('无' + (target === 'video' ? '视频' : '图片') + '产物', 'warning'); return; }
             var curPick = pick.filter(function (t) { return t.is_current; });
             var t = (curPick[0] || pick[0]);
@@ -537,7 +542,7 @@
             App.fetchJSON('/api/card-gen/tasks?card_id=' + cardId + '&limit=20').then(function (d) {
                 var box = document.getElementById('cgDetailHistory');
                 if (!box) return;
-                var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename; });
+                var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename && t.task_type !== 'original'; });
                 if (!tasks.length) { box.innerHTML = '<span style="color:#94a3b8;">暂无 AI 生成记录</span>'; return; }
                 var h = '';
                 tasks.forEach(function (t) {
@@ -591,7 +596,7 @@
             var self = this;
             if (!this._panelOv || !document.body.contains(this._panelOv)) return;
             App.fetchJSON('/api/card-gen/tasks?limit=60').then(function (d) {
-                var tasks = (d && d.tasks) || [];
+                var tasks = (d && d.tasks || []).filter(function (t) { return t.task_type !== 'original'; });
                 // v5.37.4: 新完成的任务 → 刷新词卡列表（缩略预览框自动载入产物）
                 self._seenDone = self._seenDone || {};
                 var newDone = tasks.filter(function (t) { return t.status === 'success' && !self._seenDone[t.id]; });
@@ -625,7 +630,8 @@
                         (t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;" onclick="App.cardGen.retry(' + t.id + ')">🔄 重试</button>' : '') +
                         (t.status === 'success' || t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.cardGen.regen(' + t.id + ')" title="用相同参数再次生成">♻ 重新生成</button>' : '') +
                         '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;" onclick="App.cardGen.locateCard(' + t.card_id + ',' + (t.group_id || 0) + ')" title="在词库中定位到此词卡">📍 词卡</button>' +
-                        (t.status === 'success' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.delTask(' + t.id + ',null)">🗑</button>' : '') +
+                        // v5.38.8: 成功/失败记录均可单独删除
+                        (t.status === 'success' || t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.delTask(' + t.id + ',null)" title="删除此记录">🗑</button>' : '') +
                         '</div>';
                 });
                 box.innerHTML = h;

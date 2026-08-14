@@ -40,7 +40,7 @@ _RESUME_STARTED = False
 
 TASK_TYPES = ("upscale", "image2image", "text2image", "text2video", "image2video")
 TYPE_LABELS = {"upscale": "高清", "image2image": "图生图", "text2image": "文生图",
-               "text2video": "文生视频", "image2video": "图生视频", "original": "原始"}
+               "text2video": "文生视频", "image2video": "图生视频", "original": "输入原图"}
 IMAGE_TYPES = ("upscale", "image2image", "text2image")
 VIDEO_TYPES = ("text2video", "image2video")
 

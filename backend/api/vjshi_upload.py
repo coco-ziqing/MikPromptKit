@@ -152,6 +152,8 @@ def _ensure_table():
         cols = [r[1] for r in c.execute("PRAGMA table_info(vjshi_upload_tasks)").fetchall()]
         if "updated_at" not in cols:
             c.execute("ALTER TABLE vjshi_upload_tasks ADD COLUMN updated_at TEXT DEFAULT ''")
+        if "progress_note" not in cols:
+            c.execute("ALTER TABLE vjshi_upload_tasks ADD COLUMN progress_note TEXT DEFAULT ''")
         c.commit()
     finally:
         c.close()
@@ -310,45 +312,72 @@ def vjshi_settings_put(request: Request, data: dict = Body(...)):
     return {"ok": True, "headless": _headless_mode()}
 
 
-def _get_context():
-    """启动/复用持久化浏览器 context（全局单例；模式由设置决定：有头=可见窗口）"""
-    from playwright.sync_api import sync_playwright
-    ctx = getattr(_get_context, "ctx", None)
-    if ctx is not None and ctx.browser is not None and ctx.browser.is_connected():
-        return ctx
-    # 启动（失败清理缓存重试一次，防 profile 锁残留）
-    for attempt in range(2):
-        try:
-            _pw = sync_playwright().start()
-            _get_context.pw = _pw
-            _get_context.ctx = _pw.chromium.launch_persistent_context(
-                PROFILE_DIR, channel="chrome", headless=_headless_mode(),
-                viewport={"width": 1440, "height": 900}, locale="zh-CN")
-            return _get_context.ctx
-        except Exception as e:
-            print(f"[VJSHI] 浏览器启动失败(第{attempt+1}次): {e}")
+_CTX_START_LOCK = threading.Lock()   # v5.38.14: 同 profile 并发启动互斥
+_VJSHI_BUSY = threading.Event()      # 上传任务进行中（check_login 忙时跳过）
+
+
+def _kill_profile_chrome():
+    """杀掉占用 vjshi_profile 的 Chrome 进程（启动失败自愈）"""
+    import subprocess
+    try:
+        ps = ("Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" "
+              "| Where-Object { $_.CommandLine -like '*vjshi_profile*' } "
+              "| ForEach-Object { $_.ProcessId }")
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                             capture_output=True, text=True, timeout=15).stdout
+        for line in out.splitlines():
+            pid = line.strip()
+            if pid.isdigit():
+                try:
+                    subprocess.run(["taskkill", "/PID", pid, "/F", "/T"],
+                                   capture_output=True, timeout=10)
+                    print(f"[VJSHI] 已清理占用 profile 的 Chrome 进程 {pid}")
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"[VJSHI] 杀进程失败: {e}")
+
+
+def _clean_singleton_locks():
+    """删除 profile 残留 Singleton 锁文件（Chrome 崩溃后遗留）"""
+    import glob
+    for pat in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        for f in glob.glob(os.path.join(PROFILE_DIR, pat)):
             try:
-                _get_context.ctx = None
+                os.remove(f)
+                print(f"[VJSHI] 已清理 {f}")
             except Exception:
                 pass
-            if attempt == 0:
-                time.sleep(2)
-    raise RuntimeError("浏览器启动失败（可能 Chrome profile 被占用，请稍后重试）")
 
 
-def _close_context():
-    try:
-        if hasattr(_get_context, "ctx") and _get_context.ctx:
-            _get_context.ctx.close()
-    except Exception:
-        pass
-    _get_context.ctx = None
+def _new_context():
+    """独立启动持久化浏览器 context（v5.38.9：每次新建，Playwright sync API 线程绑定，
+    跨线程复用会报 Cannot switch to a different thread）返回 (pw, ctx)
+    v5.38.14: 启动互斥锁 + 失败杀占用进程/清锁重试 3 次"""
+    from playwright.sync_api import sync_playwright
+    with _CTX_START_LOCK:
+        for attempt in range(3):
+            try:
+                pw = sync_playwright().start()
+                ctx = pw.chromium.launch_persistent_context(
+                    PROFILE_DIR, channel="chrome", headless=_headless_mode(),
+                    viewport={"width": 1440, "height": 900}, locale="zh-CN")
+                return pw, ctx
+            except Exception as e:
+                print(f"[VJSHI] 浏览器启动失败(第{attempt+1}次): {e}")
+                _kill_profile_chrome()
+                _clean_singleton_locks()
+                time.sleep(2 + attempt)
+    raise RuntimeError("浏览器启动失败（可能 Chrome 配置被占用，请稍后重试）")
 
 
 def check_login() -> dict:
-    """检测光厂登录态（只读，不改变状态）"""
+    """检测光厂登录态（只读；独立 context，用完关闭）"""
+    if _VJSHI_BUSY.is_set():
+        return {"ok": False, "busy": True, "error": "上传任务进行中，暂无法检测登录"}
+    pw = ctx = None
     try:
-        ctx = _get_context()
+        pw, ctx = _new_context()
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         page.goto(UPLOAD_URL, wait_until="domcontentloaded", timeout=30000)
         time.sleep(2)
@@ -358,9 +387,88 @@ def check_login() -> dict:
         return {"ok": True, "logged_in": True, "has_upload_ui": has_file, "url": page.url}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+    finally:
+        try:
+            if ctx is not None:
+                ctx.close()
+            if pw is not None:
+                pw.stop()
+        except Exception:
+            pass
 
 
 # ==================== 上传 worker ====================
+
+def _resolve_video_path(video_file: str):
+    """多候选解析视频文件真实路径（v5.38.16：文件在 card_gen/videos/，兼容历史相对路径）"""
+    rel = (video_file or "").replace("/", os.sep)
+    if not rel:
+        return None
+    if os.path.isabs(rel):
+        return rel if os.path.isfile(rel) else None
+    cands = [
+        os.path.join(CARD_GEN_VIDEO_DIR, rel),                     # 常规：data/card_gen/videos/xxx.mp4
+        os.path.join(DATA_DIR, rel),                               # 历史：data/xxx.mp4
+        os.path.join(DATA_DIR, "card_gen", "videos", os.path.basename(rel)),  # 带目录前缀：card_gen/videos/xxx
+        os.path.join(DATA_DIR, "card_gen", os.path.basename(rel)), # 兼容：data/card_gen/xxx.mp4
+    ]
+    for c in cands:
+        if os.path.isfile(c):
+            return c
+    return None
+
+
+def _vjshi_log(msg: str):
+    """写 vjshi 运行日志（v5.38.22：服务 Hidden 启动 stdout 丢失，日志落文件便于排查）"""
+    try:
+        import datetime
+        with open(os.path.join(DATA_DIR, "vjshi_upload.log"), "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}\n")
+    except Exception:
+        pass
+
+
+def _llm_description_sync(prompt: str, title: str) -> str:
+    """同步版 AI 简介生成（v5.38.18 worker 自动运行）
+    v5.38.23: asyncio.run 移入独立线程——worker 线程有 playwright sync 常驻 event loop，
+    asyncio.run 会报 cannot be called from a running event loop"""
+    import asyncio
+    from ollama_client import ollama_chat
+    prompt = (prompt or "").strip()[:800]
+    title = (title or "").strip()[:60]
+    if not prompt and not title:
+        return ""
+    sys_prompt = (
+        "你是视频素材平台的文案优化师。根据视频主题与提示词，写一段 300 字以内的素材简介（中文），"
+        "要求：1) 自然融入核心关键词，便于搜索引擎/平台检索；2) 描述画面内容、风格、适用场景；"
+        "3) 不要写广告词/联系方式；4) 不要提及 AI 生成以外的生成细节；5) 控制在 150-300 字。"
+        "只输出简介正文，不要标题和多余文字。"
+    )
+    box = {}
+    def _run():
+        try:
+            box["r"] = asyncio.run(ollama_chat([
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": f"标题：{title}\n主题/提示词：{prompt}"}
+            ], function="vjshi_desc", temperature=0.6, timeout_s=60, think=False))
+        except Exception as e:
+            box["e"] = e
+    _t = threading.Thread(target=_run, daemon=True)
+    _t.start()
+    _t.join(timeout=75)
+    if "e" in box:
+        _vjshi_log(f"自动简介生成失败: {type(box['e']).__name__}: {str(box['e'])[:200]}")
+        return ""
+    if "r" not in box:
+        _vjshi_log("自动简介生成超时(75s)")
+        return ""
+    result = box["r"]
+    raw = (result or {}).get("content") if isinstance(result, dict) else ""
+    desc = (raw or "").strip()
+    if desc.startswith('"') and desc.endswith('"'):
+        desc = desc[1:-1]
+    return desc[:300]
+
 
 def _upload_one(task_id: int):
     """单条上传：上传文件 → 完善信息填表 → 提交"""
@@ -377,8 +485,14 @@ def _upload_one(task_id: int):
         return
 
     _task_update(task_id, status="uploading")
+    _VJSHI_BUSY.set()
+    pw = ctx = None
+    _submitted = False
     try:
-        ctx = _get_context()
+        # v5.38.30: 启动前主动清理上一个保留窗口/锁（不等失败自愈）
+        _kill_profile_chrome()
+        _clean_singleton_locks()
+        pw, ctx = _new_context()
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         # 1. 先访问首页（模拟人工导航），再进上传页（v5.38.7 反检测）
         try:
@@ -387,15 +501,17 @@ def _upload_one(task_id: int):
             _human_scroll(page)
         except Exception:
             pass
-        page.goto(UPLOAD_URL, wait_until="domcontentloaded", timeout=30000)
+        # v5.38.11: 用配置的上传页（/user/upload/video，含文件控件），入口页 upload-nav 无 file input
+        upload_url = cfg.get("upload_url", UPLOAD_URL)
+        page.goto(upload_url, wait_until="domcontentloaded", timeout=30000)
         _human_pause(1.0, 2.5)
         _human_mouse(page)
         if "login" in page.url.lower():
             _task_update(task_id, status="fail", error="登录已失效，请重新登录光厂", fail_category="login")
             return
-        # 2. 选择文件
-        video_path = os.path.join(DATA_DIR, t["video_file"].replace("/", os.sep))
-        if not os.path.isfile(video_path):
+        # 2. 选择文件（v5.38.16: 多候选路径解析）
+        video_path = _resolve_video_path(t["video_file"])
+        if not video_path:
             _task_update(task_id, status="fail", error=f"视频文件不存在: {t['video_file']}", fail_category="file_missing")
             return
         file_input = page.query_selector(cfg.get("upload_file_selector", "input[type=file]"))
@@ -412,23 +528,96 @@ def _upload_one(task_id: int):
             _task_update(task_id, status="fail", error="上传超时或未检测到完成", fail_category="upload")
             return
         _task_update(task_id, status="filling")
-        # 4. 完善信息填表
-        fill_ok, fill_err = _fill_form(page, t, cfg)
+        # v5.38.18/20: 简介默认自动 AI 优化（占位/纯英文/过短 → 自动生成，LLM 失败保留原文案）
+        t_fill = dict(t)
+        cur_desc = (t_fill.get("description") or "").strip()
+        _is_placeholder = cur_desc.startswith("AI生成视频素材") or not re.search(r"[\u4e00-\u9fff]", cur_desc)
+        if len(cur_desc) < 80 or _is_placeholder:
+            # v5.38.22: 失败重试 1 次（Ollama 偶发忙）
+            gen_desc = _llm_description_sync(t_fill.get("title") or "", t_fill.get("title") or "")
+            if not gen_desc:
+                _vjshi_log(f"任务{task_id} 自动简介首次失败，重试中...")
+                time.sleep(3)
+                gen_desc = _llm_description_sync(t_fill.get("title") or "", t_fill.get("title") or "")
+            if gen_desc:
+                t_fill["description"] = gen_desc
+                try:
+                    _dc = _db()
+                    try:
+                        _dc.execute("UPDATE vjshi_upload_tasks SET description=? WHERE id=?", [gen_desc, task_id])
+                        _dc.commit()
+                    finally:
+                        _dc.close()
+                except Exception:
+                    pass
+                _vjshi_log(f"任务{task_id} 自动 AI 简介已生成({len(gen_desc)}字)")
+        # 4. 点「上架销售」打开表单弹窗（v5.38.13：此前未打开弹窗直接填表 → 字段未找到）
+        trigger = cfg.get("listing_trigger", "")
+        if trigger:
+            tbtn = page.query_selector(trigger)
+            if tbtn:
+                _human_pause(0.8, 2.0)
+                try:
+                    tbtn.click(timeout=8000)
+                except Exception:
+                    pass
+                _human_pause(1.5, 3.0)  # 等弹窗动画
+        # 等表单字段就绪（dioa 组件异步渲染，最多 15s）
+        for _ in range(15):
+            if (cfg.get("title") and page.query_selector(cfg["title"])) or                (cfg.get("price") and page.query_selector(cfg["price"])):
+                break
+            time.sleep(1)
+        # 5. 完善信息填表
+        fill_ok, fill_err = _fill_form(page, t_fill, cfg)
         if not fill_ok:
             _task_update(task_id, status="fail", error=fill_err, fail_category="form_changed")
             return
-        # 5. 提交
+        # 5. 提交（v5.38.16: 提交后确认成功/失败，防误报）
         submit_sel = cfg.get("submit", "")
+        submitted_url = page.url[:200]
         if submit_sel:
             btn = page.query_selector(submit_sel)
             if btn:
                 _human_pause(0.8, 2.0)
                 btn.click(timeout=8000)
-                _human_pause(3.0, 6.0)  # 提交后停留（模拟人工确认结果）
+                _human_pause(2.0, 4.0)  # 提交后停留（模拟人工确认结果）
+                # 检测失败提示（10s 内）
+                fail_detected = None
+                for _ in range(10):
+                    try:
+                        body = page.inner_text("body")[:800]
+                        for kw in ("提交失败", "保存失败", "发布失败", "网络异常", "请重试"):
+                            if kw in body:
+                                fail_detected = kw
+                                break
+                    except Exception:
+                        pass
+                    if fail_detected:
+                        break
+                    time.sleep(1)
+                if fail_detected:
+                    _task_update(task_id, status="fail", error=f"提交被拒: {fail_detected}", fail_category="submit_rejected")
+                    return
+                _human_pause(1.0, 2.0)
+                submitted_url = page.url[:200]
         _task_update(task_id, status="submitted", finished_at=_now_str(),
-                     submit_ref=page.url[:200])
+                     submit_ref=submitted_url)
+        _submitted = True
     except Exception as e:
         _task_update(task_id, status="fail", error=f"上传异常: {e}", fail_category="other")
+    finally:
+        # v5.38.24: 提交成功保留浏览器窗口（查看提交结果）；失败/异常才关闭
+        if _submitted:
+            _vjshi_log(f"任务{task_id} 提交成功，保留浏览器窗口（下次任务自动清理）")
+        else:
+            try:
+                if ctx is not None:
+                    ctx.close()
+                if pw is not None:
+                    pw.stop()
+            except Exception:
+                pass
+        _VJSHI_BUSY.clear()
 
 
 def _wait_upload_done(page, cfg, timeout_sec=600):
@@ -453,68 +642,165 @@ def _wait_upload_done(page, cfg, timeout_sec=600):
     return False
 
 
-def _fill_keywords_optimized(page, cfg, keywords_str):
-    """v5.38.2: 关键词最优填写——优先点击光厂 AI 推荐备选词，不足再手动补足
-    返回 True/False
+def _fill_keywords_ai(page, cfg):
+    """v5.38.17: 关键词直接用光厂「AI推荐关键词」（弹窗自动生成的最优词，全部点击）
+    返回 True 表示已填入；False 表示无推荐/失败需回退
     """
     kw_sel = cfg.get("keywords", "")
     if not kw_sel:
         return False
-    ta = page.query_selector(kw_sel)
-    if not ta:
+    try:
+        # v5.38.28: 等待「AI推荐关键词」区块加载（弹窗异步渲染，最多 10s）
+        for _w in range(10):
+            has_block = page.evaluate("""() => !!Array.from(document.querySelectorAll('p')).find(p => (p.textContent || '').trim() === 'AI推荐关键词')""")
+            if has_block:
+                break
+            time.sleep(1)
+        if not has_block:
+            _vjshi_log("未找到「AI推荐关键词」区块（页面结构变化？）")
+            return False
+        # v5.38.21/25: 点选 AI 推荐关键词——展开更多 + 多轮点击（React 事件同步连点会丢）
+        # v5.38.25: 上限约束：≤120 字、≤30 个词组（点选填入即可，不手动补足）
+        page.evaluate("""() => {
+            const btns = Array.from(document.querySelectorAll('button'));
+            const more = btns.find(b => {
+                const t = (b.textContent || '').trim();
+                return (t.includes('更多') || t.includes('展开') || t.includes('查看全部')) && t.length < 10;
+            });
+            if (more) more.click();
+        }""")
+        _human_pause(0.5, 1.0)
+        # v5.38.27: 逐个点击——每轮只点第一个可用词，等 React 更新后重新查询按钮列表
+        # （同步 for 连点会被 React 重渲染丢弃，只第一个生效）
+        for _round in range(60):
+            res = page.evaluate("""() => {
+                const p = Array.from(document.querySelectorAll('p')).find(p => (p.textContent || '').trim() === 'AI推荐关键词');
+                if (!p) return {done: true};
+                const ta = document.querySelector('textarea[name=keywords]');
+                const cur = ta ? (ta.value || '').trim() : '';
+                const words = cur ? cur.split(/\\s+/) : [];
+                let totalChars = cur.length;
+                const btns = Array.from(p.parentElement.querySelectorAll('button')).filter(b => !b.disabled && !b.dataset.vjshiDone);
+                if (!btns.length) return {done: true};
+                const w = (btns[0].textContent || '').trim();
+                if (!w) { btns[0].dataset.vjshiDone = '1'; return {done: false}; }
+                if (words.length >= 30) return {done: true};           // ≤30 词组
+                if (totalChars + w.length + 1 > 120) return {done: true};  // ≤120 字
+                if (words.includes(w)) { btns[0].dataset.vjshiDone = '1'; return {done: false}; }
+                btns[0].click();
+                btns[0].dataset.vjshiDone = '1';
+                return {done: false, clicked: 1, count: words.length + 1, chars: totalChars + w.length + 1};
+            }""")
+            time.sleep(_rand(0.15, 0.35))  # 人点击节奏（同时等 React 更新）
+            if not res:
+                break
+            if res.get("done"):
+                break
+            if res.get("count", 0) >= 30 or res.get("chars", 0) >= 120:
+                break
+        ta = page.query_selector(kw_sel)
+        if not ta:
+            _vjshi_log("关键词 textarea 未找到")
+            return False
+        cur = (ta.input_value() or "").strip()
+        words = [w for w in cur.split() if w]
+        _vjshi_log(f"AI 推荐关键词点选完成: {len(words)} 词")
+        return len(words) >= 5
+    except Exception as e:
+        _vjshi_log(f"AI 推荐关键词异常: {type(e).__name__}: {str(e)[:150]}")
         return False
-    my_kws = [k.strip() for k in (keywords_str or "").split() if k.strip()]
-    # 1. 找推荐关键词按钮（keywords 输入框附近的可见小按钮）
+
+
+def _fill_keywords_optimized(page, cfg, keywords_str):
+    """v5.38.26: 关键词只用光厂 AI 推荐点选填入（≤120字/≤30词），绝不填入生成视频的提示词
+    无 AI 推荐/不足 5 词 → 返回 False（任务失败提示，用户人工处理）"""
+    if _fill_keywords_ai(page, cfg):
+        return True
+    return False
+
+
+def _detect_ai_style(text: str):
+    """v5.38.29: 根据提示词自动识别视频风格（光厂 ai-styles API：11实拍写实/12立体三维/13平面二维/14抽象光影）
+    返回风格 id 或 None（不匹配时保持默认）"""
+    t = (text or "").lower()
+    rules = {
+        11: ["写实", "真实", "实拍", "自然", "现实", "纪实", "生活", "风光", "风景", "人物", "摄影", "纪录片", "真实感", "photo", "realistic"],
+        12: ["3d", "三维", "立体", "cg", "渲染", "模型", "blender", "c4d", "次世代", "建模", "立体三维", "引擎"],
+        13: ["2d", "二维", "平面", "扁平", "插画", "动漫", "动画", "卡通", "漫画", "手绘", "矢量", "flat", "ui", "漫画风"],
+        14: ["抽象", "光影", "光效", "粒子", "流光", "霓虹", "光带", "极光", "光斑", "梦幻", "唯美", "流光溢彩", "特效", "光晕", "辉光", "abstract", "glow"],
+    }
+    scores = {k: 0 for k in rules}
+    for sid, kws in rules.items():
+        for kw in kws:
+            if kw in t:
+                scores[sid] += 1
+    best = max(scores, key=lambda k: scores[k])
+    return best if scores[best] > 0 else None
+
+
+def _select_ai_style(page, cfg, text):
+    """v5.38.29/31: 识别风格并真实 UI 点击选择（dioa-select trigger 展开 → 点 .dioa-select__option）
+    v5.38.31: 弃用 select.value setter（React 自定义组件 state 不同步），改真实点击"""
     try:
-        rec_btns = page.eval_on_selector_all(
-            "button",
-            """els => els.map(el => {
-                const r = el.getBoundingClientRect();
-                const t = (el.textContent || '').trim();
-                return {t: t, visible: r.width > 0 && r.height > 0, cls: (el.className || '').toString().slice(0, 40)};
-            }).filter(x => x.visible && x.t && x.t.length >= 2 && x.t.length <= 6)""")
-    except Exception:
-        rec_btns = []
-    # 2. 点击与我的关键词相关的推荐词（优先），最多点 6 个
-    clicked = []
-    for rb in rec_btns:
-        if len(clicked) >= 6:
-            break
-        word = rb["t"]
-        if any(word in mk or mk in word for mk in my_kws) and word not in clicked:
-            try:
-                page.evaluate(
-                    "(t) => { const b = [...document.querySelectorAll('button')].find(x => (x.textContent || '').trim() === t); if (b) b.click(); }",
-                    word)
-                clicked.append(word)
-                time.sleep(0.25)
-            except Exception:
-                pass
-    # 3. 读取当前 textarea 值，不足 5 个或缺核心词时手动补足
-    try:
-        cur = ta.input_value().strip()
-    except Exception:
-        cur = ""
-    cur_kws = [w for w in cur.split() if w]
-    if len(cur_kws) < 5 or any(mk not in cur_kws for mk in my_kws):
-        need = [k for k in my_kws if k not in cur_kws]
-        add = " ".join(need[: max(0, 10 - len(cur_kws))])
-        if add:
-            try:
-                _human_pause(0.3, 0.8)
-                ta.click(timeout=3000)
-                if cur:
-                    ta.fill(cur + " " + add)
-                else:
-                    ta.fill(add)
-                _human_pause(0.3, 0.8)
-            except Exception:
-                pass
-    return True
+        sid = _detect_ai_style(text)
+        if not sid:
+            return False
+        name = {11: "实拍写实", 12: "立体三维", 13: "平面二维", 14: "抽象光影"}.get(sid, "")
+        if not name:
+            return False
+        # 1. 展开视频风格下拉（「视频风格」标题 → 容器内 trigger）
+        opened = page.evaluate("""() => {
+            const span = Array.from(document.querySelectorAll('span')).find(s => (s.textContent || '').trim() === '视频风格');
+            if (!span) return false;
+            let el = span.parentElement;
+            for (let i = 0; i < 6 && el; i++) {
+                const tr = el.querySelector('.dioa-select__trigger');
+                if (tr) { tr.click(); return true; }
+                el = el.parentElement;
+            }
+            return false;
+        }""")
+        if not opened:
+            _vjshi_log("视频风格下拉未找到/无法展开")
+            return False
+        time.sleep(1.0)  # 等选项渲染
+        # 2. 点击目标风格选项
+        clicked = page.evaluate("""(nm) => {
+            const opts = Array.from(document.querySelectorAll('.dioa-select__option'));
+            const o = opts.find(x => (x.textContent || '').trim() === nm);
+            if (o) { o.click(); return true; }
+            return false;
+        }""", name)
+        time.sleep(0.5)
+        _vjshi_log(f"视频风格自动识别: {name}({sid}) 设置{'成功' if clicked else '失败'}")
+        return clicked
+    except Exception as e:
+        _vjshi_log(f"视频风格设置异常: {type(e).__name__}: {str(e)[:120]}")
+        return False
 
 
 def _fill_form(page, t, cfg):
     """按配置填表（真实表单：弹窗内标题/关键词/描述/价格/AI标注/提交；人类节奏）"""
+    # v5.38.15: 标题优先用光厂 AI 推荐（弹窗自动生成的「AI推荐标题」按钮，点第一个）
+    skip_title = False
+    if cfg.get("ai_title", True):
+        try:
+            used_ai = page.evaluate("""() => {
+                const p = Array.from(document.querySelectorAll('p')).find(p => (p.textContent || '').trim() === 'AI推荐标题');
+                if (!p) return false;
+                const btns = Array.from(p.parentElement.querySelectorAll('button'));
+                if (!btns.length) return false;
+                btns[0].click();
+                return true;
+            }""")
+            if used_ai:
+                _human_pause(0.6, 1.5)
+                tel = page.query_selector(cfg.get("title", ""))
+                if tel and tel.input_value().strip():
+                    skip_title = True
+                    print(f"[VJSHI] 已用光厂 AI 推荐标题: {tel.input_value().strip()[:30]}")
+        except Exception as e:
+            print(f"[VJSHI] AI 推荐标题失败，回退自拟: {e}")
     # 标题/描述/价格（直接填写）
     for key, fname, value in [("title", "title", t["title"]),
                               ("description", "description", t["description"]),
@@ -522,7 +808,14 @@ def _fill_form(page, t, cfg):
         sel = cfg.get(key, "")
         if not sel or not value:
             continue
-        el = page.query_selector(sel)
+        if skip_title and key == "title":
+            continue
+        el = None
+        for _ in range(6):  # 短等待兜底
+            el = page.query_selector(sel)
+            if el:
+                break
+            time.sleep(1)
         if not el:
             return False, f"未找到字段 {key}（页面结构变化）"
         try:
@@ -557,10 +850,25 @@ def _fill_form(page, t, cfg):
         except Exception:
             return False
 
-    for key in ("hasAIGC", "isLoop"):
-        if cfg.get(key):
-            _check_box(page, cfg[key])
+    # v5.38.29: 视频风格按提示词自动识别（实拍写实/立体三维/平面二维/抽象光影）
+    _select_ai_style(page, cfg, (t.get("title") or "") + " " + (t.get("description") or ""))
+    time.sleep(0.3)
+    # v5.38.19: 只勾「含AI内容」标注；「无缝循环」明确不勾选
+    if cfg.get("hasAIGC"):
+        _check_box(page, cfg["hasAIGC"])
+        time.sleep(0.3)
+    if cfg.get("isLoop"):
+        try:
+            page.evaluate("""(sel) => {
+                const el = document.querySelector(sel);
+                if (el && el.checked) {
+                    const lab = el.closest('label');
+                    if (lab) { lab.click(); } else { el.click(); }
+                }
+            }""", cfg["isLoop"])
             time.sleep(0.3)
+        except Exception:
+            pass
     # 创作时间（当前日期）
     ct_sel = cfg.get("creationTime", "")
     if ct_sel:
@@ -580,6 +888,14 @@ def _upload_worker(task_id: int):
     """带防风控的任务执行体（全局锁串行）"""
     global _STATE
     with _QUEUE_LOCK:
+        # v5.38.16: 状态 re-check（retry 重复点击/多线程时只有 queued 才执行）
+        _rc = _db()
+        try:
+            _row = _rc.execute("SELECT status FROM vjshi_upload_tasks WHERE id=?", [task_id]).fetchone()
+        finally:
+            _rc.close()
+        if not _row or _row["status"] != "queued":
+            return
         # 单日限额
         if _STATE["today_date"] != _today():
             _STATE["today_date"] = _today()
@@ -608,9 +924,11 @@ def _upload_worker(task_id: int):
                 _STATE["today_count"] += 1
                 _STATE["consec_fail"] = 0
             elif t["status"] == "fail":
-                _STATE["consec_fail"] += 1
-                if _STATE["consec_fail"] >= CONSECUTIVE_FAIL_LIMIT:
-                    _STATE["paused_reason"] = f"连续失败 {CONSECUTIVE_FAIL_LIMIT} 次，已暂停（可手动恢复）"
+                # v5.38.16: 配置/数据类错误（文件缺失/表单配置缺失）重试无意义，不累计暂停
+                if t["fail_category"] not in ("file_missing", "form_config_missing"):
+                    _STATE["consec_fail"] += 1
+                    if _STATE["consec_fail"] >= CONSECUTIVE_FAIL_LIMIT:
+                        _STATE["paused_reason"] = f"连续失败 {CONSECUTIVE_FAIL_LIMIT} 次，已暂停（可手动恢复）"
 
 
 def _resume_orphaned():
@@ -752,9 +1070,10 @@ def vjshi_open_login(request: Request):
     """打开光厂浏览器窗口（人工手机验证码登录，一次即可）"""
     _team_guard(request)
     try:
-        ctx = _get_context()
+        pw, ctx = _new_context()
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         page.goto("https://www.vjshi.com/", wait_until="domcontentloaded", timeout=30000)
+        # 保持窗口打开（用户登录），context 不关闭
         return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -810,6 +1129,8 @@ def vjshi_create(data: VjshiUploadRequest, request: Request):
     _ensure_table()
     if not data.video_file:
         raise HTTPException(400, "video_file 必填")
+    if not _resolve_video_path(data.video_file):
+        raise HTTPException(400, f"视频文件不存在: {data.video_file}")
     meta = {}
     if not data.title:
         meta = _build_meta(data.card_id, data.gen_task_id, data.video_file)
@@ -845,6 +1166,8 @@ def vjshi_batch(data: VjshiBatchRequest, request: Request):
             vf = it.get("video_file", "")
             if not vf:
                 continue
+            if not _resolve_video_path(vf):
+                raise HTTPException(400, f"视频文件不存在: {vf}")
             meta = _build_meta(it.get("card_id", 0), it.get("gen_task_id", 0), vf)
             cur = c.execute(
                 """INSERT INTO vjshi_upload_tasks (card_id, gen_task_id, video_file, title, keywords, description, category, price, is_ai, creator_id)
@@ -895,6 +1218,8 @@ def vjshi_retry(tid: int, request: Request):
             raise HTTPException(404, "任务不存在")
         if t["status"] == "submitted":
             raise HTTPException(400, "任务已提交")
+        if t["status"] in ("queued", "uploading", "filling"):
+            raise HTTPException(400, "任务正在处理中，请勿重复重试")
         c.execute("UPDATE vjshi_upload_tasks SET status='queued', error='', fail_category='', "
                   "finished_at='' WHERE id=?", [tid])
         c.commit()
