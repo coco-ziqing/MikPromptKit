@@ -365,7 +365,13 @@ Object.assign(App, {
 
     // ============ 视频查看器(逐帧控制) ============
 
-    openVideoViewer(filename, promptId) {
+    openVideoViewer(filename, promptId, maybePromptId, fps) {
+        // v5.37.8: 参数兼容 — 卡片调用传 (filename, thumbnail, promptId, fps)；
+        // 直接调用传 (filename, promptId)。第二参为非数字字符串（缩略图）时取第三参为 promptId
+        if (typeof promptId === 'string' && !/^\d+$/.test(promptId)) {
+            fps = maybePromptId === undefined ? '' : fps;
+            promptId = maybePromptId || 0;
+        }
         var modal = document.getElementById('modalVideoViewer');
         if (!filename) { App.showToast('暂无视频', 'warning'); return; }
 
@@ -377,6 +383,10 @@ Object.assign(App, {
 
         video.src = '/api/thumbnails/video/' + filename + '?t=' + Date.now();
         video.load();
+
+        // v5.37.8: fps 显示（卡片传入）
+        var fpsEl = document.getElementById('vidViewerFps');
+        if (fpsEl) fpsEl.textContent = fps ? (fps + ' fps') : '';
 
         // v5.37.4: 预览模式切换（图片↔视频）
         this._loadViewerSwitch(promptId, 'video');
