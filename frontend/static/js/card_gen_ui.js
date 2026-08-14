@@ -121,21 +121,21 @@
                     if (!s || !s.count) return;
                     var card = document.querySelector('#promptList .prompt-card[data-id="' + cid + '"], #collectionItemList .prompt-card[data-id="' + cid + '"]');
                     if (!card || card.querySelector('.cg-history-btn')) return;
-                    var thumb = card.querySelector('.card-thumb');
-                    if (!thumb) return;
                     var current = s.current || {};
                     var icon = current.media_type === 'video' ? '🎬' : '🖼';
+                    // v5.37.7: 移到 card-add-row（下载按钮旁），避免与缩略图上的查看原视频按钮重叠
+                    var row = card.querySelector('.card-add-row') || card.querySelector('.card-actions');
+                    if (!row) return;
                     var btn = document.createElement('span');
                     btn.className = 'cg-history-btn';
-                    btn.style.cssText = 'position:absolute;right:4px;bottom:4px;z-index:5;background:rgba(0,0,0,.6);color:#fff;font-size:9px;padding:1px 6px;border-radius:8px;cursor:pointer;display:flex;gap:3px;align-items:center;';
+                    btn.style.cssText = 'display:inline-flex;gap:3px;align-items:center;font-size:10px;padding:1px 7px;border-radius:9px;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.5);color:#818cf8;cursor:pointer;margin-left:2px;user-select:none;';
                     btn.innerHTML = icon + ' ' + s.count;
                     btn.title = '生成历史 ' + s.count + ' 条，点击切换显示';
                     btn.onclick = function (e) {
                         e.stopPropagation();
                         self._openHistoryPicker(parseInt(cid, 10), btn);
                     };
-                    thumb.style.position = thumb.style.position || 'relative';
-                    thumb.appendChild(btn);
+                    row.appendChild(btn);
                 });
             }).catch(function () {});
         },
