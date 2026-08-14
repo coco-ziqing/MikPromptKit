@@ -328,15 +328,71 @@ def _wait_upload_done(page, cfg, timeout_sec=600):
     return False
 
 
+def _fill_keywords_optimized(page, cfg, keywords_str):
+    """v5.38.2: 关键词最优填写——优先点击光厂 AI 推荐备选词，不足再手动补足
+    返回 True/False
+    """
+    kw_sel = cfg.get("keywords", "")
+    if not kw_sel:
+        return False
+    ta = page.query_selector(kw_sel)
+    if not ta:
+        return False
+    my_kws = [k.strip() for k in (keywords_str or "").split() if k.strip()]
+    # 1. 找推荐关键词按钮（keywords 输入框附近的可见小按钮）
+    try:
+        rec_btns = page.eval_on_selector_all(
+            "button",
+            """els => els.map(el => {
+                const r = el.getBoundingClientRect();
+                const t = (el.textContent || '').trim();
+                return {t: t, visible: r.width > 0 && r.height > 0, cls: (el.className || '').toString().slice(0, 40)};
+            }).filter(x => x.visible && x.t && x.t.length >= 2 && x.t.length <= 6)""")
+    except Exception:
+        rec_btns = []
+    # 2. 点击与我的关键词相关的推荐词（优先），最多点 6 个
+    clicked = []
+    for rb in rec_btns:
+        if len(clicked) >= 6:
+            break
+        word = rb["t"]
+        if any(word in mk or mk in word for mk in my_kws) and word not in clicked:
+            try:
+                page.evaluate(
+                    "(t) => { const b = [...document.querySelectorAll('button')].find(x => (x.textContent || '').trim() === t); if (b) b.click(); }",
+                    word)
+                clicked.append(word)
+                time.sleep(0.25)
+            except Exception:
+                pass
+    # 3. 读取当前 textarea 值，不足 5 个或缺核心词时手动补足
+    try:
+        cur = ta.input_value().strip()
+    except Exception:
+        cur = ""
+    cur_kws = [w for w in cur.split() if w]
+    if len(cur_kws) < 5 or any(mk not in cur_kws for mk in my_kws):
+        need = [k for k in my_kws if k not in cur_kws]
+        add = " ".join(need[: max(0, 10 - len(cur_kws))])
+        if add:
+            try:
+                ta.click(timeout=3000)
+                if cur:
+                    ta.fill(cur + " " + add)
+                else:
+                    ta.fill(add)
+                time.sleep(0.3)
+            except Exception:
+                pass
+    return True
+
+
 def _fill_form(page, t, cfg):
     """按配置填表（真实表单：弹窗内标题/关键词/描述/价格/AI标注/提交；人类节奏）"""
-    fields = [
-        ("title", "title", t["title"]),
-        ("keywords", "keywords", t["keywords"]),
-        ("description", "description", t["description"]),
-        ("price", "price", str(t["price"])),
-    ]
-    for key, fname, value in fields:
+    # 标题/描述/价格（直接填写）
+    for key, fname, value in [("title", "title", t["title"]),
+                              ("description", "description", t["description"]),
+                              ("price", "price", str(t["price"]))]:
         sel = cfg.get(key, "")
         if not sel or not value:
             continue
@@ -351,6 +407,10 @@ def _fill_form(page, t, cfg):
             time.sleep(0.3 + (id(value) % 4) / 10)
         except Exception as e:
             return False, f"填写 {key} 失败: {e}"
+    # 关键词（v5.38.2）：优先点击光厂 AI 推荐备选词，不足手动补足
+    kw_ok = _fill_keywords_optimized(page, cfg, t["keywords"])
+    if not kw_ok:
+        return False, "关键词填写失败（推荐词/输入框未找到）"
     # AI 生成标注（hasAIGC）/ 循环（isLoop）——光厂 dioa-checkbox 自定义组件，用 JS 点关联 label
     def _check_box(page, sel):
         if not sel:
@@ -487,6 +547,42 @@ def vjshi_meta(request: Request, card_id: int = 0, gen_task_id: int = 0, video_f
     """预览自动生成的素材字段（投稿弹窗编辑用）"""
     _team_guard(request)
     return {"ok": True, "meta": _build_meta(card_id, gen_task_id, video_file)}
+
+
+@router.post("/api/vjshi/llm-description")
+async def vjshi_llm_description(request: Request, data: dict = Body(...)):
+    """Ollama 生成 300 字内 SEO 素材简介（v5.38.2：描述优化）
+    body: { prompt, title, model? }
+    """
+    _team_guard(request)
+    prompt = (data.get("prompt") or "").strip()[:800]
+    title = (data.get("title") or "").strip()[:60]
+    if not prompt and not title:
+        raise HTTPException(400, "prompt 或 title 必填")
+    try:
+        from ollama_client import ollama_chat, extract_json
+        sys_prompt = (
+            "你是视频素材平台的文案优化师。根据视频主题与提示词，写一段 300 字以内的素材简介（中文），"
+            "要求：1) 自然融入核心关键词，便于搜索引擎/平台检索；2) 描述画面内容、风格、适用场景；"
+            "3) 不要写广告词/联系方式；4) 不要提及 AI 生成以外的生成细节；5) 控制在 150-300 字。"
+            "只输出简介正文，不要标题和多余文字。"
+        )
+        user_text = f"标题：{title}\n主题/提示词：{prompt}"
+        result = await ollama_chat([
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": user_text}
+        ], function="vjshi_desc", temperature=0.6, timeout_s=60, think=False)
+        raw = (result or {}).get("content") if isinstance(result, dict) else ""
+        desc = (raw or "").strip()
+        # 清理可能的引号包裹
+        if desc.startswith('"') and desc.endswith('"'):
+            desc = desc[1:-1]
+        if not desc:
+            return {"ok": True, "description": "", "fallback": True}
+        return {"ok": True, "description": desc[:300], "fallback": False}
+    except Exception as e:
+        print(f"[VJSHI] LLM 简介失败: {e}")
+        return {"ok": False, "error": str(e)}
 
 
 @router.post("/api/vjshi/tasks")

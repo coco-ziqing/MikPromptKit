@@ -57,7 +57,7 @@
                 '<input id="vjTitle" style="width:100%;margin:4px 0 8px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:12px;" value="' + self._esc(meta.title || '') + '">' +
                 '<label style="font-size:11px;color:var(--text-muted);">关键词（逗号分隔）</label>' +
                 '<input id="vjKeywords" style="width:100%;margin:4px 0 8px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:12px;" value="' + self._esc(meta.keywords || '') + '">' +
-                '<label style="font-size:11px;color:var(--text-muted);">简介</label>' +
+                '<label style="font-size:11px;color:var(--text-muted);">简介 <button type="button" class="btn btn-xs btn-outline" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;margin-left:6px;" onclick="App.vjshi.llmDesc(this)">✨ AI 优化简介</button></label>' +
                 '<textarea id="vjDesc" style="width:100%;min-height:70px;margin:4px 0 8px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;">' + self._esc(meta.description || '') + '</textarea>' +
                 '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">' +
                 '<label style="font-size:11px;color:var(--text-muted);">分类 <input id="vjCategory" style="width:110px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:12px;" value="' + self._esc(meta.category || '创意') + '"></label>' +
@@ -69,6 +69,26 @@
                 '<button class="btn btn-secondary btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>' +
                 '<button class="btn btn-primary btn-sm" onclick="App.vjshi.submit(' + (genTaskId || 0) + ',' + (cardId || 0) + ',\'' + self._esc(videoFile || '') + '\',this)">📤 确认投稿</button></div></div>';
             document.body.appendChild(ov);
+        },
+        // v5.38.2: Ollama 生成 300 字内 SEO 简介
+        llmDesc: async function (btn) {
+            var self = this;
+            var ov = btn.closest('.modal-overlay');
+            var prompt = (ov.querySelector('#vjTitle') || {}).value || '';
+            var ta = ov.querySelector('#vjDesc');
+            if (!ta) return;
+            btn.disabled = true; btn.textContent = '⏳ 生成中...';
+            var d = await App.fetchJSON('/api/vjshi/llm-description', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: prompt, title: prompt })
+            });
+            btn.disabled = false; btn.textContent = '✨ AI 优化简介';
+            if (d && d.ok && d.description) {
+                ta.value = d.description;
+                this._toast('✅ 简介已优化', 'success');
+            } else {
+                this._toast((d && d.error) || '简介生成未完成（Ollama 可能未启动）', 'error');
+            }
         },
         submit: async function (genTaskId, cardId, videoFile, btn) {
             var ov = btn.closest('.modal-overlay');
