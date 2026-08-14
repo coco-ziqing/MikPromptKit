@@ -72,6 +72,37 @@ class DreaminaGenerateRequest(BaseModel):
     generate_num: int = 1
 
 
+def dreamina_submit_text2image(prompt: str, model_version: str = "5.0", ratio: str = "1:1",
+                        resolution_type: str = "2k", width: int = 0, height: int = 0,
+                        generate_num: int = 1, timeout: int = 180) -> dict:
+    """异步提交文生图任务（--poll 0 立即返回），不等待生成完成。
+    返回 {ok, submit_id, gen_status}；调用方需自行轮询 query_result 并下载。
+    用于三视图等异步回写链路（v5.36.46）。
+    """
+    args = ["text2image", "--prompt", prompt, "--model_version", model_version,
+            "--generate_num", str(generate_num), "--poll", "0"]
+    if width and height:
+        args += ["--width", str(width), "--height", str(height), "--resolution_type", resolution_type]
+    else:
+        args += ["--ratio", ratio, "--resolution_type", resolution_type]
+    out, err, code = _dreamina_run(args, timeout=timeout)
+    data = None
+    for cand in reversed(re.findall(r"\{.*\}", out, re.S)):
+        try:
+            d = json.loads(cand)
+            if isinstance(d, dict) and "gen_status" in d:
+                data = d
+                break
+        except Exception:
+            continue
+    if not data:
+        return {"ok": False, "error": f"CLI 输出解析失败: {(err or out)[:250]}"}
+    submit_id = str(data.get("submit_id") or "").strip()
+    if not submit_id:
+        return {"ok": False, "error": str(data.get("fail_reason") or "未返回 submit_id")[:250]}
+    return {"ok": True, "submit_id": submit_id, "gen_status": data.get("gen_status", "querying")}
+
+
 def dreamina_text2image(prompt: str, model_version: str = "5.0", ratio: str = "1:1",
                         resolution_type: str = "2k", width: int = 0, height: int = 0,
                         generate_num: int = 1, poll: int = 180, retries: int = 2,

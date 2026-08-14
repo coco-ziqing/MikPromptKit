@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 
 from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -808,57 +809,308 @@ def _build_three_view_prompts(settings: dict, name: str = "") -> dict:
 
 
 @router.post("/api/roles/{rid}/three-view/generate")
-async def generate_three_view(rid: int, data: dict = Body(...), request: Request = None):
-    """三视图提示词组装 + AI 生成（v5.36.41）
-    body: { engine: comfyui|dreamina|libtv, ratio?, caption? }
-    返回 { ok, prompts: {front/side/back}, tasks: [{view, task_id}] }
-    生成结果异步落库到角色档案 three_view。
+def generate_three_view(rid: int, data: dict = Body(...), request: Request = None):
+    """三视图提示词组装 + AI 生成（v5.36.41 → v5.36.46 异步回写）
+    body: { engine: comfyui|dreamina|libtv, ratio?, caption?, prompts?: {front/side/back} }
+    创建 three_view_task 记录后立即返回，worker 线程提交/轮询/下载/归档到角色档案。
     """
     _auth(request)
     engine = (data.get("engine") or "dreamina").lower()
     if engine not in ("comfyui", "dreamina", "libtv"):
         raise HTTPException(400, "engine 必须是 comfyui/dreamina/libtv")
+    if engine == "comfyui":
+        raise HTTPException(400, "ComfyUI 三视图生成暂不可用，请使用即梦或 LibTV")
+    _ensure_three_view_task_table()
     c = _db()
     try:
         r = c.execute("SELECT * FROM project_role WHERE id=?", [rid]).fetchone()
         if not r:
             raise HTTPException(404, "实例不存在")
         settings = json.loads(r["settings_json"] or "{}")
+        name = r["name"] or ""
     finally:
         c.close()
 
-    prompts = _build_three_view_prompts(settings, r["name"] if 'r' in dir() else "")
+    prompts = _build_three_view_prompts(settings, name)
+    # 允许前端微调后的提示词覆盖（保留原有组装逻辑作为默认）
+    user_prompts = data.get("prompts") or {}
+    for v in ("front", "side", "back"):
+        if isinstance(user_prompts.get(v), str) and user_prompts[v].strip():
+            prompts[v] = user_prompts[v].strip()
     ratio = data.get("ratio") or "1:1"
-    caption_base = (data.get("caption") or "").strip() or "AI三视图"
-    results = []
+    project_uuid = (data.get("project_uuid") or "").strip()
+    if engine == "libtv" and not project_uuid:
+        raise HTTPException(400, "LibTV 需要 project_uuid（画布节点 UUID），请在授权中心获取或改用即梦")
 
-    if engine == "comfyui":
-        # ComfyUI：走 workflow 生成（复用 comfyui.generate_thumbnail 的队列机制）
+    tasks = []
+    for view, prompt in prompts.items():
+        c = _db()
         try:
-            from api.comfyui import queue_generation  # 若无此函数则直接标注不可用
-            for view, prompt in prompts.items():
-                results.append({"view": view, "prompt": prompt, "status": "queued", "engine": "comfyui"})
-        except Exception:
-            raise HTTPException(400, "ComfyUI 生成接口暂不可用，请使用即梦或 LibTV")
-    elif engine == "dreamina":
-        from api.dreamina import dreamina_text2image
-        for view, prompt in prompts.items():
-            try:
-                task = dreamina_text2image(prompt=prompt, model_version="5.0", ratio=ratio,
-                                           resolution_type="2k", generate_num=1, poll=0)
-                results.append({"view": view, "prompt": prompt, "task": task, "engine": "dreamina"})
-            except Exception as e:
-                results.append({"view": view, "prompt": prompt, "error": str(e), "engine": "dreamina"})
-    else:  # libtv
-        from api.libtv import libtv_text2image
-        project_uuid = (data.get("project_uuid") or "").strip()
-        if not project_uuid:
-            raise HTTPException(400, "LibTV 需要 project_uuid（画布节点 UUID），请在授权中心获取或改用即梦/ComfyUI")
-        for view, prompt in prompts.items():
-            try:
-                task = libtv_text2image(prompt=prompt, project_uuid=project_uuid, ratio=ratio)
-                results.append({"view": view, "prompt": prompt, "task": task, "engine": "libtv"})
-            except Exception as e:
-                results.append({"view": view, "prompt": prompt, "error": str(e), "engine": "libtv"})
+            cur = c.execute(
+                """INSERT INTO three_view_task (role_id, view, prompt, engine, ratio, project_uuid, status)
+                   VALUES (?,?,?,?,?,?,'queued')""",
+                [rid, view, prompt, engine, ratio, project_uuid])
+            tid = cur.lastrowid
+            c.commit()
+        finally:
+            c.close()
+        tasks.append({"view": view, "task_id": tid, "status": "queued"})
+        threading.Thread(target=_three_view_worker, args=(tid,), daemon=True).start()
 
-    return {"ok": True, "prompts": prompts, "results": results, "engine": engine}
+    return {"ok": True, "prompts": prompts, "tasks": tasks, "engine": engine}
+
+
+# ==================== v5.36.46: 三视图任务异步回写档案 ====================
+_TV_QUEUE_LOCK = threading.Lock()   # 全局串行：三视图任务一次只跑一个（避免 CLI 并发）
+_TV_RESUME_STARTED = False
+
+
+def _ensure_three_view_task_table():
+    """幂等建表 three_view_task（三视图生成任务持久化）"""
+    c = _db()
+    try:
+        c.execute("""CREATE TABLE IF NOT EXISTS three_view_task (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role_id INTEGER NOT NULL,
+            view TEXT NOT NULL,               -- front/side/back
+            prompt TEXT DEFAULT '',
+            engine TEXT DEFAULT 'dreamina',   -- dreamina / libtv
+            submit_id TEXT DEFAULT '',
+            ratio TEXT DEFAULT '1:1',
+            project_uuid TEXT DEFAULT '',     -- libtv 画布节点 UUID
+            status TEXT DEFAULT 'queued',     -- queued/submitting/querying/success/fail
+            progress INTEGER DEFAULT 0,
+            image_url TEXT DEFAULT '',
+            asset_id INTEGER DEFAULT 0,       -- 回写后的 project_role_asset.id
+            error TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            updated_at TEXT DEFAULT (datetime('now','localtime'))
+        )""")
+        c.commit()
+    finally:
+        c.close()
+
+
+def _tv_task_update(tid: int, **kw):
+    c = _db()
+    try:
+        if kw:
+            sets = ["%s=?" % k for k in kw]
+            vals = list(kw.values()) + [tid]
+            c.execute("UPDATE three_view_task SET %s, updated_at=datetime('now','localtime') WHERE id=?" % ", ".join(sets), vals)
+            c.commit()
+    finally:
+        c.close()
+
+
+def _poll_dreamina_image(submit_id: str, timeout_sec: int = 900):
+    """轮询即梦 query_result 直到终态，成功返回 (img_bytes, None)，失败 (None, err)。
+    优先取 result_json.images[].image_url 直连下载；无 URL 时用 --download_dir 让 CLI 下载本地。
+    """
+    import time as _t
+    import tempfile
+    import glob as _glob
+    from api.dreamina import _dreamina_run
+    deadline = _t.time() + timeout_sec
+    while _t.time() < deadline:
+        out, err, code = _dreamina_run(["query_result", "--submit_id=" + str(submit_id)], timeout=60)
+        data = None
+        for cand in reversed(re.findall(r"\{.*\}", out, re.S)):
+            try:
+                d = json.loads(cand)
+                if isinstance(d, dict) and "gen_status" in d:
+                    data = d
+                    break
+            except Exception:
+                continue
+        if not data:
+            # CLI 报任务不存在（如无效/已清理 submit_id）→ 快速失败，避免卡满轮询超时
+            if "not found" in (err or "").lower():
+                return None, f"即梦任务不存在: {(err or out)[:150]}"
+            _t.sleep(10)
+            continue
+        status = data.get("gen_status", "querying")
+        if status == "success":
+            url = ""
+            try:
+                rj = data.get("result_json") or {}
+                imgs = rj.get("images") or rj.get("results") or []
+                for im in imgs:
+                    if im.get("image_url"):
+                        url = im["image_url"]
+                        break
+            except Exception:
+                pass
+            if url:
+                try:
+                    import httpx
+                    with httpx.Client(timeout=180) as cl:
+                        r = cl.get(url)
+                        if r.status_code == 200:
+                            return r.content, None
+                except Exception as e:
+                    return None, f"图片下载失败: {e}"
+            # 兜底：--download_dir 让 CLI 下载到本地
+            tmpd = tempfile.mkdtemp(prefix="tv_dl_")
+            try:
+                out2, err2, code2 = _dreamina_run(
+                    ["query_result", "--submit_id=" + str(submit_id), "--download_dir=" + tmpd], timeout=300)
+                paths = []
+                try:
+                    d2 = json.loads(out2)
+                    rj2 = d2.get("result_json") or {}
+                    paths = [i.get("path") for i in (rj2.get("images") or []) if i.get("path")]
+                except Exception:
+                    pass
+                for p in paths:
+                    if p and os.path.isfile(p):
+                        with open(p, "rb") as f:
+                            return f.read(), None
+                fs = _glob.glob(os.path.join(tmpd, "*"))
+                if fs:
+                    with open(fs[0], "rb") as f:
+                        return f.read(), None
+            finally:
+                import shutil
+                shutil.rmtree(tmpd, ignore_errors=True)
+            return None, "即梦任务成功但未找到图片文件"
+        if status == "fail":
+            reason = (data.get("fail_reason") or "").strip()
+            return None, reason or "即梦生成失败"
+        _t.sleep(8)
+    return None, f"轮询超时({timeout_sec}s)"
+
+
+def _archive_three_view_image(role_id: int, view: str, prompt: str, img_bytes: bytes):
+    """把生成图片归档为角色档案 three_view 资产，返回 asset_id"""
+    import uuid as _uuid
+    rdir = os.path.join(ROLE_ASSET_DIR, "role%d" % role_id)
+    os.makedirs(rdir, exist_ok=True)
+    fname = "tv_%s_%s.jpg" % (view, _uuid.uuid4().hex[:10])
+    dest = os.path.join(rdir, fname)
+    with open(dest, "wb") as f:
+        f.write(img_bytes)
+    rel = os.path.relpath(dest, DATA_DIR).replace("\\", "/")
+    vn = {"front": "正面", "side": "侧面", "back": "背面"}.get(view, view)
+    c = _db()
+    try:
+        c.execute("""INSERT INTO project_role_asset (project_role_id,asset_kind,filename,rel_path,caption,size)
+                     VALUES (?,?,?,?,?,?)""",
+                  [role_id, "three_view", fname, rel, "AI三视图·%s" % vn, len(img_bytes)])
+        aid = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+        tp = _img_thumb(aid, dest)
+        if tp:
+            c.execute("UPDATE project_role_asset SET thumb_path=? WHERE id=?", [tp, aid])
+        cover = c.execute("SELECT cover_image FROM project_role WHERE id=?", [role_id]).fetchone()
+        if cover and not cover["cover_image"] and tp:
+            c.execute("UPDATE project_role SET cover_image=? WHERE id=?", [rel, role_id])
+        c.commit()
+        return aid
+    finally:
+        c.close()
+
+
+def _three_view_worker(task_id: int):
+    """三视图任务执行体：提交引擎 → 轮询/等待 → 下载归档（全局锁串行）"""
+    with _TV_QUEUE_LOCK:
+        c = _db()
+        try:
+            t = c.execute("SELECT * FROM three_view_task WHERE id=?", [task_id]).fetchone()
+        finally:
+            c.close()
+        if not t or t["status"] in ("success", "fail"):
+            return
+        rid = t["role_id"]
+        view = t["view"] or "front"
+        prompt = t["prompt"] or ""
+        engine = (t["engine"] or "dreamina").lower()
+        ratio = t["ratio"] or "1:1"
+        _tv_task_update(task_id, status="submitting", progress=10)
+        try:
+            if engine == "dreamina":
+                submit_id = (t["submit_id"] or "").strip()
+                if not submit_id:
+                    from api.dreamina import dreamina_submit_text2image
+                    res = dreamina_submit_text2image(prompt=prompt, ratio=ratio)
+                    if not res.get("ok"):
+                        _tv_task_update(task_id, status="fail", error=res.get("error", "提交失败"), progress=100)
+                        return
+                    submit_id = res["submit_id"]
+                    _tv_task_update(task_id, status="querying", submit_id=submit_id, progress=15)
+                    if res.get("gen_status") == "fail":
+                        _tv_task_update(task_id, status="fail", error="即梦拒绝提交", progress=100)
+                        return
+                else:
+                    _tv_task_update(task_id, status="querying", progress=15)
+                img_bytes, err = _poll_dreamina_image(submit_id)
+                if err:
+                    _tv_task_update(task_id, status="fail", error=err, progress=100)
+                    return
+                aid = _archive_three_view_image(rid, view, prompt, img_bytes)
+                _tv_task_update(task_id, status="success", progress=100, asset_id=aid)
+                return
+            else:  # libtv（同步生成，在 worker 线程内串行）
+                from api.libtv import libtv_text2image
+                project_uuid = (t["project_uuid"] or "").strip()
+                if not project_uuid:
+                    _tv_task_update(task_id, status="fail", error="LibTV 缺少 project_uuid", progress=100)
+                    return
+                res = libtv_text2image(prompt=prompt, project_uuid=project_uuid, ratio=ratio)
+                if not res.get("ok"):
+                    _tv_task_update(task_id, status="fail", error=res.get("error", "LibTV 生成失败"), progress=100)
+                    return
+                url = res.get("image_url", "")
+                if not url:
+                    _tv_task_update(task_id, status="fail", error="LibTV 未返回图片 URL", progress=100)
+                    return
+                import httpx
+                with httpx.Client(timeout=180) as cl:
+                    r = cl.get(url)
+                    if r.status_code != 200:
+                        _tv_task_update(task_id, status="fail", error="LibTV 图片下载失败 HTTP %s" % r.status_code, progress=100)
+                        return
+                    img_bytes = r.content
+                aid = _archive_three_view_image(rid, view, prompt, img_bytes)
+                _tv_task_update(task_id, status="success", progress=100, asset_id=aid)
+                return
+        except Exception as e:
+            _tv_task_update(task_id, status="fail", error=f"生成异常: {e}", progress=100)
+
+
+def _resume_orphaned_three_view_tasks():
+    """启动时接管 queued/submitting/querying 任务（服务重启后继续轮询归档）"""
+    global _TV_RESUME_STARTED
+    if _TV_RESUME_STARTED:
+        return
+    _TV_RESUME_STARTED = True
+    try:
+        _ensure_three_view_task_table()
+        c = _db()
+        try:
+            rows = c.execute(
+                "SELECT id FROM three_view_task WHERE status IN ('queued','submitting','querying')").fetchall()
+        finally:
+            c.close()
+        for r in rows:
+            threading.Thread(target=_three_view_worker, args=(r["id"],), daemon=True).start()
+    except Exception as e:
+        print(f"[ProjectRoles] 三视图孤儿任务接管失败: {e}")
+
+
+@router.get("/api/roles/{rid}/three-view/tasks")
+def list_three_view_tasks(rid: int, request: Request, limit: int = 30):
+    """角色三视图生成任务列表（前端轮询展示状态/进度/归档结果）"""
+    _auth(request)
+    _ensure_three_view_task_table()
+    c = _db()
+    try:
+        rows = c.execute(
+            "SELECT id, view, engine, submit_id, status, progress, asset_id, error, created_at, updated_at "
+            "FROM three_view_task WHERE role_id=? ORDER BY id DESC LIMIT ?", [rid, limit]).fetchall()
+        return {"ok": True, "tasks": [dict(r) for r in rows]}
+    finally:
+        c.close()
+
+
+# 启动时接管孤儿三视图任务（幂等）
+threading.Thread(target=_resume_orphaned_three_view_tasks, daemon=True).start()

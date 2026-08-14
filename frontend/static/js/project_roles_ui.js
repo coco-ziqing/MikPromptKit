@@ -631,22 +631,74 @@
       var prompts = {};
       document.querySelectorAll('.rl-tv-prompt').forEach(function (t) { prompts[t.getAttribute('data-view')] = t.value; });
       var go = document.getElementById('rlTVGo');
-      go.disabled = true; go.textContent = '⏳ 生成中...';
+      go.disabled = true; go.textContent = '⏳ 提交中...';
       try {
-        var d = await (await fetch('/api/roles/' + rid + '/three-view/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ engine: engine, ratio: ratio, project_uuid: uuid, caption: 'AI三视图' }) })).json();
+        var d = await (await fetch('/api/roles/' + rid + '/three-view/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ engine: engine, ratio: ratio, project_uuid: uuid, caption: 'AI三视图', prompts: prompts }) })).json();
         if (!d.ok) { this._toast(d.detail || '生成未完成', 'error'); go.disabled = false; go.textContent = '🚀 生成三视图'; return; }
+        // v5.36.46: 任务卡 + 轮询回写（生成完成自动归档到档案区）
+        var tasks = d.tasks || [];
+        self._tvTasks = {};
+        (tasks || []).forEach(function (t) { self._tvTasks[t.view] = t.task_id; });
         var box = document.getElementById('rlTVPrompts');
-        var h = '<div style="font-size:12px;color:#10b981;margin-bottom:6px;">✅ 已提交 ' + (d.results || []).length + ' 个视图生成任务（' + engine + '）</div>';
-        (d.results || []).forEach(function (r) {
-          var vn = { front: '正面', side: '侧面', back: '背面' }[r.view] || r.view;
-          if (r.error) h += '<div style="font-size:11px;color:var(--danger);">' + vn + ': ❌ ' + self._esc(r.error) + '</div>';
-          else h += '<div style="font-size:11px;color:var(--text-main);">' + vn + ': ✅ 已提交' + (r.task && r.task.submit_id ? ' (submit_id: ' + self._esc(r.task.submit_id) + ')' : '') + '</div>';
-        });
-        h += '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">💡 即梦/LibTV 为异步任务，稍后可到任务面板查看结果；ComfyUI 生成后自动归档。</div>';
-        box.innerHTML = h;
-        this._toast('✅ 三视图任务已提交', 'success');
-      } catch (e) { this._toast('生成异常: ' + e.message, 'error'); }
-      go.disabled = false; go.textContent = '🚀 生成三视图';
+        box.innerHTML = '<div style="font-size:12px;color:#10b981;margin-bottom:6px;">✅ 已提交 ' + tasks.length + ' 个视图生成任务（' + engine + '），完成后自动归档到角色档案：</div>' +
+          '<div id="rlTVTaskList">' + self._tvTaskCards(tasks, {}) + '</div>';
+        this._toast('🚀 三视图任务已提交', 'success');
+        go.disabled = false; go.textContent = '🚀 生成三视图';
+        this._pollThreeViewTasks(rid);
+      } catch (e) { this._toast('生成异常: ' + e.message, 'error'); go.disabled = false; go.textContent = '🚀 生成三视图'; }
+    },
+    _tvTaskCards: function (tasks, states) {
+      // 任务卡渲染：视图名 + 状态徽章 + 进度条
+      var self = this;
+      var vnames = { front: '🖼 正面', side: '🖼 侧面', back: '🖼 背面' };
+      return (tasks || []).map(function (t) {
+        var s = states[t.task_id] || { status: 'queued', progress: 0, error: '' };
+        var badge = '', bar = '';
+        if (s.status === 'queued') { badge = '<span style="color:#94a3b8;">⏳ 排队中</span>'; }
+        else if (s.status === 'submitting') { badge = '<span style="color:#f59e0b;">📤 提交中</span>'; bar = self._tvBar(10); }
+        else if (s.status === 'querying') { badge = '<span style="color:#3b82f6;">🎨 生成中 ' + (s.progress || 0) + '%</span>'; bar = self._tvBar(s.progress || 15); }
+        else if (s.status === 'success') { badge = '<span style="color:#10b981;">✅ 已归档</span>'; bar = self._tvBar(100); }
+        else { badge = '<span style="color:#ef4444;">❌ 失败</span>' + (s.error ? '<div style="font-size:10px;color:#ef4444;margin-top:2px;">' + self._esc(s.error) + '</div>' : ''); }
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:6px;background:var(--bg-input,rgba(127,127,127,.08));border-radius:6px;">' +
+          '<span style="font-size:12px;min-width:72px;color:var(--text-main);">' + (vnames[t.view] || t.view) + '</span>' +
+          '<div style="flex:1;">' + badge + bar + '</div></div>';
+      }).join('');
+    },
+    _tvBar: function (pct) {
+      return '<div style="height:4px;background:rgba(127,127,127,.15);border-radius:2px;margin-top:4px;overflow:hidden;">' +
+        '<div style="height:100%;width:' + Math.max(0, Math.min(100, pct || 0)) + '%;background:linear-gradient(90deg,#3b82f6,#10b981);transition:width .5s;"></div></div>';
+    },
+    _pollThreeViewTasks: async function (rid) {
+      var self = this;
+      if (self._tvPolling) return;
+      self._tvPolling = true;
+      var tries = 0;
+      var stop = function () { self._tvPolling = false; };
+      try {
+        var d = await (await fetch('/api/roles/' + rid + '/three-view/tasks')).json();
+        var all = d.tasks || [];
+        var mine = all.filter(function (t) { return Object.values(self._tvTasks || {}).indexOf(t.id) >= 0; });
+        var states = {};
+        mine.forEach(function (t) { states[t.id] = t; });
+        var listBox = document.getElementById('rlTVTaskList');
+        if (listBox) listBox.innerHTML = self._tvTaskCards(mine, states);
+        var done = mine.length && mine.every(function (t) { return t.status === 'success' || t.status === 'fail'; });
+        if (done || !mine.length) {
+          stop();
+          if (mine.some(function (t) { return t.status === 'success'; })) {
+            this._toast('✅ 三视图生成完成，已归档到档案', 'success');
+            this.openInstance(rid);  // 刷新档案区
+          } else if (mine.length) {
+            this._toast('三视图生成失败，详情见任务卡', 'error');
+          }
+          return;
+        }
+        if (tries++ > 150) { stop(); return; }  // 20 分钟兜底
+        setTimeout(function () { self._pollThreeViewTasks(rid); }, 8000);
+      } catch (e) {
+        stop();
+        setTimeout(function () { self._pollThreeViewTasks(rid); }, 8000);
+      }
     },
     delAsset: async function (aid, rid) {
       if (!confirm('删除此档案？')) return;
