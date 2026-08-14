@@ -155,25 +155,6 @@
                         } else {
                             row.insertBefore(modeBtn, btn);
                         }
-                        // v5.37.14: 缩略预览框右上角快捷切换按钮（hover 显示，点击直接切换）
-                        if (!card.querySelector('.cg-thumb-switch')) {
-                            var thumb = card.querySelector('.card-thumb');
-                            if (thumb) {
-                                var ts = document.createElement('span');
-                                ts.className = 'cg-thumb-switch';
-                                ts.style.cssText = 'position:absolute;right:4px;top:4px;z-index:6;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.25;transition:opacity .2s;';
-                                ts.innerHTML = '⇄';
-                                ts.title = '快捷切换图片/视频预览';
-                                ts.onmouseenter = function () { ts.style.opacity = '1'; };
-                                ts.onmouseleave = function () { ts.style.opacity = '.25'; };
-                                ts.onclick = function (e) {
-                                    e.stopPropagation();
-                                    self._toggleCardMode(parseInt(cid, 10));
-                                };
-                                thumb.style.position = thumb.style.position || 'relative';
-                                thumb.appendChild(ts);
-                            }
-                        }
                     }
                     // v5.37.9: 插入到「下载 ⬇」与「收藏 +」之间（下载按钮之前）
                     var dlBtn = row.querySelector('.coll-add-btn[title*="下载"]');
