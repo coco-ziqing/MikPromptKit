@@ -83,7 +83,7 @@
                 '<label style="font-size:11px;color:var(--text-muted);">价格(元) <input id="vjPrice" type="number" min="1" style="width:70px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:12px;" value="10"></label>' +
                 '<label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px;"><input id="vjIsAi" type="checkbox" checked style="accent-color:#6366f1;"> AI生成标注</label>' +
                 '</div>' +
-                '<div style="font-size:10px;color:#f59e0b;margin:6px 0;">⚠️ 提交后由光厂审核（约1个工作日）；标题/关键词不规范可能被拒。串行上传防风控（45s/条）。</div>' +
+                '<div style="font-size:10px;color:#f59e0b;margin:6px 0;">⚠️ 提交后由光厂审核（约1个工作日）；标题/关键词不规范可能被拒。逐条上传（每条间隔约半分钟，降低风险）。</div>' +
                 '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">' +
                 '<button class="btn btn-secondary btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>' +
                 '<button class="btn btn-primary btn-sm" onclick="App.vjshi.submit(' + (genTaskId || 0) + ',' + (cardId || 0) + ',\'' + self._esc(videoFile || '') + '\',this)">📤 确认投稿</button></div></div>';
@@ -139,7 +139,7 @@
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
             });
             if (d && d.ok) {
-                this._toast('📤 已入队，串行上传中', 'success');
+                this._toast('📤 已入队，将逐条上传', 'success');
                 if (ov) ov.remove();
                 this.openPanel();
             } else {
@@ -160,7 +160,7 @@
                 '<span style="display:flex;gap:6px;">' +
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openLogin()" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;">🔑 登录光厂</button>' +
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openPermPanel()" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;">🔐 权限设置</button>' +
-                '<button class="btn btn-xs btn-outline" id="vjModeBtn" onclick="App.vjshi.toggleMode()" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;">⚙️ 浏览器模式</button>' +
+                '<button class="btn btn-xs btn-outline" id="vjModeBtn" onclick="App.vjshi.toggleMode()" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;">⚙️ 执行方式</button>' +
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openPanel()" style="font-size:10px;">🔄 刷新</button>' +
                 '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></span></div>' +
                 '<div id="vjPanelBody" style="min-height:100px;">加载中...</div></div>';
@@ -226,16 +226,16 @@
                 body: JSON.stringify({ headless: next })
             });
             if (r && r.ok) {
-                this._toast(next ? '已切换：无头模式（后台运行，不显示窗口）' : '已切换：有头模式（浏览器窗口可见操作）', 'success');
+                this._toast(next ? '已切换：后台执行（不显示窗口）' : '已切换：可视执行（窗口可见操作）', 'success');
                 var b = document.getElementById('vjModeBtn');
-                if (b) b.textContent = next ? '⚙️ 浏览器模式: 无头' : '⚙️ 浏览器模式: 有头';
+                if (b) b.textContent = next ? '⚙️ 执行方式: 后台执行' : '⚙️ 执行方式: 可视执行';
             }
         },
         // 面板打开时显示当前模式
         _showMode: function () {
             App.fetchJSON('/api/vjshi/settings').then(function (d) {
                 var b = document.getElementById('vjModeBtn');
-                if (b) b.textContent = (d && d.headless) ? '⚙️ 浏览器模式: 无头' : '⚙️ 浏览器模式: 有头';
+                if (b) b.textContent = (d && d.headless) ? '⚙️ 执行方式: 后台执行' : '⚙️ 执行方式: 可视执行';
             }).catch(function () {});
         },
         openLogin: async function () {
@@ -256,7 +256,7 @@
     VJ.submitBtnHtml = function (t) {
         if (!VJ.canUpload()) return '';
         if (t.media_type !== 'video' || !t.result_filename) return '';
-        return '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;" onclick="App.vjshi.openSubmit(' + t.id + ',' + t.card_id + ',\'' + (t.result_filename || '') + '\',{title:\'\',keywords:\'\',description:\'\',category:\'\'})" title="上传到光厂（AI视频素材，需团队上传权限）">📤 上传</button>';
+        return '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;" onclick="App.vjshi.openSubmit(' + t.id + ',' + t.card_id + ',\'' + (t.result_filename || '') + '\',{title:\'\',keywords:\'\',description:\'\',category:\'\'})" title="上传视频素材到光厂（需团队开启上传权限）">📤 上传</button>';
     };
 
     // ============ 团队上传权限设置（v5.38.3，仅主理人） ============

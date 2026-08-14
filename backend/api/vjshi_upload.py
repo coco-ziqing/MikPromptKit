@@ -84,6 +84,44 @@ def _today():
     import datetime
     return datetime.datetime.now().strftime("%Y-%m-%d")
 
+def _rand(min_v: float, max_v: float) -> float:
+    """随机延迟区间（真人模拟节奏）"""
+    import random
+    return random.uniform(min_v, max_v)
+
+
+def _human_pause(min_v: float = 0.4, max_v: float = 1.6):
+    """随机停顿（模拟思考/操作间隙）"""
+    time.sleep(_rand(min_v, max_v))
+
+
+def _human_scroll(page):
+    """随机滚动页面（模拟浏览行为）"""
+    try:
+        import random
+        h = page.evaluate("() => document.body.scrollHeight || 0")
+        if h > 600:
+            for _ in range(random.randint(1, 3)):
+                page.mouse.wheel(0, random.randint(150, 500))
+                time.sleep(_rand(0.3, 0.9))
+            page.mouse.wheel(0, -random.randint(100, 400))
+            time.sleep(_rand(0.3, 0.8))
+    except Exception:
+        pass
+
+
+def _human_mouse(page):
+    """随机鼠标移动（模拟光标轨迹）"""
+    try:
+        import random
+        for _ in range(random.randint(2, 4)):
+            page.mouse.move(random.randint(200, 1200), random.randint(150, 700),
+                            steps=random.randint(8, 20))
+            time.sleep(_rand(0.1, 0.4))
+    except Exception:
+        pass
+
+
 
 # ==================== 表 ====================
 
@@ -342,9 +380,16 @@ def _upload_one(task_id: int):
     try:
         ctx = _get_context()
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        # 1. 打开上传页
+        # 1. 先访问首页（模拟人工导航），再进上传页（v5.38.7 反检测）
+        try:
+            page.goto("https://www.vjshi.com/", wait_until="domcontentloaded", timeout=30000)
+            _human_pause(1.0, 2.5)
+            _human_scroll(page)
+        except Exception:
+            pass
         page.goto(UPLOAD_URL, wait_until="domcontentloaded", timeout=30000)
-        time.sleep(1.5)
+        _human_pause(1.0, 2.5)
+        _human_mouse(page)
         if "login" in page.url.lower():
             _task_update(task_id, status="fail", error="登录已失效，请重新登录光厂", fail_category="login")
             return
@@ -357,8 +402,10 @@ def _upload_one(task_id: int):
         if not file_input:
             _task_update(task_id, status="fail", error="未找到文件上传控件（页面结构可能变化）", fail_category="form_changed")
             return
+        _human_pause(0.8, 2.0)
         file_input.set_input_files(video_path)
         _task_update(task_id, status="uploading", error="", progress_note="已选择文件")
+        _human_pause(1.0, 2.5)
         # 3. 等待上传完成（轮询进度/上传完成标志，最多 10 分钟）
         uploaded = _wait_upload_done(page, cfg)
         if not uploaded:
@@ -375,8 +422,9 @@ def _upload_one(task_id: int):
         if submit_sel:
             btn = page.query_selector(submit_sel)
             if btn:
+                _human_pause(0.8, 2.0)
                 btn.click(timeout=8000)
-                time.sleep(3)
+                _human_pause(3.0, 6.0)  # 提交后停留（模拟人工确认结果）
         _task_update(task_id, status="submitted", finished_at=_now_str(),
                      submit_ref=page.url[:200])
     except Exception as e:
@@ -453,12 +501,13 @@ def _fill_keywords_optimized(page, cfg, keywords_str):
         add = " ".join(need[: max(0, 10 - len(cur_kws))])
         if add:
             try:
+                _human_pause(0.3, 0.8)
                 ta.click(timeout=3000)
                 if cur:
                     ta.fill(cur + " " + add)
                 else:
                     ta.fill(add)
-                time.sleep(0.3)
+                _human_pause(0.3, 0.8)
             except Exception:
                 pass
     return True
@@ -480,8 +529,10 @@ def _fill_form(page, t, cfg):
             el.click(timeout=3000)
             el.fill("")
             for ch in value[:300]:
-                el.type(ch, delay=15)
-            time.sleep(0.3 + (id(value) % 4) / 10)
+                el.type(ch, delay=_rand(12, 35))
+                if id(ch) % 17 == 0:
+                    _human_pause(0.1, 0.4)  # 偶发停顿模拟思考
+            _human_pause(0.3, 1.0)
         except Exception as e:
             return False, f"填写 {key} 失败: {e}"
     # 关键词（v5.38.2）：优先点击光厂 AI 推荐备选词，不足手动补足
@@ -540,8 +591,8 @@ def _upload_worker(task_id: int):
         if _STATE["today_count"] >= DAILY_LIMIT:
             _task_update(task_id, status="fail", error=f"已达单日上传上限 {DAILY_LIMIT} 条", fail_category="daily_limit")
             return
-        # 间隔
-        wait = UPLOAD_INTERVAL_SEC - (time.time() - _STATE["last_upload_ts"])
+        # 间隔（v5.38.7：45s ± 随机 15s，避免固定节奏）
+        wait = (UPLOAD_INTERVAL_SEC + _rand(-15, 15)) - (time.time() - _STATE["last_upload_ts"])
         if wait > 0 and _STATE["last_upload_ts"]:
             time.sleep(wait)
         _upload_one(task_id)
