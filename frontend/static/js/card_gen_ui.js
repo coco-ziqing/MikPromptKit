@@ -228,7 +228,7 @@
                     inner.innerHTML = '<div class="thumb-video-wrap-preview">' +
                         (task.poster_filename ? '<img class="thumb-video-poster" src="/api/thumbnails/file/' + task.poster_filename + '" alt="" loading="lazy">' : '<div class="thumb-placeholder thumb-video-placeholder"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg></div>') +
                         '<div class="thumb-play-overlay"><svg viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19"/></svg></div>' +
-                        '<video class="thumb-video" src="/api/thumbnails/video/' + task.result_filename + '" loop muted playsinline preload="none"></video></div>';
+                        '<video class="thumb-video" src="/api/thumbnails/video/' + task.result_filename + '" loop muted playsinline preload="none" onmouseenter="this.play()" onmouseleave="this.pause();this.currentTime=0"></video></div>';
                 } else {
                     inner.innerHTML = '<img src="/api/thumbnails/file/' + task.result_filename + '" alt="缩略图">';
                 }
@@ -249,6 +249,10 @@
             // 历史按钮图标同步
             var hb = card.querySelector('.cg-history-btn');
             if (hb) hb.innerHTML = task.media_type === 'video' ? '🎬' : '🖼';
+            // v5.37.17: 局部更新后重新绑定 hover 播放（新 video 元素无事件）
+            if (typeof App.bindVideoHover === 'function') {
+                setTimeout(function () { App.bindVideoHover(); }, 100);
+            }
         },
         activate: async function (taskId, cardId, btn) {
             var d = await App.fetchJSON('/api/card-gen/tasks/' + taskId + '/activate', { method: 'POST' });
