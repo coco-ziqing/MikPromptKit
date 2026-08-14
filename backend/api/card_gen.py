@@ -910,7 +910,19 @@ def card_gen_history_summary(request: Request, card_ids: str = ""):
             "SELECT card_id, COUNT(1) n FROM card_gen_tasks "
             "WHERE card_id IN (%s) AND status='success' AND result_filename!='' GROUP BY card_id" % ph, ids).fetchall()
         for r in rows:
-            out[str(r["card_id"])] = {"count": r["n"], "current": None}
+            out[str(r["card_id"])] = {"count": r["n"], "img_count": 0, "vid_count": 0, "current": None}
+        # v5.37.11: 图片/视频产物分别计数（卡片模式切换按钮显示条件）
+        type_rows = c.execute(
+            "SELECT card_id, media_type, COUNT(1) n FROM card_gen_tasks "
+            "WHERE card_id IN (%s) AND status='success' AND result_filename!='' AND media_type IN ('image','video') "
+            "GROUP BY card_id, media_type" % ph, ids).fetchall()
+        for r in type_rows:
+            key = str(r["card_id"])
+            if key in out:
+                if r["media_type"] == "image":
+                    out[key]["img_count"] = r["n"]
+                else:
+                    out[key]["vid_count"] = r["n"]
         cur_rows = c.execute(
             "SELECT card_id, media_type FROM card_gen_tasks WHERE card_id IN (%s) AND is_current=1" % ph, ids).fetchall()
         for r in cur_rows:

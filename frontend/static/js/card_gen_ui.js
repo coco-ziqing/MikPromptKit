@@ -135,6 +135,26 @@
                         e.stopPropagation();
                         self._openHistoryPicker(parseInt(cid, 10), btn);
                     };
+                    // v5.37.11: 图片+视频都有时，收藏按钮后插「模式切换」按钮（缩略预览框直接切换）
+                    if (s.img_count > 0 && s.vid_count > 0 && !card.querySelector('.cg-mode-btn')) {
+                        var curType = (s.current && s.current.media_type) || '';
+                        var modeBtn = document.createElement('span');
+                        modeBtn.className = 'cg-mode-btn';
+                        modeBtn.style.cssText = 'display:inline-flex;gap:3px;align-items:center;font-size:10px;padding:1px 7px;border-radius:9px;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.5);color:#10b981;cursor:pointer;margin-left:2px;user-select:none;';
+                        modeBtn.innerHTML = curType === 'video' ? '🖼 图预览' : '🎬 视频预览';
+                        modeBtn.title = '切换缩略预览模式（图片↔视频）';
+                        modeBtn.onclick = function (e) {
+                            e.stopPropagation();
+                            self._toggleCardMode(parseInt(cid, 10));
+                        };
+                        // 收藏按钮（+）之后插入
+                        var collectBtn = row.querySelector('.coll-add-btn[title*="收藏"]');
+                        if (collectBtn) {
+                            row.insertBefore(modeBtn, collectBtn.nextSibling);
+                        } else {
+                            row.insertBefore(modeBtn, btn);
+                        }
+                    }
                     // v5.37.9: 插入到「下载 ⬇」与「收藏 +」之间（下载按钮之前）
                     var dlBtn = row.querySelector('.coll-add-btn[title*="下载"]');
                     if (dlBtn) {
@@ -175,6 +195,26 @@
                 ov.innerHTML = h;
                 document.body.appendChild(ov);
             }).catch(function () {});
+        },
+        // v5.37.11: 卡片预览模式切换（当前图片→切视频，当前视频→切图片）
+        _toggleCardMode: async function (cardId) {
+            var self = this;
+            var d = await App.fetchJSON('/api/card-gen/tasks?card_id=' + cardId + '&limit=50');
+            var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename; });
+            var cur = tasks.filter(function (t) { return t.is_current; });
+            var curType = (cur[0] || {}).media_type;
+            var target = curType === 'video' ? 'image' : 'video';
+            var pick = tasks.filter(function (t) { return t.media_type === target; });
+            if (!pick.length) { this._toast('无' + (target === 'video' ? '视频' : '图片') + '产物', 'warning'); return; }
+            var curPick = pick.filter(function (t) { return t.is_current; });
+            var t = (curPick[0] || pick[0]);
+            var r = await App.fetchJSON('/api/card-gen/tasks/' + t.id + '/activate', { method: 'POST' });
+            if (r && r.ok) {
+                this._toast('✅ 已切换为' + (target === 'video' ? '视频' : '图片') + '预览', 'success');
+                this._refreshCardList();
+            } else {
+                this._toast((r && r.detail) || '切换未完成', 'error');
+            }
         },
         activate: async function (taskId, cardId, btn) {
             var d = await App.fetchJSON('/api/card-gen/tasks/' + taskId + '/activate', { method: 'POST' });
