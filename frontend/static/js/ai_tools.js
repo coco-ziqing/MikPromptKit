@@ -72,6 +72,9 @@ App.aiTools.renderToolbar = function() {
     '<button class="ai-btn" onclick="App.aiTools.autoTagCurrent()" title="AI自动分析标签和分类"><span>🏷️</span> 标签</button>' +
     '<button class="ai-btn ai-btn-purple" onclick="App.aiTools.openOptimizer(\'adapt\')" title="适配SDXL/Flux/MJ/DALL-E"><span>🎯</span> 适配</button>' +
     '<button class="ai-btn ai-btn-green ai-btn-editonly" onclick="App.aiTools.aiThumbCurrent()" title="AI智能生成缩略图"><span>🎨</span> 缩图</button>' +
+    // v5.37.0: 词卡 AI 生成（团队版专属）——顶部入口打开任务面板；批量入口在编辑模式勾选后使用
+    '<button class="ai-btn ai-btn-purple" onclick="App.cardGen.openPanel()" title="词卡生成任务队列（高清/图生图/文生图/视频）"><span>🚀</span> 生成</button>' +
+    '<button class="ai-btn ai-btn-green ai-btn-editonly" onclick="App.cardGen.openBatch([...App.state.batchSelected])" title="批量 AI 生成（文生图/图生图/视频），需先勾选词卡"><span>📦</span> 批量生成</button>' +
     '';
     target.appendChild(container);
     return container;

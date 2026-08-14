@@ -72,6 +72,74 @@ class DreaminaGenerateRequest(BaseModel):
     generate_num: int = 1
 
 
+def _parse_submit_result(out: str, err: str) -> dict:
+    """解析 CLI 提交输出（--poll 0），提取 submit_id + gen_status。
+    返回 {ok, submit_id, gen_status} 或 {ok: False, error}
+    """
+    data = None
+    for cand in reversed(re.findall(r"\{.*\}", out, re.S)):
+        try:
+            d = json.loads(cand)
+            if isinstance(d, dict) and "gen_status" in d:
+                data = d
+                break
+        except Exception:
+            continue
+    if not data:
+        return {"ok": False, "error": f"CLI 输出解析失败: {(err or out)[:250]}"}
+    submit_id = str(data.get("submit_id") or "").strip()
+    if not submit_id:
+        return {"ok": False, "error": str(data.get("fail_reason") or "未返回 submit_id")[:250]}
+    return {"ok": True, "submit_id": submit_id, "gen_status": data.get("gen_status", "querying")}
+
+
+def dreamina_submit_upscale(image_path: str, resolution_type: str = "4k", timeout: int = 180) -> dict:
+    """异步提交超清任务（--poll 0），返回 {ok, submit_id, gen_status}。
+    resolution_type 严格校验：2k/4k/8k（v5.37.0 词卡生成）
+    """
+    args = ["image_upscale", "--image", image_path,
+            "--resolution_type", resolution_type, "--poll", "0"]
+    out, err, code = _dreamina_run(args, timeout=timeout)
+    return _parse_submit_result(out, err)
+
+
+def dreamina_submit_image2image(image_paths: list, prompt: str, model_version: str = "5.0",
+                                ratio: str = "1:1", resolution_type: str = "2k",
+                                generate_num: int = 1, timeout: int = 180) -> dict:
+    """异步提交图生图任务（1-10 图，--poll 0），返回 {ok, submit_id, gen_status}"""
+    args = ["image2image", "--prompt", prompt, "--model_version", model_version,
+            "--generate_num", str(generate_num), "--ratio", ratio,
+            "--resolution_type", resolution_type, "--poll", "0"]
+    for p in image_paths or []:
+        args += ["--image", p]
+    out, err, code = _dreamina_run(args, timeout=timeout)
+    return _parse_submit_result(out, err)
+
+
+def dreamina_submit_text2video(prompt: str, model_version: str = "seedance2.0_vip",
+                               ratio: str = "16:9", duration: int = 5,
+                               video_resolution: str = "720p", session: int = 0,
+                               timeout: int = 180) -> dict:
+    """异步提交文生视频任务（--poll 0），返回 {ok, submit_id, gen_status}"""
+    args = ["text2video", "--prompt", prompt, "--model_version", model_version,
+            "--ratio", ratio, "--duration", str(duration),
+            "--video_resolution", video_resolution, "--session", str(session),
+            "--poll", "0"]
+    out, err, code = _dreamina_run(args, timeout=timeout)
+    return _parse_submit_result(out, err)
+
+
+def dreamina_submit_image2video(image_path: str, prompt: str, model_version: str = "seedance2.0_vip",
+                                duration: int = 5, video_resolution: str = "720p",
+                                session: int = 0, timeout: int = 180) -> dict:
+    """异步提交图生视频任务（单图，--poll 0），返回 {ok, submit_id, gen_status}"""
+    args = ["image2video", "--prompt", prompt, "--model_version", model_version,
+            "--duration", str(duration), "--video_resolution", video_resolution,
+            "--session", str(session), "--poll", "0", "--image", image_path]
+    out, err, code = _dreamina_run(args, timeout=timeout)
+    return _parse_submit_result(out, err)
+
+
 def dreamina_submit_text2image(prompt: str, model_version: str = "5.0", ratio: str = "1:1",
                         resolution_type: str = "2k", width: int = 0, height: int = 0,
                         generate_num: int = 1, timeout: int = 180) -> dict:

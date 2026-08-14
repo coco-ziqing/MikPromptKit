@@ -135,8 +135,22 @@
 
             h += '</div></div>';
 
+            // v5.37.0: 词卡生成历史区（AI 生成产物归档，可切换当前预览）
+            h += '<div style="margin-top:12px;">';
+            h += '<label style="font-size:11px;color:#94a3b8;font-weight:600;">🎬 生成历史</label>';
+            h += '<div id="cgDetailHistory" style="font-size:11px;color:#94a3b8;padding:4px 0;">加载中...</div>';
+            h += '</div>';
+
             overlay.innerHTML = h;
             document.body.appendChild(overlay);
+
+            // 异步加载生成历史（不阻塞弹窗渲染）
+            if (App.cardGen && App._activeTiers && App._activeTiers.team) {
+                App.cardGen.loadDetailHistory(card.id);
+            } else {
+                var hb = document.getElementById('cgDetailHistory');
+                if (hb) hb.innerHTML = '团队版功能（当前未显示）';
+            }
 
         } catch (e) {
             App.showToast('加载详情未完成: ' + e.message, 'error');
