@@ -355,8 +355,24 @@
                 this._videoResOptions('seedance2.0_vip').map(function (v) { return '<option value="' + v + '"' + (v === '720p' ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></label>' +
                 (taskType === 'text2video' ? '<label style="font-size:11px;color:var(--text-muted);">比例 ' + this._sel('cgVRatio', ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], '16:9') + '</label>' : '') +
                 '</div>' +
+                '<div style="display:flex;align-items:center;gap:6px;margin-top:8px;">' +
                 '<label style="font-size:11px;color:var(--text-muted);">提示词</label>' +
+                '<span style="display:flex;gap:2px;border:1px solid var(--border-color);border-radius:8px;padding:1px;margin-left:auto;">' +
+                '<button type="button" id="cgTierStd" class="cwl-logview-btn active" onclick="App.cardGen._setPromptTier(\'standard\')" style="font-size:10px;">📄 标准</button>' +
+                '<button type="button" id="cgTierDet" class="cwl-logview-btn" onclick="App.cardGen._setPromptTier(\'detailed\')" style="font-size:10px;">📚 详细</button>' +
+                '</span></div>' +
                 '<textarea id="cgPrompt" style="width:100%;min-height:80px;margin-top:4px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;">' + this._esc((this._cardData(this._curCard) || {}).content || '') + '</textarea>';
+        },
+        // v5.37.13: 提示词档位切换（标准/详细）
+        _setPromptTier: function (tier) {
+            var p = this._cardData(this._curCard) || {};
+            var val = tier === 'detailed' ? (p.content_detailed || p.content || '') : (p.content || '');
+            var ta = document.getElementById('cgPrompt');
+            if (ta) ta.value = val;
+            var b1 = document.getElementById('cgTierStd');
+            var b2 = document.getElementById('cgTierDet');
+            if (b1) b1.classList.toggle('active', tier === 'standard');
+            if (b2) b2.classList.toggle('active', tier === 'detailed');
         },
         submit: async function (ovId, cardId, taskType) {
             var ov = document.getElementById(ovId) || document.querySelector('.modal-overlay');
