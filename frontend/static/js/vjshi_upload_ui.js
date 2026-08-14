@@ -233,15 +233,16 @@
             var members = self._permMembers || [];
             var rows = members.map(function (m) {
                 var isAdmin = m.role === 'admin' || m.id === 1;
-                var chk = '<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" ' + (m.upload || isAdmin ? 'checked' : '') + (isAdmin ? ' disabled' : '') + ' onchange="App.vjshi.setPerm(' + m.id + ', this.checked)" style="accent-color:#f59e0b;"> ' + (isAdmin ? '（主理人默认）' : '') + '</label>';
+                // v5.38.4: 一律勾选才授权（admin 也需手动开启）
+                var chk = '<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" ' + (m.upload ? 'checked' : '') + ' onchange="App.vjshi.setPerm(' + m.id + ', this.checked)" style="accent-color:#f59e0b;"></label>';
                 return '<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border:1px solid var(--border-color);border-radius:8px;margin-bottom:5px;">' +
-                    '<span style="flex:1;font-size:12px;">' + self._esc(m.display_name || m.username || ('用户#' + m.id)) + '</span>' +
+                    '<span style="flex:1;font-size:12px;">' + self._esc(m.display_name || m.username || ('用户#' + m.id)) + (isAdmin ? ' <span style="font-size:9px;color:#8b5cf6;">主理人</span>' : '') + '</span>' +
                     '<span style="font-size:10px;color:#94a3b8;">' + (m.role === 'admin' ? '主理人' : '成员') + '</span>' + chk + '</div>';
             }).join('');
             ov.innerHTML = '<div class="modal-content" style="max-width:460px;border-radius:14px;padding:16px;" onclick="event.stopPropagation()">' +
                 '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-size:14px;font-weight:600;">🔑 团队上传权限</span>' +
                 '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></div>' +
-                '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">开启后成员在任务队列中可见「📤 上传」按钮（上传到光厂）；仅主理人可设置。</div>' +
+                '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">开启后账号在任务队列中可见「📤 上传」按钮（上传到光厂）；仅主理人可设置，主理人也需勾选。</div>' +
                 (self._isAdmin ? rows : '<div style="font-size:12px;color:#94a3b8;padding:12px;text-align:center;">仅主理人可管理成员权限</div>') +
                 '</div>';
             document.body.appendChild(ov);

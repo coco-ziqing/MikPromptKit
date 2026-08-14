@@ -551,9 +551,7 @@ def _is_admin(request) -> bool:
 
 
 def _user_upload_perm(user_id: int) -> bool:
-    """用户是否有光厂上传权限（admin 恒有）"""
-    if user_id == 1:
-        return True
+    """用户是否有光厂上传权限（v5.38.4：一律查表，admin 也需勾选）"""
     try:
         c = _db()
         try:
