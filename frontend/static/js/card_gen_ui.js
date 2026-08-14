@@ -208,12 +208,58 @@
                 '<label style="font-size:11px;color:var(--text-muted);">提示词</label>' +
                 '<textarea id="cgPrompt" style="width:100%;min-height:80px;margin-top:4px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;">' + this._esc((this._cardData(this._curCard) || {}).content || '') + '</textarea>';
         },
+        // v5.37.0-fix: 视频模型→分辨率/时长联动（seedance2.5→480p/720p·4-30s；2.0_vip→720p/1080p/4k·4-15s；其他→720p·4-15s）
+        _videoResOptions: function (model) {
+            if (model === 'seedance2.5') return ['480p', '720p'];
+            if (model === 'seedance2.0_vip') return ['720p', '1080p', '4k'];
+            return ['720p'];
+        },
+        _videoDurOptions: function (model) {
+            var opts = [];
+            if (model === 'seedance1.5pro') {
+                [5, 8, 10, 12].forEach(function (d) { opts.push({ v: d, l: d + 's' }); });
+            } else {
+                var max = model === 'seedance2.5' ? 30 : 15;
+                [4, 5, 8, 10, 12, 15, 20, 25, 30].forEach(function (d) { if (d <= max) opts.push({ v: d, l: d + 's' }); });
+            }
+            return opts;
+        },
+        _videoModelChanged: function (sel) {
+            var model = sel.value;
+            var resSel = document.getElementById(sel.id.replace('cgVModel', 'cgVRes').replace('cgBVModel', 'cgBVRes'));
+            var durSel = document.getElementById(sel.id.replace('cgVModel', 'cgVDur').replace('cgBVModel', 'cgBVDur'));
+            if (resSel) {
+                var cur = resSel.value;
+                var opts = this._videoResOptions(model);
+                resSel.innerHTML = '';
+                opts.forEach(function (v) {
+                    var o = document.createElement('option');
+                    o.value = v; o.textContent = v;
+                    resSel.appendChild(o);
+                });
+                if (opts.indexOf(cur) < 0) resSel.value = opts[opts.length - 1];
+            }
+            if (durSel) {
+                var curD = durSel.value;
+                var optsD = this._videoDurOptions(model);
+                durSel.innerHTML = '';
+                optsD.forEach(function (o) {
+                    var oo = document.createElement('option');
+                    oo.value = o.v; oo.textContent = o.l;
+                    durSel.appendChild(oo);
+                });
+                if (!optsD.some(function (o) { return String(o.v) === String(curD); })) durSel.value = '5';
+            }
+        },
         _videoParamsHtml: function (taskType) {
             return '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">参数</div>' +
                 '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">' +
-                '<label style="font-size:11px;color:var(--text-muted);">模型 ' + this._sel('cgVModel', ['seedance2.0_vip', 'seedance2.0', 'seedance2.0fast', 'seedance2.0fast_vip', 'seedance2.0mini', 'seedance1.5pro', 'seedance2.5'], 'seedance2.0_vip') + '</label>' +
-                '<label style="font-size:11px;color:var(--text-muted);">时长 ' + this._sel('cgVDur', [{ v: 4, l: '4s' }, { v: 5, l: '5s' }, { v: 8, l: '8s' }, { v: 10, l: '10s' }, { v: 12, l: '12s' }, { v: 15, l: '15s' }], 5) + '</label>' +
-                '<label style="font-size:11px;color:var(--text-muted);">分辨率 ' + this._sel('cgVRes', ['720p', '1080p', '4k', '480p'], '720p') + '</label>' +
+                '<label style="font-size:11px;color:var(--text-muted);">模型 <select id="cgVModel" onchange="App.cardGen._videoModelChanged(this)" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
+                ['seedance2.0_vip', 'seedance2.0', 'seedance2.0fast', 'seedance2.0fast_vip', 'seedance2.0mini', 'seedance1.5pro', 'seedance2.5'].map(function (m) { return '<option value="' + m + '"' + (m === 'seedance2.0_vip' ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></label>' +
+                '<label style="font-size:11px;color:var(--text-muted);">时长 <select id="cgVDur" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
+                this._videoDurOptions('seedance2.0_vip').map(function (o) { return '<option value="' + o.v + '"' + (o.v === 5 ? ' selected' : '') + '>' + o.l + '</option>'; }).join('') + '</select></label>' +
+                '<label style="font-size:11px;color:var(--text-muted);">分辨率 <select id="cgVRes" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
+                this._videoResOptions('seedance2.0_vip').map(function (v) { return '<option value="' + v + '"' + (v === '720p' ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></label>' +
                 (taskType === 'text2video' ? '<label style="font-size:11px;color:var(--text-muted);">比例 ' + this._sel('cgVRatio', ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], '16:9') + '</label>' : '') +
                 '</div>' +
                 '<label style="font-size:11px;color:var(--text-muted);">提示词</label>' +
@@ -239,16 +285,19 @@
             }
             var go = ov.querySelector('#cgGo');
             if (go) { go.disabled = true; go.textContent = '⏳ 提交中...'; }
-            var d = await App.fetchJSON('/api/card-gen/tasks', {
+            // 裸 fetch（auth_client 全局拦截器自动带 token）；fetchJSON 非 2xx 返 null 会丢 detail
+            var res = await fetch('/api/card-gen/tasks', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ card_id: cardId, task_type: taskType, params: params })
             });
-            if (d && d.ok) {
+            var d = null;
+            try { d = await res.json(); } catch (e) {}
+            if (res.ok && d && d.ok) {
                 this._toast('🚀 已入队，生成完成自动设为当前预览', 'success');
                 if (ov) ov.remove();
                 this._ensureQueueBar();
             } else {
-                this._toast((d && d.detail) || '提交未完成', 'error');
+                this._toast((d && d.detail) || '提交未完成 (HTTP ' + res.status + ')', 'error');
                 if (go) { go.disabled = false; go.textContent = '🚀 提交生成'; }
             }
         },
@@ -292,9 +341,12 @@
                     '<label style="font-size:11px;color:var(--text-muted);">分辨率 ' + this._sel('cgBRes', ['1k', '2k', '4k'], '2k') + '</label>' +
                     '<span style="font-size:10px;color:var(--text-muted);">（无原图词卡跳过）</span>';
             } else {
-                h += '<label style="font-size:11px;color:var(--text-muted);">模型 ' + this._sel('cgBVModel', ['seedance2.0_vip', 'seedance2.0', 'seedance2.0fast', 'seedance2.0fast_vip', 'seedance2.0mini', 'seedance1.5pro', 'seedance2.5'], 'seedance2.0_vip') + '</label>' +
-                    '<label style="font-size:11px;color:var(--text-muted);">时长 ' + this._sel('cgBVDur', [{ v: 4, l: '4s' }, { v: 5, l: '5s' }, { v: 8, l: '8s' }, { v: 10, l: '10s' }, { v: 12, l: '12s' }, { v: 15, l: '15s' }], 5) + '</label>' +
-                    '<label style="font-size:11px;color:var(--text-muted);">分辨率 ' + this._sel('cgBVRes', ['720p', '1080p', '4k', '480p'], '720p') + '</label>' +
+                h += '<label style="font-size:11px;color:var(--text-muted);">模型 <select id="cgBVModel" onchange="App.cardGen._videoModelChanged(this)" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
+                    ['seedance2.0_vip', 'seedance2.0', 'seedance2.0fast', 'seedance2.0fast_vip', 'seedance2.0mini', 'seedance1.5pro', 'seedance2.5'].map(function (m) { return '<option value="' + m + '"' + (m === 'seedance2.0_vip' ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></label>' +
+                    '<label style="font-size:11px;color:var(--text-muted);">时长 <select id="cgBVDur" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
+                    this._videoDurOptions('seedance2.0_vip').map(function (o) { return '<option value="' + o.v + '"' + (o.v === 5 ? ' selected' : '') + '>' + o.l + '</option>'; }).join('') + '</select></label>' +
+                    '<label style="font-size:11px;color:var(--text-muted);">分辨率 <select id="cgBVRes" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
+                    this._videoResOptions('seedance2.0_vip').map(function (v) { return '<option value="' + v + '"' + (v === '720p' ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></label>' +
                     '<label style="font-size:11px;color:var(--text-muted);">比例 ' + this._sel('cgBVRatio', ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], '16:9') + '</label>';
             }
             h += '</div>' + (mode === 'text2image' ? '' : '') +
@@ -327,7 +379,8 @@
                 if (ov) ov.remove();
                 this._ensureQueueBar();
             } else {
-                this._toast((d && d.detail) || '批量提交未完成', 'error');
+                var detail = d && d.detail;
+                this._toast(detail || '批量提交未完成', 'error');
             }
         },
 

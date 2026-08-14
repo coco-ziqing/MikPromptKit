@@ -614,7 +614,10 @@ def _validate_params(ttype: str, params: dict) -> dict:
             raise HTTPException(400, "seedance2.0_vip 仅支持 720p/1080p/4k")
         if model not in ("seedance2.5", "seedance2.0_vip") and res != "720p":
             raise HTTPException(400, f"{model} 仅支持 720p")
-        if model != "seedance2.5" and dur > 15:
+        # 时长上限对齐 CLI（seedance1.5pro: 5-12s；seedance2.5: 4-30s；其余: 4-15s）
+        if model == "seedance1.5pro" and not (5 <= dur <= 12):
+            raise HTTPException(400, "seedance1.5pro 时长范围 5-12s")
+        if model != "seedance2.5" and model != "seedance1.5pro" and dur > 15:
             raise HTTPException(400, f"{model} 时长上限 15s")
         p.update(model_version=model, video_resolution=res, duration=dur)
         if ttype == "text2video":
