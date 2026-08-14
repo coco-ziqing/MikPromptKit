@@ -107,8 +107,13 @@ def _ensure_table():
             fail_category TEXT DEFAULT '',
             creator_id INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now','localtime')),
-            finished_at TEXT DEFAULT ''
+            finished_at TEXT DEFAULT '',
+            updated_at TEXT DEFAULT (datetime('now','localtime'))
         )""")
+        # 幂等补列（旧表无 updated_at → v5.38.6 修复；SQLite 不允许非常量默认）
+        cols = [r[1] for r in c.execute("PRAGMA table_info(vjshi_upload_tasks)").fetchall()]
+        if "updated_at" not in cols:
+            c.execute("ALTER TABLE vjshi_upload_tasks ADD COLUMN updated_at TEXT DEFAULT ''")
         c.commit()
     finally:
         c.close()
@@ -209,16 +214,88 @@ def _load_form_config():
         return {}
 
 
+# ==================== 浏览器模式设置（v5.38.6：有头/无头可选） ====================
+
+def _ensure_settings_table():
+    c = _db()
+    try:
+        c.execute("""CREATE TABLE IF NOT EXISTS vjshi_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT DEFAULT ''
+        )""")
+        c.commit()
+    finally:
+        c.close()
+
+
+def _get_setting(key: str, default: str = "") -> str:
+    try:
+        c = _db()
+        try:
+            r = c.execute("SELECT value FROM vjshi_settings WHERE key=?", [key]).fetchone()
+            return r["value"] if r else default
+        finally:
+            c.close()
+    except Exception:
+        return default
+
+
+def _set_setting(key: str, value: str):
+    c = _db()
+    try:
+        c.execute("INSERT INTO vjshi_settings (key, value) VALUES (?,?) "
+                  "ON CONFLICT(key) DO UPDATE SET value=?", [key, value, value])
+        c.commit()
+    finally:
+        c.close()
+
+
+def _headless_mode() -> bool:
+    return _get_setting("headless", "0") == "1"
+
+
+@router.get("/api/vjshi/settings")
+def vjshi_settings_get(request: Request):
+    """光厂上传设置（浏览器模式等）"""
+    _team_guard(request)
+    _ensure_settings_table()
+    return {"ok": True, "headless": _headless_mode()}
+
+
+@router.put("/api/vjshi/settings")
+def vjshi_settings_put(request: Request, data: dict = Body(...)):
+    """保存上传设置（headless: bool 有头/无头）"""
+    _team_guard(request)
+    _ensure_settings_table()
+    if "headless" in data:
+        _set_setting("headless", "1" if data.get("headless") else "0")
+    return {"ok": True, "headless": _headless_mode()}
+
+
 def _get_context():
-    """启动/复用持久化浏览器 context（全局单例，有头模式防风控）"""
+    """启动/复用持久化浏览器 context（全局单例；模式由设置决定：有头=可见窗口）"""
     from playwright.sync_api import sync_playwright
-    if not hasattr(_get_context, "ctx") or _get_context.ctx is None or not _get_context.ctx.browser.is_connected():
-        _pw = sync_playwright().start()
-        _get_context.pw = _pw
-        _get_context.ctx = _pw.chromium.launch_persistent_context(
-            PROFILE_DIR, channel="chrome", headless=False,
-            viewport={"width": 1440, "height": 900}, locale="zh-CN")
-    return _get_context.ctx
+    ctx = getattr(_get_context, "ctx", None)
+    if ctx is not None and ctx.browser is not None and ctx.browser.is_connected():
+        return ctx
+    # 启动（失败清理缓存重试一次，防 profile 锁残留）
+    for attempt in range(2):
+        try:
+            _pw = sync_playwright().start()
+            _get_context.pw = _pw
+            _get_context.ctx = _pw.chromium.launch_persistent_context(
+                PROFILE_DIR, channel="chrome", headless=_headless_mode(),
+                viewport={"width": 1440, "height": 900}, locale="zh-CN")
+            return _get_context.ctx
+        except Exception as e:
+            print(f"[VJSHI] 浏览器启动失败(第{attempt+1}次): {e}")
+            try:
+                _get_context.ctx = None
+            except Exception:
+                pass
+            if attempt == 0:
+                time.sleep(2)
+    raise RuntimeError("浏览器启动失败（可能 Chrome profile 被占用，请稍后重试）")
 
 
 def _close_context():
