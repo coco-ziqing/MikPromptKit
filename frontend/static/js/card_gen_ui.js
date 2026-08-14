@@ -27,6 +27,42 @@
         _toast: function (msg, type) {
             if (App.showToast) App.showToast(msg, type || 'info');
         },
+        // ============ 积分估算（v5.37.2） ============
+        _credits: null,
+        _loadCredits: function (force) {
+            var self = this;
+            if (this._credits && !force) return Promise.resolve(this._credits);
+            return fetch('/api/card-gen/credits').then(function (r) { return r.json(); }).then(function (d) {
+                self._credits = (d && d.ok) ? d : { balance: 0, video_rates: {}, image_cost: {} };
+                return self._credits;
+            }).catch(function () {
+                self._credits = { balance: 0, video_rates: {}, image_cost: {} };
+                return self._credits;
+            });
+        },
+        _estCost: function (taskType, model, dur) {
+            var c = this._credits || { video_rates: {}, image_cost: {} };
+            if (taskType === 'upscale' || taskType === 'image2image' || taskType === 'text2image') {
+                return (c.image_cost || {})[taskType] || 8;
+            }
+            var rate = (c.video_rates || {})[model] || 6;
+            return Math.max(1, Math.round(rate * (dur || 5)));
+        },
+        _updateCost: function () {
+            var el = document.getElementById('cgCost') || document.getElementById('cgBCost');
+            if (!el) return;
+            var m = document.getElementById('cgVModel') || document.getElementById('cgBVModel');
+            var d = document.getElementById('cgVDur') || document.getElementById('cgBVDur');
+            var isV = !!m;
+            var cost = isV
+                ? this._estCost('video', m.value, parseInt((d && d.value) || 5, 10))
+                : this._estCost((this._curType || 'text2image'), '', 0);
+            var bal = (this._credits || {}).balance;
+            var warn = (bal > 0 && cost > bal);
+            el.innerHTML = (isV ? '🎬 预计消耗 <b style="color:#f59e0b;">' + cost + '</b> 积分（' + m.value + ' × ' + (d ? d.value : '') + 's，本地实测校准）' : '🖼 预计消耗 <b style="color:#f59e0b;">' + cost + '</b> 积分') +
+                (bal > 0 ? ' · 当前余额 <b>' + bal + '</b>' : '') +
+                (warn ? '<span style="color:#ef4444;margin-left:6px;">⚠️ 余额不足</span>' : '');
+        },
         _esc: function (s) {
             return App._escape ? App._escape(s || '') : String(s || '');
         },
@@ -172,6 +208,7 @@
             var isV = taskType === 'text2video' || taskType === 'image2video';
             var isU = taskType === 'upscale';
             this._curCard = cardId;
+            this._curType = taskType;
             var ov = this._modal('');
             ov.id = 'cgGen_' + taskType + '_' + cardId;
             ov.querySelector('.modal-content').innerHTML =
@@ -179,11 +216,16 @@
                 '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></div>' +
                 (hasImg ? '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">底图：词卡原图 <img src="/api/thumbnails/original/' + self._esc(p.original_ref || p.thumbnail) + '" style="width:44px;height:32px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-left:4px;"></div>' : '') +
                 (isV ? this._videoParamsHtml(taskType) : (isU ? this._upscaleParamsHtml() : this._imgParamsHtml(taskType))) +
+                '<div id="cgCost" style="font-size:11px;color:var(--text-muted);margin:6px 0;padding:6px 8px;background:rgba(245,158,11,.06);border:1px dashed rgba(245,158,11,.35);border-radius:8px;">计算中...</div>' +
                 '<div style="font-size:10px;color:#f59e0b;margin:6px 0;">⚠️ 生成消耗即梦积分，提交后自动归档为词卡生成历史</div>' +
                 '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">' +
                 '<button class="btn btn-secondary btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>' +
                 '<button class="btn btn-primary btn-sm" id="cgGo" onclick="App.cardGen.submit(\'' + ov.id + '\',' + cardId + ',\'' + taskType + '\')">🚀 提交生成</button></div>';
             ov.id = 'cgGen_' + taskType + '_' + cardId;
+            // 加载积分费率并渲染成本行
+            this._loadCredits().then(function () {
+                self._updateCost();
+            });
         },
         _sel: function (id, opts, cur) {
             var h = '<select id="' + id + '" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
@@ -250,13 +292,17 @@
                 });
                 if (!optsD.some(function (o) { return String(o.v) === String(curD); })) durSel.value = '5';
             }
+            this._updateCost();
+        },
+        _videoDurChanged: function (sel) {
+            this._updateCost();
         },
         _videoParamsHtml: function (taskType) {
             return '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">参数</div>' +
                 '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">' +
                 '<label style="font-size:11px;color:var(--text-muted);">模型 <select id="cgVModel" onchange="App.cardGen._videoModelChanged(this)" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
                 ['seedance2.0_vip', 'seedance2.0', 'seedance2.0fast', 'seedance2.0fast_vip', 'seedance2.0mini', 'seedance1.5pro', 'seedance2.5'].map(function (m) { return '<option value="' + m + '"' + (m === 'seedance2.0_vip' ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></label>' +
-                '<label style="font-size:11px;color:var(--text-muted);">时长 <select id="cgVDur" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
+                                '<label style="font-size:11px;color:var(--text-muted);">时长 <select id="cgVDur" onchange="App.cardGen._videoDurChanged(this)" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
                 this._videoDurOptions('seedance2.0_vip').map(function (o) { return '<option value="' + o.v + '"' + (o.v === 5 ? ' selected' : '') + '>' + o.l + '</option>'; }).join('') + '</select></label>' +
                 '<label style="font-size:11px;color:var(--text-muted);">分辨率 <select id="cgVRes" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
                 this._videoResOptions('seedance2.0_vip').map(function (v) { return '<option value="' + v + '"' + (v === '720p' ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></label>' +
@@ -315,6 +361,7 @@
                 '<button class="cwl-logview-btn" id="cgBMode_i2i" onclick="App.cardGen._batchMode(\'image2image\')">🎨 图生图</button>' +
                 '<button class="cwl-logview-btn" id="cgBMode_t2v" onclick="App.cardGen._batchMode(\'text2video\')">🎬 视频</button></div>' +
                 '<div id="cgBParams"></div>' +
+                '<div id="cgBCost" style="font-size:11px;color:var(--text-muted);margin:6px 0;padding:6px 8px;background:rgba(245,158,11,.06);border:1px dashed rgba(245,158,11,.35);border-radius:8px;">计算中...</div>' +
                 '<div style="font-size:10px;color:#f59e0b;margin:6px 0;">⚠️ 每张卡一条生成任务，消耗即梦积分；无原图词卡在图生图模式下自动跳过</div>' +
                 '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">' +
                 '<button class="btn btn-secondary btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>' +
@@ -330,8 +377,7 @@
             });
             var box = document.getElementById('cgBParams');
             if (!box) return;
-            var h = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">';
-            if (mode === 'text2image') {
+            var h = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">';            if (mode === 'text2image') {
                 h += '<label style="font-size:11px;color:var(--text-muted);">模型 ' + this._sel('cgBModel', ['3.0', '3.1', '4.0', '4.1', '4.5', '4.6', '4.7', '5.0', '5.0Pro'], '5.0') + '</label>' +
                     '<label style="font-size:11px;color:var(--text-muted);">比例 ' + this._sel('cgBRatio', ['21:9', '16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'], '1:1') + '</label>' +
                     '<label style="font-size:11px;color:var(--text-muted);">分辨率 ' + this._sel('cgBRes', ['1k', '2k', '4k'], '2k') + '</label>';
@@ -343,7 +389,7 @@
             } else {
                 h += '<label style="font-size:11px;color:var(--text-muted);">模型 <select id="cgBVModel" onchange="App.cardGen._videoModelChanged(this)" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
                     ['seedance2.0_vip', 'seedance2.0', 'seedance2.0fast', 'seedance2.0fast_vip', 'seedance2.0mini', 'seedance1.5pro', 'seedance2.5'].map(function (m) { return '<option value="' + m + '"' + (m === 'seedance2.0_vip' ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></label>' +
-                    '<label style="font-size:11px;color:var(--text-muted);">时长 <select id="cgBVDur" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
+                    '<label style="font-size:11px;color:var(--text-muted);">时长 <select id="cgBVDur" onchange="App.cardGen._videoDurChanged(this)" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
                     this._videoDurOptions('seedance2.0_vip').map(function (o) { return '<option value="' + o.v + '"' + (o.v === 5 ? ' selected' : '') + '>' + o.l + '</option>'; }).join('') + '</select></label>' +
                     '<label style="font-size:11px;color:var(--text-muted);">分辨率 <select id="cgBVRes" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
                     this._videoResOptions('seedance2.0_vip').map(function (v) { return '<option value="' + v + '"' + (v === '720p' ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></label>' +
@@ -352,6 +398,7 @@
             h += '</div>' + (mode === 'text2image' ? '' : '') +
                 (mode === 'image2image' || mode === 'text2video' ? '<label style="font-size:11px;color:var(--text-muted);">提示词（留空=用各词卡内容）</label><textarea id="cgBPrompt" style="width:100%;min-height:60px;margin-top:4px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;" placeholder="留空则逐卡使用词卡内容"></textarea>' : '');
             box.innerHTML = h;
+            this._loadCredits().then(function () { self._updateCost(); });
         },
         _batchSubmit: async function () {
             var ids = Array.prototype.slice.call(arguments);

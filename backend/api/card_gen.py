@@ -44,6 +44,122 @@ TYPE_LABELS = {"upscale": "高清", "image2image": "图生图", "text2image": "�
 IMAGE_TYPES = ("upscale", "image2image", "text2image")
 VIDEO_TYPES = ("text2video", "image2video")
 
+# ==================== 积分费率（v5.37.2：模型×时长动态估算） ====================
+# 视频按秒计费；数值来自本地历史任务实测 + 公开数据估算（即梦费率会调整，动态校准优先）
+VIDEO_CREDIT_RATES = {
+    "seedance2.0fast": 2,       # 实测 5s=10
+    "seedance2.0fast_vip": 6,   # 实测 4s=24/5s=30/8s=48/12s=72
+    "seedance2.0mini": 3,       # 估算（mini 低价档）
+    "seedance2.0": 8,           # 估算（公开：720p 8s≈64）
+    "seedance1.5pro": 12,       # 估算
+    "seedance2.0_vip": 33,      # 估算（公开：15s≈495，旧价可能已调）
+    "seedance2.5": 40,          # 估算（旗舰档）
+}
+# 图片类固定积分（实测 text2image 5.0Pro=8；其余按档位估算）
+IMAGE_CREDIT_COST = {"text2image": 8, "image2image": 8, "upscale": 8}
+
+_CALIB_CACHE = {"ts": 0, "rates": None}
+
+
+def _load_cli_credit_calibration(force: bool = False) -> dict:
+    """从即梦 CLI 本地任务库统计实测费率（模型→每积分/秒），校准默认表。
+    取该模型最近 5 条视频任务的 credit_count/duration 中位数。
+    """
+    import time as _t
+    now = _t.time()
+    if not force and _CALIB_CACHE["rates"] is not None and now - _CALIB_CACHE["ts"] < 300:
+        return _CALIB_CACHE["rates"]
+    rates = {}
+    try:
+        import glob as _glob
+        db_paths = [os.path.join(os.path.expanduser("~"), ".dreamina_cli", "tasks.db"),
+                    os.path.join(os.path.expanduser("~"), ".dreamina", "tasks.db")]
+        db = next((p for p in db_paths if os.path.isfile(p)), None)
+        if db:
+            import sqlite3 as _sq
+            c = _sq.connect(db)
+            c.row_factory = _sq.Row
+            rows = c.execute(
+                "SELECT gen_task_type, request, commerce_info FROM aigc_task ORDER BY create_time DESC LIMIT 200").fetchall()
+            samples = {}
+            for r in rows:
+                if "video" not in (r["gen_task_type"] or ""):
+                    continue
+                try:
+                    req = json.loads(r["request"])
+                    body = json.loads(req.get("body") or "{}")
+                except Exception:
+                    continue
+                model = body.get("model_version") or body.get("ModelVersion") or ""
+                dur = body.get("duration") or body.get("Duration") or 0
+                try:
+                    dur = int(dur)
+                except Exception:
+                    continue
+                try:
+                    ci = json.loads(r["commerce_info"]) if isinstance(r["commerce_info"], str) else (r["commerce_info"] or {})
+                    cred = int(ci.get("credit_count") or 0)
+                except Exception:
+                    continue
+                if not model or dur <= 0 or cred <= 0:
+                    continue
+                samples.setdefault(model, []).append(cred / dur)
+            for model, vals in samples.items():
+                vals.sort()
+                rates[model] = vals[len(vals) // 2]  # 中位数
+            c.close()
+    except Exception as e:
+        print(f"[CardGen] 费率校准失败: {e}")
+    _CALIB_CACHE["rates"] = rates
+    _CALIB_CACHE["ts"] = now
+    return rates
+
+
+def _effective_video_rate(model: str) -> float:
+    """实测校准优先，回退默认表"""
+    cal = _load_cli_credit_calibration()
+    if model in cal and cal[model] > 0:
+        return round(cal[model], 1)
+    return VIDEO_CREDIT_RATES.get(model, 6)
+
+
+def _estimate_credits(task_type: str, params: dict) -> int:
+    """估算单任务积分消耗（弹窗提示用）"""
+    if task_type in IMAGE_TYPES:
+        return IMAGE_CREDIT_COST.get(task_type, 8)
+    if task_type in VIDEO_TYPES:
+        model = params.get("model_version") or "seedance2.0_vip"
+        dur = int(params.get("duration") or 5)
+        return int(round(_effective_video_rate(model) * dur))
+    return 0
+
+
+@router.get("/api/card-gen/credits")
+def card_gen_credits(request: Request):
+    """积分余额 + 费率表 + 单任务估算（前端弹窗动态提示）"""
+    _auth(request)
+    balance = 0
+    try:
+        from api.dreamina import _dreamina_run
+        out, err, code = _dreamina_run(["user_credit"], timeout=30)
+        m = re.search(r'"total_credit"\s*:\s*(\d+)', out)
+        if m:
+            balance = int(m.group(1))
+    except Exception:
+        pass
+    cal = _load_cli_credit_calibration()
+    rates = {}
+    for model, per_sec in VIDEO_CREDIT_RATES.items():
+        rates[model] = round(cal.get(model, per_sec), 1)
+    return {
+        "ok": True,
+        "balance": balance,
+        "video_rates": rates,
+        "calibrated_models": list(cal.keys()),
+        "image_cost": IMAGE_CREDIT_COST,
+        "note": "视频按模型×时长估算积分（本地实测校准优先，实际以生成后为准）",
+    }
+
 
 def _db():
     c = __import__("sqlite3").connect(DB, timeout=5)
