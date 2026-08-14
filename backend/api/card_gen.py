@@ -40,7 +40,7 @@ _RESUME_STARTED = False
 
 TASK_TYPES = ("upscale", "image2image", "text2image", "text2video", "image2video")
 TYPE_LABELS = {"upscale": "高清", "image2image": "图生图", "text2image": "文生图",
-               "text2video": "文生视频", "image2video": "图生视频"}
+               "text2video": "文生视频", "image2video": "图生视频", "original": "原始"}
 IMAGE_TYPES = ("upscale", "image2image", "text2image")
 VIDEO_TYPES = ("text2video", "image2video")
 
@@ -468,9 +468,46 @@ def _mark_current(c, card_id: int, task_id: int):
     c.execute("UPDATE card_gen_tasks SET is_current=1 WHERE id=?", [task_id])
 
 
+def _preserve_current_preview(c, card_id: int):
+    """v5.37.15: 生成归档前，把词卡当前预览存为历史记录（原图/旧视频不丢失，切换按钮始终可用）"""
+    try:
+        card = c.execute("SELECT thumbnail, original_ref, preview_media, media_type FROM word_card WHERE id=?", [card_id]).fetchone()
+        if not card:
+            return
+        if card["media_type"] == "video" and card["preview_media"]:
+            exists = c.execute(
+                "SELECT 1 FROM card_gen_tasks WHERE card_id=? AND media_type='video' AND result_filename=?",
+                [card_id, card["preview_media"]]).fetchone()
+            if not exists:
+                c.execute(
+                    """INSERT INTO card_gen_tasks (card_id, task_type, prompt, status, media_type,
+                       result_filename, poster_filename, is_current)
+                       VALUES (?, 'original', '', 'success', 'video', ?, ?, 0)""",
+                    [card_id, card["preview_media"], card["thumbnail"] or ""])
+        elif card["media_type"] == "image" and (card["thumbnail"] or card["original_ref"]):
+            exists = c.execute(
+                "SELECT 1 FROM card_gen_tasks WHERE card_id=? AND media_type='image' "
+                "AND (result_filename=? OR result_original=?)",
+                [card_id, card["thumbnail"], card["original_ref"]]).fetchone()
+            if not exists:
+                c.execute(
+                    """INSERT INTO card_gen_tasks (card_id, task_type, prompt, status, media_type,
+                       result_filename, result_original, is_current)
+                       VALUES (?, 'original', '', 'success', 'image', ?, ?, 0)""",
+                    [card_id, card["thumbnail"] or "", card["original_ref"] or ""])
+    except Exception as e:
+        print(f"[CardGen] 预览存档失败: {e}")
+
+
 def _archive_image_result(task_id: int, card_id: int, img_bytes: bytes, submit_id: str):
     """图片产物归档：save_generated_image（原图+缩略图+词卡字段自动更新）"""
     from api.thumb_gen import save_generated_image
+    c = _db()
+    try:
+        _preserve_current_preview(c, card_id)  # v5.37.15: 旧预览先存档
+        c.commit()
+    finally:
+        c.close()
     saved = save_generated_image(img_bytes, card_id, "word_card", "dreamina", submit_id)
     if not saved.get("ok"):
         return saved.get("error", "图片落库失败")
@@ -507,6 +544,12 @@ def _make_video_poster(video_path: str) -> str:
 def _archive_video_result(task_id: int, card_id: int, video_bytes: bytes):
     """视频产物归档：存 card_gen/videos/ + poster + 词卡字段更新"""
     import uuid as _uuid
+    c = _db()
+    try:
+        _preserve_current_preview(c, card_id)  # v5.37.15: 旧预览先存档（图片原图不丢失）
+        c.commit()
+    finally:
+        c.close()
     base = _uuid.uuid4().hex
     fname = "cg_%s.mp4" % base
     vpath = os.path.join(CARD_GEN_VIDEO_DIR, fname)
