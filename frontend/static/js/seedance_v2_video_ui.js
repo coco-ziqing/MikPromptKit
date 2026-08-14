@@ -861,7 +861,8 @@
             '<button class="header-btn-sm" onclick="document.getElementById(\'s2DreaminaAssets\').remove()">&times;</button></div>' +
             '<div style="display:flex;gap:6px;padding:8px 14px 0;">' +
             '<button class="btn btn-sm s2-asset-tab-btn" id="s2AssetTabBtnCli" onclick="App.seedanceV2._switchAssetTab(\'cli\')" style="color:#6366f1;border-color:#6366f1;">🗂 CLI 历史</button>' +
-            '<button class="btn btn-sm btn-outline s2-asset-tab-btn" id="s2AssetTabBtnWeb" onclick="App.seedanceV2._switchAssetTab(\'web\')" style="color:#10b981;border-color:#10b981;">🌐 网页历史</button></div>' +
+            '<button class="btn btn-sm btn-outline s2-asset-tab-btn" id="s2AssetTabBtnWeb" onclick="App.seedanceV2._switchAssetTab(\'web\')" style="color:#10b981;border-color:#10b981;">🌐 网页历史</button>' +
+            '<button class="btn btn-sm btn-outline s2-asset-tab-btn" id="s2AssetTabBtnInsp" onclick="App.seedanceV2._switchAssetTab(\'insp\')" style="color:#f59e0b;border-color:#f59e0b;">✨ 灵感导入</button></div>' +
             '<div class="modal-body" style="flex:1;overflow-y:auto;">' +
             '<div id="s2AssetTabCli">' +
             '<div id="s2AssetStats"></div>' +
@@ -875,6 +876,23 @@
             '<div id="s2WebProgress" style="display:none;margin-bottom:8px;"></div>' +
             '<div id="s2WebFilters" style="display:flex;gap:6px;margin:8px 0;align-items:center;flex-wrap:wrap;"></div>' +
             '<div id="s2WebList"><div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div></div>' +
+            '</div>' +
+            '<div id="s2AssetTabInsp" style="display:none;">' +
+            '<div style="display:flex;gap:6px;margin:8px 0;align-items:center;flex-wrap:wrap;background:rgba(245,158,11,.06);padding:10px;border-radius:10px;">' +
+            '<span style="font-size:11px;color:#f59e0b;font-weight:600;">✨ 即梦灵感发现</span>' +
+            '<input id="s2InspKeyword" placeholder="关键词（如：赛博朋克）" style="width:160px;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;">' +
+            '<select id="s2InspType" style="padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;">' +
+            '<option value="image">🖼 图片</option><option value="video">🎬 视频</option><option value="">全部</option></select>' +
+            '<select id="s2InspCount" style="padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;">' +
+            '<option value="10">10 条</option><option value="20" selected>20 条</option><option value="40">40 条</option><option value="60">60 条</option></select>' +
+            '<button class="btn btn-sm btn-success" onclick="App.seedanceV2._inspSearch()">🔍 搜索灵感</button>' +
+            '<span style="font-size:10px;color:var(--text-muted);">（搜索约 10-30 秒，自动打开浏览器后台拉取）</span></div>' +
+            '<div id="s2InspResult" style="margin-bottom:8px;"></div>' +
+            '<div id="s2InspProgress" style="display:none;margin-bottom:8px;"></div>' +
+            '<div style="display:flex;gap:6px;margin:8px 0;align-items:center;">' +
+            '<button class="btn btn-sm" style="background:#f59e0b;border-color:#f59e0b;color:#fff;" onclick="App.seedanceV2._inspImport()">📥 导入选中</button>' +
+            '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._inspLoadImported()">🗂 已导入灵感</button></div>' +
+            '<div id="s2InspList"><div style="text-align:center;padding:20px;color:var(--text-muted);">搜索灵感后勾选导入；或查看已导入</div></div>' +
             '</div>' +
             '</div>' +
             '<div class="modal-footer" style="justify-content:space-between;">' +
@@ -907,6 +925,117 @@
             if (b1) b1.className = 'btn btn-sm s2-asset-tab-btn';
             this._reloadDreaminaAssets();
         }
+    };
+
+
+    // ============ v5.38.34: 即梦灵感导入 ============
+    App.seedanceV2._inspSearch = async function() {
+        var kw = (document.getElementById('s2InspKeyword') || {}).value || '';
+        var ty = (document.getElementById('s2InspType') || {}).value || '';
+        var ct = parseInt((document.getElementById('s2InspCount') || {}).value || '20', 10);
+        var box = document.getElementById('s2InspResult');
+        if (!box) return;
+        box.innerHTML = '<div style="text-align:center;padding:20px;color:#f59e0b;">⏳ 正在搜索即梦灵感（打开浏览器后台拉取，约 10-30 秒）...</div>';
+        this._inspItems = [];
+        try {
+            var d = await App.fetchJSON('/api/dreamina/inspiration/preview', {
+                method: 'POST',
+                body: JSON.stringify({keyword: kw, media_type: ty, count: ct})
+            });
+            var items = (d && d.items) || [];
+            this._inspItems = items;
+            if (!items.length) {
+                box.innerHTML = '<div style="padding:16px;color:#94a3b8;text-align:center;">未搜索到内容（可能是关键词无结果或需先在授权中心登录即梦）</div>';
+                return;
+            }
+            var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">搜索到 <b style="color:#f59e0b;">' + items.length + '</b> 条灵感，勾选后点「导入选中」</div>';
+            h += '<div style="display:flex;flex-wrap:wrap;gap:8px;max-height:46vh;overflow-y:auto;padding:4px;">';
+            items.forEach(function(it, i) {
+                var img = it.image_url || it.cover_url || '';
+                var tag = it.media_type === 'video' ? '🎬' : '🖼';
+                h += '<div style="width:168px;border:1px solid var(--border-color);border-radius:10px;overflow:hidden;position:relative;background:#fff;">' +
+                    '<label style="cursor:pointer;display:block;">' +
+                    '<div style="position:relative;">' +
+                    (img ? '<img src="' + img + '" style="width:100%;height:110px;object-fit:cover;display:block;">' : '<div style="height:110px;background:rgba(127,127,127,.08);display:flex;align-items:center;justify-content:center;">' + tag + '</div>') +
+                    '<input type="checkbox" data-i="' + i + '" checked style="position:absolute;top:6px;left:6px;width:16px;height:16px;"></div>' +
+                    '<div style="padding:6px 8px;font-size:10px;color:#475569;line-height:1.5;height:52px;overflow:hidden;">' + App.escHtml((it.prompt || '').slice(0, 60)) + '</div>' +
+                    '<div style="padding:0 8px 6px;font-size:9px;color:#94a3b8;">' + tag + ' ' + (it.ratio || '') + ' ' + (it.model_version || '').slice(0, 20) + '</div></label></div>';
+            });
+            h += '</div>';
+            box.innerHTML = h;
+        } catch (e) {
+            box.innerHTML = '<div style="padding:16px;color:#ef4444;">搜索失败：' + App.escHtml(String(e && e.detail || e)) + '</div>';
+        }
+    };
+
+    App.seedanceV2._inspImport = async function() {
+        var items = this._inspItems || [];
+        if (!items.length) { this._toast('请先搜索灵感', 'warning'); return; }
+        var sel = [];
+        var cbs = document.querySelectorAll('#s2InspResult input[type=checkbox]');
+        cbs.forEach(function(cb) { if (cb.checked) sel.push(items[parseInt(cb.getAttribute('data-i'), 10)]); });
+        if (!sel.length) { this._toast('请勾选至少一条', 'warning'); return; }
+        var box = document.getElementById('s2InspProgress');
+        if (box) { box.style.display = 'block'; box.innerHTML = '<div style="padding:10px;color:#f59e0b;">⏳ 正在下载 ' + sel.length + ' 张图片并归档...</div>'; }
+        try {
+            var d = await App.fetchJSON('/api/dreamina/inspiration/import', {
+                method: 'POST',
+                body: JSON.stringify({items: sel, keyword: (document.getElementById('s2InspKeyword') || {}).value || ''})
+            });
+            if (d && d.ok) {
+                if (box) box.innerHTML = '<div style="padding:10px;color:#10b981;">✅ 导入 ' + d.imported + ' 条' + (d.skipped ? '（跳过重复 ' + d.skipped + '）' : '') + (d.failed ? '（失败 ' + d.failed + '）' : '') + '</div>';
+                this._inspLoadImported();
+            } else {
+                if (box) box.innerHTML = '<div style="padding:10px;color:#ef4444;">导入失败：' + App.escHtml(String(d && d.detail || '未知错误')) + '</div>';
+            }
+        } catch (e) {
+            if (box) box.innerHTML = '<div style="padding:10px;color:#ef4444;">导入异常：' + App.escHtml(String(e)) + '</div>';
+        }
+    };
+
+    App.seedanceV2._inspLoadImported = async function() {
+        var box = document.getElementById('s2InspList');
+        if (!box) return;
+        box.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);">加载中...</div>';
+        try {
+            var d = await App.fetchJSON('/api/dreamina/inspiration?page=1&page_size=60');
+            var tasks = (d && d.tasks) || [];
+            if (!tasks.length) {
+                box.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;">暂无已导入灵感（搜索后导入）</div>';
+                return;
+            }
+            var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">已导入 <b style="color:#10b981;">' + (d.total || tasks.length) + '</b> 条灵感</div>';
+            h += '<div style="display:flex;flex-wrap:wrap;gap:8px;max-height:40vh;overflow-y:auto;padding:4px;">';
+            tasks.forEach(function(t) {
+                h += '<div style="width:168px;border:1px solid var(--border-color);border-radius:10px;overflow:hidden;background:#fff;">' +
+                    '<img src="' + (t.thumb_url || '') + '" style="width:100%;height:110px;object-fit:cover;display:block;cursor:pointer;" onclick="App.openImageViewer(\'' + (t.file_url || '') + '\',' + t.id + ')">' +
+                    '<div style="padding:6px 8px;font-size:10px;color:#475569;line-height:1.5;height:52px;overflow:hidden;">' + App.escHtml((t.prompt || '').slice(0, 60)) + '</div>' +
+                    '<div style="padding:0 8px 6px;display:flex;gap:4px;flex-wrap:wrap;">' +
+                    '<button class="btn btn-xs btn-outline" style="font-size:9px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.seedanceV2._inspToCard(' + t.id + ')">📇 存词卡</button>' +
+                    '<button class="btn btn-xs btn-outline" style="font-size:9px;border-color:#ef4444;color:#ef4444;" onclick="App.seedanceV2._inspDelete(' + t.id + ')">🗑</button></div></div>';
+            });
+            h += '</div>';
+            box.innerHTML = h;
+        } catch (e) {
+            box.innerHTML = '<div style="padding:16px;color:#ef4444;">加载失败：' + App.escHtml(String(e && e.detail || e)) + '</div>';
+        }
+    };
+
+    App.seedanceV2._inspToCard = async function(aid) {
+        if (!confirm('将提示词存为词卡（可后续编辑）？')) return;
+        try {
+            var d = await App.fetchJSON('/api/dreamina/inspiration/' + aid + '/to-card', {method: 'POST'});
+            if (d && d.ok) { this._toast('✅ 已存为词卡 #' + d.card_id, 'success'); this._inspLoadImported(); }
+            else this._toast((d && d.detail) || '存词卡失败', 'error');
+        } catch (e) { this._toast('存词卡异常', 'error'); }
+    };
+
+    App.seedanceV2._inspDelete = async function(aid) {
+        if (!confirm('删除此灵感（含本地图片）？')) return;
+        try {
+            var d = await App.fetchJSON('/api/dreamina/inspiration/' + aid, {method: 'DELETE'});
+            if (d && d.ok) { this._toast('已删除', 'success'); this._inspLoadImported(); }
+        } catch (e) { this._toast('删除失败', 'error'); }
     };
 
     // ============ 🌐 网页历史（v5.36.14） ============

@@ -1,0 +1,358 @@
+# -*- coding: utf-8 -*-
+"""即梦灵感导入：搜索 → 预览 → 下载归档 → 词卡化
+v5.38.32
+- 复用 dreamina_assets 表（source='inspiration'）
+- 浏览器自动化：灵感页搜索框输入关键词 → 页面自带签名调 get_explore → 拦截响应（零逆向）
+"""
+import io
+import json
+import os
+import re
+import threading
+import time
+import urllib.request
+
+from fastapi import APIRouter, Request, Query, Body, HTTPException
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+try:
+    from paths import get_data_dir
+    DATA_DIR = get_data_dir()
+except Exception:
+    DATA_DIR = os.path.abspath(os.path.join(HERE, "..", "..", "data"))
+
+DB = os.path.join(DATA_DIR, "prompts.db")
+PROFILE_DIR = os.path.join(DATA_DIR, "dreamina_web_profile")
+INSP_DIR = os.path.join(DATA_DIR, "dreamina_inspiration")
+DISCOVER_URL = "https://jimeng.jianying.com/ai-tool/home/discover"
+
+router = APIRouter(prefix="/api/dreamina/inspiration", tags=["dreamina-inspiration"])
+
+_IMPORT_LOCK = threading.Lock()  # 防并发启动浏览器
+
+
+def _db():
+    import sqlite3
+    c = sqlite3.connect(DB, timeout=30)
+    c.row_factory = sqlite3.Row
+    return c
+
+
+def _ensure_table():
+    c = _db()
+    try:
+        cols = [r[1] for r in c.execute("PRAGMA table_info(dreamina_assets)").fetchall()]
+        if "source" not in cols:
+            c.execute("ALTER TABLE dreamina_assets ADD COLUMN source TEXT DEFAULT 'cli'")
+        if "web_asset_id" not in cols:
+            c.execute("ALTER TABLE dreamina_assets ADD COLUMN web_asset_id TEXT DEFAULT ''")
+        if "inspiration_keyword" not in cols:
+            c.execute("ALTER TABLE dreamina_assets ADD COLUMN inspiration_keyword TEXT DEFAULT ''")
+        c.commit()
+    finally:
+        c.close()
+
+
+def _now_str():
+    return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _parse_item(it: dict) -> dict:
+    """解析 get_explore item → 结构化灵感数据"""
+    ca = it.get("common_attr") or {}
+    ap = it.get("aigc_image_params") or {}
+    tip = ap.get("text2image_params") or {}
+    tvp = ap.get("text2video_params")
+    media_type = "video" if tvp else ("image" if tip else "unknown")
+    prompt = (tip.get("prompt") or "").strip()
+    ref_prompt = (ap.get("reference_prompt") or "").strip()
+    model = ((tip.get("model_config") or {}).get("model_req_key") or "").strip()
+    ratio = tip.get("image_ratio", 0)
+    ratio_map = {1: "1:1", 2: "3:4", 3: "16:9", 4: "9:16", 5: "4:3", 6: "3:2", 7: "2:3", 8: "4:5"}
+    ratio_txt = ratio_map.get(ratio, f"{ratio}")
+    imgs = (it.get("image") or {}).get("large_images") or []
+    img_url = imgs[0].get("image_url", "") if imgs else ""
+    img_w = imgs[0].get("width", 0) if imgs else 0
+    img_h = imgs[0].get("height", 0) if imgs else 0
+    cover = ca.get("cover_url") or ""
+    return {
+        "web_asset_id": str(ca.get("id") or it.get("id") or ""),
+        "media_type": media_type,
+        "prompt": prompt,
+        "reference_prompt": ref_prompt,
+        "model_version": model,
+        "ratio": ratio_txt,
+        "image_url": img_url,
+        "cover_url": cover,
+        "width": img_w,
+        "height": img_h,
+        "title": (ca.get("title") or "").strip(),
+        "create_time": ca.get("create_time", 0),
+    }
+
+
+def _browser():
+    """独立启动持久化浏览器（复用 dreamina_web_profile 登录态）"""
+    from playwright.sync_api import sync_playwright
+    pw = sync_playwright().start()
+    ctx = pw.chromium.launch_persistent_context(
+        PROFILE_DIR, channel="chrome", headless=True,
+        viewport={"width": 1440, "height": 900}, locale="zh-CN")
+    return pw, ctx
+
+
+def _fetch_items(keyword: str, media_type: str, count: int) -> list:
+    """打开灵感页 → 搜索 → 拦截 get_explore → 滚动加载"""
+    pw = ctx = None
+    collected = []
+    try:
+        pw, ctx = _browser()
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+
+        def on_resp(r):
+            try:
+                if "get_explore" in r.url:
+                    j = r.json()
+                    for it in (j.get("data") or {}).get("item_list") or []:
+                        parsed = _parse_item(it)
+                        if parsed["prompt"] or parsed["image_url"]:
+                            collected.append(parsed)
+            except Exception:
+                pass
+
+        page.on("response", on_resp)
+        page.goto(DISCOVER_URL, wait_until="domcontentloaded", timeout=45000)
+        time.sleep(5)
+        # 搜索
+        if keyword:
+            try:
+                box = page.query_selector("input.lv-input")
+                if box:
+                    box.click()
+                    time.sleep(0.5)
+                    box.fill(keyword)
+                    time.sleep(0.5)
+                    page.keyboard.press("Enter")
+                    time.sleep(5)
+            except Exception:
+                pass
+        # 滚动加载
+        seen = set()
+        idle = 0
+        while len(collected) < count:
+            before = len(collected)
+            page.mouse.wheel(0, 1600)
+            time.sleep(2)
+            new = [x for x in collected if x["web_asset_id"] not in seen]
+            for x in new:
+                seen.add(x["web_asset_id"])
+            if len(collected) == before:
+                idle += 1
+                if idle >= 6:
+                    break
+            else:
+                idle = 0
+        # 类型过滤
+        if media_type in ("image", "video"):
+            collected = [x for x in collected if x["media_type"] == media_type]
+        return collected[:count]
+    finally:
+        try:
+            if ctx is not None:
+                ctx.close()
+            if pw is not None:
+                pw.stop()
+        except Exception:
+            pass
+
+
+def _download(url: str, dest: str) -> bool:
+    """下载图片（带浏览器 UA）"""
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+            "Referer": "https://jimeng.jianying.com/",
+        })
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = r.read()
+        if len(data) < 500:
+            return False
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "wb") as f:
+            f.write(data)
+        return True
+    except Exception:
+        return False
+
+
+def _make_thumbnail(src: str, thumb_dir: str, asset_id: int):
+    """Pillow 生成缩略图"""
+    try:
+        from PIL import Image
+        im = Image.open(src)
+        im.thumbnail((360, 360))
+        os.makedirs(thumb_dir, exist_ok=True)
+        im.convert("RGB").save(os.path.join(thumb_dir, f"{asset_id}.jpg"), "JPEG", quality=82)
+    except Exception:
+        pass
+
+
+# ==================== API ====================
+
+@router.post("/preview")
+def inspiration_preview(data: dict = Body(...)):
+    """搜索灵感（不下载）：keyword + media_type + count → 返回预览列表"""
+    keyword = (data.get("keyword") or "").strip()
+    media_type = (data.get("media_type") or "").strip()
+    count = int(data.get("count") or 20)
+    count = max(1, min(count, 100))
+    with _IMPORT_LOCK:
+        items = _fetch_items(keyword, media_type, count)
+    return {"ok": True, "count": len(items), "items": items}
+
+
+@router.post("/import")
+def inspiration_import(data: dict = Body(...)):
+    """下载归档选中的灵感（v5.38.33: 直接接收预览 items，避免重新搜索结果不一致）
+    body: {items: [{web_asset_id, media_type, prompt, model_version, ratio, image_url, width, height}], keyword?}
+    """
+    _ensure_table()
+    items = data.get("items") or []
+    keyword = (data.get("keyword") or "").strip()
+    if not items:
+        raise HTTPException(400, "items 不能为空")
+    os.makedirs(INSP_DIR, exist_ok=True)
+    c = _db()
+    imported = 0
+    skipped = 0
+    failed = 0
+    try:
+        for it in items:
+            aid = str(it.get("web_asset_id") or "")
+            if not aid:
+                continue
+            exists = c.execute("SELECT id FROM dreamina_assets WHERE web_asset_id=? AND source='inspiration'",
+                               [aid]).fetchone()
+            if exists:
+                skipped += 1
+                continue
+            fname = f"insp_{aid}.png"
+            dest = os.path.join(INSP_DIR, fname)
+            if not os.path.isfile(dest) or os.path.getsize(dest) < 500:
+                ok = _download(it.get("image_url") or "", dest)
+                if not ok:
+                    failed += 1
+                    continue
+            cur = c.execute(
+                """INSERT INTO dreamina_assets
+                   (asset_type, prompt, model_version, ratio, width, height, file_paths, imported_at, source, web_asset_id, inspiration_keyword)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                [it.get("media_type") or "image", it.get("prompt") or "", it.get("model_version") or "",
+                 it.get("ratio") or "", it.get("width") or 0, it.get("height") or 0,
+                 json.dumps([fname]), _now_str(), "inspiration", aid, keyword])
+            aid_row = cur.lastrowid
+            _make_thumbnail(dest, os.path.join(DATA_DIR, "thumbnails"), aid_row)
+            imported += 1
+        c.commit()
+    finally:
+        c.close()
+    return {"ok": True, "imported": imported, "skipped": skipped, "failed": failed}
+
+
+@router.get("")
+def inspiration_list(keyword: str = Query(""), media_type: str = Query(""), page: int = Query(1, ge=1),
+                     page_size: int = Query(60, ge=1, le=200)):
+    """灵感资产列表（本地筛选：关键词/类型）"""
+    _ensure_table()
+    sql = "SELECT * FROM dreamina_assets WHERE source='inspiration'"
+    args = []
+    if keyword:
+        sql += " AND (prompt LIKE ? OR inspiration_keyword LIKE ?)"
+        args += [f"%{keyword}%", f"%{keyword}%"]
+    if media_type:
+        sql += " AND asset_type=?"
+        args.append(media_type)
+    sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
+    args += [page_size, (page - 1) * page_size]
+    c = _db()
+    try:
+        rows = c.execute(sql, args).fetchall()
+        total_where = "source='inspiration'"
+        total_args = []
+        if keyword:
+            total_where += " AND (prompt LIKE ? OR inspiration_keyword LIKE ?)"
+            total_args += [f"%{keyword}%", f"%{keyword}%"]
+        if media_type:
+            total_where += " AND asset_type=?"
+            total_args.append(media_type)
+        total = c.execute(f"SELECT COUNT(*) FROM dreamina_assets WHERE {total_where}", total_args).fetchone()[0]
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["thumb_url"] = f"/api/thumbnails/file/{d['id']}.jpg"
+            d["file_url"] = f"/api/dreamina/inspiration/file/{os.path.basename((json.loads(d['file_paths'] or '[]') or [''])[0])}"
+            out.append(d)
+        return {"ok": True, "tasks": out, "total": total, "page": page}
+    finally:
+        c.close()
+
+
+@router.delete("/{asset_id}")
+def inspiration_delete(asset_id: int):
+    """删除灵感资产（记录 + 文件）"""
+    c = _db()
+    try:
+        r = c.execute("SELECT file_paths FROM dreamina_assets WHERE id=? AND source='inspiration'", [asset_id]).fetchone()
+        if not r:
+            raise HTTPException(404, "记录不存在")
+        for fname in json.loads(r["file_paths"] or "[]"):
+            try:
+                p = os.path.join(INSP_DIR, os.path.basename(fname))
+                if os.path.isfile(p):
+                    os.remove(p)
+            except Exception:
+                pass
+        c.execute("DELETE FROM dreamina_assets WHERE id=?", [asset_id])
+        c.commit()
+        return {"ok": True}
+    finally:
+        c.close()
+
+
+@router.post("/{asset_id}/to-card")
+def inspiration_to_card(asset_id: int, data: dict = Body(default={})):
+    """存为词卡：prompt 作内容（直接 INSERT word_card，复用 batch_create 建卡模式）"""
+    c = _db()
+    try:
+        r = c.execute("SELECT * FROM dreamina_assets WHERE id=? AND source='inspiration'", [asset_id]).fetchone()
+        if not r:
+            raise HTTPException(404, "记录不存在")
+        prompt = (r["prompt"] or "").strip()
+        if not prompt:
+            raise HTTPException(400, "该灵感无提示词，无法存词卡")
+        group_id = int(data.get("group_id") or 0)
+        name = prompt[:30]
+        tags = "即梦灵感 " + (r["model_version"] or "") + " " + (r["ratio"] or "")
+        cur = c.execute(
+            """INSERT INTO word_card (group_id, name, content, meaning, tags, module, is_builtin, sort_order, source)
+               VALUES (?,?,?,?,?,?,0,(SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),'dreamina_inspiration')""",
+            [group_id, name, prompt, f"即梦灵感导入（{r['model_version'] or '未知模型'} · {r['ratio'] or ''}）",
+             tags, "prompt", group_id])
+        c.execute("UPDATE dreamina_assets SET word_card_id=? WHERE id=?", [cur.lastrowid, asset_id])
+        c.commit()
+        return {"ok": True, "card_id": cur.lastrowid}
+    finally:
+        c.close()
+
+
+@router.get("/file/{fname}")
+def inspiration_file(fname: str):
+    """服务灵感图片文件（防盗链安全：仅限 INSP_DIR 内）"""
+    import re
+    if not re.match(r"^insp_[A-Za-z0-9_-]+\.(png|jpg|jpeg|webp)$", fname):
+        raise HTTPException(400, "非法文件名")
+    p = os.path.join(INSP_DIR, fname)
+    if not os.path.isfile(p):
+        raise HTTPException(404, "文件不存在")
+    from fastapi.responses import FileResponse
+    return FileResponse(p, media_type="image/png")

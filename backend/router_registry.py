@@ -30,6 +30,7 @@ from api.dam_search import router as dam_search_router
 from api.dam_vault import router as dam_vault_router
 from api.device_index import agent_router, mgmt_router
 from api.dreamina import router as dreamina_router
+from api.dreamina_inspiration import router as dreamina_inspiration_router
 from api.exporter import router as exporter_router
 from api.libtv import router as libtv_router
 from api.license import router as license_router
@@ -82,6 +83,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(workflow_router)
     app.include_router(comfyui_router)
     app.include_router(dreamina_router)
+    app.include_router(dreamina_inspiration_router)  # v5.38.32 即梦灵感导入
     app.include_router(libtv_router)
     app.include_router(ocr_router)
     app.include_router(cards_v4_router)
