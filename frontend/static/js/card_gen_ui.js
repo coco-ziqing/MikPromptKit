@@ -135,7 +135,13 @@
                         e.stopPropagation();
                         self._openHistoryPicker(parseInt(cid, 10), btn);
                     };
-                    row.appendChild(btn);
+                    // v5.37.9: 插入到「下载 ⬇」与「收藏 +」之间（下载按钮之前）
+                    var dlBtn = row.querySelector('.coll-add-btn[title*="下载"]');
+                    if (dlBtn) {
+                        row.insertBefore(btn, dlBtn);
+                    } else {
+                        row.appendChild(btn);
+                    }
                 });
             }).catch(function () {});
         },
