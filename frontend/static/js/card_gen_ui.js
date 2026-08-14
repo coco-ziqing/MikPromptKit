@@ -551,11 +551,29 @@
             App[name] = hook(App[name], App);
         }
     };
+    // MutationObserver 兜底：覆盖子分组浏览器等直接写 DOM 的渲染路径（300ms 防抖）
+    var _injectTimer = null;
+    var _observe = function () {
+        ['#promptList', '#collectionItemList'].forEach(function (sel) {
+            var el = document.querySelector(sel);
+            if (!el || el.dataset.cgObserved) return;
+            el.dataset.cgObserved = '1';
+            new MutationObserver(function () {
+                if (_injectTimer) clearTimeout(_injectTimer);
+                _injectTimer = setTimeout(function () {
+                    try { if (App.cardGen) App.cardGen.inject(); } catch (e) {}
+                }, 300);
+            }).observe(el, { childList: true, subtree: true });
+        });
+    };
     // 延迟到 App 就绪（app_core 链在 defer 加载后）
     var _boot = function () {
         tryHook('renderPrompts');
         tryHook('renderCollectionItems');
         tryHook('_renderSemanticResults');
+        _observe();
+        // 容器可能延迟创建，周期补注册 observer
+        setInterval(_observe, 3000);
     };
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () { setTimeout(_boot, 600); });
