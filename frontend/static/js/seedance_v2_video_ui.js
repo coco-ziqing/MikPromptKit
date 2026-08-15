@@ -1653,6 +1653,8 @@
                 var sel = document.getElementById('s2InspGroupSel');
                 if (sel) sel.textContent = d.name;
                 if (input) input.value = '';
+                // v5.38.60: 刷新主界面分组树（侧边栏立即出现新分组，不再依赖页面刷新）
+                if (App.loadGroupTree) { try { App.loadGroupTree(); } catch (e) {} }
                 // 刷新分组树并选中新分组
                 var groupsP = (typeof App.cardModel !== 'undefined' && App.cardModel.getGroups)
                     ? App.cardModel.getGroups(true)
