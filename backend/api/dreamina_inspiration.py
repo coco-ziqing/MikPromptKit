@@ -274,10 +274,32 @@ def _fetch_items(keyword: str, media_type: str, count: int) -> list:
         pw, ctx, _is_cdp = _browser()
         # v5.38.48: 复用可见实例时开新页（不导航用户正在看的页面）
         page = ctx.new_page()
+        # v5.38.52: 搜索模式标志（关键词非空时只收集 search-result 页响应，避免发现页推荐流混入）
+        searching = bool(keyword.strip())
 
         def on_resp(r):
             try:
-                if "get_explore" in r.url:
+                u = r.url
+                # v5.38.52: 搜索模式只收 mweb/search/v1/search（真实搜索结果）；
+                # 非搜索模式收 get_explore（发现页推荐流）
+                if "mweb/search/v1/search" in u:
+                    if not searching:
+                        return
+                    j = r.json()
+                    for it in (j.get("data") or {}).get("data_list") or []:
+                        # 搜索项嵌套在 .item（data_list 元素 = {item, rel_score, search_item_type}）
+                        inner = it.get("item") if isinstance(it, dict) and isinstance(it.get("item"), dict) else it
+                        parsed = _parse_item(inner)
+                        if media_type in ("image", "video") and parsed["media_type"] != media_type:
+                            continue
+                        if parsed["prompt"] or parsed["image_url"]:
+                            aid = parsed["web_asset_id"]
+                            if aid and aid not in seen_ids:
+                                seen_ids.add(aid)
+                                collected.append(parsed)
+                elif "get_explore" in u:
+                    if searching:
+                        return  # 搜索模式跳过推荐流（与关键词无关）
                     j = r.json()
                     for it in (j.get("data") or {}).get("item_list") or []:
                         parsed = _parse_item(it)
@@ -310,6 +332,9 @@ def _fetch_items(keyword: str, media_type: str, count: int) -> list:
                     box.fill(keyword)
                     time.sleep(0.5)
                     page.keyboard.press("Enter")
+                    # v5.38.52: 清空跳转前收集的发现页推荐流（与关键词无关），只留搜索页结果
+                    collected.clear()
+                    seen_ids.clear()
                     time.sleep(5)
             except Exception:
                 pass
