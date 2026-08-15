@@ -1087,10 +1087,18 @@
         box.innerHTML = '<div style="text-align:center;padding:20px;color:#f59e0b;">⏳ 正在搜索即梦灵感（' + (this._inspHeadless ? '后台' : '将打开 Chrome 窗口自动搜索，若未看到请查看任务栏 Chrome 图标') + '，约 10-30 秒）...</div>';
         this._inspItems = [];
         try {
+            // v5.38.51: 搜索放宽到 90s（fetchJSON 默认 30s 超时会中断冷启动搜索，误报「未搜索到内容」）
             var d = await App.fetchJSON('/api/dreamina/inspiration/preview', {
                 method: 'POST',
-                body: JSON.stringify({keyword: kw, media_type: ty, count: ct})
+                body: JSON.stringify({keyword: kw, media_type: ty, count: ct}),
+                _timeoutMs: 90000
             });
+            if (!d) {
+                // 请求失败/超时（fetchJSON 返回 null）：明确提示，不再误导为「无结果」
+                box.innerHTML = '<div style="padding:16px;color:#ef4444;text-align:center;">⏱ 搜索超时或请求失败（超过 90 秒无响应）<br>' +
+                    '<span style="font-size:11px;color:#94a3b8;">可稍后重试；或切换 👁 后台执行（更快）后重试</span></div>';
+                return;
+            }
             var items = (d && d.items) || [];
             this._inspItems = items;
             if (!items.length) {
@@ -1122,13 +1130,13 @@
                     '<div style="position:relative;">' +
                     (img ? '<img src="' + img + '" style="width:100%;height:110px;object-fit:cover;display:block;">' : '<div style="height:110px;background:rgba(127,127,127,.08);display:flex;align-items:center;justify-content:center;">' + tag + '</div>') +
                     '<input type="checkbox" data-i="' + i + '" checked style="position:absolute;top:6px;left:6px;width:16px;height:16px;"></div>' +
-                    '<div style="padding:6px 8px;font-size:10px;color:#475569;line-height:1.5;height:52px;overflow:hidden;">' + App.escHtml((it.prompt || '').slice(0, 60)) + '</div>' +
+                    '<div style="padding:6px 8px;font-size:10px;color:#475569;line-height:1.5;height:52px;overflow:hidden;">' + App._escape((it.prompt || '').slice(0, 60)) + '</div>' +
                     '<div style="padding:0 8px 6px;font-size:9px;color:#94a3b8;">' + tag + ' ' + (it.ratio || '') + ' ' + (it.model_version || '').slice(0, 20) + '</div></label></div>';
             });
             h += '</div>';
             box.innerHTML = h;
         } catch (e) {
-            box.innerHTML = '<div style="padding:16px;color:#ef4444;">搜索失败：' + App.escHtml(String(e && e.detail || e)) + '</div>';
+            box.innerHTML = '<div style="padding:16px;color:#ef4444;">搜索失败：' + App._escape(String(e && e.detail || e)) + '</div>';
         }
     };
 
@@ -1150,10 +1158,10 @@
                 if (box) box.innerHTML = '<div style="padding:10px;color:#10b981;">✅ 导入 ' + d.imported + ' 条' + (d.skipped ? '（跳过重复 ' + d.skipped + '）' : '') + (d.failed ? '（失败 ' + d.failed + '）' : '') + '</div>';
                 this._inspLoadImported();
             } else {
-                if (box) box.innerHTML = '<div style="padding:10px;color:#ef4444;">导入失败：' + App.escHtml(String(d && d.detail || '未知错误')) + '</div>';
+                if (box) box.innerHTML = '<div style="padding:10px;color:#ef4444;">导入失败：' + App._escape(String(d && d.detail || '未知错误')) + '</div>';
             }
         } catch (e) {
-            if (box) box.innerHTML = '<div style="padding:10px;color:#ef4444;">导入异常：' + App.escHtml(String(e)) + '</div>';
+            if (box) box.innerHTML = '<div style="padding:10px;color:#ef4444;">导入异常：' + App._escape(String(e)) + '</div>';
         }
     };
 
@@ -1177,7 +1185,7 @@
                     : '<button class="btn btn-xs btn-outline" style="font-size:9px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.seedanceV2._inspToCard(' + t.id + ')">📇 存词卡</button>';
                 h += '<div class="s2-insp-card" data-aid="' + t.id + '" style="width:168px;border:1px solid var(--border-color);border-radius:10px;overflow:hidden;background:#fff;">' +
                     '<img src="' + (t.thumb_url || '') + '" style="width:100%;height:110px;object-fit:cover;display:block;cursor:pointer;" onclick="App.openImageViewer(\'' + (t.file_url || '') + '\',' + t.id + ')">' +
-                    '<div class="s2-insp-prompt" style="padding:6px 8px;font-size:10px;color:#475569;line-height:1.5;height:52px;overflow:hidden;">' + App.escHtml((t.prompt || '').slice(0, 60)) + '</div>' +
+                    '<div class="s2-insp-prompt" style="padding:6px 8px;font-size:10px;color:#475569;line-height:1.5;height:52px;overflow:hidden;">' + App._escape((t.prompt || '').slice(0, 60)) + '</div>' +
                     '<div style="padding:0 8px 6px;display:flex;gap:4px;flex-wrap:wrap;">' +
                     cardBtn +
                     '<button class="btn btn-xs btn-outline" style="font-size:9px;border-color:#ef4444;color:#ef4444;" onclick="App.seedanceV2._inspDelete(' + t.id + ')">🗑</button></div></div>';
@@ -1185,7 +1193,7 @@
             h += '</div>';
             box.innerHTML = h;
         } catch (e) {
-            box.innerHTML = '<div style="padding:16px;color:#ef4444;">加载失败：' + App.escHtml(String(e && e.detail || e)) + '</div>';
+            box.innerHTML = '<div style="padding:16px;color:#ef4444;">加载失败：' + App._escape(String(e && e.detail || e)) + '</div>';
         }
     };
 
@@ -1267,7 +1275,7 @@
                     if (!d || !d.ok || !d.items || d.items.length === 0) { if (recEl) recEl.style.display = 'none'; return; }
                     var rh = '<div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-bottom:6px;">💡 推荐分组 <span style="font-weight:400;">根据提示词自动识别</span></div><div style="display:flex;flex-wrap:wrap;gap:6px;">';
                     d.items.forEach(function(g) {
-                        rh += '<span onclick="App.seedanceV2._pickInspGroup(' + g.id + ', this)" data-id="' + g.id + '" title="命中：' + App.escHtml((g.matched || []).join('、') || '内容匹配') + '" style="cursor:pointer;font-size:11px;padding:4px 10px;border-radius:14px;border:1px solid #6366f1;color:var(--primary);background:rgba(99,102,241,0.08);display:inline-flex;align-items:center;gap:4px;">💡' + App.escHtml(g.name || '未命名') + '</span>';
+                        rh += '<span onclick="App.seedanceV2._pickInspGroup(' + g.id + ', this)" data-id="' + g.id + '" title="命中：' + App._escape((g.matched || []).join('、') || '内容匹配') + '" style="cursor:pointer;font-size:11px;padding:4px 10px;border-radius:14px;border:1px solid #6366f1;color:var(--primary);background:rgba(99,102,241,0.08);display:inline-flex;align-items:center;gap:4px;">💡' + App._escape(g.name || '未命名') + '</span>';
                     });
                     rh += '</div>';
                     recEl.innerHTML = rh;
@@ -1338,7 +1346,7 @@
                 (hasKids ? '<span style="width:16px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--text-muted);cursor:pointer;" onclick="event.stopPropagation();App.seedanceV2._toggleInspGroup(' + g.id + ')">' + (collapsed ? '▶' : '▼') + '</span>'
                          : '<span style="width:16px;flex-shrink:0;"></span>') +
                 '<span style="font-size:13px;">' + self._inspGroupIcon(g, depth) + '</span>' +
-                '<span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App.escHtml(g.name || '未命名') + '</span>' +
+                '<span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App._escape(g.name || '未命名') + '</span>' +
                 '<span style="font-size:10px;color:var(--text-muted);flex-shrink:0;">' + (g.card_count || 0) + ' 张</span>' +
               '</div>';
             if (hasKids && !collapsed) kids.forEach(function(k) { renderNode(k, depth + 1); });

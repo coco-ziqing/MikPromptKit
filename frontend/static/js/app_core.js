@@ -759,7 +759,17 @@ var App = window.App || {
             var timeoutMs = (options && options._timeoutMs) || 30000;
             var controller = new AbortController();
             var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
-            var res = await fetch(url, Object.assign({}, options || {}, { signal: controller.signal }));
+            // v5.38.51: 字符串 body 自动补 Content-Type: application/json（否则 FastAPI 422 无法解析 JSON）
+            var opts = Object.assign({}, options || {});
+            if (opts.body !== undefined && typeof opts.body === 'string') {
+                var hdrs = Object.assign({}, opts.headers || {});
+                var hasCT = Object.keys(hdrs).some(function(k) { return String(k).toLowerCase() === 'content-type'; });
+                if (!hasCT) {
+                    hdrs['Content-Type'] = 'application/json';
+                    opts.headers = hdrs;
+                }
+            }
+            var res = await fetch(url, Object.assign({}, opts, { signal: controller.signal }));
             clearTimeout(timer);
             if (!res.ok) return null;
             return await res.json();
