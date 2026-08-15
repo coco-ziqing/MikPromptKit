@@ -886,6 +886,7 @@
             '<select id="s2InspCount" style="padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;">' +
             '<option value="10">10 条</option><option value="20" selected>20 条</option><option value="40">40 条</option><option value="60">60 条</option></select>' +
             '<button class="btn btn-sm btn-success" onclick="App.seedanceV2._inspSearch()">🔍 搜索灵感</button>' +
+            '<span id="s2InspLoginBadge" style="font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:var(--hover-bg);color:var(--text-muted);" onclick="App.seedanceV2._inspLoginClick()" title="点击重新检测；未登录时点击可打开网页登录窗口">⏳ 检测登录中...</span>' +
             '<span style="font-size:10px;color:var(--text-muted);">（搜索约 10-30 秒，自动打开浏览器后台拉取）</span></div>' +
             '<div id="s2InspResult" style="margin-bottom:8px;"></div>' +
             '<div id="s2InspProgress" style="display:none;margin-bottom:8px;"></div>' +
@@ -928,6 +929,7 @@
             if (insp) insp.style.display = 'block';
             if (b3) b3.className = 'btn btn-sm s2-asset-tab-btn';
             this._inspLoadImported();
+            this._inspLoginCheck();   // v5.38.46: 切 tab 实时检测登录状态
         } else {
             if (web) web.style.display = 'none';
             if (insp) insp.style.display = 'none';
@@ -939,6 +941,51 @@
 
 
     // ============ v5.38.34: 即梦灵感导入 ============
+    // v5.38.46: 登录状态实时检测（读 profile cookie，秒回；未登录可开网页登录窗口）
+    App.seedanceV2._inspLoginCheck = function() {
+        var badge = document.getElementById('s2InspLoginBadge');
+        if (!badge) return;
+        var self = this;
+        badge.innerHTML = '⏳ 检测中...';
+        badge.style.cssText = 'font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:var(--hover-bg);color:var(--text-muted);';
+        App.fetchJSON('/api/dreamina/inspiration/login-status').then(function(d) {
+            if (!badge) return;
+            if (d && d.ok && d.logged_in) {
+                badge.innerHTML = '🟢 即梦已登录';
+                badge.style.cssText = 'font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:rgba(16,185,129,0.14);color:#10b981;';
+                badge.title = '已登录（' + (d.checked_at || '') + '）· 点击重新检测';
+            } else {
+                badge.innerHTML = '🔴 未登录 · 点击登录';
+                badge.style.cssText = 'font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:rgba(239,68,68,0.12);color:#ef4444;';
+                badge.title = '灵感/网页历史需即梦网页登录（与 CLI 授权不同）。点击打开网页登录窗口';
+            }
+        }).catch(function() {
+            if (badge) { badge.innerHTML = '❓ 状态未知'; badge.title = '检测失败，点击重试'; }
+        });
+    };
+
+    // v5.38.46: 徽章点击分流 —— 未登录态点击打开登录窗口，其余重新检测
+    App.seedanceV2._inspLoginClick = function() {
+        var badge = document.getElementById('s2InspLoginBadge');
+        var txt = badge ? (badge.textContent || '') : '';
+        if (txt.indexOf('未登录') >= 0) { this._inspLoginOpen(); }
+        else { this._inspLoginCheck(); }
+    };
+
+    // v5.38.46: 未登录 → 打开独立 Chrome 网页登录窗口（与网页历史通道同实例）
+    App.seedanceV2._inspLoginOpen = function() {
+        var self = this;
+        if (!confirm('将打开即梦网页登录窗口（独立 Chrome）。\n请在窗口中用手机扫码登录即梦，登录完成后点「🟢 检测」刷新状态。')) return;
+        App.fetchJSON('/api/seedance/v2/web-assets/connect', { method: 'POST' }).then(function(d) {
+            if (d && d.ok) {
+                App.showToast('✅ 登录窗口已打开，请扫码登录，完成后点徽章检测', 'info');
+                self._inspLoginCheck();
+            } else {
+                App.showToast('打开失败: ' + ((d && d.error) || '未知'), 'error');
+            }
+        }).catch(function(e) { App.showToast('打开异常: ' + e.message, 'error'); });
+    };
+
     App.seedanceV2._inspSearch = async function() {
         var kw = (document.getElementById('s2InspKeyword') || {}).value || '';
         var ty = (document.getElementById('s2InspType') || {}).value || '';
@@ -959,7 +1006,8 @@
                 var reason = (d && d.reason) || '';
                 var tip = '';
                 if (reason === 'not_login') {
-                    tip = '<div style="padding:16px;color:#d97706;text-align:center;">⚠️ 即梦未登录：请先到 <b>工具 → 生成引擎授权中心</b> 完成即梦登录（扫码），再回来搜索</div>';
+                    tip = '<div style="padding:16px;color:#d97706;text-align:center;">⚠️ 即梦未登录：请点击上方 🔴 登录徽章打开网页登录窗口（扫码），登录完成后点徽章检测</div>';
+                    this._inspLoginCheck();
                 } else if (reason === 'no_result') {
                     tip = '<div style="padding:16px;color:#94a3b8;text-align:center;">该关键词暂无结果，试试换关键词或切换类型（🖼图片 / 🎬视频）</div>';
                 } else {

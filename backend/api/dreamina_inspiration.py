@@ -263,6 +263,50 @@ def _make_thumbnail(src: str, thumb_dir: str, asset_id: int):
 
 # ==================== API ====================
 
+# ==================== 登录状态（v5.38.46） ====================
+
+def _profile_has_session() -> bool:
+    """读 Chrome profile Cookies 库（复制副本防锁），检查即梦 sessionid 类 cookie 存在且未过期
+    灵感/网页历史通道共用 dreamina_web_profile；不启动浏览器（轻量实时检测）"""
+    import shutil
+    import sqlite3 as _sqlite
+    # Chrome 85+ cookie 库在 Network/ 子目录（回退旧路径）
+    ck = os.path.join(PROFILE_DIR, "Default", "Network", "Cookies")
+    if not os.path.isfile(ck):
+        ck = os.path.join(PROFILE_DIR, "Default", "Cookies")
+    if not os.path.isfile(ck):
+        return False
+    tmp = ck + ".probe"
+    try:
+        shutil.copy2(ck, tmp)
+        conn = _sqlite.connect(tmp, timeout=5)
+        try:
+            # Chrome expires_utc 是 WebKit 微秒（1601-01-01 起）；0 = 会话 cookie
+            now_us = int((time.time() + 11644473600) * 1000000)
+            row = conn.execute(
+                "SELECT COUNT(*) FROM cookies WHERE (name LIKE '%sessionid%' OR name LIKE '%session%') "
+                "AND (host_key LIKE '%jimeng%' OR host_key LIKE '%jianying%') "
+                "AND (expires_utc = 0 OR expires_utc > ?)", [now_us]).fetchone()
+            return bool(row and row[0] > 0)
+        finally:
+            conn.close()
+    except Exception:
+        return False
+    finally:
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+
+
+@router.get("/login-status")
+def inspiration_login_status():
+    """灵感通道登录状态（读 profile cookie，秒回，不启动浏览器）"""
+    logged = _profile_has_session()
+    return {"ok": True, "logged_in": logged, "checked_at": _now_str(),
+            "hint": "灵感/网页历史通道使用独立 Chrome 网页登录态（与 CLI 授权不同），未登录时点徽章打开网页登录窗口"}
+
+
 @router.post("/preview")
 def inspiration_preview(data: dict = Body(...)):
     """搜索灵感（不下载）：keyword + media_type + count → 返回预览列表（空结果带 reason 归因）"""
