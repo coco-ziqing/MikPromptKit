@@ -888,6 +888,8 @@
             '<select id="s2InspCount" style="padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;">' +
             '<option value="10">10 条</option><option value="20" selected>20 条</option><option value="40">40 条</option><option value="60">60 条</option></select>' +
             '<button class="btn btn-sm btn-success" onclick="App.seedanceV2._inspSearch()">🔍 搜索灵感</button>' +
+            // v5.38.48: 浏览器执行模式（有头可视/无头后台，类似光厂投稿）
+            '<button id="s2InspModeBtn" onclick="App.seedanceV2._inspModeToggle()" title="浏览器执行模式：有头=可见 Chrome 窗口（更稳定）；无头=后台执行" style="font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:rgba(16,185,129,0.10);color:#059669;border:1px solid rgba(16,185,129,0.4);">🖥 可视执行</button>' +
             '<span id="s2InspLoginBadge" style="font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:var(--hover-bg);color:var(--text-muted);" onclick="App.seedanceV2._inspLoginClick()" title="点击重新检测；未登录时点击可打开网页登录窗口">⏳ 检测登录中...</span>' +
             '<span style="font-size:10px;color:var(--text-muted);">（搜索约 10-30 秒，自动打开浏览器后台拉取）</span></div>' +
             '<div id="s2InspResult" style="margin-bottom:8px;"></div>' +
@@ -970,6 +972,7 @@
             if (b3) b3.className = 'btn btn-sm s2-asset-tab-btn';
             this._inspLoadImported();
             this._inspLoginCheck();   // v5.38.46: 切 tab 实时检测登录状态
+            this._inspModeRefresh();  // v5.38.48: 切 tab 显示当前浏览器模式
         } else {
             if (web) web.style.display = 'none';
             if (insp) insp.style.display = 'none';
@@ -981,6 +984,38 @@
 
 
     // ============ v5.38.34: 即梦灵感导入 ============
+    // v5.38.48: 灵感搜索浏览器模式（有头可视/无头后台，类似光厂投稿；持久化到 capture_profile.json）
+    App.seedanceV2._inspModeRefresh = function() {
+        var b = document.getElementById('s2InspModeBtn');
+        if (!b) return;
+        App.fetchJSON('/api/dreamina/inspiration/settings').then(function(d) {
+            if (!b) return;
+            var hd = !!(d && d.headless);
+            App.seedanceV2._inspHeadless = hd;
+            b.textContent = hd ? '👁 后台执行' : '🖥 可视执行';
+            b.title = hd ? '当前：无头模式（后台搜索，速度更快）。点击切换为有头（可见 Chrome，更稳定不易被风控）' : '当前：有头模式（可见 Chrome 窗口搜索，更稳定）。点击切换为无头后台';
+            b.style.cssText = hd
+                ? 'font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:var(--hover-bg);color:var(--text-muted);border:1px solid var(--border-color);'
+                : 'font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:rgba(16,185,129,0.10);color:#059669;border:1px solid rgba(16,185,129,0.4);';
+        }).catch(function() {});
+    };
+
+    App.seedanceV2._inspModeToggle = function() {
+        var self = this;
+        App.fetchJSON('/api/dreamina/inspiration/settings').then(function(d) {
+            var next = !(d && d.headless);
+            return App.fetchJSON('/api/dreamina/inspiration/settings', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ headless: next })
+            }).then(function(dd) {
+                if (dd && dd.ok) {
+                    App.showToast(next ? '👁 已切换：无头后台执行（下次搜索生效）' : '🖥 已切换：有头可视执行（下次搜索生效）', 'info');
+                    self._inspModeRefresh();
+                } else { App.showToast('切换失败', 'error'); }
+            });
+        }).catch(function(e) { App.showToast('切换异常: ' + e.message, 'error'); });
+    };
+
     // v5.38.46: 登录状态实时检测（读 profile cookie，秒回；未登录可开网页登录窗口）
     App.seedanceV2._inspLoginCheck = function() {
         var badge = document.getElementById('s2InspLoginBadge');
@@ -1066,7 +1101,11 @@
                     tip = '<div style="padding:16px;color:#d97706;text-align:center;">⚠️ 即梦未登录：请点击上方 🔴 登录徽章打开网页登录窗口（扫码），登录完成后点徽章检测</div>';
                     this._inspLoginCheck();
                 } else if (reason === 'no_result') {
-                    tip = '<div style="padding:16px;color:#94a3b8;text-align:center;">该关键词暂无结果，试试换关键词或切换类型（🖼图片 / 🎬视频）</div>';
+                    // v5.38.48: 无头模式空结果提示切换有头
+                    var modeTip = this._inspHeadless
+                        ? '<br><span style="font-size:11px;color:#f59e0b;">当前为 👁 无头后台模式：若持续无结果，可切换 <b>🖥 可视执行</b> 再试（有头更稳定）</span>'
+                        : '';
+                    tip = '<div style="padding:16px;color:#94a3b8;text-align:center;">该关键词暂无结果，试试换关键词或切换类型（🖼图片 / 🎬视频）' + modeTip + '</div>';
                 } else {
                     tip = '<div style="padding:16px;color:#94a3b8;text-align:center;">未搜索到内容（可能是关键词无结果或需先在授权中心登录即梦）</div>';
                 }

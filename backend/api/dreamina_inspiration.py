@@ -24,6 +24,7 @@ except Exception:
 DB = os.path.join(DATA_DIR, "prompts.db")
 PROFILE_DIR = os.path.join(DATA_DIR, "dreamina_web_profile")
 INSP_DIR = os.path.join(DATA_DIR, "dreamina_inspiration")
+CAPTURE_PROFILE_PATH = os.path.join(DATA_DIR, "capture_profile.json")
 DISCOVER_URL = "https://jimeng.jianying.com/ai-tool/home/discover"
 
 router = APIRouter(prefix="/api/dreamina/inspiration", tags=["dreamina-inspiration"])
@@ -134,26 +135,99 @@ def _gcd(a, b):
     return a or 1
 
 
+# ==================== 浏览器模式（v5.38.48：有头/无头切换） ====================
+
+def _load_capture_profile() -> dict:
+    """读 capture_profile.json（与网页历史通道共用，headless 键控制灵感搜索模式）"""
+    try:
+        with open(CAPTURE_PROFILE_PATH, encoding="utf-8") as f:
+            prof = json.load(f)
+        return prof if isinstance(prof, dict) else {}
+    except Exception:
+        return {}
+
+
+def _insp_headless_mode() -> bool:
+    """灵感搜索浏览器模式：默认 False=有头（可见 Chrome，真人特征更稳，搜索不易被风控）"""
+    return bool(_load_capture_profile().get("headless"))
+
+
+def _set_insp_headless(headless: bool):
+    prof = _load_capture_profile()
+    prof["headless"] = bool(headless)
+    with open(CAPTURE_PROFILE_PATH, "w", encoding="utf-8") as f:
+        json.dump(prof, f, ensure_ascii=False, indent=2)
+
+
+def _read_devtools_port():
+    """读网页历史 Chrome 实例的调试端口（有头模式复用可见窗口用）"""
+    pf = os.path.join(PROFILE_DIR, "DevToolsActivePort")
+    if not os.path.exists(pf):
+        return None
+    try:
+        with open(pf) as f:
+            lines = f.read().strip().splitlines()
+        return lines[0].strip() if lines else None
+    except Exception:
+        return None
+
+
+def _devtools_alive(port) -> bool:
+    if not port:
+        return False
+    try:
+        urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=2)
+        return True
+    except Exception:
+        return False
+
+
+@router.get("/settings")
+def inspiration_settings():
+    """灵感搜索浏览器模式（headless: True=无头后台 / False=有头可视）"""
+    return {"ok": True, "headless": _insp_headless_mode()}
+
+
+@router.put("/settings")
+def inspiration_settings_put(data: dict = Body(...)):
+    """保存浏览器模式（写入 capture_profile.json，网页历史通道同读）"""
+    if "headless" in data:
+        _set_insp_headless(bool(data.get("headless")))
+    return {"ok": True, "headless": _insp_headless_mode()}
+
+
 def _browser():
-    """独立启动持久化浏览器（复用 dreamina_web_profile 登录态）"""
+    """启动浏览器：无头=独立 headless 实例；有头=优先复用可见 Chrome 调试实例（网页历史窗口），
+    无实例则新开可见窗口。同 profile 不能双开 Chrome（Windows SingletonLock）"""
     from playwright.sync_api import sync_playwright
     pw = sync_playwright().start()
+    if not _insp_headless_mode():
+        try:
+            port = _read_devtools_port()
+            if _devtools_alive(port):
+                ctx = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+                print("[Inspiration] 复用可见 Chrome 实例（有头模式）")
+                return pw, ctx, True
+        except Exception:
+            pass
     ctx = pw.chromium.launch_persistent_context(
-        PROFILE_DIR, channel="chrome", headless=True,
+        PROFILE_DIR, channel="chrome", headless=_insp_headless_mode(),
         viewport={"width": 1440, "height": 900}, locale="zh-CN")
-    return pw, ctx
+    return pw, ctx, False
 
 
 def _fetch_items(keyword: str, media_type: str, count: int) -> list:
     """打开灵感页 → 搜索 → 拦截 get_explore → 滚动加载（按 web_asset_id 去重）
     返回 (items, reason)：reason ∈ ok|not_login|no_result（空结果归因，v5.38.45）"""
     pw = ctx = None
+    page = None
     collected = []
     seen_ids = set()
     reason = "ok"
     try:
-        pw, ctx = _browser()
-        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        pw, ctx, _is_cdp = _browser()
+        # v5.38.48: 复用可见实例时开新页（不导航用户正在看的页面）
+        page = ctx.new_page()
 
         def on_resp(r):
             try:
@@ -221,6 +295,11 @@ def _fetch_items(keyword: str, media_type: str, count: int) -> list:
             reason = "ok" if logged else "not_login"
         return collected[:count], reason
     finally:
+        try:
+            if page is not None:
+                page.close()
+        except Exception:
+            pass
         try:
             if ctx is not None:
                 ctx.close()
