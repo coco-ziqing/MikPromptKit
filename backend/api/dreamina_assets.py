@@ -223,6 +223,30 @@ def _all_cli_tasks():
             pass
 
 
+def _imported_assets_map():
+    """已导入资产映射：submit_id → {file_url, asset_type}；另附 cli_submit_id 索引
+    （web 资产带真实 CLI submit_id，CLI 列表 web_imported 条目据此显示缩略图）"""
+    db = get_db()
+    m = {}
+    cli_idx = {}
+    rows = db.execute(
+        "SELECT submit_id, cli_submit_id, asset_type, file_paths FROM dreamina_assets "
+        "WHERE is_deleted=0 AND submit_id != ''"
+    ).fetchall()
+    for r in rows:
+        try:
+            names = json.loads(r["file_paths"] or "[]")
+        except Exception:
+            names = []
+        if names:
+            url = "/api/seedance/v2/assets/file/" + os.path.basename(names[0])
+            m[r["submit_id"]] = {"file_url": url, "asset_type": r["asset_type"]}
+            cid = r["cli_submit_id"] or ""
+            if cid and cid != r["submit_id"]:
+                cli_idx.setdefault(cid, {"file_url": url, "asset_type": r["asset_type"]})
+    return m, cli_idx
+
+
 def _imported_submit_ids():
     db = get_db()
     rows = db.execute("SELECT submit_id FROM dreamina_assets WHERE is_deleted=0").fetchall()
@@ -244,7 +268,9 @@ def scan_assets(
     tasks, ok = _all_cli_tasks()
     if not ok:
         raise HTTPException(500, "无法读取即梦 CLI 任务库，请确认已安装并登录即梦 CLI")
-    imported_ids = _imported_submit_ids()
+    # v5.38.41: 一次查询已导入映射（含本地文件 URL），前端不再循环预取；
+    # web_imported 条目按 cli_submit_id 关联拿缩略图
+    imported_map, cli_idx = _imported_assets_map()
     # v5.36.21: 跨通道去重标记 —— 该任务已通过网页通道导入（按 cli_submit_id 关联）
     db = get_db()
     web_sids = set(r["cli_submit_id"] for r in db.execute(
@@ -255,7 +281,10 @@ def scan_assets(
             continue
         if gen_status != "all" and t["gen_status"] != gen_status:
             continue
-        t["imported"] = t["submit_id"] in imported_ids
+        im = imported_map.get(t["submit_id"]) or cli_idx.get(t["submit_id"])
+        t["imported"] = t["submit_id"] in imported_map
+        t["file_url"] = im["file_url"] if im else ""
+        t["local_asset_type"] = im["asset_type"] if im else t["asset_type"]
         t["web_imported"] = t["submit_id"] in web_sids
         if imported == "1" and not t["imported"]:
             continue
@@ -270,7 +299,7 @@ def scan_assets(
         "image_total": sum(1 for t in tasks if t["asset_type"] == "image"),
         "video_total": sum(1 for t in tasks if t["asset_type"] == "video"),
         "success_total": sum(1 for t in tasks if t["gen_status"] == "success"),
-        "imported_total": len(imported_ids),
+        "imported_total": len(imported_map),
     }
     return {"ok": True, "total": total, "page": page, "page_size": page_size, "items": items, "stats": stats,
             "cli_db": CLI_TASKS_DB, "cli_available": os.path.exists(DREAMINA_BIN)}

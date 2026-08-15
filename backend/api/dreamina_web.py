@@ -818,8 +818,9 @@ def list_web_assets(
     asset_type: str = Query("all"),
     time_from: str = Query(""),
     time_to: str = Query(""),
+    keyword: str = Query(""),
 ):
-    """网页来源已导入资产（类型/时间筛选）"""
+    """网页来源已导入资产（类型/时间/关键词筛选）"""
     _ensure_asset_table()
     db = get_db()
     where = "source='web' AND is_deleted=0"
@@ -833,6 +834,11 @@ def list_web_assets(
     if time_to:
         where += " AND task_time<=?"
         params.append(time_to)
+    # v5.38.41: 关键词搜索（提示词 LIKE）
+    kw = (keyword or "").strip()
+    if kw:
+        where += " AND (prompt LIKE ? OR file_paths LIKE ?)"
+        params += [f"%{kw}%", f"%{kw}%"]
     total = db.execute(f"SELECT COUNT(*) c FROM dreamina_assets WHERE {where}", params).fetchone()["c"]
     rows = db.execute(
         f"SELECT * FROM dreamina_assets WHERE {where} ORDER BY id DESC LIMIT ? OFFSET ?",
@@ -957,3 +963,110 @@ def gen_web_thumbs():
 def gen_web_thumbs_status():
     """缩略图生成进度"""
     return {"ok": True, "state": _thumb_state_snapshot()}
+
+
+# ==================== v5.38.41: CLI 元数据回填 ====================
+
+@router.post("/web-assets/backfill-meta")
+def backfill_web_meta():
+    """从 CLI 任务库回填 web 资产元数据（model_version/ratio/resolution/duration/credit_count）：
+    web 资产带 cli_submit_id（跨通道关联，实测覆盖 75%），JOIN aigc_task.request 解析结构化参数。
+    顺带：空 prompt 资产尝试补 prompt（CLI 有则补）；同步刷新词卡 meaning 信息量。"""
+    from api.dreamina_assets import _cli_db_connect
+    from database import rollback_current
+    _ensure_asset_table()
+    db = get_db()
+    conn = _cli_db_connect()
+    if conn is None:
+        raise HTTPException(400, "CLI 任务库不可用，无法回填")
+    rows = db.execute(
+        "SELECT id, cli_submit_id, model_version, ratio, resolution, duration, credit_count, prompt, word_card_id "
+        "FROM dreamina_assets WHERE source='web' AND is_deleted=0 AND cli_submit_id != ''").fetchall()
+    updated = 0
+    prompt_filled = 0
+    try:
+        for r in rows:
+            cli = conn.execute("SELECT request, commerce_info FROM aigc_task WHERE submit_id=?",
+                               [r["cli_submit_id"]]).fetchone()
+            if not cli:
+                continue
+            try:
+                req = json.loads(cli["request"])
+                body = req.get("body", {}) if isinstance(req, dict) else {}
+                if isinstance(body, str):
+                    body = json.loads(body)
+                ci = json.loads(cli["commerce_info"]) if cli["commerce_info"] else {}
+            except Exception:
+                continue
+            if not isinstance(body, dict):
+                continue
+            model = str(body.get("ModelVersion") or body.get("model_version") or "").strip()
+            ratio = str(body.get("Ratio") or body.get("ratio") or "").strip()
+            res = str(body.get("ResolutionType") or body.get("video_resolution") or body.get("resolution") or "").strip()
+            try:
+                dur = float(body.get("Duration") or body.get("duration") or 0)
+            except Exception:
+                dur = 0
+            try:
+                credit = int(ci.get("credit_count") or 0)
+            except Exception:
+                credit = 0
+            cli_prompt = str(body.get("Prompt") or body.get("prompt") or "").strip()
+            sets, args = [], []
+            if model and (r["model_version"] or "") != model:
+                sets.append("model_version=?"); args.append(model)
+            if ratio and (r["ratio"] or "") != ratio:
+                sets.append("ratio=?"); args.append(ratio)
+            if res and (r["resolution"] or "") != res:
+                sets.append("resolution=?"); args.append(res)
+            if dur and not r["duration"]:
+                sets.append("duration=?"); args.append(dur)
+            if credit and not r["credit_count"]:
+                sets.append("credit_count=?"); args.append(credit)
+            if cli_prompt and not (r["prompt"] or "").strip():
+                sets.append("prompt=?"); args.append(cli_prompt)
+                prompt_filled += 1
+            if sets:
+                args.append(r["id"])
+                db.execute(f"UPDATE dreamina_assets SET {', '.join(sets)} WHERE id=?", args)
+                updated += 1
+                if r["word_card_id"]:
+                    _refresh_card_meaning(db, r["word_card_id"],
+                                          model or r["model_version"], ratio or r["ratio"],
+                                          res or r["resolution"], dur)
+        safe_commit()
+    except Exception:
+        # 异常路径必须回滚，释放写锁（防止请求线程悬挂事务持锁）
+        try:
+            rollback_current()
+        except Exception:
+            pass
+        raise
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {"ok": True, "updated": updated, "prompt_filled": prompt_filled}
+
+
+def _refresh_card_meaning(db, card_id, model, ratio, res, dur):
+    """回填后刷新词卡 meaning（模型/比例/分辨率/时长 + 保留原时间）"""
+    try:
+        card = db.execute("SELECT media_type, meaning FROM word_card WHERE id=? AND is_deleted=0",
+                          [card_id]).fetchone()
+        if not card:
+            return
+        m = card["meaning"] or ""
+        parts = ["即梦历史资产 · 🌐 网页来源", "视频" if card["media_type"] == "video" else "图片"]
+        for x in (model, ratio, res):
+            if x:
+                parts.append(x)
+        if dur:
+            parts.append(f"{dur:g}s")
+        segs = m.split(" · ")
+        if len(segs) >= 2 and len(segs[-1]) <= 20 and ":" in segs[-1]:
+            parts.append(segs[-1])
+        db.execute("UPDATE word_card SET meaning=? WHERE id=?", [" · ".join(parts), card_id])
+    except Exception:
+        pass

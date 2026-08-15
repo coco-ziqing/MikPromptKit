@@ -1252,11 +1252,12 @@
 
     App.seedanceV2._webRefresh = function() {
         var self = this;
+        this._webIdle = 0;
         this._webLoadStatus();
         this._webLoadAssets();
         // 自动静默同步（仅首次激活 tab 时）
         this._webAutoSync();
-        // 进度轮询
+        // 进度轮询（v5.38.41: 空闲 2 次后自动停止，采集/操作时再启）
         if (this._webPollTimer) clearInterval(this._webPollTimer);
         this._webPollTimer = setInterval(function() { self._webPoll(); }, 3000);
     };
@@ -1267,8 +1268,15 @@
             if (!st || !st.ok) return;
             var p = st.progress || {};
             if (p.running) {
+                self._webIdle = 0;
                 self._webRenderProgress(p);
             } else {
+                // v5.38.41: 空闲轮询 2 次（约 6s）后停止，不再常驻打状态接口
+                self._webIdle = (self._webIdle || 0) + 1;
+                if (self._webIdle >= 2) {
+                    if (self._webPollTimer) { clearInterval(self._webPollTimer); self._webPollTimer = null; }
+                    return;
+                }
                 var bar = document.getElementById('s2WebProgress');
                 if (bar) { bar.style.display = 'none'; bar.innerHTML = ''; }
                 // 结束后刷新一次状态与列表
@@ -1309,6 +1317,7 @@
                       '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webCheckLogin()">🔍 检测登录</button>' +
                       '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webRetryFail()" title="重试上次失败的条目">🔁 重试失败' + (p.failed ? ' (' + p.failed + ')' : '') + '</button>' +
                       '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webGenThumbs()" title="为词库中缺少缩略图的资产词卡生成预览图">🖼 补缩略图</button>' +
+                      '<button class="btn btn-sm btn-outline" style="color:#8b5cf6;border-color:#8b5cf6;" onclick="App.seedanceV2._webBackfillMeta()" title="从即梦 CLI 任务库回填模型/比例/分辨率等参数（JOIN 跨通道关联）">⬆️ 回填参数</button>' +
                       '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webDiagnose()" title="查看采集诊断与接口命中">🧰 采集诊断</button>' +
                       (st.connected ? '<button class="btn btn-sm btn-outline" style="color:#ef4444;border-color:#ef4444;" onclick="App.seedanceV2._webStop()">⛔ 关闭实例</button>' : '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webConnect()">🔌 连接 Chrome</button>');
             }
@@ -1332,6 +1341,20 @@
             '<div style="flex:1;height:8px;background:var(--hover-bg);border-radius:4px;overflow:hidden;"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,#10b981,#8b5cf6);transition:width .5s;"></div></div>' +
             '<span>' + App._escape(p.stage || '') + ' · ' + pct + '%</span></div>' +
             '<div style="margin-top:4px;color:var(--text-muted);">发现 <strong>' + (p.found || 0) + '</strong> · 下载 <strong>' + (p.downloaded || 0) + '</strong> · 新增 <strong>' + (p.imported || 0) + '</strong> · 跳过(重复) <strong>' + (p.skipped || 0) + '</strong> · 失败 <strong style="color:#ef4444;">' + (p.failed || 0) + '</strong></div></div>';
+    };
+
+    // v5.38.41: 从 CLI 任务库回填 web 资产元数据（模型/比例/分辨率等）
+    App.seedanceV2._webBackfillMeta = function() {
+        var self = this;
+        App.showToast('正在回填参数（后台解析 CLI 任务库）...', 'info');
+        App.fetchJSON('/api/seedance/v2/web-assets/backfill-meta', { method: 'POST', _timeoutMs: 120000 }).then(function(d) {
+            if (d && d.ok) {
+                App.showToast('✅ 回填完成：更新 ' + d.updated + ' 条' + (d.prompt_filled ? '（补全提示词 ' + d.prompt_filled + '）' : ''), 'success');
+                self._webLoadAssets();
+            } else {
+                App.showToast('回填失败: ' + ((d && d.detail) || '未知错误'), 'error');
+            }
+        }).catch(function(e) { App.showToast('回填异常: ' + e.message, 'error'); });
     };
 
     // 为资产词卡生成缩略图（后台线程 + 进度轮询）
@@ -1431,20 +1454,22 @@
         }).catch(function() {});
     };
 
-    App.seedanceV2._webFilter = { type: 'all', time_from: '', time_to: '', page: 1 };
+    App.seedanceV2._webFilter = { type: 'all', time_from: '', time_to: '', keyword: '', page: 1 };
 
     App.seedanceV2._webLoadAssets = function() {
         var c = document.getElementById('s2WebList');
         if (!c) return;
         var self = this;
         var f = this._webFilter;
-        var q = '?page=' + f.page + '&page_size=60&asset_type=' + f.type + '&time_from=' + encodeURIComponent(f.time_from) + '&time_to=' + encodeURIComponent(f.time_to);
+        var q = '?page=' + f.page + '&page_size=60&asset_type=' + f.type + '&time_from=' + encodeURIComponent(f.time_from) + '&time_to=' + encodeURIComponent(f.time_to) + '&keyword=' + encodeURIComponent(f.keyword || '');
         var fEl = document.getElementById('s2WebFilters');
         if (fEl) fEl.innerHTML =
             '<label style="font-size:11px;color:var(--text-muted);">类型</label><select class="s2-input" style="width:auto;font-size:11px;padding:2px 6px;" onchange="App.seedanceV2._setWebFilter(\'type\',this.value)">' +
             '<option value="all"' + (f.type === 'all' ? ' selected' : '') + '>全部</option>' +
             '<option value="image"' + (f.type === 'image' ? ' selected' : '') + '>图片</option>' +
             '<option value="video"' + (f.type === 'video' ? ' selected' : '') + '>视频</option></select>' +
+            // v5.38.41: 关键词搜索
+            '<input type="text" placeholder="🔍 搜索提示词..." value="' + App._escape(f.keyword || '') + '" style="width:150px;padding:2px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:11px;background:var(--bg-card);color:var(--text-main);" onchange="App.seedanceV2._setWebFilter(\'keyword\',this.value)">' +
             '<label style="font-size:11px;color:var(--text-muted);">时间从</label><input type="date" class="s2-input" style="width:auto;font-size:11px;padding:2px 6px;" value="' + App._escape(f.time_from) + '" onchange="App.seedanceV2._setWebFilter(\'time_from\',this.value)">' +
             '<label style="font-size:11px;color:var(--text-muted);">至</label><input type="date" class="s2-input" style="width:auto;font-size:11px;padding:2px 6px;" value="' + App._escape(f.time_to) + '" onchange="App.seedanceV2._setWebFilter(\'time_to\',this.value)">';
         App.fetchJSON('/api/seedance/v2/web-assets/assets' + q).then(function(d) {
@@ -1512,21 +1537,7 @@
         if (!c) return;
         var self = this;
         try {
-            // v5.36.18: 预取已导入资产映射（submit_id → 本地文件 URL），CLI 列表已导入项显示缩略图
-            var importedMap = {};
-            try {
-                var _pg = 1;
-                while (_pg < 12) {
-                    var _ad = await App.fetchJSON('/api/seedance/v2/assets?page=' + _pg + '&page_size=200&source=cli');
-                    if (!_ad || !_ad.ok || !_ad.items || !_ad.items.length) break;
-                    for (var _i2 = 0; _i2 < _ad.items.length; _i2++) {
-                        var _x = _ad.items[_i2];
-                        if (_x.submit_id && _x.file_url) importedMap[_x.submit_id] = _x;
-                    }
-                    if (_ad.items.length < 200) break;
-                    _pg++;
-                }
-            } catch (e) {}
+            // v5.38.41: 已导入缩略图由后端 scan 直接带 file_url（消除循环预取 11 页）
             var f = this._assetFilter;
             var q = '?page=' + f.page + '&page_size=60&asset_type=' + f.type + '&gen_status=' + f.status + '&imported=' + f.imported;
             var d = await App.fetchJSON('/api/seedance/v2/assets/scan' + q);
@@ -1566,14 +1577,13 @@
             for (var i = 0; i < items.length; i++) {
                 var t = items[i];
                 var stBg = t.gen_status === 'success' ? 'rgba(16,185,129,0.85)' : (t.gen_status === 'fail' ? 'rgba(239,68,68,0.85)' : 'rgba(245,158,11,0.85)');
-                // v5.36.18: 已导入项显示本地缩略图
-                var im = importedMap[t.submit_id];
+                // v5.38.41: 后端已带 file_url（已导入项显示本地缩略图）
                 var thumbHtml = '';
-                if (im && im.file_url) {
-                    if (im.asset_type === 'video') {
-                        thumbHtml = '<video src="' + App._escape(im.file_url) + '" muted preload="metadata" style="width:100%;height:100%;object-fit:cover;"></video>';
+                if (t.file_url) {
+                    if (t.local_asset_type === 'video') {
+                        thumbHtml = '<video src="' + App._escape(t.file_url) + '" muted preload="metadata" style="width:100%;height:100%;object-fit:cover;"></video>';
                     } else {
-                        thumbHtml = '<img src="' + App._escape(im.file_url) + '" loading="lazy" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.opacity=0.2">';
+                        thumbHtml = '<img src="' + App._escape(t.file_url) + '" loading="lazy" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.opacity=0.2">';
                     }
                 } else {
                     thumbHtml = '<span style="font-size:34px;">' + (t.asset_type === 'video' ? '🎬' : '🖼') + '</span>';
