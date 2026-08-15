@@ -1477,7 +1477,7 @@
             if (!d || !d.ok) { c.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">加载失败</div>'; return; }
             var items = d.items || [];
             // v5.36.19: 缓存当前列表数据（复制提示词直接取缓存，不查 API）
-            this._webAssetsCache = items;
+            self._webAssetsCache = items;
             if (!items.length) {
                 c.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">还没有网页历史资产<br><span style="font-size:11px;">点「🔄 开始拉取」同步即梦网页端作品（含 App/官网直接生成的历史）</span></div>';
                 return;
