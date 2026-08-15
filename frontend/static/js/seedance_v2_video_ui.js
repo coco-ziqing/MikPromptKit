@@ -906,22 +906,32 @@
         this._loadDreaminaAssets();
     };
 
-    // 标签页切换
+    // 标签页切换（v5.38.44: 补全 insp 分支 —— 此前点灵感 tab 走 else 切到 CLI，灵感面板从未显示）
     App.seedanceV2._switchAssetTab = function(tab) {
         var cli = document.getElementById('s2AssetTabCli');
         var web = document.getElementById('s2AssetTabWeb');
+        var insp = document.getElementById('s2AssetTabInsp');
         var b1 = document.getElementById('s2AssetTabBtnCli');
         var b2 = document.getElementById('s2AssetTabBtnWeb');
+        var b3 = document.getElementById('s2AssetTabBtnInsp');
+        // 先全部置为未激活态（btn-outline），再高亮当前 tab
+        [b1, b2, b3].forEach(function(b) { if (b) b.className = 'btn btn-sm btn-outline s2-asset-tab-btn'; });
         if (tab === 'web') {
             if (cli) cli.style.display = 'none';
+            if (insp) insp.style.display = 'none';
             if (web) web.style.display = 'block';
-            if (b1) b1.className = 'btn btn-sm btn-outline s2-asset-tab-btn';
             if (b2) b2.className = 'btn btn-sm s2-asset-tab-btn';
             this._webRefresh();
+        } else if (tab === 'insp') {
+            if (cli) cli.style.display = 'none';
+            if (web) web.style.display = 'none';
+            if (insp) insp.style.display = 'block';
+            if (b3) b3.className = 'btn btn-sm s2-asset-tab-btn';
+            this._inspLoadImported();
         } else {
             if (web) web.style.display = 'none';
+            if (insp) insp.style.display = 'none';
             if (cli) cli.style.display = 'block';
-            if (b2) b2.className = 'btn btn-sm btn-outline s2-asset-tab-btn';
             if (b1) b1.className = 'btn btn-sm s2-asset-tab-btn';
             this._reloadDreaminaAssets();
         }
