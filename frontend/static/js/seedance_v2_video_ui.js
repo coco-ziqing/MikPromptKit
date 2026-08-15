@@ -1376,12 +1376,17 @@
                 var checkHtml = (isVideo || hasCard)
                     ? '<span style="position:absolute;top:6px;left:6px;font-size:10px;background:rgba(0,0,0,0.5);color:#fff;border-radius:4px;padding:1px 5px;">' + (isVideo ? '🎬' : '✅') + '</span>'
                     : '<input type="checkbox" class="s2-insp-check" data-aid="' + t.id + '" style="position:absolute;top:6px;left:6px;width:15px;height:15px;cursor:pointer;" onchange="App.seedanceV2._inspBatchCount()">';
+                // v5.38.59: 已存词卡 → 「📍 跳转分组」按钮
+                var goBtn = (hasCard && !isVideo && t.word_card_group_id)
+                    ? '<button class="btn btn-xs btn-outline" style="font-size:9px;border-color:#10b981;color:#10b981;" onclick="App.seedanceV2._inspGoToGroup(' + t.word_card_id + ',' + t.word_card_group_id + ')" title="跳转到词库中该词卡所在分组">📍 跳转分组</button>'
+                    : '';
                 h += '<div class="s2-insp-card" data-aid="' + t.id + '" style="width:168px;border:1px solid var(--border-color);border-radius:10px;overflow:hidden;background:#fff;position:relative;">' +
                     checkHtml +
                     '<img src="' + (t.thumb_url || '') + '" style="width:100%;height:110px;object-fit:cover;display:block;cursor:pointer;" onclick="App.openImageViewer(\'' + (t.file_url || '') + '\',' + t.id + ')">' +
                     '<div class="s2-insp-prompt" style="padding:6px 8px;font-size:10px;color:#475569;line-height:1.5;height:52px;overflow:hidden;">' + App._escape((t.prompt || '').slice(0, 60)) + '</div>' +
                     '<div style="padding:0 8px 6px;display:flex;gap:4px;flex-wrap:wrap;">' +
                     cardBtn +
+                    goBtn +
                     '<button class="btn btn-xs btn-outline" style="font-size:9px;border-color:#ef4444;color:#ef4444;" onclick="App.seedanceV2._inspDelete(' + t.id + ')">🗑</button></div></div>';
             });
             h += '</div>';
@@ -1390,6 +1395,31 @@
         } catch (e) {
             box.innerHTML = '<div style="padding:16px;color:#ef4444;">加载失败：' + App._escape(String(e && e.detail || e)) + '</div>';
         }
+    };
+
+    // v5.38.59: 跳转到词卡所在分组列表（切词库视图 + 定位词卡高亮）
+    App.seedanceV2._inspGoToGroup = function(cardId, groupId) {
+        if (!groupId) { App.showToast('该词卡无分组信息', 'warning'); return; }
+        var m = document.getElementById('s2DreaminaAssets');
+        if (m) m.remove();
+        App.showToast('正在跳转到分组...', 'info');
+        // 切到词库视图
+        if (App.switchView) App.switchView('home');
+        setTimeout(function() {
+            if (App.switchGroup) App.switchGroup(groupId, '');
+            // 等列表渲染后定位词卡并高亮
+            setTimeout(function() {
+                var card = document.querySelector('.prompt-card[data-id="' + cardId + '"]');
+                if (card) {
+                    try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+                    card.style.boxShadow = '0 0 0 3px var(--primary)';
+                    card.style.transition = 'box-shadow .3s';
+                    setTimeout(function() { card.style.boxShadow = ''; }, 2500);
+                } else {
+                    App.showToast('已跳转到分组', 'info');
+                }
+            }, 900);
+        }, 350);
     };
 
     // v5.38.54: 批量勾选计数

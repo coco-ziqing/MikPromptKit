@@ -700,6 +700,12 @@ def inspiration_list(keyword: str = Query(""), media_type: str = Query(""), page
             d = dict(r)
             d["thumb_url"] = f"/api/thumbnails/file/{d['id']}.jpg"
             d["file_url"] = f"/api/dreamina/inspiration/file/{os.path.basename((json.loads(d['file_paths'] or '[]') or [''])[0])}"
+            # v5.38.59: 已存词卡的所在分组（供前端「跳转到分组列表」）
+            d["word_card_group_id"] = 0
+            if d.get("word_card_id"):
+                g = c.execute("SELECT group_id FROM word_card WHERE id=?", [d["word_card_id"]]).fetchone()
+                if g:
+                    d["word_card_group_id"] = g[0]
             out.append(d)
         return {"ok": True, "tasks": out, "total": total, "page": page}
     finally:
