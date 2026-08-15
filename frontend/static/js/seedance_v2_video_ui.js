@@ -955,7 +955,17 @@
             var items = (d && d.items) || [];
             this._inspItems = items;
             if (!items.length) {
-                box.innerHTML = '<div style="padding:16px;color:#94a3b8;text-align:center;">未搜索到内容（可能是关键词无结果或需先在授权中心登录即梦）</div>';
+                // v5.38.45: 空结果按后端归因区分提示（未登录 vs 无结果）
+                var reason = (d && d.reason) || '';
+                var tip = '';
+                if (reason === 'not_login') {
+                    tip = '<div style="padding:16px;color:#d97706;text-align:center;">⚠️ 即梦未登录：请先到 <b>工具 → 生成引擎授权中心</b> 完成即梦登录（扫码），再回来搜索</div>';
+                } else if (reason === 'no_result') {
+                    tip = '<div style="padding:16px;color:#94a3b8;text-align:center;">该关键词暂无结果，试试换关键词或切换类型（🖼图片 / 🎬视频）</div>';
+                } else {
+                    tip = '<div style="padding:16px;color:#94a3b8;text-align:center;">未搜索到内容（可能是关键词无结果或需先在授权中心登录即梦）</div>';
+                }
+                box.innerHTML = tip;
                 return;
             }
             var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">搜索到 <b style="color:#f59e0b;">' + items.length + '</b> 条灵感，勾选后点「导入选中」</div>';

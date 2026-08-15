@@ -145,10 +145,12 @@ def _browser():
 
 
 def _fetch_items(keyword: str, media_type: str, count: int) -> list:
-    """打开灵感页 → 搜索 → 拦截 get_explore → 滚动加载（按 web_asset_id 去重）"""
+    """打开灵感页 → 搜索 → 拦截 get_explore → 滚动加载（按 web_asset_id 去重）
+    返回 (items, reason)：reason ∈ ok|not_login|no_result（空结果归因，v5.38.45）"""
     pw = ctx = None
     collected = []
     seen_ids = set()
+    reason = "ok"
     try:
         pw, ctx = _browser()
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
@@ -203,7 +205,21 @@ def _fetch_items(keyword: str, media_type: str, count: int) -> list:
                     break
             else:
                 idle = 0
-        return collected[:count]
+        # v5.38.45: 空结果归因 —— 未登录 vs 关键词无结果
+        if not collected:
+            logged = True
+            try:
+                cookies = page.context.cookies()
+                logged = any("sessionid" in (c.get("name") or "").lower() for c in cookies)
+            except Exception:
+                pass
+            try:
+                if "login" in (page.url or "").lower():
+                    logged = False
+            except Exception:
+                pass
+            reason = "ok" if logged else "not_login"
+        return collected[:count], reason
     finally:
         try:
             if ctx is not None:
@@ -249,14 +265,14 @@ def _make_thumbnail(src: str, thumb_dir: str, asset_id: int):
 
 @router.post("/preview")
 def inspiration_preview(data: dict = Body(...)):
-    """搜索灵感（不下载）：keyword + media_type + count → 返回预览列表"""
+    """搜索灵感（不下载）：keyword + media_type + count → 返回预览列表（空结果带 reason 归因）"""
     keyword = (data.get("keyword") or "").strip()
     media_type = (data.get("media_type") or "").strip()
     count = int(data.get("count") or 20)
     count = max(1, min(count, 100))
     with _IMPORT_LOCK:
-        items = _fetch_items(keyword, media_type, count)
-    return {"ok": True, "count": len(items), "items": items}
+        items, reason = _fetch_items(keyword, media_type, count)
+    return {"ok": True, "count": len(items), "items": items, "reason": reason}
 
 
 @router.post("/import")
