@@ -863,6 +863,8 @@
             '<button class="btn btn-sm s2-asset-tab-btn" id="s2AssetTabBtnCli" onclick="App.seedanceV2._switchAssetTab(\'cli\')" style="color:#6366f1;border-color:#6366f1;">🗂 CLI 历史</button>' +
             '<button class="btn btn-sm btn-outline s2-asset-tab-btn" id="s2AssetTabBtnWeb" onclick="App.seedanceV2._switchAssetTab(\'web\')" style="color:#10b981;border-color:#10b981;">🌐 网页历史</button>' +
             '<button class="btn btn-sm btn-outline s2-asset-tab-btn" id="s2AssetTabBtnInsp" onclick="App.seedanceV2._switchAssetTab(\'insp\')" style="color:#f59e0b;border-color:#f59e0b;">✨ 灵感导入</button></div>' +
+            // v5.38.47: 登录状态自动检测横幅（弹窗打开即检测）
+            '<div id="s2DreaminaLoginBanner" style="display:none;margin:8px 14px 0;"></div>' +
             '<div class="modal-body" style="flex:1;overflow-y:auto;">' +
             '<div id="s2AssetTabCli">' +
             '<div id="s2AssetStats"></div>' +
@@ -905,6 +907,44 @@
         this._assetFilter = { type: 'all', status: 'success', imported: '0', page: 1 };
         this._webAutoSyncDone = false;
         this._loadDreaminaAssets();
+        // v5.38.47: 弹窗打开自动检测即梦登录状态（未登录时横幅提醒）
+        this._dreaminaLoginAutoCheck();
+    };
+
+    // v5.38.47: 弹窗登录状态自动检测 + 提醒横幅
+    App.seedanceV2._dreaminaLoginAutoCheck = function() {
+        var banner = document.getElementById('s2DreaminaLoginBanner');
+        if (!banner) return;
+        var self = this;
+        banner.style.display = 'block';
+        banner.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">⏳ 正在检测即梦登录状态...</div>';
+        App.fetchJSON('/api/dreamina/inspiration/login-status').then(function(d) {
+            if (!banner) return;
+            if (d && d.ok && d.logged_in) {
+                banner.innerHTML = '<div style="display:flex;align-items:center;gap:8px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);color:#059669;border-radius:8px;padding:6px 12px;font-size:12px;">' +
+                    '🟢 即梦网页已登录（灵感搜索 / 网页历史拉取可用）' +
+                    '<span style="margin-left:auto;font-size:10px;color:var(--text-muted);cursor:pointer;" onclick="App.seedanceV2._dreaminaLoginAutoCheck()">🔄 重测</span></div>';
+            } else {
+                banner.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);color:#dc2626;border-radius:8px;padding:7px 12px;font-size:12px;">' +
+                    '🔴 即梦未登录：灵感搜索 / 网页历史拉取需即梦网页登录（与 CLI 授权不同）' +
+                    '<span style="margin-left:auto;display:flex;gap:6px;">' +
+                    '<button class="btn btn-xs" style="background:#ef4444;border-color:#ef4444;color:#fff;" onclick="App.seedanceV2._inspLoginOpen()">🔌 打开登录窗口</button>' +
+                    '<button class="btn btn-xs btn-outline" onclick="App.seedanceV2._dreaminaLoginAutoCheck()">🔄 重试</button></span></div>';
+            }
+            // 同步灵感 tab 徽章
+            var badge = document.getElementById('s2InspLoginBadge');
+            if (badge) {
+                if (d && d.ok && d.logged_in) {
+                    badge.innerHTML = '🟢 即梦已登录';
+                    badge.style.cssText = 'font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:rgba(16,185,129,0.14);color:#10b981;';
+                } else {
+                    badge.innerHTML = '🔴 未登录 · 点击登录';
+                    badge.style.cssText = 'font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:rgba(239,68,68,0.12);color:#ef4444;';
+                }
+            }
+        }).catch(function() {
+            if (banner) banner.innerHTML = '<div style="font-size:11px;color:var(--text-muted);">❓ 登录状态检测失败 <span style="cursor:pointer;color:var(--primary);" onclick="App.seedanceV2._dreaminaLoginAutoCheck()">重试</span></div>';
+        });
     };
 
     // 标签页切换（v5.38.44: 补全 insp 分支 —— 此前点灵感 tab 走 else 切到 CLI，灵感面板从未显示）
@@ -973,13 +1013,30 @@
     };
 
     // v5.38.46: 未登录 → 打开独立 Chrome 网页登录窗口（与网页历史通道同实例）
+    // v5.38.47: 打开后自动轮询检测登录成功（5s × 24 = 最长 2 分钟），成功后刷新横幅/徽章
     App.seedanceV2._inspLoginOpen = function() {
         var self = this;
-        if (!confirm('将打开即梦网页登录窗口（独立 Chrome）。\n请在窗口中用手机扫码登录即梦，登录完成后点「🟢 检测」刷新状态。')) return;
+        if (!confirm('将打开即梦网页登录窗口（独立 Chrome）。\n请在窗口中用手机扫码登录即梦，登录完成后会自动检测并刷新状态。')) return;
         App.fetchJSON('/api/seedance/v2/web-assets/connect', { method: 'POST' }).then(function(d) {
             if (d && d.ok) {
-                App.showToast('✅ 登录窗口已打开，请扫码登录，完成后点徽章检测', 'info');
-                self._inspLoginCheck();
+                App.showToast('✅ 登录窗口已打开，请扫码登录（自动检测登录状态）', 'info');
+                if (self._loginPollTimer) clearInterval(self._loginPollTimer);
+                var tries = 0;
+                self._loginPollTimer = setInterval(function() {
+                    tries++;
+                    App.fetchJSON('/api/dreamina/inspiration/login-status').then(function(dd) {
+                        if (dd && dd.ok && dd.logged_in) {
+                            clearInterval(self._loginPollTimer);
+                            self._loginPollTimer = null;
+                            App.showToast('✅ 即梦登录成功', 'success');
+                            self._dreaminaLoginAutoCheck();
+                        } else if (tries >= 24) {
+                            clearInterval(self._loginPollTimer);
+                            self._loginPollTimer = null;
+                            App.showToast('登录检测超时：登录完成后点「🔄 重试」刷新状态', 'warning');
+                        }
+                    }).catch(function() {});
+                }, 5000);
             } else {
                 App.showToast('打开失败: ' + ((d && d.error) || '未知'), 'error');
             }
