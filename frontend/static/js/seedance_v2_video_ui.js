@@ -892,6 +892,16 @@
             '<button id="s2InspModeBtn" onclick="App.seedanceV2._inspModeToggle()" title="浏览器执行模式：有头=可见 Chrome 窗口（更稳定）；无头=后台执行" style="font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:rgba(16,185,129,0.10);color:#059669;border:1px solid rgba(16,185,129,0.4);">🖥 可视执行</button>' +
             '<span id="s2InspLoginBadge" style="font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:var(--hover-bg);color:var(--text-muted);" onclick="App.seedanceV2._inspLoginClick()" title="点击重新检测；未登录时点击可打开网页登录窗口">⏳ 检测登录中...</span>' +
             '<span style="font-size:10px;color:var(--text-muted);">（搜索约 10-30 秒，自动打开浏览器后台拉取）</span></div>' +
+            // v5.38.55: 搜索历史（自动保存，可折叠，全局一键清除）
+            '<div id="s2InspHistoryWrap" style="margin:4px 0 8px;border:1px solid var(--border-color);border-radius:10px;padding:6px 10px;">' +
+              '<div style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text-main);" onclick="var l=document.getElementById(\'s2InspHistoryList\');if(l)l.style.display=l.style.display===\'none\'?\'block\':\'none\';">' +
+                '<span>🕘 搜索历史 <span id="s2InspHistoryCount" style="font-size:10px;color:var(--text-muted);"></span></span>' +
+                '<span style="margin-left:auto;display:flex;gap:4px;">' +
+                  '<button class="btn btn-xs btn-outline" style="font-size:10px;color:#ef4444;border-color:#ef4444;" onclick="event.stopPropagation();App.seedanceV2._inspClearHistory()">🗑 清空历史</button>' +
+                '</span>' +
+              '</div>' +
+              '<div id="s2InspHistoryList" style="display:none;margin-top:6px;max-height:200px;overflow-y:auto;"></div>' +
+            '</div>' +
             '<div id="s2InspResult" style="margin-bottom:8px;"></div>' +
             '<div id="s2InspProgress" style="display:none;margin-bottom:8px;"></div>' +
             '<div style="display:flex;gap:6px;margin:8px 0;align-items:center;">' +
@@ -973,6 +983,7 @@
             this._inspLoadImported();
             this._inspLoginCheck();   // v5.38.46: 切 tab 实时检测登录状态
             this._inspModeRefresh();  // v5.38.48: 切 tab 显示当前浏览器模式
+            this._inspLoadHistory();  // v5.38.55: 切 tab 加载搜索历史
         } else {
             if (web) web.style.display = 'none';
             if (insp) insp.style.display = 'none';
@@ -1135,9 +1146,60 @@
             });
             h += '</div>';
             box.innerHTML = h;
+            // v5.38.55: 搜索成功后自动保存历史（结果非空才存）
+            if (items.length) {
+                var self2 = this;
+                App.fetchJSON('/api/dreamina/inspiration/history', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keyword: kw, media_type: ty, count: ct, items: items })
+                }).then(function() { self2._inspLoadHistory(); }).catch(function() {});
+            }
         } catch (e) {
             box.innerHTML = '<div style="padding:16px;color:#ef4444;">搜索失败：' + App._escape(String(e && e.detail || e)) + '</div>';
         }
+    };
+
+    // ============ v5.38.55: 搜索历史（自动保存/查看/点击复用/清空） ============
+
+    App.seedanceV2._inspLoadHistory = function() {
+        var box = document.getElementById('s2InspHistoryList');
+        var cnt = document.getElementById('s2InspHistoryCount');
+        App.fetchJSON('/api/dreamina/inspiration/history?limit=50').then(function(d) {
+            var items = (d && d.items) || [];
+            if (cnt) cnt.textContent = items.length ? '(' + items.length + ')' : '';
+            if (!box) return;
+            if (!items.length) { box.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:4px;">暂无搜索历史</div>'; return; }
+            var h = '';
+            items.forEach(function(it) {
+                h += '<div data-kw="' + App._escape(it.keyword || '') + '" data-ty="' + App._escape(it.media_type || '') + '" style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:11px;" onmouseover="this.style.background=var(--hover-bg)" onmouseout="this.style.background=\'\'" onclick="App.seedanceV2._inspUseHistory(this)" title="点击重新搜索该关键词">' +
+                    '<span>🔍</span>' +
+                    '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-main);">' + App._escape(it.keyword || '(空关键词)') + '</span>' +
+                    '<span style="font-size:10px;color:var(--text-muted);">' + (it.media_type === 'video' ? '🎬' : (it.media_type === 'image' ? '🖼' : '全部')) + '</span>' +
+                    '<span style="font-size:10px;color:var(--text-muted);">' + it.result_count + ' 条</span>' +
+                    '<span style="font-size:10px;color:var(--text-muted);">' + App._escape(it.created_at || '') + '</span>' +
+                '</div>';
+            });
+            box.innerHTML = h;
+        }).catch(function() {});
+    };
+
+    App.seedanceV2._inspUseHistory = function(el) {
+        var kw = el ? el.getAttribute('data-kw') || '' : '';
+        var ty = el ? el.getAttribute('data-ty') || '' : '';
+        var input = document.getElementById('s2InspKeyword');
+        if (input) input.value = kw;
+        var sel = document.getElementById('s2InspType');
+        if (sel) sel.value = ty || '';
+        this._inspSearch();
+    };
+
+    App.seedanceV2._inspClearHistory = function() {
+        var self = this;
+        if (!confirm('确定清空全部搜索历史？（仅清除历史记录，不影响已导入资产）')) return;
+        App.fetchJSON('/api/dreamina/inspiration/history', { method: 'DELETE' }).then(function(d) {
+            if (d && d.ok) { App.showToast('已清空搜索历史', 'info'); self._inspLoadHistory(); }
+            else { App.showToast('清空失败', 'error'); }
+        }).catch(function(e) { App.showToast('清空异常: ' + e.message, 'error'); });
     };
 
     App.seedanceV2._inspImport = async function() {

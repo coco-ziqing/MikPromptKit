@@ -462,6 +462,75 @@ def _make_thumbnail(src: str, thumb_dir: str, asset_id: int):
 
 # ==================== API ====================
 
+# ==================== 搜索历史（v5.38.55） ====================
+
+def _ensure_history_table():
+    c = _db()
+    try:
+        c.execute("""CREATE TABLE IF NOT EXISTS inspiration_search_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            keyword TEXT DEFAULT '',
+            media_type TEXT DEFAULT 'image',
+            count INTEGER DEFAULT 20,
+            result_count INTEGER DEFAULT 0,
+            items_json TEXT DEFAULT '[]',
+            created_at TEXT
+        )""")
+        c.commit()
+    finally:
+        c.close()
+
+
+@router.get("/history")
+def inspiration_history(limit: int = Query(50, ge=1, le=200)):
+    """搜索历史列表（新→旧）"""
+    _ensure_history_table()
+    c = _db()
+    try:
+        rows = c.execute(
+            "SELECT id, keyword, media_type, count, result_count, created_at FROM inspiration_search_history "
+            "ORDER BY id DESC LIMIT ?", [limit]).fetchall()
+        return {"ok": True, "items": [dict(r) for r in rows], "total": len(rows)}
+    finally:
+        c.close()
+
+
+@router.post("/history")
+def inspiration_history_save(data: dict = Body(...)):
+    """保存一次搜索结果历史（上限 200 条，超出删最旧）"""
+    _ensure_history_table()
+    keyword = (data.get("keyword") or "").strip()
+    media_type = (data.get("media_type") or "image").strip()
+    count = int(data.get("count") or 20)
+    items = data.get("items") or []
+    c = _db()
+    try:
+        c.execute(
+            "INSERT INTO inspiration_search_history (keyword, media_type, count, result_count, items_json, created_at) "
+            "VALUES (?,?,?,?,?,datetime('now','localtime'))",
+            [keyword, media_type, count, len(items), json.dumps(items, ensure_ascii=False)[:200000]])
+        # 上限 200：删最旧
+        c.execute("DELETE FROM inspiration_search_history WHERE id NOT IN "
+                  "(SELECT id FROM inspiration_search_history ORDER BY id DESC LIMIT 200)")
+        c.commit()
+        return {"ok": True}
+    finally:
+        c.close()
+
+
+@router.delete("/history")
+def inspiration_history_clear():
+    """清空全部搜索历史"""
+    _ensure_history_table()
+    c = _db()
+    try:
+        c.execute("DELETE FROM inspiration_search_history")
+        c.commit()
+        return {"ok": True}
+    finally:
+        c.close()
+
+
 # ==================== 登录状态（v5.38.46） ====================
 
 def _profile_has_session() -> bool:
