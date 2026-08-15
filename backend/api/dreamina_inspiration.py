@@ -7,6 +7,7 @@ v5.38.32
 import io
 import json
 import os
+import random
 import re
 import threading
 import time
@@ -135,6 +136,43 @@ def _gcd(a, b):
     return a or 1
 
 
+# ==================== 反监测：随机模仿真人行为（v5.38.53，参考光厂投稿） ====================
+
+def _rand(min_v: float, max_v: float) -> float:
+    """随机延迟区间（真人模拟节奏）"""
+    return random.uniform(min_v, max_v)
+
+
+def _human_pause(min_v: float = 0.4, max_v: float = 1.6):
+    """随机停顿（模拟思考/操作间隙）"""
+    time.sleep(_rand(min_v, max_v))
+
+
+def _human_scroll(page):
+    """随机滚动页面（模拟浏览行为：多次小步 + 回滚）"""
+    try:
+        h = page.evaluate("() => document.body.scrollHeight || 0")
+        if h > 600:
+            for _ in range(random.randint(1, 3)):
+                page.mouse.wheel(0, random.randint(150, 500))
+                time.sleep(_rand(0.3, 0.9))
+            page.mouse.wheel(0, -random.randint(100, 400))
+            time.sleep(_rand(0.3, 0.8))
+    except Exception:
+        pass
+
+
+def _human_mouse(page):
+    """随机鼠标移动（模拟光标轨迹）"""
+    try:
+        for _ in range(random.randint(2, 4)):
+            page.mouse.move(random.randint(200, 1200), random.randint(150, 700),
+                            steps=random.randint(8, 20))
+            time.sleep(_rand(0.1, 0.4))
+    except Exception:
+        pass
+
+
 # ==================== 浏览器模式（v5.38.48：有头/无头切换） ====================
 
 def _load_capture_profile() -> dict:
@@ -254,7 +292,8 @@ def _browser():
         _kill_profile_chrome_if_idle()
     ctx = pw.chromium.launch_persistent_context(
         PROFILE_DIR, channel="chrome", headless=_insp_headless_mode(),
-        viewport={"width": 1440, "height": 900}, locale="zh-CN")
+        viewport={"width": 1440, "height": 900}, locale="zh-CN",
+        args=["--disable-blink-features=AutomationControlled"])  # v5.38.53: 减少自动化特征
     if not _insp_headless_mode():
         # v5.38.50: 窗口置前（Chrome 启动不抢焦点，可能被遮挡）
         import threading as _th
@@ -321,29 +360,39 @@ def _fetch_items(keyword: str, media_type: str, count: int) -> list:
         else:
             url = DISCOVER_URL
         page.goto(url, wait_until="domcontentloaded", timeout=45000)
-        time.sleep(5)
+        # v5.38.53: 随机停顿 + 鼠标移动（模拟真人打开页面后的浏览行为）
+        _human_pause(3.0, 6.0)
+        _human_mouse(page)
         # 搜索
         if keyword:
             try:
                 box = page.query_selector("input.lv-input")
                 if box:
+                    _human_mouse(page)
                     box.click()
-                    time.sleep(0.5)
+                    _human_pause(0.5, 1.4)
                     box.fill(keyword)
-                    time.sleep(0.5)
+                    _human_pause(0.4, 1.2)
                     page.keyboard.press("Enter")
                     # v5.38.52: 清空跳转前收集的发现页推荐流（与关键词无关），只留搜索页结果
                     collected.clear()
                     seen_ids.clear()
-                    time.sleep(5)
+                    _human_pause(3.0, 6.0)  # 等搜索结果页加载
             except Exception:
                 pass
-        # 滚动加载（collected 已去重，len 即唯一数）
+        # 滚动加载（v5.38.53: 随机步长/随机停顿/偶尔回滚/偶尔移动鼠标，防机械化特征）
         idle = 0
         while len(collected) < count:
             before = len(collected)
-            page.mouse.wheel(0, 1600)
-            time.sleep(2)
+            page.mouse.wheel(0, random.randint(400, 1800))
+            _human_pause(1.2, 3.5)
+            # 偶尔小回滚（模拟回头浏览）
+            if random.random() < 0.25:
+                page.mouse.wheel(0, -random.randint(150, 500))
+                _human_pause(0.8, 2.0)
+            # 偶尔移动鼠标（模拟查看内容）
+            if random.random() < 0.3:
+                _human_mouse(page)
             if len(collected) == before:
                 idle += 1
                 if idle >= 6:
