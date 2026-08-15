@@ -196,20 +196,43 @@ def inspiration_settings_put(data: dict = Body(...)):
     return {"ok": True, "headless": _insp_headless_mode()}
 
 
+def _kill_profile_chrome_if_idle() -> bool:
+    """关闭占用 dreamina_web_profile 的 Chrome 实例（有头搜索前释放 profile，保证新开可见窗口）
+    网页历史采集运行中则不杀（采集优先，复用实例）；返回是否已清理"""
+    try:
+        from api.dreamina_web import _pull_state
+        if _pull_state.get("running"):
+            return False
+    except Exception:
+        pass
+    import subprocess
+    try:
+        ps = ("Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" "
+              "| Where-Object { $_.CommandLine -like '*dreamina_web_profile*' } "
+              "| ForEach-Object { $_.ProcessId }")
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                             capture_output=True, text=True, timeout=30)
+        pids = [p.strip() for p in out.stdout.split() if p.strip().isdigit()]
+        for pid in pids:
+            try:
+                subprocess.run(["taskkill", "/PID", pid, "/F"], capture_output=True, timeout=15)
+            except Exception:
+                pass
+        if pids:
+            time.sleep(1.5)
+        return True
+    except Exception:
+        return False
+
+
 def _browser():
-    """启动浏览器：无头=独立 headless 实例；有头=优先复用可见 Chrome 调试实例（网页历史窗口），
-    无实例则新开可见窗口。同 profile 不能双开 Chrome（Windows SingletonLock）"""
+    """启动浏览器：无头=独立 headless 实例；有头=关闭旧实例后新开可见 Chrome 窗口
+    （用户可见搜索过程；同 profile 不能双开，必须先释放）"""
     from playwright.sync_api import sync_playwright
     pw = sync_playwright().start()
     if not _insp_headless_mode():
-        try:
-            port = _read_devtools_port()
-            if _devtools_alive(port):
-                ctx = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
-                print("[Inspiration] 复用可见 Chrome 实例（有头模式）")
-                return pw, ctx, True
-        except Exception:
-            pass
+        # v5.38.49: 有头模式必开可见窗口（搜索前关闭旧实例，避免复用旧窗口用户无感知）
+        _kill_profile_chrome_if_idle()
     ctx = pw.chromium.launch_persistent_context(
         PROFILE_DIR, channel="chrome", headless=_insp_headless_mode(),
         viewport={"width": 1440, "height": 900}, locale="zh-CN")
