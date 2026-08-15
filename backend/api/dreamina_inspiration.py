@@ -225,6 +225,25 @@ def _kill_profile_chrome_if_idle() -> bool:
         return False
 
 
+def _focus_profile_chrome():
+    """有头搜索时把 Chrome 窗口带到前台（启动 3s 后激活，用户可见搜索过程）"""
+    time.sleep(3)
+    import subprocess
+    try:
+        script = (
+            "Get-Process chrome -ErrorAction SilentlyContinue | "
+            "Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object { "
+            "  $id = $_.Id; "
+            "  $cl = (Get-CimInstance Win32_Process -Filter \"ProcessId=$id\").CommandLine; "
+            "  if ($cl -like '*dreamina_web_profile*') { $_.Activate(); break } "
+            "}"
+        )
+        subprocess.run(["powershell", "-NoProfile", "-Command", script],
+                       capture_output=True, timeout=15)
+    except Exception:
+        pass
+
+
 def _browser():
     """启动浏览器：无头=独立 headless 实例；有头=关闭旧实例后新开可见 Chrome 窗口
     （用户可见搜索过程；同 profile 不能双开，必须先释放）"""
@@ -236,6 +255,10 @@ def _browser():
     ctx = pw.chromium.launch_persistent_context(
         PROFILE_DIR, channel="chrome", headless=_insp_headless_mode(),
         viewport={"width": 1440, "height": 900}, locale="zh-CN")
+    if not _insp_headless_mode():
+        # v5.38.50: 窗口置前（Chrome 启动不抢焦点，可能被遮挡）
+        import threading as _th
+        _th.Thread(target=_focus_profile_chrome, daemon=True).start()
     return pw, ctx, False
 
 

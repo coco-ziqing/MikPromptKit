@@ -1084,7 +1084,7 @@
         var ct = parseInt((document.getElementById('s2InspCount') || {}).value || '20', 10);
         var box = document.getElementById('s2InspResult');
         if (!box) return;
-        box.innerHTML = '<div style="text-align:center;padding:20px;color:#f59e0b;">⏳ 正在搜索即梦灵感（' + (this._inspHeadless ? '后台' : '将打开 Chrome 窗口自动搜索') + '，约 10-30 秒）...</div>';
+        box.innerHTML = '<div style="text-align:center;padding:20px;color:#f59e0b;">⏳ 正在搜索即梦灵感（' + (this._inspHeadless ? '后台' : '将打开 Chrome 窗口自动搜索，若未看到请查看任务栏 Chrome 图标') + '，约 10-30 秒）...</div>';
         this._inspItems = [];
         try {
             var d = await App.fetchJSON('/api/dreamina/inspiration/preview', {
