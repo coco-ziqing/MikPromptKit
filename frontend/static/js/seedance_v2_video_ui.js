@@ -1229,28 +1229,85 @@
             if (cnt) cnt.textContent = items.length ? '(' + items.length + ')' : '';
             if (!box) return;
             if (!items.length) { box.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:4px;">暂无搜索历史</div>'; return; }
+            // v5.38.57: 每条可折叠展开，展开显示该次搜索结果快照
             var h = '';
             items.forEach(function(it) {
-                h += '<div data-kw="' + App._escape(it.keyword || '') + '" data-ty="' + App._escape(it.media_type || '') + '" style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:11px;" onmouseover="this.style.background=var(--hover-bg)" onmouseout="this.style.background=\'\'" onclick="App.seedanceV2._inspUseHistory(this)" title="点击重新搜索该关键词">' +
-                    '<span>🔍</span>' +
+                h += '<div style="border:1px solid var(--border-color);border-radius:8px;margin-bottom:4px;overflow:hidden;">' +
+                    '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;cursor:pointer;font-size:11px;background:var(--bg-card);" onclick="App.seedanceV2._inspToggleHistory(' + it.id + ')" title="点击展开/折叠查看该次搜索结果">' +
+                    '<span id="s2HisArrow' + it.id + '" style="font-size:9px;color:var(--text-muted);width:12px;flex-shrink:0;">▶</span>' +
                     '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-main);">' + App._escape(it.keyword || '(空关键词)') + '</span>' +
-                    '<span style="font-size:10px;color:var(--text-muted);">' + (it.media_type === 'video' ? '🎬' : (it.media_type === 'image' ? '🖼' : '全部')) + '</span>' +
-                    '<span style="font-size:10px;color:var(--text-muted);">' + it.result_count + ' 条</span>' +
-                    '<span style="font-size:10px;color:var(--text-muted);">' + App._escape(it.created_at || '') + '</span>' +
-                '</div>';
+                    '<span style="font-size:10px;color:var(--text-muted);flex-shrink:0;">' + (it.media_type === 'video' ? '🎬' : (it.media_type === 'image' ? '🖼' : '全部')) + '</span>' +
+                    '<span style="font-size:10px;color:var(--text-muted);flex-shrink:0;">' + it.result_count + ' 条</span>' +
+                    '<span style="font-size:10px;color:var(--text-muted);flex-shrink:0;">' + App._escape(it.created_at || '') + '</span>' +
+                    '</div>' +
+                    '<div id="s2HisBody' + it.id + '" style="display:none;padding:8px;background:var(--bg-main);"></div>' +
+                    '</div>';
             });
             box.innerHTML = h;
         }).catch(function() {});
     };
 
-    App.seedanceV2._inspUseHistory = function(el) {
-        var kw = el ? el.getAttribute('data-kw') || '' : '';
-        var ty = el ? el.getAttribute('data-ty') || '' : '';
-        var input = document.getElementById('s2InspKeyword');
-        if (input) input.value = kw;
-        var sel = document.getElementById('s2InspType');
-        if (sel) sel.value = ty || '';
-        this._inspSearch();
+    // v5.38.57: 折叠/展开历史条目（展开时懒加载结果快照）
+    App.seedanceV2._inspToggleHistory = function(id) {
+        var body = document.getElementById('s2HisBody' + id);
+        var arrow = document.getElementById('s2HisArrow' + id);
+        if (!body) return;
+        if (body.style.display !== 'none') {
+            body.style.display = 'none';
+            if (arrow) arrow.textContent = '▶';
+            return;
+        }
+        body.style.display = 'block';
+        if (arrow) arrow.textContent = '▼';
+        if (body.dataset.loaded) return;
+        body.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:6px;">加载该次搜索结果...</div>';
+        App.fetchJSON('/api/dreamina/inspiration/history/' + id).then(function(d) {
+            if (!d || !d.ok || !d.item) { body.innerHTML = '<div style="font-size:11px;color:#ef4444;padding:6px;">加载失败</div>'; return; }
+            var items = d.item.items || [];
+            if (!items.length) { body.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:6px;">该次搜索无结果记录</div>'; return; }
+            body.dataset.loaded = '1';
+            var h = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">' +
+                '<span style="font-size:10px;color:var(--text-muted);">结果 ' + items.length + ' 条 · 勾选后可「导入选中」归档</span>' +
+                '<button class="btn btn-xs btn-outline" style="font-size:10px;margin-left:auto;color:#f59e0b;border-color:#f59e0b;" onclick="App.seedanceV2._inspHistoryImport(' + id + ')">📥 导入选中</button>' +
+                '</div>' +
+                '<div style="display:flex;flex-wrap:wrap;gap:6px;max-height:300px;overflow-y:auto;">';
+            items.forEach(function(it, i) {
+                var img = it.image_url || it.cover_url || '';
+                var tag = it.media_type === 'video' ? '🎬' : '🖼';
+                h += '<div style="width:130px;border:1px solid var(--border-color);border-radius:8px;overflow:hidden;background:var(--bg-card);position:relative;">' +
+                    '<input type="checkbox" class="s2-his-check" data-i="' + i + '" style="position:absolute;top:4px;left:4px;width:13px;height:13px;z-index:2;" checked>' +
+                    (img ? '<img src="' + App._escape(img) + '" style="width:100%;height:80px;object-fit:cover;display:block;">' : '<div style="height:80px;background:var(--hover-bg);display:flex;align-items:center;justify-content:center;">' + tag + '</div>') +
+                    '<div style="padding:4px 6px;font-size:9px;color:var(--text-muted);line-height:1.4;height:38px;overflow:hidden;">' + App._escape((it.prompt || '').slice(0, 40)) + '</div>' +
+                    '</div>';
+            });
+            h += '</div>';
+            body.innerHTML = h;
+        }).catch(function() { body.innerHTML = '<div style="font-size:11px;color:#ef4444;padding:6px;">加载失败</div>'; });
+    };
+
+    // v5.38.57: 历史展开区「导入选中」（勾选 → 下载归档）
+    App.seedanceV2._inspHistoryImport = function(id) {
+        var self = this;
+        App.fetchJSON('/api/dreamina/inspiration/history/' + id).then(function(d) {
+            var all = (d && d.item && d.item.items) || [];
+            if (!all.length) { App.showToast('该条历史无结果', 'warning'); return; }
+            var sel = [];
+            document.querySelectorAll('#s2HisBody' + id + ' .s2-his-check:checked').forEach(function(cb) {
+                sel.push(all[parseInt(cb.getAttribute('data-i'), 10)]);
+            });
+            if (!sel.length) { App.showToast('请勾选至少一条', 'warning'); return; }
+            var box = document.getElementById('s2InspProgress');
+            if (box) { box.style.display = 'block'; box.innerHTML = '<div style="padding:10px;color:#f59e0b;">⏳ 正在下载 ' + sel.length + ' 条并归档...</div>'; }
+            App.fetchJSON('/api/dreamina/inspiration/import', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: sel, keyword: '' }),
+                _timeoutMs: 180000
+            }).then(function(r) {
+                if (!r || !r.ok) { if (box) box.innerHTML = '<div style="padding:10px;color:#ef4444;">导入失败</div>'; return; }
+                if (box) box.innerHTML = '<div style="padding:10px;color:#10b981;">✅ 导入 ' + r.imported + ' 条' + (r.skipped ? '（跳过重复 ' + r.skipped + '）' : '') + (r.failed ? '（失败 ' + r.failed + '）' : '') + '</div>';
+                self._inspLoadImported();
+            }).catch(function() { if (box) box.innerHTML = '<div style="padding:10px;color:#ef4444;">导入异常</div>'; });
+        }).catch(function() { App.showToast('加载历史失败', 'error'); });
     };
 
     App.seedanceV2._inspClearHistory = function() {

@@ -483,7 +483,7 @@ def _ensure_history_table():
 
 @router.get("/history")
 def inspiration_history(limit: int = Query(50, ge=1, le=200)):
-    """搜索历史列表（新→旧）"""
+    """搜索历史列表（新→旧，仅元数据；结果项按需 GET /history/{id} 懒加载）"""
     _ensure_history_table()
     c = _db()
     try:
@@ -491,6 +491,27 @@ def inspiration_history(limit: int = Query(50, ge=1, le=200)):
             "SELECT id, keyword, media_type, count, result_count, created_at FROM inspiration_search_history "
             "ORDER BY id DESC LIMIT ?", [limit]).fetchall()
         return {"ok": True, "items": [dict(r) for r in rows], "total": len(rows)}
+    finally:
+        c.close()
+
+
+@router.get("/history/{hid}")
+def inspiration_history_detail(hid: int):
+    """单条搜索历史的完整结果（折叠展开时懒加载，v5.38.57）"""
+    _ensure_history_table()
+    c = _db()
+    try:
+        r = c.execute(
+            "SELECT * FROM inspiration_search_history WHERE id=?", [hid]).fetchone()
+        if not r:
+            raise HTTPException(404, "历史记录不存在")
+        d = dict(r)
+        try:
+            d["items"] = json.loads(d.get("items_json") or "[]")
+        except Exception:
+            d["items"] = []
+        d.pop("items_json", None)
+        return {"ok": True, "item": d}
     finally:
         c.close()
 
