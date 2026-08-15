@@ -1255,11 +1255,25 @@ with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as zf:
 ### 当前回归基线
 audit 18 + presence 11 + composer 18 + asset_library 20 + asset_review 21 + DAM 17 = 105/105
 
-## Promoted From Short-Term Memory (2026-08-07)
+## Promoted From Short-Term Memory (2026-08-15)
 
-<!-- openclaw-memory-promotion:memory:memory/2026-07-30-dev-report.md:35:36 -->
-- 卡片级别（⬇ 下载按钮）: 词卡收藏页 + 词卡编辑页，收藏按钮旁新增绿色 `⬇` 下载按钮; 有预览的直接下载原图/视频，无预览的不显示 [score=0.831 recalls=0 avg=0.620 source=memory/2026-07-30-dev-report.md:35-36]
-<!-- openclaw-memory-promotion:memory:memory/2026-07-30-dev-report.md:77:77 -->
-- 六、经验教训: **内联 onclick 中的引号转义**：在 JS 模板字符串中嵌入带 `onclick` 的 HTML，需要用 `\\'` 转义单引号，多层嵌套极易出错。 [score=0.831 recalls=0 avg=0.620 source=memory/2026-07-30-dev-report.md:77-77]
-<!-- openclaw-memory-promotion:memory:memory/2026-07-31-dev-report.md:74:76 -->
-- 经验教训: **树刷新必须保留状态**：`loadGroupTree()` 获取新数据后，旧树的 `_expanded`、`_selected` 等交互状态不能丢弃。解决方案：刷新前 `_saveExpand` 存 map→刷新后 `_restoreExpand` 恢复。; **弹出面板定位应坐标驱动**：通过 `getBoundingClientRect()` 获取位置时，如果源元素即将被 remove，必须先保存坐标再调用面板。重构为 `_gmShowIconPicker(x, y, id)` 坐标驱动模式。; **mouseleave 优于 click-outside**：emoji 选择器等 hover 类 UI，mouseleave 300ms 延迟关闭体验优于仅 click-outside 关闭。 [score=0.831 recalls=0 avg=0.620 source=memory/2026-07-31-dev-report.md:74-76]
+<!-- openclaw-memory-promotion:memory:memory/2026-08-07-dev-report.md:55:57 -->
+- 遗留事项: app_media.js 72.8KB / word_editor.js 66.7KB 可继续拆（app_core 66.3KB 不建议拆）; eslint 103 warnings（no-redeclare，Phase 后续）; .env.mail 已更新新授权码（本地，不进 git） [score=0.828 recalls=0 avg=0.620 source=memory/2026-08-07-dev-report.md:55-57]
+<!-- openclaw-memory-promotion:memory:memory/2026-08-07-structure-refactor.md:6:7 -->
+- 扫描结论（v5.32.0 / 428 commits）: 规模：561 git 跟踪文件；后端 38.6K 行 Python（74 根目录模块 + 49 api）+ 前端 31.3K 行 JS（60 文件 + 4 HTML）; 发现 5 大问题域：安全风险、backend 脚本混杂、git 杂物、巨型文件、前端无模块化 [score=0.828 recalls=0 avg=0.620 source=memory/2026-08-07-structure-refactor.md:6-7]
+<!-- openclaw-memory-promotion:memory:memory/2026-08-07-structure-refactor.md:10:13 -->
+- Phase 0 — 安全止血（commit 17dc127）: **`.env.mail` 含 QQ 邮箱 SMTP 授权码被入库（public 仓库！）** → 移出 git + gitignore 加固; `backend/data/prompts.db`、`data/prompts.db.phase14_backup` 数据库入库 → 移出; 12 个运行日志（server_out.log 2.2MB 等）、59 个 `_*.py` 临时诊断脚本 → 移出跟踪（本地保留）; .gitignore 补充安全规则（.env.mail / backend/data/ / *.log / _*.py / Downloads/） [score=0.828 recalls=0 avg=0.620 source=memory/2026-08-07-structure-refactor.md:10-13]
+<!-- openclaw-memory-promotion:memory:memory/2026-08-07-structure-refactor.md:16:19 -->
+- Phase 1 — 结构归档（commit 945b018）: **backend/ 根目录 74 → 31 个活跃文件**：; 22 个历史迁移脚本 → `backend/scripts/migrations/`（migrate_atom_tables/db_migrate_phase18 被 main.py 引用，保留原地）; 6 个种子脚本 → `backend/scripts/seeds/`（seed_data/seedance_v2_seed/seed_migrate 保留）; 4 个诊断 + 3 个工具脚本 → `backend/scripts/diag|tools/` [score=0.828 recalls=0 avg=0.620 source=memory/2026-08-07-structure-refactor.md:16-19]
+<!-- openclaw-memory-promotion:memory:memory/2026-08-07-structure-refactor.md:20:21 -->
+- Phase 1 — 结构归档（commit 945b018）: **docs/ 归档**：9 个 PLAN → docs/plans/；7 份历史报告 → docs/reports/；2 份需求文档 → docs/requirements/；前端死代码 v4_editor.js/trim_func.txt → docs/frontend-legacy/（避免被打包）; 本地清理：dist/ 打包产物、Downloads/、运行日志、fonts 空目录 [score=0.828 recalls=0 avg=0.620 source=memory/2026-08-07-structure-refactor.md:20-21]
+<!-- openclaw-memory-promotion:memory:memory/2026-08-07-structure-refactor.md:24:26 -->
+- 历史清理（filter-repo 2.47.0，force push）: 559 commits 重写：清除 `.env.mail`、`backend/data/prompts.db`、`data/prompts.db`、`-shm`、`-wal`、`data/prompts.db.phase14_backup` 全部历史痕迹; master/dev/main 三分支 + 166 tags 全部强制更新; `.env.mail.example` 纯模板（无凭据）保留；skills/ 测试样例 .env 保留 [score=0.828 recalls=0 avg=0.620 source=memory/2026-08-07-structure-refactor.md:24-26]
+<!-- openclaw-memory-promotion:memory:memory/2026-08-07-structure-refactor.md:38:40 -->
+- 遗留事项（待二喵决策）: 🔴 **立即轮换 QQ 邮箱 SMTP 授权码**（曾暴露于 public 仓库，即使历史已清）; 🟠 历史中有 86MB model.safetensors（data/models/ 曾提交过）→ 可选 filter-repo 清理减小 clone 体积; Phase 2/3（lint 工具链、main.py 拆分、logger 合并、pytest+CI、巨型文件拆分）未开始，待排期 [score=0.828 recalls=0 avg=0.620 source=memory/2026-08-07-structure-refactor.md:38-40]
+<!-- openclaw-memory-promotion:memory:memory/2026-08-07-structure-refactor.md:50:53 -->
+- 追加：Phase 2.1 工具链落地（commit 6da01d0）: pyproject.toml: ruff+black (line-length 100, py314)，backend/scripts 豁免; ruff 自动修复 793 处（尾空格/一行多语句/未使用import/排序/utf8声明）; F821 修复 6 处潜在 NameError（dam_archive _req_admin×4 / health _check_port / logs json / scene_composer sqlite3 / license_manager sys / optimizer except-as-e 闭包陷阱）; 剩余待 2.2: E722 bare-except×35、UP031 printf×44、UP045/UP006 类型标注×72、E741×7 等约 263 处 [score=0.828 recalls=0 avg=0.620 source=memory/2026-08-07-structure-refactor.md:50-53]
+<!-- openclaw-memory-promotion:memory:memory/2026-08-07-structure-refactor.md:54:54 -->
+- 追加：Phase 2.1 工具链落地（commit 6da01d0）: 教训：git add -A 第三次误收 skills/dreamina-cli（本地技能目录），已 soft reset 排除——考虑后续把该目录加入 .gitignore [score=0.828 recalls=0 avg=0.620 source=memory/2026-08-07-structure-refactor.md:54-54]
+<!-- openclaw-memory-promotion:memory:memory/2026-08-07-structure-refactor.md:57:60 -->
+- 追加：Phase 2.2 完成（4 commits）: 2.2a(25f1df0): E722 bare-except 40处→Exception、类型标注现代化105处、延迟import拆行; 2.2b(29ec7b8): main.py 拆分 → backend/router_registry.py（49 router导入+50 include收敛），main.py 1064→948行; 2.2c(0beecb1): logger 三合一（action_logger/breadcrumb_logger 并入 logger.py，旧模块转转发层）; 2.2d(40810bc): eslint flat config + app_tools/_openExportDir 重复键修复 + comfy _logs 重复键 [score=0.828 recalls=0 avg=0.620 source=memory/2026-08-07-structure-refactor.md:57-60]

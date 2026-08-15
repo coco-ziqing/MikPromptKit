@@ -58,12 +58,48 @@ def _now_str():
 
 
 def _parse_item(it: dict) -> dict:
-    """解析 get_explore item → 结构化灵感数据"""
+    """解析 get_explore item → 结构化灵感数据（v5.38.37: 支持视频）"""
     ca = it.get("common_attr") or {}
     ap = it.get("aigc_image_params") or {}
     tip = ap.get("text2image_params") or {}
-    tvp = ap.get("text2video_params")
-    media_type = "video" if tvp else ("image" if tip else "unknown")
+    vid = it.get("video") or {}
+    media_type = "video" if vid else ("image" if tip else "unknown")
+    if media_type == "video":
+        # 视频：无提示词（即梦视频灵感不公开 prompt），存视频直链 + 标题
+        prompt = (ca.get("title") or "").strip()
+        ref_prompt = ""
+        # v5.38.38: video_model 是流配置 JSON 串（非模型名），视频灵感不公开模型 → 置空
+        model = ""
+        ratio_txt = ""
+        ov = vid.get("origin_video") or {}
+        vid_url = ov.get("video_url") or ""
+        vw = ov.get("width", 0)
+        vh = ov.get("height", 0)
+        if vw and vh:
+            g = _gcd(vw, vh)
+            ratio_txt = f"{vw // g}:{vh // g}"
+        else:
+            # 兜底：common_attr.aspect_ratio 浮点（如 0.75 → 3:4）
+            ar = ca.get("aspect_ratio")
+            if isinstance(ar, (int, float)) and ar > 0:
+                from fractions import Fraction
+                f = Fraction(ar).limit_denominator(20)
+                ratio_txt = f"{f.numerator}:{f.denominator}"
+        return {
+            "web_asset_id": str(ca.get("id") or it.get("id") or ""),
+            "media_type": "video",
+            "prompt": prompt,
+            "reference_prompt": "",
+            "model_version": model,
+            "ratio": ratio_txt,
+            "image_url": vid_url,          # 视频直链
+            "cover_url": vid.get("cover_url") or ca.get("cover_url") or "",
+            "width": vw,
+            "height": vh,
+            "title": (ca.get("title") or "").strip(),
+            "duration": vid.get("duration") or 0,
+            "create_time": ca.get("create_time", 0),
+        }
     prompt = (tip.get("prompt") or "").strip()
     ref_prompt = (ap.get("reference_prompt") or "").strip()
     model = ((tip.get("model_config") or {}).get("model_req_key") or "").strip()
@@ -87,8 +123,15 @@ def _parse_item(it: dict) -> dict:
         "width": img_w,
         "height": img_h,
         "title": (ca.get("title") or "").strip(),
+        "duration": 0,
         "create_time": ca.get("create_time", 0),
     }
+
+
+def _gcd(a, b):
+    while b:
+        a, b = b, a % b
+    return a or 1
 
 
 def _browser():
@@ -102,9 +145,10 @@ def _browser():
 
 
 def _fetch_items(keyword: str, media_type: str, count: int) -> list:
-    """打开灵感页 → 搜索 → 拦截 get_explore → 滚动加载"""
+    """打开灵感页 → 搜索 → 拦截 get_explore → 滚动加载（按 web_asset_id 去重）"""
     pw = ctx = None
     collected = []
+    seen_ids = set()
     try:
         pw, ctx = _browser()
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
@@ -115,13 +159,24 @@ def _fetch_items(keyword: str, media_type: str, count: int) -> list:
                     j = r.json()
                     for it in (j.get("data") or {}).get("item_list") or []:
                         parsed = _parse_item(it)
+                        # v5.38.38: 类型过滤前置（count 按目标类型计）
+                        if media_type in ("image", "video") and parsed["media_type"] != media_type:
+                            continue
                         if parsed["prompt"] or parsed["image_url"]:
-                            collected.append(parsed)
+                            aid = parsed["web_asset_id"]
+                            if aid and aid not in seen_ids:
+                                seen_ids.add(aid)
+                                collected.append(parsed)
             except Exception:
                 pass
 
         page.on("response", on_resp)
-        page.goto(DISCOVER_URL, wait_until="domcontentloaded", timeout=45000)
+        # v5.38.37/38: 视频灵感在「短片」tab（路径必须是 /ai-tool/home，discover 路径不触发）
+        if media_type == "video":
+            url = "https://jimeng.jianying.com/ai-tool/home?activeTab=short_video"
+        else:
+            url = DISCOVER_URL
+        page.goto(url, wait_until="domcontentloaded", timeout=45000)
         time.sleep(5)
         # 搜索
         if keyword:
@@ -136,25 +191,18 @@ def _fetch_items(keyword: str, media_type: str, count: int) -> list:
                     time.sleep(5)
             except Exception:
                 pass
-        # 滚动加载
-        seen = set()
+        # 滚动加载（collected 已去重，len 即唯一数）
         idle = 0
         while len(collected) < count:
             before = len(collected)
             page.mouse.wheel(0, 1600)
             time.sleep(2)
-            new = [x for x in collected if x["web_asset_id"] not in seen]
-            for x in new:
-                seen.add(x["web_asset_id"])
             if len(collected) == before:
                 idle += 1
                 if idle >= 6:
                     break
             else:
                 idle = 0
-        # 类型过滤
-        if media_type in ("image", "video"):
-            collected = [x for x in collected if x["media_type"] == media_type]
         return collected[:count]
     finally:
         try:
@@ -236,22 +284,31 @@ def inspiration_import(data: dict = Body(...)):
             if exists:
                 skipped += 1
                 continue
-            fname = f"insp_{aid}.png"
+            is_video = it.get("media_type") == "video"
+            ext = ".mp4" if is_video else ".png"
+            fname = f"insp_{aid}{ext}"
             dest = os.path.join(INSP_DIR, fname)
             if not os.path.isfile(dest) or os.path.getsize(dest) < 500:
                 ok = _download(it.get("image_url") or "", dest)
                 if not ok:
                     failed += 1
                     continue
+            # 视频封面 → 缩略图（视频无大图，用封面）
+            thumb_src = dest
+            if is_video:
+                cover_dest = os.path.join(INSP_DIR, f"insp_{aid}_cover.jpg")
+                if not os.path.isfile(cover_dest):
+                    if _download(it.get("cover_url") or "", cover_dest):
+                        thumb_src = cover_dest
             cur = c.execute(
                 """INSERT INTO dreamina_assets
-                   (asset_type, prompt, model_version, ratio, width, height, file_paths, imported_at, source, web_asset_id, inspiration_keyword)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                   (asset_type, prompt, model_version, ratio, width, height, duration, file_paths, imported_at, source, web_asset_id, inspiration_keyword)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                 [it.get("media_type") or "image", it.get("prompt") or "", it.get("model_version") or "",
-                 it.get("ratio") or "", it.get("width") or 0, it.get("height") or 0,
+                 it.get("ratio") or "", it.get("width") or 0, it.get("height") or 0, it.get("duration") or 0,
                  json.dumps([fname]), _now_str(), "inspiration", aid, keyword])
             aid_row = cur.lastrowid
-            _make_thumbnail(dest, os.path.join(DATA_DIR, "thumbnails"), aid_row)
+            _make_thumbnail(thumb_src, os.path.join(DATA_DIR, "thumbnails"), aid_row)
             imported += 1
         c.commit()
     finally:
@@ -327,6 +384,9 @@ def inspiration_to_card(asset_id: int, data: dict = Body(default={})):
         r = c.execute("SELECT * FROM dreamina_assets WHERE id=? AND source='inspiration'", [asset_id]).fetchone()
         if not r:
             raise HTTPException(404, "记录不存在")
+        if r["asset_type"] == "video":
+            # v5.38.38: 视频灵感无公开提示词（仅标题），存词卡无内容可归档
+            raise HTTPException(400, "视频灵感无公开提示词，不支持存词卡")
         prompt = (r["prompt"] or "").strip()
         if not prompt:
             raise HTTPException(400, "该灵感无提示词，无法存词卡")
@@ -347,12 +407,16 @@ def inspiration_to_card(asset_id: int, data: dict = Body(default={})):
 
 @router.get("/file/{fname}")
 def inspiration_file(fname: str):
-    """服务灵感图片文件（防盗链安全：仅限 INSP_DIR 内）"""
+    """服务灵感媒体文件（防盗链安全：仅限 INSP_DIR 内；按扩展名分派 MIME）"""
     import re
-    if not re.match(r"^insp_[A-Za-z0-9_-]+\.(png|jpg|jpeg|webp)$", fname):
+    if not re.match(r"^insp_[A-Za-z0-9_-]+(_cover)?\.(png|jpg|jpeg|webp|mp4)$", fname):
         raise HTTPException(400, "非法文件名")
     p = os.path.join(INSP_DIR, fname)
     if not os.path.isfile(p):
         raise HTTPException(404, "文件不存在")
     from fastapi.responses import FileResponse
-    return FileResponse(p, media_type="image/png")
+    # v5.38.38: mp4 不能回 image/png，否则浏览器无法播放
+    ext = os.path.splitext(fname)[1].lower()
+    mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".webp": "image/webp", ".mp4": "video/mp4"}.get(ext, "application/octet-stream")
+    return FileResponse(p, media_type=mime)

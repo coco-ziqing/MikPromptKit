@@ -1007,11 +1007,15 @@
             var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">已导入 <b style="color:#10b981;">' + (d.total || tasks.length) + '</b> 条灵感</div>';
             h += '<div style="display:flex;flex-wrap:wrap;gap:8px;max-height:40vh;overflow-y:auto;padding:4px;">';
             tasks.forEach(function(t) {
+                var isVideo = t.asset_type === 'video';
+                var cardBtn = isVideo
+                    ? '<button class="btn btn-xs" style="font-size:9px;border-color:#94a3b8;color:#94a3b8;cursor:not-allowed;" disabled title="视频灵感无公开提示词，不支持存词卡">📇 存词卡</button>'
+                    : '<button class="btn btn-xs btn-outline" style="font-size:9px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.seedanceV2._inspToCard(' + t.id + ')">📇 存词卡</button>';
                 h += '<div style="width:168px;border:1px solid var(--border-color);border-radius:10px;overflow:hidden;background:#fff;">' +
                     '<img src="' + (t.thumb_url || '') + '" style="width:100%;height:110px;object-fit:cover;display:block;cursor:pointer;" onclick="App.openImageViewer(\'' + (t.file_url || '') + '\',' + t.id + ')">' +
                     '<div style="padding:6px 8px;font-size:10px;color:#475569;line-height:1.5;height:52px;overflow:hidden;">' + App.escHtml((t.prompt || '').slice(0, 60)) + '</div>' +
                     '<div style="padding:0 8px 6px;display:flex;gap:4px;flex-wrap:wrap;">' +
-                    '<button class="btn btn-xs btn-outline" style="font-size:9px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.seedanceV2._inspToCard(' + t.id + ')">📇 存词卡</button>' +
+                    cardBtn +
                     '<button class="btn btn-xs btn-outline" style="font-size:9px;border-color:#ef4444;color:#ef4444;" onclick="App.seedanceV2._inspDelete(' + t.id + ')">🗑</button></div></div>';
             });
             h += '</div>';
