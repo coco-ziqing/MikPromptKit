@@ -602,6 +602,7 @@ def inspiration_import(data: dict = Body(...)):
     imported = 0
     skipped = 0
     failed = 0
+    imported_asset_ids = []   # v5.38.56: 供「导入并存词卡」链路使用
     try:
         for it in items:
             aid = str(it.get("web_asset_id") or "")
@@ -638,10 +639,12 @@ def inspiration_import(data: dict = Body(...)):
             aid_row = cur.lastrowid
             _make_thumbnail(thumb_src, os.path.join(DATA_DIR, "thumbnails"), aid_row)
             imported += 1
+            imported_asset_ids.append(aid_row)
         c.commit()
     finally:
         c.close()
-    return {"ok": True, "imported": imported, "skipped": skipped, "failed": failed}
+    return {"ok": True, "imported": imported, "skipped": skipped, "failed": failed,
+            "imported_asset_ids": imported_asset_ids}
 
 
 @router.get("")

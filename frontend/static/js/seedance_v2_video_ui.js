@@ -904,8 +904,10 @@
             '</div>' +
             '<div id="s2InspResult" style="margin-bottom:8px;"></div>' +
             '<div id="s2InspProgress" style="display:none;margin-bottom:8px;"></div>' +
-            '<div style="display:flex;gap:6px;margin:8px 0;align-items:center;">' +
+            '<div style="display:flex;gap:6px;margin:8px 0;align-items:center;flex-wrap:wrap;">' +
             '<button class="btn btn-sm" style="background:#f59e0b;border-color:#f59e0b;color:#fff;" onclick="App.seedanceV2._inspImport()">📥 导入选中</button>' +
+            // v5.38.56: 导入并存词卡（一步归档 + 选分组）
+            '<button class="btn btn-sm" style="background:#8b5cf6;border-color:#8b5cf6;color:#fff;" onclick="App.seedanceV2._inspImportAndToCard()" title="下载归档选中的灵感 → 弹分组选择器批量存词卡">📦 导入并存词卡</button>' +
             '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._inspLoadImported()">🗂 已导入灵感</button></div>' +
             '<div id="s2InspList"><div style="text-align:center;padding:20px;color:var(--text-muted);">搜索灵感后勾选导入；或查看已导入</div></div>' +
             '</div>' +
@@ -1131,7 +1133,13 @@
                 box.innerHTML = tip;
                 return;
             }
-            var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">搜索到 <b style="color:#f59e0b;">' + items.length + '</b> 条灵感，勾选后点「导入选中」</div>';
+            var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+                '搜索到 <b style="color:#f59e0b;">' + items.length + '</b> 条灵感，勾选后点「导入选中」或「导入并存词卡」' +
+                // v5.38.56: 全选/取消切换 + 反向选择
+                '<span style="margin-left:auto;display:flex;gap:4px;">' +
+                '<button id="s2InspSelectAllBtn" class="btn btn-xs btn-outline" style="font-size:10px;" onclick="App.seedanceV2._inspSelectAll(this)">✅ 全选</button>' +
+                '<button class="btn btn-xs btn-outline" style="font-size:10px;" onclick="App.seedanceV2._inspSelectInvert()">↔️ 反向选择</button>' +
+                '</span></div>';
             h += '<div style="display:flex;flex-wrap:wrap;gap:8px;max-height:46vh;overflow-y:auto;padding:4px;">';
             items.forEach(function(it, i) {
                 var img = it.image_url || it.cover_url || '';
@@ -1157,6 +1165,58 @@
         } catch (e) {
             box.innerHTML = '<div style="padding:16px;color:#ef4444;">搜索失败：' + App._escape(String(e && e.detail || e)) + '</div>';
         }
+    };
+
+    // ============ v5.38.56: 搜索结果选择控制（全选/取消切换 + 反向选择 + 导入并存词卡） ============
+
+    App.seedanceV2._inspSelectAll = function(btn) {
+        var cbs = document.querySelectorAll('#s2InspResult input[type=checkbox]');
+        if (!cbs.length) return;
+        var allChecked = Array.prototype.every.call(cbs, function(cb) { return cb.checked; });
+        var next = !allChecked;
+        cbs.forEach(function(cb) { cb.checked = next; });
+        if (btn) btn.textContent = next ? '☑️ 取消全选' : '✅ 全选';
+    };
+
+    App.seedanceV2._inspSelectInvert = function() {
+        var cbs = document.querySelectorAll('#s2InspResult input[type=checkbox]');
+        if (!cbs.length) return;
+        cbs.forEach(function(cb) { cb.checked = !cb.checked; });
+        // 同步全选按钮状态
+        var allChecked = Array.prototype.every.call(cbs, function(cb) { return cb.checked; });
+        var b = document.getElementById('s2InspSelectAllBtn');
+        if (b) b.textContent = allChecked ? '☑️ 取消全选' : '✅ 全选';
+    };
+
+    // 导入选中并批量存词卡（归档 → 弹分组选择器）
+    App.seedanceV2._inspImportAndToCard = function() {
+        var items = this._inspItems || [];
+        if (!items.length) { this._toast('请先搜索灵感', 'warning'); return; }
+        var sel = [];
+        document.querySelectorAll('#s2InspResult input[type=checkbox]').forEach(function(cb) {
+            if (cb.checked) sel.push(items[parseInt(cb.getAttribute('data-i'), 10)]);
+        });
+        if (!sel.length) { this._toast('请勾选至少一条', 'warning'); return; }
+        var self = this;
+        var box = document.getElementById('s2InspProgress');
+        if (box) { box.style.display = 'block'; box.innerHTML = '<div style="padding:10px;color:#f59e0b;">⏳ 正在下载 ' + sel.length + ' 张图片并归档...</div>'; }
+        App.fetchJSON('/api/dreamina/inspiration/import', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: sel, keyword: (document.getElementById('s2InspKeyword') || {}).value || '' }),
+            _timeoutMs: 180000
+        }).then(function(d) {
+            if (!d || !d.ok) { if (box) box.innerHTML = '<div style="padding:10px;color:#ef4444;">导入失败：' + App._escape(String((d && d.detail) || '未知')) + '</div>'; return; }
+            var ids = d.imported_asset_ids || [];
+            var msg = '✅ 导入 ' + d.imported + ' 条' + (d.skipped ? '（跳过重复 ' + d.skipped + '）' : '') + (d.failed ? '（失败 ' + d.failed + '）' : '');
+            if (box) box.innerHTML = '<div style="padding:10px;color:#10b981;">' + msg + '</div>';
+            self._inspLoadImported();
+            if (!ids.length) { App.showToast('没有新导入可存词的资产（可能已全部导入过）', 'warning'); return; }
+            // 弹分组选择器批量存词卡
+            self._inspBatchIds = ids;
+            self._openInspGroupPicker(null, null, null, ids);
+        }).catch(function(e) {
+            if (box) box.innerHTML = '<div style="padding:10px;color:#ef4444;">导入异常：' + App._escape(e.message) + '</div>';
+        });
     };
 
     // ============ v5.38.55: 搜索历史（自动保存/查看/点击复用/清空） ============
