@@ -21,6 +21,8 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 ASSET_DIR = os.path.join(_PROJECT_ROOT, "data", "dreamina_assets")
 IMG_DIR = os.path.join(ASSET_DIR, "images")
 VID_DIR = os.path.join(ASSET_DIR, "videos")
+# v5.38.42: 回收站（删除=文件移入，恢复=移回，彻底删除才物理删）
+TRASH_DIR = os.path.join(ASSET_DIR, "trash")
 CLI_TASKS_DB = os.path.expanduser("~/.dreamina_cli/tasks.db")
 
 # 词卡归档分组（group_type=seedance，词库可见）
@@ -85,6 +87,10 @@ def _ensure_asset_table():
         is_active INTEGER DEFAULT 0,
         created_at TEXT
     )""")
+    # v5.38.42: 回收站删除时间列（幂等）
+    if "deleted_at" not in cols:
+        db.execute("ALTER TABLE dreamina_assets ADD COLUMN deleted_at TEXT DEFAULT ''")
+        print("[Dreamina Assets] dreamina_assets 增加列 deleted_at")
     safe_commit()
 
 
@@ -462,27 +468,38 @@ def list_imported_assets(page: int = Query(1, ge=1), page_size: int = Query(60, 
             "group_id": _ensure_asset_group(), "group_name": ASSET_GROUP_NAME}
 
 
+def _move_asset_files(row, to_trash: bool):
+    """资产媒体文件在 原目录 ↔ 回收站 间移动（v5.38.42）
+    to_trash=True: images|videos → trash；False: trash → 原目录"""
+    try:
+        names = json.loads(row["file_paths"] or "[]")
+    except Exception:
+        names = []
+    base = VID_DIR if row["asset_type"] == "video" else IMG_DIR
+    for n in names:
+        fname = os.path.basename(n)
+        if to_trash:
+            src, dst = os.path.join(base, fname), os.path.join(TRASH_DIR, fname)
+        else:
+            src, dst = os.path.join(TRASH_DIR, fname), os.path.join(base, fname)
+        try:
+            if os.path.exists(src):
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                os.replace(src, dst)
+        except Exception as e:
+            print(f"[Dreamina Assets] 文件移动失败 {src} -> {dst}: {e}")
+
+
 @router.delete("/assets/{asset_id}")
 def delete_asset(asset_id: int):
-    """删除本地资产（文件 + 词卡软删 + 记录软删）"""
+    """删除本地资产 → 移入回收站（文件移 trash + 词卡软删 + 记录软删，可恢复）"""
     _ensure_asset_table()
     db = get_db()
     row = db.execute("SELECT * FROM dreamina_assets WHERE id=? AND is_deleted=0", [asset_id]).fetchone()
     if not row:
         raise HTTPException(404, "资产不存在")
-    # 删文件
-    try:
-        names = json.loads(row["file_paths"] or "[]")
-        for n in names:
-            for base in (IMG_DIR, VID_DIR):
-                p = os.path.join(base, os.path.basename(n))
-                if os.path.exists(p):
-                    try:
-                        os.remove(p)
-                    except Exception as e:
-                        print(f"[Dreamina Assets] 文件删除失败 {p}: {e}")
-    except Exception:
-        pass
+    # v5.38.42: 文件移入回收站（不再物理删除，恢复免重拉）
+    _move_asset_files(row, to_trash=True)
     # 词卡软删
     if row["word_card_id"]:
         try:
@@ -490,19 +507,98 @@ def delete_asset(asset_id: int):
                        [row["word_card_id"]])
         except Exception:
             pass
-    db.execute("UPDATE dreamina_assets SET is_deleted=1 WHERE id=?", [asset_id])
+    db.execute("UPDATE dreamina_assets SET is_deleted=1, deleted_at=datetime('now','localtime') WHERE id=?",
+               [asset_id])
+    safe_commit()
+    return {"ok": True}
+
+
+@router.get("/assets/trash")
+def list_trash_assets(page: int = Query(1, ge=1), page_size: int = Query(60, ge=1, le=200)):
+    """回收站：软删资产列表（可恢复/彻底删除）（v5.38.42）"""
+    _ensure_asset_table()
+    db = get_db()
+    total = db.execute("SELECT COUNT(*) c FROM dreamina_assets WHERE is_deleted=1").fetchone()["c"]
+    rows = db.execute(
+        "SELECT * FROM dreamina_assets WHERE is_deleted=1 ORDER BY id DESC LIMIT ? OFFSET ?",
+        [page_size, (page - 1) * page_size]).fetchall()
+    items = []
+    for r in rows:
+        d = dict(r)
+        try:
+            names = json.loads(d.get("file_paths") or "[]")
+        except Exception:
+            names = []
+        d["file_names"] = names
+        d["file_url"] = ("/api/seedance/v2/assets/file/" + os.path.basename(names[0])) if names else ""
+        # 文件是否还在回收站（可恢复判定）
+        d["file_in_trash"] = bool(names and os.path.isfile(os.path.join(TRASH_DIR, os.path.basename(names[0]))))
+        items.append(d)
+    return {"ok": True, "total": total, "page": page, "page_size": page_size, "items": items}
+
+
+@router.post("/assets/{asset_id}/restore")
+def restore_asset(asset_id: int):
+    """从回收站恢复（文件移回 + 词卡恢复 + 记录恢复）（v5.38.42）"""
+    _ensure_asset_table()
+    db = get_db()
+    row = db.execute("SELECT * FROM dreamina_assets WHERE id=? AND is_deleted=1", [asset_id]).fetchone()
+    if not row:
+        raise HTTPException(404, "回收站无此记录")
+    _move_asset_files(row, to_trash=False)
+    if row["word_card_id"]:
+        try:
+            db.execute("UPDATE word_card SET is_deleted=0, deleted_at='' WHERE id=?", [row["word_card_id"]])
+        except Exception:
+            pass
+    db.execute("UPDATE dreamina_assets SET is_deleted=0, deleted_at='' WHERE id=?", [asset_id])
+    safe_commit()
+    return {"ok": True}
+
+
+@router.delete("/assets/{asset_id}/purge")
+def purge_asset(asset_id: int):
+    """彻底删除（回收站文件物理删 + 记录删 + 词卡物理删）（v5.38.42）"""
+    _ensure_asset_table()
+    db = get_db()
+    row = db.execute("SELECT * FROM dreamina_assets WHERE id=? AND is_deleted=1", [asset_id]).fetchone()
+    if not row:
+        raise HTTPException(404, "回收站无此记录")
+    # 删回收站文件
+    try:
+        names = json.loads(row["file_paths"] or "[]")
+        for n in names:
+            p = os.path.join(TRASH_DIR, os.path.basename(n))
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception as e:
+                    print(f"[Dreamina Assets] 彻底删除文件失败 {p}: {e}")
+    except Exception:
+        pass
+    # 词卡物理删（含 FTS）
+    if row["word_card_id"]:
+        try:
+            db.execute("DELETE FROM word_card_fts(word_card_fts, rowid) VALUES ('delete', ?)", [row["word_card_id"]])
+        except Exception:
+            pass
+        try:
+            db.execute("DELETE FROM word_card WHERE id=?", [row["word_card_id"]])
+        except Exception:
+            pass
+    db.execute("DELETE FROM dreamina_assets WHERE id=?", [asset_id])
     safe_commit()
     return {"ok": True}
 
 
 @router.get("/assets/file/{filename}")
 def serve_asset_file(filename: str):
-    """提供本地资产文件（图片/视频预览）"""
+    """提供本地资产文件（图片/视频预览；含回收站目录，支持恢复前预览）"""
     safe = os.path.basename(filename)
     ext = os.path.splitext(safe)[1].lower()
     if ext not in _ALLOWED_EXT:
         raise HTTPException(400, "不支持的文件类型")
-    for base in (IMG_DIR, VID_DIR):
+    for base in (IMG_DIR, VID_DIR, TRASH_DIR):
         p = os.path.join(base, safe)
         if os.path.exists(p):
             return FileResponse(p)

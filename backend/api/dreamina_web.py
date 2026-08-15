@@ -68,6 +68,45 @@ _pull_state = {
 _pull_thread = None
 _pull_lock = threading.Lock()
 
+# v5.38.42: 采集状态持久化（服务重启不丢进度/失败清单）
+PULL_STATE_PATH = os.path.join(_PROJECT_ROOT, "data", "web_pull_state.json")
+
+
+def _save_pull_state():
+    """采集状态原子写盘（tmp + os.replace）"""
+    try:
+        with _pull_lock:
+            st = dict(_pull_state)
+        tmp = PULL_STATE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(st, f, ensure_ascii=False)
+        os.replace(tmp, PULL_STATE_PATH)
+    except Exception as e:
+        print(f"[Web Assets] 采集状态写盘失败: {e}")
+
+
+def _load_pull_state_file():
+    """启动时恢复上次采集状态（running/stop_requested 强制复位）"""
+    try:
+        if not os.path.exists(PULL_STATE_PATH):
+            return
+        with open(PULL_STATE_PATH, encoding="utf-8") as f:
+            st = json.load(f)
+        if not isinstance(st, dict):
+            return
+        st["running"] = False
+        st["stop_requested"] = False
+        with _pull_lock:
+            for k in _pull_state:
+                if k in st:
+                    _pull_state[k] = st[k]
+        print(f"[Web Assets] 已恢复采集状态（stage={st.get('stage')}，上次 {st.get('finished_at') or st.get('started_at') or '-'}）")
+    except Exception as e:
+        print(f"[Web Assets] 采集状态恢复失败: {e}")
+
+
+_load_pull_state_file()
+
 # Chrome 实例管理
 _chrome_proc = None
 _chrome_port = None
@@ -482,20 +521,25 @@ def _import_web_asset(item: dict, prof: dict) -> str:
 
 
 def _pull_worker():
-    """采集主流程（后台线程）"""
+    """采集主流程（后台线程）（v5.38.42: 增量断点 + 状态持久化）"""
     import urllib.parse as _up
     from playwright.sync_api import sync_playwright
     prof = _load_capture_profile()
+    # 增量断点：上次拉取时列表顶部作品 id（资产页按时间倒序，新作品在上；遇到边界即停止滚动）
+    last_seen_top_id = str(prof.get("last_seen_top_id") or "")
+    stop_scan = {"flag": False}
     with _pull_lock:
         _pull_state.update(running=True, stop_requested=False, stage="connecting", found=0, downloaded=0,
                            imported=0, skipped=0, failed=0, fail_list=[], message="",
                            started_at=_now_str(), finished_at="", diagnose=[])
+    _save_pull_state()
     try:
         res = ensure_chrome_started()
         if not res.get("connected"):
             raise RuntimeError(res.get("error", "Chrome 未连接"))
         with _pull_lock:
             _pull_state["stage"] = "navigating"
+        _save_pull_state()
         with sync_playwright() as p:
             browser = p.chromium.connect_over_cdp(res["cdp_url"])
             try:
@@ -516,6 +560,11 @@ def _pull_worker():
                         body = resp.body()
                         data = json.loads(body.decode("utf-8", "ignore"))
                         captured.append({"url": u, "data": data})
+                        # v5.38.42: 增量断点 —— 列表已包含上次边界作品，停止滚动（旧数据无需再拉）
+                        if last_seen_top_id:
+                            alist = _deep_find(data, "asset_list") or []
+                            if alist and str(alist[0].get("id") or "") == last_seen_top_id:
+                                stop_scan["flag"] = True
                     except Exception:
                         pass
 
@@ -526,10 +575,12 @@ def _pull_worker():
                 if not _login_detected(page):
                     with _pull_lock:
                         _pull_state.update(stage="error", running=False, message="未登录：请在独立浏览器窗口完成即梦扫码登录后重试")
+                    _save_pull_state()
                     page.close()
                     return
                 with _pull_lock:
                     _pull_state["stage"] = "collecting"
+                _save_pull_state()
                 # 定位虚拟列表滚动容器（资产页是 vList 容器，滚 body 无效）
                 page.evaluate("""() => {
                     let target = null, maxH = 0;
@@ -542,11 +593,11 @@ def _pull_worker():
                     if (!target) target = document.scrollingElement || document.body;
                     window.__sc = target;
                 }""")
-                # 滚动加载：以列表接口响应数判定稳定
+                # 滚动加载：以列表接口响应数判定稳定（v5.38.42: 命中增量边界立即停止）
                 last_resp = -1
                 stable_rounds = 0
                 for _r in range(prof.get("max_scroll_rounds", 100)):
-                    if _pull_state.get("stop_requested"):
+                    if _pull_state.get("stop_requested") or stop_scan["flag"]:
                         break
                     page.evaluate("window.__sc.scrollTop = window.__sc.scrollHeight")
                     time.sleep(max(prof.get("scroll_idle_ms", 600) / 1000, 1.0))
@@ -580,6 +631,7 @@ def _pull_worker():
                 with _pull_lock:
                     _pull_state["diagnose"] = diagnose
                     _pull_state["found"] = len(items)
+                _save_pull_state()
                 if not items:
                     with _pull_lock:
                         _pull_state.update(stage="error", running=False, message="未识别到作品列表接口（页面结构可能已变化），请使用「采集诊断」查看")
@@ -590,6 +642,7 @@ def _pull_worker():
                 if video_items:
                     with _pull_lock:
                         _pull_state["stage"] = "fetching_detail"
+                    _save_pull_state()
                     try:
                         video_srcs = []
                         scroll_step = 1500
@@ -647,6 +700,7 @@ def _pull_worker():
                 # 下载 + 入库（并发 4 线程，get_db 线程本地连接安全）
                 with _pull_lock:
                     _pull_state["stage"] = "importing"
+                _save_pull_state()
                 try:
                     from concurrent.futures import ThreadPoolExecutor
 
@@ -657,7 +711,7 @@ def _pull_worker():
                             return it.get("id"), f"failed({e})"
 
                     with ThreadPoolExecutor(max_workers=int(prof.get("import_workers") or 4)) as _ex:
-                        for _wid, _r in _ex.map(_import_one_wrapper, items):
+                        for _n, (_wid, _r) in enumerate(_ex.map(_import_one_wrapper, items)):
                             if _pull_state.get("stop_requested"):
                                 # 停止请求：不再启动新批次（已在跑的任务自然结束）
                                 pass
@@ -669,17 +723,22 @@ def _pull_worker():
                                 else:
                                     _pull_state["failed"] += 1
                                     _pull_state["fail_list"].append({"id": _wid, "reason": _r})
+                            # v5.38.42: 进度每 10 条写盘一次（节流）
+                            if (_n + 1) % 10 == 0:
+                                _save_pull_state()
                 except Exception as e:
                     print(f"[Web Assets] 导入阶段异常: {e}")
-                # 保存学习到的接口模式
-                if diagnose:
-                    learned = {"list_api_keywords": list(set(prof.get("list_api_keywords", LIST_KEYWORDS))),
-                               "last_list_urls": [d["url"] for d in diagnose[:5]],
-                               "last_run_at": _now_str()}
-                    prof.update(learned)
-                    _save_capture_profile(prof)
+                # 保存学习到的接口模式 + 增量断点（列表首条 = 最新作品 id）
+                learned = {"list_api_keywords": list(set(prof.get("list_api_keywords", LIST_KEYWORDS))),
+                           "last_list_urls": [d["url"] for d in diagnose[:5]],
+                           "last_run_at": _now_str()}
+                if items:
+                    learned["last_seen_top_id"] = str(items[0].get("id") or "")
+                prof.update(learned)
+                _save_capture_profile(prof)
                 with _pull_lock:
                     _pull_state.update(stage="done", running=False, message="采集完成", finished_at=_now_str())
+                _save_pull_state()
                 page.close()
             finally:
                 # 只关 page，保持 Chrome 实例运行（登录态/下次秒连）
@@ -690,6 +749,7 @@ def _pull_worker():
     except Exception as e:
         with _pull_lock:
             _pull_state.update(stage="error", running=False, message=f"采集异常: {e}", finished_at=_now_str())
+        _save_pull_state()
 
 
 # ==================== API ====================

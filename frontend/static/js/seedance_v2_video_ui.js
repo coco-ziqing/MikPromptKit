@@ -1318,6 +1318,7 @@
                       '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webRetryFail()" title="重试上次失败的条目">🔁 重试失败' + (p.failed ? ' (' + p.failed + ')' : '') + '</button>' +
                       '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webGenThumbs()" title="为词库中缺少缩略图的资产词卡生成预览图">🖼 补缩略图</button>' +
                       '<button class="btn btn-sm btn-outline" style="color:#8b5cf6;border-color:#8b5cf6;" onclick="App.seedanceV2._webBackfillMeta()" title="从即梦 CLI 任务库回填模型/比例/分辨率等参数（JOIN 跨通道关联）">⬆️ 回填参数</button>' +
+                      '<button class="btn btn-sm btn-outline" style="color:#64748b;border-color:#94a3b8;" onclick="App.seedanceV2._openAssetTrash()" title="查看回收站（删除的资产可恢复或彻底删除）">🗑 回收站</button>' +
                       '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webDiagnose()" title="查看采集诊断与接口命中">🧰 采集诊断</button>' +
                       (st.connected ? '<button class="btn btn-sm btn-outline" style="color:#ef4444;border-color:#ef4444;" onclick="App.seedanceV2._webStop()">⛔ 关闭实例</button>' : '<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._webConnect()">🔌 连接 Chrome</button>');
             }
@@ -1771,12 +1772,88 @@
     };
 
     App.seedanceV2._deleteImportedAsset = async function(assetId) {
-        if (!confirm('确定删除此本地资产？（媒体文件 + 词卡一并移除，不影响即梦云端）')) return;
+        if (!confirm('将移入回收站（媒体文件保留，可在「回收站」恢复）。确定？')) return;
         try {
             var d = await App.fetchJSON('/api/seedance/v2/assets/' + assetId, { method: 'DELETE' });
-            if (d && d.ok) { App.showToast('已删除', 'info'); this._loadImportedAssets(); }
+            if (d && d.ok) { App.showToast('已移入回收站', 'info'); this._loadImportedAssets(); }
             else { App.showToast('删除未完成: ' + (d ? (d.detail || '未知') : '无响应'), 'error'); }
         } catch (e) { App.showToast('删除异常: ' + e.message, 'error'); }
+    };
+
+    // ============ v5.38.42: 回收站（删除可恢复 / 彻底删除） ============
+
+    App.seedanceV2._openAssetTrash = function() {
+        var overlay = document.getElementById('s2AssetTrash');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 's2AssetTrash';
+            overlay.className = 'modal-overlay';
+            overlay.style.cssText = 'display:flex;z-index:720;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
+            overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+            overlay.innerHTML =
+            '<div class="modal-content" style="max-width:720px;max-height:82vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;" onclick="event.stopPropagation()">' +
+              '<div class="modal-header" style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
+                '<h5 style="margin:0;font-size:14px;">🗑 回收站 <span style="font-size:10px;color:var(--text-muted);font-weight:400;">删除的即梦历史资产（媒体文件保留，可恢复或彻底删除）</span></h5>' +
+                '<button class="header-btn-sm" onclick="document.getElementById(\'s2AssetTrash\').remove()">&times;</button>' +
+              '</div>' +
+              '<div class="modal-body" id="s2TrashList" style="flex:1;overflow-y:auto;padding:12px 16px;">加载中...</div>' +
+            '</div>';
+            document.body.appendChild(overlay);
+        }
+        overlay.style.display = 'flex';
+        this._loadTrashAssets();
+    };
+
+    App.seedanceV2._loadTrashAssets = function() {
+        var box = document.getElementById('s2TrashList');
+        if (!box) return;
+        var self = this;
+        box.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);">加载中...</div>';
+        App.fetchJSON('/api/seedance/v2/assets/trash?page=1&page_size=100').then(function(d) {
+            if (!d || !d.ok) { box.innerHTML = '<div style="padding:16px;color:#ef4444;">加载失败</div>'; return; }
+            var items = d.items || [];
+            if (!items.length) { box.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);">回收站是空的</div>'; return; }
+            var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">共 <b>' + d.total + '</b> 条</div>';
+            h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">';
+            items.forEach(function(t) {
+                var hasMedia = t.file_url && t.file_in_trash;
+                h += '<div style="border:1px solid var(--border-color);border-radius:8px;overflow:hidden;background:var(--bg-card);opacity:0.92;">' +
+                    '<div style="height:100px;background:var(--hover-bg);display:flex;align-items:center;justify-content:center;overflow:hidden;">' +
+                    (hasMedia
+                        ? (t.asset_type === 'video' ? '<video src="' + App._escape(t.file_url) + '" muted preload="metadata" style="width:100%;height:100%;object-fit:cover;"></video>' : '<img src="' + App._escape(t.file_url) + '" style="width:100%;height:100%;object-fit:cover;">')
+                        : '<span style="font-size:28px;">' + (t.asset_type === 'video' ? '🎬' : '🖼') + '</span>') +
+                    '</div>' +
+                    '<div style="padding:8px 10px;">' +
+                    '<div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + App._escape(t.prompt || '') + '">' + App._escape((t.prompt || '(无提示词)').substring(0, 40)) + '</div>' +
+                    '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">' + App._escape([t.task_time, t.deleted_at ? '删除于 ' + t.deleted_at : ''].filter(Boolean).join(' · ')) + '</div>' +
+                    '<div style="display:flex;gap:6px;margin-top:6px;">' +
+                    '<button class="btn btn-xs btn-success" onclick="App.seedanceV2._trashRestore(' + t.id + ')">♻️ 恢复</button>' +
+                    '<button class="btn btn-xs btn-outline" style="color:#ef4444;border-color:#ef4444;" onclick="App.seedanceV2._trashPurge(' + t.id + ')">🗑 彻底删除</button>' +
+                    '</div></div></div>';
+            });
+            h += '</div>';
+            box.innerHTML = h;
+        }).catch(function(e) { box.innerHTML = '<div style="padding:16px;color:#ef4444;">加载失败: ' + App._escape(e.message) + '</div>'; });
+    };
+
+    App.seedanceV2._trashRestore = function(assetId) {
+        var self = this;
+        App.fetchJSON('/api/seedance/v2/assets/' + assetId + '/restore', { method: 'POST' }).then(function(d) {
+            if (d && d.ok) {
+                App.showToast('✅ 已恢复', 'success');
+                self._loadTrashAssets();
+                self._webLoadAssets();
+            } else { App.showToast('恢复失败: ' + ((d && d.detail) || '未知'), 'error'); }
+        }).catch(function(e) { App.showToast('恢复异常: ' + e.message, 'error'); });
+    };
+
+    App.seedanceV2._trashPurge = function(assetId) {
+        var self = this;
+        if (!confirm('彻底删除后无法恢复（媒体文件将永久删除）。确定？')) return;
+        App.fetchJSON('/api/seedance/v2/assets/' + assetId + '/purge', { method: 'DELETE' }).then(function(d) {
+            if (d && d.ok) { App.showToast('已彻底删除', 'info'); self._loadTrashAssets(); }
+            else { App.showToast('删除失败: ' + ((d && d.detail) || '未知'), 'error'); }
+        }).catch(function(e) { App.showToast('删除异常: ' + e.message, 'error'); });
     };
 
     // 复制未导入任务提示词（scan 数据）
