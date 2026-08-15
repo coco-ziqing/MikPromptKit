@@ -117,14 +117,14 @@
         h+='<div class="s2-field" style="flex:2;"><label>对白/旁白</label><input id="s2_dialogue" class="s2-input" placeholder="准备好了吗?" onchange="App.seedanceV2._debouncedCompose()"></div>';
         h+='</div></div>';
         h+='<div class="s2-output-actions">';
-        h+='<button class="btn btn-sm btn-success" onclick="App.seedanceV2.copyText()"> 复制提示词</button>';
-        h+='<button class="btn btn-sm btn-info" onclick="App.seedanceV2.copyJSON()"> 复制JSON</button>';
-        h+='<button class="btn btn-sm btn-outline" onclick="App.seedanceV2.copyLibTV()"> 填入LibTV</button>';
-        h+='<button class="btn btn-sm btn-warning" style="background:#8b5cf6;color:#fff;border:1px solid #7c3aed;" onclick="App.seedanceV2.matchModel()" title="AI 智能分析提示词并推荐最佳视频生成模型">🧠 智能匹配</button>';
-        // v5.36.0: 即梦视频生成任务提交
-        h+='<button class="btn btn-sm btn-success" onclick="App.seedanceV2.openVideoSubmit()" title="将组装结果提交到即梦生成视频">🎬 生成视频</button>';
-        h+='<button class="btn btn-sm btn-outline" onclick="App.seedanceV2.openVideoPanel()" title="查看视频生成任务进度与结果" style="color:#10b981;border-color:#10b981;">📺 任务面板</button>';
-        h+='<button class="btn btn-sm btn-secondary" onclick="App.seedanceV2.resetProject()"> 重置</button>';
+        // v5.38.40: 按钮统一角色样式（s2-btn-*），移除行内硬编码色
+        h+='<button class="btn btn-sm s2-btn-ghost" onclick="App.seedanceV2.copyText()" title="复制组装后的完整提示词">📋 复制提示词</button>';
+        h+='<button class="btn btn-sm s2-btn-ghost" onclick="App.seedanceV2.copyJSON()" title="复制组装结果 JSON 数据">🔗 复制JSON</button>';
+        h+='<button class="btn btn-sm s2-btn-ghost-blue" onclick="App.seedanceV2.copyLibTV()" title="将组装结果填入 LibTV 生成面板">📤 填入LibTV</button>';
+        h+='<button class="btn btn-sm s2-btn-violet" onclick="App.seedanceV2.matchModel()" title="AI 智能分析提示词并推荐最佳视频生成模型">🧠 智能匹配</button>';
+        h+='<button class="btn btn-sm s2-btn-primary" onclick="App.seedanceV2.openVideoSubmit()" title="将组装结果提交到即梦生成视频">🎬 生成视频</button>';
+        h+='<button class="btn btn-sm s2-btn-ghost-green" onclick="App.seedanceV2.openVideoPanel()" title="查看视频生成任务进度与结果">📺 任务面板</button>';
+        h+='<button class="btn btn-sm s2-btn-ghost-danger" onclick="App.seedanceV2.resetProject()" title="清空当前项目所有内容">♻️ 重置</button>';
         h+='</div>';
         h+='<textarea id="s2Output" class="s2-output-text" readonly placeholder="切换镜头字段后实时合成…"></textarea>';
         h+='<div id="s2OutputMeta" style="font-size:11px;color:var(--text-muted);margin-top:4px;"></div></div>';

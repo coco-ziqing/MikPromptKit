@@ -1885,7 +1885,66 @@ body.dark-theme .s2-project-del:hover { background: rgba(239,68,68,0.15); }
 .s2-add-scene:hover { border-color: var(--primary); color: var(--primary); background: rgba(79,70,229,0.04); }
 
 /* 输出 */
-.s2-output-actions { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.s2-output-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
+/* v5.38.40: 输出操作区按钮统一美化（尺寸/圆角/图标对齐/悬停反馈） */
+.s2-output-actions .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    font-size: 12px; font-weight: 500; line-height: 1;
+    padding: 7px 14px; border-radius: 8px; white-space: nowrap;
+    border-width: 1px; border-style: solid; box-shadow: none;
+    transition: transform .15s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease, color .15s ease, filter .15s ease;
+}
+.s2-output-actions .btn:hover { transform: translateY(-1px); box-shadow: 0 3px 8px rgba(15,23,42,.10); }
+.s2-output-actions .btn:active { transform: translateY(0); box-shadow: none; }
+.s2-output-actions .btn:disabled { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
+/* 主操作（生成视频）— 主色渐变实心 */
+.s2-output-actions .s2-btn-primary {
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    border-color: #4f46e5; color: #fff; font-weight: 600;
+    box-shadow: 0 2px 6px rgba(79,70,229,.28);
+}
+.s2-output-actions .s2-btn-primary:hover { filter: brightness(1.06); color: #fff; }
+/* AI 智能匹配 — 紫色渐变实心 */
+.s2-output-actions .s2-btn-violet {
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    border-color: #7c3aed; color: #fff; font-weight: 600;
+    box-shadow: 0 2px 6px rgba(124,58,237,.25);
+}
+.s2-output-actions .s2-btn-violet:hover { filter: brightness(1.06); color: #fff; }
+/* 中性描边（复制类） */
+.s2-output-actions .s2-btn-ghost {
+    background: var(--bg-card,#fff); border-color: var(--border-color,#e2e8f0);
+    color: var(--text-main,#1e293b);
+}
+.s2-output-actions .s2-btn-ghost:hover { border-color: var(--primary,#4f46e5); color: var(--primary,#4f46e5); background: var(--hover-bg,#f1f5f9); }
+/* 蓝色描边（填入LibTV） */
+.s2-output-actions .s2-btn-ghost-blue {
+    background: rgba(14,165,233,.07); border-color: #38bdf8; color: #0284c7;
+}
+.s2-output-actions .s2-btn-ghost-blue:hover { background: rgba(14,165,233,.14); border-color: #0ea5e9; color: #0369a1; }
+/* 绿色描边（任务面板） */
+.s2-output-actions .s2-btn-ghost-green {
+    background: rgba(16,185,129,.07); border-color: #34d399; color: #059669;
+}
+.s2-output-actions .s2-btn-ghost-green:hover { background: rgba(16,185,129,.14); border-color: #10b981; color: #047857; }
+/* 弱化（重置） */
+.s2-output-actions .s2-btn-ghost-danger {
+    background: rgba(100,116,139,.08); border-color: #94a3b8; color: var(--text-muted,#64748b);
+}
+.s2-output-actions .s2-btn-ghost-danger:hover { border-color: #ef4444; color: #ef4444; background: rgba(239,68,68,.08); }
+/* 暗色主题：ghost 系文字/边框提亮（浅色硬编码深色系在暗底下不可读） */
+body.dark-theme .s2-output-actions .s2-btn-ghost-blue {
+    background: rgba(56,189,248,.10); border-color: #38bdf8; color: #7dd3fc;
+}
+body.dark-theme .s2-output-actions .s2-btn-ghost-blue:hover { background: rgba(56,189,248,.18); border-color: #7dd3fc; color: #bae6fd; }
+body.dark-theme .s2-output-actions .s2-btn-ghost-green {
+    background: rgba(52,211,153,.10); border-color: #34d399; color: #6ee7b7;
+}
+body.dark-theme .s2-output-actions .s2-btn-ghost-green:hover { background: rgba(52,211,153,.18); border-color: #6ee7b7; color: #a7f3d0; }
+body.dark-theme .s2-output-actions .s2-btn-ghost-danger {
+    background: rgba(148,163,184,.10); border-color: #94a3b8; color: #cbd5e1;
+}
+body.dark-theme .s2-output-actions .s2-btn-ghost-danger:hover { border-color: #f87171; color: #f87171; background: rgba(239,68,68,.12); }
 .s2-output-text { width: 100%; min-height: 120px; font-family: 'Consolas','Monaco',monospace; font-size: 12px; line-height: 1.6; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-main); color: var(--text-main); resize: vertical; }
 
 /* 词卡选择弹窗 */
