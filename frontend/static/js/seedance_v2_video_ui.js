@@ -892,17 +892,17 @@
             '<button id="s2InspModeBtn" onclick="App.seedanceV2._inspModeToggle()" title="浏览器执行模式：有头=可见 Chrome 窗口（更稳定）；无头=后台执行" style="font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:rgba(16,185,129,0.10);color:#059669;border:1px solid rgba(16,185,129,0.4);">🖥 可视执行</button>' +
             '<span id="s2InspLoginBadge" style="font-size:10px;padding:3px 10px;border-radius:12px;cursor:pointer;background:var(--hover-bg);color:var(--text-muted);" onclick="App.seedanceV2._inspLoginClick()" title="点击重新检测；未登录时点击可打开网页登录窗口">⏳ 检测登录中...</span>' +
             '<span style="font-size:10px;color:var(--text-muted);">（搜索约 10-30 秒，自动打开浏览器后台拉取）</span></div>' +
-            // v5.38.55: 搜索历史（自动保存，可折叠，全局一键清除）
+            // v5.38.58: 当前搜索结果在上，历史快照依次排下方（统一整合区）
+            '<div id="s2InspResult" style="margin-bottom:8px;"></div>' +
             '<div id="s2InspHistoryWrap" style="margin:4px 0 8px;border:1px solid var(--border-color);border-radius:10px;padding:6px 10px;">' +
               '<div style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text-main);" onclick="var l=document.getElementById(\'s2InspHistoryList\');if(l)l.style.display=l.style.display===\'none\'?\'block\':\'none\';">' +
-                '<span>🕘 搜索历史 <span id="s2InspHistoryCount" style="font-size:10px;color:var(--text-muted);"></span></span>' +
+                '<span>🕘 历史搜索 <span id="s2InspHistoryCount" style="font-size:10px;color:var(--text-muted);"></span></span>' +
                 '<span style="margin-left:auto;display:flex;gap:4px;">' +
                   '<button class="btn btn-xs btn-outline" style="font-size:10px;color:#ef4444;border-color:#ef4444;" onclick="event.stopPropagation();App.seedanceV2._inspClearHistory()">🗑 清空历史</button>' +
                 '</span>' +
               '</div>' +
               '<div id="s2InspHistoryList" style="display:none;margin-top:6px;max-height:200px;overflow-y:auto;"></div>' +
             '</div>' +
-            '<div id="s2InspResult" style="margin-bottom:8px;"></div>' +
             '<div id="s2InspProgress" style="display:none;margin-bottom:8px;"></div>' +
             '<div style="display:flex;gap:6px;margin:8px 0;align-items:center;flex-wrap:wrap;">' +
             '<button class="btn btn-sm" style="background:#f59e0b;border-color:#f59e0b;color:#fff;" onclick="App.seedanceV2._inspImport()">📥 导入选中</button>' +
@@ -1134,7 +1134,9 @@
                 return;
             }
             var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
-                '搜索到 <b style="color:#f59e0b;">' + items.length + '</b> 条灵感，勾选后点「导入选中」或「导入并存词卡」' +
+                // v5.38.58: 当前搜索结果标识（与下方历史快照区分）
+                '<span style="font-weight:600;color:#f59e0b;">📌 当前搜索结果</span>' +
+                '<span>共 <b style="color:#f59e0b;">' + items.length + '</b> 条，勾选后点「导入选中」或「导入并存词卡」</span>' +
                 // v5.38.56: 全选/取消切换 + 反向选择
                 '<span style="margin-left:auto;display:flex;gap:4px;">' +
                 '<button id="s2InspSelectAllBtn" class="btn btn-xs btn-outline" style="font-size:10px;" onclick="App.seedanceV2._inspSelectAll(this)">✅ 全选</button>' +
