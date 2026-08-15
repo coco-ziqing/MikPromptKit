@@ -398,11 +398,76 @@ def inspiration_to_card(asset_id: int, data: dict = Body(default={})):
                VALUES (?,?,?,?,?,?,0,(SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),'dreamina_inspiration')""",
             [group_id, name, prompt, f"即梦灵感导入（{r['model_version'] or '未知模型'} · {r['ratio'] or ''}）",
              tags, "prompt", group_id])
-        c.execute("UPDATE dreamina_assets SET word_card_id=? WHERE id=?", [cur.lastrowid, asset_id])
+        card_id = cur.lastrowid
+        # v5.38.39: 图片归档 — 原图复制到 data/originals/ + 缩略图 + 词卡字段 + media_assets 溯源
+        # （词卡不依赖灵感库存活：灵感记录被删后词卡原图仍可用）
+        if r["asset_type"] == "image":
+            _archive_image_to_card(c, card_id, r)
+        c.execute("UPDATE dreamina_assets SET word_card_id=? WHERE id=?", [card_id, asset_id])
         c.commit()
-        return {"ok": True, "card_id": cur.lastrowid}
+        return {"ok": True, "card_id": card_id}
     finally:
         c.close()
+
+
+def _archive_image_to_card(db, card_id: int, row) -> None:
+    """灵感原图 → 词卡：缩略图(data/thumbnails/{uuid}.jpg) + 原图(data/originals/{uuid}.png) + 字段 + 媒体溯源
+    字段语义对齐 save_generated_image（thumb_gen.py）：thumbnail=缩略图名 / original_ref=原图名 /
+    media_type='image' / preview_media=''（preview_media 是视频语义）"""
+    try:
+        import uuid as _uuid
+        from PIL import Image
+        import io as _io
+        fnames = json.loads(row["file_paths"] or "[]") or []
+        if not fnames:
+            return
+        src = os.path.join(INSP_DIR, os.path.basename(fnames[0]))
+        if not os.path.isfile(src):
+            return
+        with open(src, "rb") as f:
+            img_bytes = f.read()
+        if len(img_bytes) < 500:
+            return
+        _base = _uuid.uuid4().hex
+        tf = _base + ".jpg"
+        of = _base + ".png"   # 原字节是 PNG，扩展名保真保证 MIME 正确
+        iw = ih = 0
+        im = Image.open(_io.BytesIO(img_bytes))
+        iw, ih = im.size
+        sw, sh = im.size
+        tr = 240.0 / 160.0
+        sr = sw / sh
+        if sr > tr:
+            nw = int(sh * tr)
+            ox = (sw - nw) // 2
+            im = im.crop((ox, 0, ox + nw, sh))
+        else:
+            nh = int(sw / tr)
+            oy = (sh - nh) // 2
+            im = im.crop((0, oy, sw, oy + nh))
+        im = im.resize((240, 160), Image.LANCZOS)
+        if im.mode in ("RGBA", "P"):
+            im = im.convert("RGB")
+        os.makedirs(os.path.join(DATA_DIR, "thumbnails"), exist_ok=True)
+        os.makedirs(os.path.join(DATA_DIR, "originals"), exist_ok=True)
+        im.save(os.path.join(DATA_DIR, "thumbnails", tf), "JPEG", quality=85)
+        with open(os.path.join(DATA_DIR, "originals", of), "wb") as f:
+            f.write(img_bytes)
+        db.execute(
+            """UPDATE word_card SET thumbnail=?, preview_media='', media_type='image',
+               thumb_width=?, thumb_height=?, original_ref=?, thumb_engine='dreamina_inspiration',
+               updated_at=datetime('now','localtime') WHERE id=?""",
+            [tf, iw, ih, of, card_id])
+        try:
+            db.execute(
+                """INSERT OR IGNORE INTO media_assets
+                   (filename, original_filename, file_size, original_size, media_type, width, height, mime_type, prompt_id, source)
+                   VALUES (?,?,?,?,'image',?,?,'image/png',?,'dreamina_inspiration')""",
+                [tf, of, len(img_bytes), len(img_bytes), iw, ih, card_id])
+        except Exception as e:
+            print(f"[inspiration] media_assets 写入失败: {e}")
+    except Exception as e:
+        print(f"[inspiration] 词卡图片归档失败 (card {card_id}): {e}")
 
 
 @router.get("/file/{fname}")

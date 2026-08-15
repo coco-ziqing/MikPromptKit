@@ -1011,9 +1011,9 @@
                 var cardBtn = isVideo
                     ? '<button class="btn btn-xs" style="font-size:9px;border-color:#94a3b8;color:#94a3b8;cursor:not-allowed;" disabled title="视频灵感无公开提示词，不支持存词卡">📇 存词卡</button>'
                     : '<button class="btn btn-xs btn-outline" style="font-size:9px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.seedanceV2._inspToCard(' + t.id + ')">📇 存词卡</button>';
-                h += '<div style="width:168px;border:1px solid var(--border-color);border-radius:10px;overflow:hidden;background:#fff;">' +
+                h += '<div class="s2-insp-card" data-aid="' + t.id + '" style="width:168px;border:1px solid var(--border-color);border-radius:10px;overflow:hidden;background:#fff;">' +
                     '<img src="' + (t.thumb_url || '') + '" style="width:100%;height:110px;object-fit:cover;display:block;cursor:pointer;" onclick="App.openImageViewer(\'' + (t.file_url || '') + '\',' + t.id + ')">' +
-                    '<div style="padding:6px 8px;font-size:10px;color:#475569;line-height:1.5;height:52px;overflow:hidden;">' + App.escHtml((t.prompt || '').slice(0, 60)) + '</div>' +
+                    '<div class="s2-insp-prompt" style="padding:6px 8px;font-size:10px;color:#475569;line-height:1.5;height:52px;overflow:hidden;">' + App.escHtml((t.prompt || '').slice(0, 60)) + '</div>' +
                     '<div style="padding:0 8px 6px;display:flex;gap:4px;flex-wrap:wrap;">' +
                     cardBtn +
                     '<button class="btn btn-xs btn-outline" style="font-size:9px;border-color:#ef4444;color:#ef4444;" onclick="App.seedanceV2._inspDelete(' + t.id + ')">🗑</button></div></div>';
@@ -1025,13 +1025,207 @@
         }
     };
 
+    // v5.38.39: 存词卡 → 先弹分组选择器（从列表 DOM 读预览信息，避免引号转义问题）
     App.seedanceV2._inspToCard = async function(aid) {
-        if (!confirm('将提示词存为词卡（可后续编辑）？')) return;
+        var thumbUrl = '', prompt = '';
+        var card = document.querySelector('.s2-insp-card[data-aid="' + aid + '"]');
+        if (card) {
+            var img = card.querySelector('img');
+            if (img) thumbUrl = img.getAttribute('src') || '';
+            var pt = card.querySelector('.s2-insp-prompt');
+            if (pt) prompt = pt.textContent || '';
+        }
+        this._openInspGroupPicker(aid, thumbUrl, prompt);
+    };
+
+    App.seedanceV2._openInspGroupPicker = function(aid, thumbUrl, prompt) {
+        var self = this;
+        var overlay = document.getElementById('s2InspGroupPicker');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 's2InspGroupPicker';
+            overlay.className = 'modal-overlay';
+            overlay.style.cssText = 'display:none;z-index:770;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;';
+            overlay.onclick = function(e) { if (e.target === overlay) overlay.style.display = 'none'; };
+            overlay.innerHTML =
+            '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:560px;max-height:84vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
+              '<div class="modal-header" style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
+                '<h5 style="margin:0;font-size:14px;">📇 存为词卡 — 选择分组</h5>' +
+                '<button class="header-btn-sm" onclick="document.getElementById(\'s2InspGroupPicker\').style.display=\'none\'">&times;</button>' +
+              '</div>' +
+              '<div class="modal-body" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:12px;">' +
+                '<div style="display:flex;gap:14px;align-items:flex-start;">' +
+                  '<img id="s2InspGroupImg" style="width:150px;height:100px;object-fit:cover;border-radius:10px;border:1px solid var(--border-color);background:#0f172a;flex-shrink:0;">' +
+                  '<div style="flex:1;min-width:0;">' +
+                    '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">将保存为词卡，提示词：</div>' +
+                    '<div id="s2InspGroupPrompt" style="font-size:12px;color:var(--text-main);background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:8px 10px;max-height:64px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"></div>' +
+                  '</div>' +
+                '</div>' +
+                '<div style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;"><i class="bi bi-folder2-open"></i> 目标分组 <span id="s2InspGroupSel" style="font-size:11px;color:var(--primary);font-weight:600;"></span></div>' +
+                '<div id="s2InspRecommended" style="display:none;"></div>' +
+                '<div id="s2InspGroupList" style="border:1px solid var(--border-color);border-radius:10px;padding:6px;">' +
+                  '<div style="display:flex;align-items:center;gap:6px;padding:2px 4px 6px;border-bottom:1px dashed var(--border-color);margin-bottom:4px;">' +
+                    '<span style="font-size:11px;color:var(--text-muted);">全部分组 <span id="s2InspTreeCount"></span></span>' +
+                    '<span style="margin-left:auto;"><button class="btn btn-xs btn-outline" onclick="App.seedanceV2._collapseAllInspGroups()">全部折叠</button></span>' +
+                  '</div>' +
+                  '<div id="s2InspTreeBody" style="display:flex;flex-direction:column;gap:2px;max-height:270px;overflow-y:auto;">加载分组...</div>' +
+                '</div>' +
+              '</div>' +
+              '<div class="modal-footer" style="padding:10px 16px;border-top:1px solid var(--border-color);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;">' +
+                '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'s2InspGroupPicker\').style.display=\'none\'">取消</button>' +
+                '<button class="btn btn-primary btn-sm" id="s2InspCardConfirm" onclick="App.seedanceV2._inspConfirmToCard(' + aid + ')">✅ 存入该分组</button>' +
+              '</div>' +
+            '</div>';
+            document.body.appendChild(overlay);
+        } else {
+            var cb = document.getElementById('s2InspCardConfirm');
+            if (cb) cb.setAttribute('onclick', 'App.seedanceV2._inspConfirmToCard(' + aid + ')');
+        }
+        overlay.style.display = 'flex';
+        var img = document.getElementById('s2InspGroupImg');
+        if (img) img.src = thumbUrl || '';
+        var pt = document.getElementById('s2InspGroupPrompt');
+        if (pt) pt.textContent = prompt || '';
+        this._inspAid = aid;
+        this._inspGroupId = 0;
+        this._inspCollapsed = {};
+        var sel = document.getElementById('s2InspGroupSel');
+        if (sel) sel.textContent = '（默认分组）';
+        // 推荐分组
+        var recEl = document.getElementById('s2InspRecommended');
+        if (recEl) {
+            recEl.style.display = 'none';
+            var ptText = (prompt || '').trim();
+            if (ptText) {
+                recEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:6px;">💡 正在识别推荐分组...</div>';
+                recEl.style.display = 'block';
+                App.fetchJSON('/api/v4/word-cards/groups/recommend?text=' + encodeURIComponent(ptText) + '&limit=5').then(function(d) {
+                    if (!d || !d.ok || !d.items || d.items.length === 0) { if (recEl) recEl.style.display = 'none'; return; }
+                    var rh = '<div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-bottom:6px;">💡 推荐分组 <span style="font-weight:400;">根据提示词自动识别</span></div><div style="display:flex;flex-wrap:wrap;gap:6px;">';
+                    d.items.forEach(function(g) {
+                        rh += '<span onclick="App.seedanceV2._pickInspGroup(' + g.id + ', this)" data-id="' + g.id + '" title="命中：' + App.escHtml((g.matched || []).join('、') || '内容匹配') + '" style="cursor:pointer;font-size:11px;padding:4px 10px;border-radius:14px;border:1px solid #6366f1;color:var(--primary);background:rgba(99,102,241,0.08);display:inline-flex;align-items:center;gap:4px;">💡' + App.escHtml(g.name || '未命名') + '</span>';
+                    });
+                    rh += '</div>';
+                    recEl.innerHTML = rh;
+                    recEl.style.display = 'block';
+                }).catch(function() { if (recEl) recEl.style.display = 'none'; });
+            }
+        }
+        // 分组树
+        var groupsP = (typeof App.cardModel !== 'undefined' && App.cardModel.getGroups)
+            ? App.cardModel.getGroups(true)
+            : App.fetchJSON('/api/v4/word-cards/groups?include_empty=true').then(function(d) { return (d && d.groups) || []; });
+        groupsP.then(function(groups) {
+            self._inspGroups = groups || [];
+            self._renderInspTree();
+            // 自动定位上次选择（localStorage cwl_last_group）
+            var last = parseInt(localStorage.getItem('cwl_last_group') || '0', 10) || 0;
+            if (last) {
+                var gmap = {};
+                (groups || []).forEach(function(g) { gmap[g.id] = g; });
+                if (gmap[last]) {
+                    var pid = gmap[last].parent_group_id;
+                    while (pid && gmap[pid]) { delete self._inspCollapsed[pid]; pid = gmap[pid].parent_group_id; }
+                    self._renderInspTree();
+                    var el = document.querySelector('#s2InspTreeBody [data-id="' + last + '"]');
+                    if (el) { self._pickInspGroup(last, el); try { el.scrollIntoView({ block: 'center', behavior: 'auto' }); } catch (e) {} }
+                }
+            }
+        }).catch(function() {
+            var tb = document.getElementById('s2InspTreeBody');
+            if (tb) tb.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:12px;">分组加载失败，将存入默认分组</div>';
+        });
+    };
+
+    App.seedanceV2._inspGroupIcon = function(g, depth) {
+        if (g.group_type === 'atom') return '🧩';
+        if (g.group_type === 'builtin') return '📦';
+        if (g.group_type === 'seedance') return '🎬';
+        if (g.group_type === 'custom') return '🗂️';
+        return depth === 0 ? '📂' : '📁';
+    };
+
+    App.seedanceV2._renderInspTree = function() {
+        var body = document.getElementById('s2InspTreeBody');
+        if (!body) return;
+        var groups = this._inspGroups || [];
+        if (!groups.length) { body.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:12px;">词库暂无分组</div>'; return; }
+        var gmap = {};
+        groups.forEach(function(g) { gmap[g.id] = g; });
+        var childrenMap = {};
+        groups.forEach(function(g) {
+            var pid = (g.parent_group_id && gmap[g.parent_group_id]) ? g.parent_group_id : 0;
+            (childrenMap[pid] = childrenMap[pid] || []).push(g);
+        });
+        var roots = childrenMap[0] || [];
+        groups.forEach(function(g) { if (!g.parent_group_id || !gmap[g.parent_group_id]) roots.push(g); });
+        var seen = {};
+        roots = roots.filter(function(g) { if (seen[g.id]) return false; seen[g.id] = 1; return true; });
+        var cnt = document.getElementById('s2InspTreeCount');
+        if (cnt) cnt.textContent = '(' + groups.length + ')';
+        var self = this;
+        var html = '';
+        var renderNode = function(g, depth) {
+            var kids = childrenMap[g.id] || [];
+            var hasKids = kids.length > 0;
+            var collapsed = !!self._inspCollapsed[g.id];
+            var isSel = self._inspGroupId === g.id;
+            html += '<div class="cwl-grp' + (isSel ? ' cwl-grp-sel' : '') + '" data-id="' + g.id + '" onclick="App.seedanceV2._pickInspGroup(' + g.id + ', this)" style="padding-left:' + (6 + depth * 16) + 'px;display:flex;align-items:center;gap:8px;padding-top:7px;padding-bottom:7px;border-radius:8px;cursor:pointer;font-size:12px;border:1px solid transparent;">' +
+                (hasKids ? '<span style="width:16px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--text-muted);cursor:pointer;" onclick="event.stopPropagation();App.seedanceV2._toggleInspGroup(' + g.id + ')">' + (collapsed ? '▶' : '▼') + '</span>'
+                         : '<span style="width:16px;flex-shrink:0;"></span>') +
+                '<span style="font-size:13px;">' + self._inspGroupIcon(g, depth) + '</span>' +
+                '<span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App.escHtml(g.name || '未命名') + '</span>' +
+                '<span style="font-size:10px;color:var(--text-muted);flex-shrink:0;">' + (g.card_count || 0) + ' 张</span>' +
+              '</div>';
+            if (hasKids && !collapsed) kids.forEach(function(k) { renderNode(k, depth + 1); });
+        };
+        roots.forEach(function(g) { renderNode(g, 0); });
+        body.innerHTML = html;
+    };
+
+    App.seedanceV2._pickInspGroup = function(gid, el) {
+        this._inspGroupId = gid;
+        var sel = document.getElementById('s2InspGroupSel');
+        if (sel) {
+            var g = (this._inspGroups || []).filter(function(x) { return x.id === gid; })[0];
+            sel.textContent = (g && g.name) ? g.name : ('#' + gid);
+        }
+        var all = document.querySelectorAll('#s2InspTreeBody .cwl-grp, #s2InspRecommended [data-id]');
+        all.forEach(function(n) { n.classList.remove('cwl-grp-sel'); });
+        if (el) el.classList.add('cwl-grp-sel');
+    };
+
+    App.seedanceV2._toggleInspGroup = function(gid) {
+        if (this._inspCollapsed[gid]) delete this._inspCollapsed[gid]; else this._inspCollapsed[gid] = 1;
+        this._renderInspTree();
+    };
+
+    App.seedanceV2._collapseAllInspGroups = function() {
+        var self = this;
+        (this._inspGroups || []).forEach(function(g) { self._inspCollapsed[g.id] = 1; });
+        this._renderInspTree();
+    };
+
+    App.seedanceV2._inspConfirmToCard = async function(aid) {
+        var gid = this._inspGroupId || 0;
+        var btn = document.getElementById('s2InspCardConfirm');
+        if (btn) btn.disabled = true;
         try {
-            var d = await App.fetchJSON('/api/dreamina/inspiration/' + aid + '/to-card', {method: 'POST'});
-            if (d && d.ok) { this._toast('✅ 已存为词卡 #' + d.card_id, 'success'); this._inspLoadImported(); }
-            else this._toast((d && d.detail) || '存词卡失败', 'error');
+            var d = await App.fetchJSON('/api/dreamina/inspiration/' + aid + '/to-card', {
+                method: 'POST',
+                body: JSON.stringify({group_id: gid})
+            });
+            var picker = document.getElementById('s2InspGroupPicker');
+            if (picker) picker.style.display = 'none';
+            if (d && d.ok) {
+                localStorage.setItem('cwl_last_group', String(gid));
+                this._toast('✅ 已存为词卡 #' + d.card_id, 'success');
+                this._inspLoadImported();
+            } else {
+                this._toast((d && d.detail) || '存词卡失败', 'error');
+            }
         } catch (e) { this._toast('存词卡异常', 'error'); }
+        finally { if (btn) btn.disabled = false; }
     };
 
     App.seedanceV2._inspDelete = async function(aid) {
