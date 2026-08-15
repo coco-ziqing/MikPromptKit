@@ -640,33 +640,70 @@ def inspiration_to_card(asset_id: int, data: dict = Body(default={})):
     """存为词卡：prompt 作内容（直接 INSERT word_card，复用 batch_create 建卡模式）"""
     c = _db()
     try:
-        r = c.execute("SELECT * FROM dreamina_assets WHERE id=? AND source='inspiration'", [asset_id]).fetchone()
-        if not r:
-            raise HTTPException(404, "记录不存在")
-        if r["asset_type"] == "video":
-            # v5.38.38: 视频灵感无公开提示词（仅标题），存词卡无内容可归档
-            raise HTTPException(400, "视频灵感无公开提示词，不支持存词卡")
-        prompt = (r["prompt"] or "").strip()
-        if not prompt:
-            raise HTTPException(400, "该灵感无提示词，无法存词卡")
-        group_id = int(data.get("group_id") or 0)
-        name = prompt[:30]
-        tags = "即梦灵感 " + (r["model_version"] or "") + " " + (r["ratio"] or "")
-        cur = c.execute(
-            """INSERT INTO word_card (group_id, name, content, meaning, tags, module, is_builtin, sort_order, source)
-               VALUES (?,?,?,?,?,?,0,(SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),'dreamina_inspiration')""",
-            [group_id, name, prompt, f"即梦灵感导入（{r['model_version'] or '未知模型'} · {r['ratio'] or ''}）",
-             tags, "prompt", group_id])
-        card_id = cur.lastrowid
-        # v5.38.39: 图片归档 — 原图复制到 data/originals/ + 缩略图 + 词卡字段 + media_assets 溯源
-        # （词卡不依赖灵感库存活：灵感记录被删后词卡原图仍可用）
-        if r["asset_type"] == "image":
-            _archive_image_to_card(c, card_id, r)
-        c.execute("UPDATE dreamina_assets SET word_card_id=? WHERE id=?", [card_id, asset_id])
-        c.commit()
-        return {"ok": True, "card_id": card_id}
+        return _to_card_asset(c, asset_id, int(data.get("group_id") or 0))
     finally:
         c.close()
+
+
+# v5.38.54: 批量存词卡（指定分组；视频/无提示词/已存卡跳过）
+@router.post("/batch-to-card")
+def inspiration_batch_to_card(data: dict = Body(...)):
+    """批量存为词卡：body {asset_ids: [..], group_id: int} → {done:[{asset_id,card_id}], skipped:[..], failed:[{asset_id,reason}]}"""
+    ids = data.get("asset_ids") or []
+    group_id = int(data.get("group_id") or 0)
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "asset_ids 必填")
+    if len(ids) > 200:
+        raise HTTPException(400, "单次最多 200 条")
+    c = _db()
+    done, skipped, failed = [], [], []
+    try:
+        for aid in ids:
+            try:
+                res = _to_card_asset(c, int(aid), group_id, allow_commit=False)
+                done.append({"asset_id": int(aid), "card_id": res["card_id"]})
+            except HTTPException as e:
+                if e.status_code == 409:
+                    skipped.append({"asset_id": int(aid), "reason": "已存词卡"})
+                else:
+                    failed.append({"asset_id": int(aid), "reason": str(e.detail)})
+            except Exception as e:
+                failed.append({"asset_id": int(aid), "reason": str(e)[:80]})
+        c.commit()
+    finally:
+        c.close()
+    return {"ok": True, "done": done, "skipped": skipped, "failed": failed,
+            "done_count": len(done), "skipped_count": len(skipped), "failed_count": len(failed)}
+
+
+def _to_card_asset(c, asset_id: int, group_id: int, allow_commit: bool = True) -> dict:
+    """单条资产存词卡（单条端点与批量端点共用；图片卡自动归档原图+缩略图）"""
+    r = c.execute("SELECT * FROM dreamina_assets WHERE id=? AND source='inspiration'", [asset_id]).fetchone()
+    if not r:
+        raise HTTPException(404, "记录不存在")
+    if r["word_card_id"]:
+        raise HTTPException(409, "已存词卡")
+    if r["asset_type"] == "video":
+        # v5.38.38: 视频灵感无公开提示词（仅标题），存词卡无内容可归档
+        raise HTTPException(400, "视频灵感无公开提示词，不支持存词卡")
+    prompt = (r["prompt"] or "").strip()
+    if not prompt:
+        raise HTTPException(400, "该灵感无提示词，无法存词卡")
+    name = prompt[:30]
+    tags = "即梦灵感 " + (r["model_version"] or "") + " " + (r["ratio"] or "")
+    cur = c.execute(
+        """INSERT INTO word_card (group_id, name, content, meaning, tags, module, is_builtin, sort_order, source)
+           VALUES (?,?,?,?,?,?,0,(SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),'dreamina_inspiration')""",
+        [group_id, name, prompt, f"即梦灵感导入（{r['model_version'] or '未知模型'} · {r['ratio'] or ''}）",
+         tags, "prompt", group_id])
+    card_id = cur.lastrowid
+    # v5.38.39: 图片归档 — 原图复制到 data/originals/ + 缩略图 + 词卡字段 + media_assets 溯源
+    if r["asset_type"] == "image":
+        _archive_image_to_card(c, card_id, r)
+    c.execute("UPDATE dreamina_assets SET word_card_id=? WHERE id=?", [card_id, asset_id])
+    if allow_commit:
+        c.commit()
+    return {"ok": True, "card_id": card_id}
 
 
 def _archive_image_to_card(db, card_id: int, row) -> None:

@@ -1176,14 +1176,27 @@
                 box.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;">暂无已导入灵感（搜索后导入）</div>';
                 return;
             }
-            var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">已导入 <b style="color:#10b981;">' + (d.total || tasks.length) + '</b> 条灵感</div>';
+            var h = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">' +
+                '<span style="font-size:11px;color:var(--text-muted);">已导入 <b style="color:#10b981;">' + (d.total || tasks.length) + '</b> 条灵感</span>' +
+                // v5.38.54: 批量存词卡（勾选 → 选分组/新建分组 → 归档）
+                '<span style="margin-left:auto;display:flex;gap:6px;align-items:center;">' +
+                '<span id="s2InspBatchCount" style="font-size:10px;color:#8b5cf6;"></span>' +
+                '<button class="btn btn-xs" style="background:#8b5cf6;border-color:#8b5cf6;color:#fff;font-size:10px;" onclick="App.seedanceV2._inspBatchToCard()">📦 批量存词卡</button>' +
+                '</span></div>';
             h += '<div style="display:flex;flex-wrap:wrap;gap:8px;max-height:40vh;overflow-y:auto;padding:4px;">';
             tasks.forEach(function(t) {
                 var isVideo = t.asset_type === 'video';
+                var hasCard = !!(t.word_card_id);
                 var cardBtn = isVideo
                     ? '<button class="btn btn-xs" style="font-size:9px;border-color:#94a3b8;color:#94a3b8;cursor:not-allowed;" disabled title="视频灵感无公开提示词，不支持存词卡">📇 存词卡</button>'
-                    : '<button class="btn btn-xs btn-outline" style="font-size:9px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.seedanceV2._inspToCard(' + t.id + ')">📇 存词卡</button>';
-                h += '<div class="s2-insp-card" data-aid="' + t.id + '" style="width:168px;border:1px solid var(--border-color);border-radius:10px;overflow:hidden;background:#fff;">' +
+                    : (hasCard
+                        ? '<span style="font-size:9px;color:#10b981;font-weight:600;">✅ 已存词卡</span>'
+                        : '<button class="btn btn-xs btn-outline" style="font-size:9px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.seedanceV2._inspToCard(' + t.id + ')">📇 存词卡</button>');
+                var checkHtml = (isVideo || hasCard)
+                    ? '<span style="position:absolute;top:6px;left:6px;font-size:10px;background:rgba(0,0,0,0.5);color:#fff;border-radius:4px;padding:1px 5px;">' + (isVideo ? '🎬' : '✅') + '</span>'
+                    : '<input type="checkbox" class="s2-insp-check" data-aid="' + t.id + '" style="position:absolute;top:6px;left:6px;width:15px;height:15px;cursor:pointer;" onchange="App.seedanceV2._inspBatchCount()">';
+                h += '<div class="s2-insp-card" data-aid="' + t.id + '" style="width:168px;border:1px solid var(--border-color);border-radius:10px;overflow:hidden;background:#fff;position:relative;">' +
+                    checkHtml +
                     '<img src="' + (t.thumb_url || '') + '" style="width:100%;height:110px;object-fit:cover;display:block;cursor:pointer;" onclick="App.openImageViewer(\'' + (t.file_url || '') + '\',' + t.id + ')">' +
                     '<div class="s2-insp-prompt" style="padding:6px 8px;font-size:10px;color:#475569;line-height:1.5;height:52px;overflow:hidden;">' + App._escape((t.prompt || '').slice(0, 60)) + '</div>' +
                     '<div style="padding:0 8px 6px;display:flex;gap:4px;flex-wrap:wrap;">' +
@@ -1192,9 +1205,28 @@
             });
             h += '</div>';
             box.innerHTML = h;
+            this._inspBatchCount();
         } catch (e) {
             box.innerHTML = '<div style="padding:16px;color:#ef4444;">加载失败：' + App._escape(String(e && e.detail || e)) + '</div>';
         }
+    };
+
+    // v5.38.54: 批量勾选计数
+    App.seedanceV2._inspBatchCount = function() {
+        var n = document.querySelectorAll('.s2-insp-check:checked').length;
+        var el = document.getElementById('s2InspBatchCount');
+        if (el) el.textContent = n ? '已选 ' + n + ' 条' : '';
+    };
+
+    // v5.38.54: 批量存词卡 → 弹分组选择器（支持新建分组）
+    App.seedanceV2._inspBatchToCard = function() {
+        var ids = [];
+        document.querySelectorAll('.s2-insp-check:checked').forEach(function(cb) {
+            ids.push(parseInt(cb.getAttribute('data-aid'), 10));
+        });
+        if (!ids.length) { App.showToast('请先勾选要存词卡的灵感（图片卡可勾选，视频/已存卡不支持）', 'warning'); return; }
+        this._inspBatchIds = ids;
+        this._openInspGroupPicker(null, null, null, ids);
     };
 
     // v5.38.39: 存词卡 → 先弹分组选择器（从列表 DOM 读预览信息，避免引号转义问题）
@@ -1210,8 +1242,12 @@
         this._openInspGroupPicker(aid, thumbUrl, prompt);
     };
 
-    App.seedanceV2._openInspGroupPicker = function(aid, thumbUrl, prompt) {
+    App.seedanceV2._openInspGroupPicker = function(aid, thumbUrl, prompt, batchIds) {
         var self = this;
+        var isBatch = !!(batchIds && batchIds.length);
+        var confirmFn = isBatch
+            ? 'App.seedanceV2._inspConfirmBatchToCard()'
+            : 'App.seedanceV2._inspConfirmToCard(' + aid + ')';
         var overlay = document.getElementById('s2InspGroupPicker');
         if (!overlay) {
             overlay = document.createElement('div');
@@ -1222,7 +1258,7 @@
             overlay.innerHTML =
             '<div class="modal-content" onclick="event.stopPropagation()" style="max-width:560px;max-height:84vh;display:flex;flex-direction:column;border-radius:14px;padding:0;overflow:hidden;">' +
               '<div class="modal-header" style="padding:12px 16px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">' +
-                '<h5 style="margin:0;font-size:14px;">📇 存为词卡 — 选择分组</h5>' +
+                '<h5 style="margin:0;font-size:14px;">📇 ' + (isBatch ? '批量存为词卡' : '存为词卡') + ' — 选择分组</h5>' +
                 '<button class="header-btn-sm" onclick="document.getElementById(\'s2InspGroupPicker\').style.display=\'none\'">&times;</button>' +
               '</div>' +
               '<div class="modal-body" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:12px;">' +
@@ -1234,6 +1270,11 @@
                   '</div>' +
                 '</div>' +
                 '<div style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;"><i class="bi bi-folder2-open"></i> 目标分组 <span id="s2InspGroupSel" style="font-size:11px;color:var(--primary);font-weight:600;"></span></div>' +
+                // v5.38.54: 新建分组（创建后自动选中）
+                '<div style="display:flex;gap:6px;align-items:center;">' +
+                  '<input id="s2InspNewGroup" placeholder="或输入新分组名…" style="flex:1;min-width:0;padding:4px 8px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;background:var(--bg-card);color:var(--text-main);" onkeydown="if(event.key===\'Enter\')App.seedanceV2._inspCreateGroup()">' +
+                  '<button class="btn btn-xs btn-outline" style="color:#8b5cf6;border-color:#8b5cf6;white-space:nowrap;font-size:11px;" onclick="App.seedanceV2._inspCreateGroup()">➕ 新建并使用</button>' +
+                '</div>' +
                 '<div id="s2InspRecommended" style="display:none;"></div>' +
                 '<div id="s2InspGroupList" style="border:1px solid var(--border-color);border-radius:10px;padding:6px;">' +
                   '<div style="display:flex;align-items:center;gap:6px;padding:2px 4px 6px;border-bottom:1px dashed var(--border-color);margin-bottom:4px;">' +
@@ -1245,19 +1286,26 @@
               '</div>' +
               '<div class="modal-footer" style="padding:10px 16px;border-top:1px solid var(--border-color);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;">' +
                 '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'s2InspGroupPicker\').style.display=\'none\'">取消</button>' +
-                '<button class="btn btn-primary btn-sm" id="s2InspCardConfirm" onclick="App.seedanceV2._inspConfirmToCard(' + aid + ')">✅ 存入该分组</button>' +
+                '<button class="btn btn-primary btn-sm" id="s2InspCardConfirm" onclick="' + confirmFn + '">' + (isBatch ? '📦 批量存入' : '✅ 存入该分组') + '</button>' +
               '</div>' +
             '</div>';
             document.body.appendChild(overlay);
         } else {
             var cb = document.getElementById('s2InspCardConfirm');
-            if (cb) cb.setAttribute('onclick', 'App.seedanceV2._inspConfirmToCard(' + aid + ')');
+            if (cb) cb.setAttribute('onclick', confirmFn);
         }
         overlay.style.display = 'flex';
+        // v5.38.54: 批量模式预览区显示汇总信息
         var img = document.getElementById('s2InspGroupImg');
-        if (img) img.src = thumbUrl || '';
         var pt = document.getElementById('s2InspGroupPrompt');
-        if (pt) pt.textContent = prompt || '';
+        if (isBatch) {
+            if (img) { img.src = ''; img.style.display = 'none'; }
+            if (pt) pt.textContent = '将批量存 ' + batchIds.length + ' 条灵感为词卡（图片自动归档原图+缩略图），全部存入所选分组';
+        } else {
+            if (img) { img.style.display = ''; img.src = thumbUrl || ''; }
+            if (pt) pt.textContent = prompt || '';
+        }
+        this._inspBatchIds = isBatch ? batchIds : null;
         this._inspAid = aid;
         this._inspGroupId = 0;
         this._inspCollapsed = {};
@@ -1376,6 +1424,64 @@
         var self = this;
         (this._inspGroups || []).forEach(function(g) { self._inspCollapsed[g.id] = 1; });
         this._renderInspTree();
+    };
+
+    // v5.38.54: 新建分组并选中（创建后刷新分组树）
+    App.seedanceV2._inspCreateGroup = function() {
+        var input = document.getElementById('s2InspNewGroup');
+        var name = input ? input.value.trim() : '';
+        if (!name) { App.showToast('请输入新分组名', 'warning'); return; }
+        var self = this;
+        App.fetchJSON('/api/v4/word-cards/groups', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name })
+        }).then(function(d) {
+            if (d && d.ok) {
+                App.showToast('✅ 已创建分组：' + d.name, 'success');
+                self._inspGroupId = d.id;
+                var sel = document.getElementById('s2InspGroupSel');
+                if (sel) sel.textContent = d.name;
+                if (input) input.value = '';
+                // 刷新分组树并选中新分组
+                var groupsP = (typeof App.cardModel !== 'undefined' && App.cardModel.getGroups)
+                    ? App.cardModel.getGroups(true)
+                    : App.fetchJSON('/api/v4/word-cards/groups?include_empty=true').then(function(dd) { return (dd && dd.groups) || []; });
+                groupsP.then(function(groups) {
+                    self._inspGroups = groups || [];
+                    self._renderInspTree();
+                    var el = document.querySelector('#s2InspTreeBody [data-id="' + d.id + '"]');
+                    if (el) { self._pickInspGroup(d.id, el); try { el.scrollIntoView({ block: 'center', behavior: 'auto' }); } catch (e) {} }
+                }).catch(function() {});
+            } else {
+                App.showToast('创建失败: ' + ((d && d.detail) || '分组可能已存在'), 'error');
+            }
+        }).catch(function(e) { App.showToast('创建异常: ' + e.message, 'error'); });
+    };
+
+    // v5.38.54: 批量存词卡确认（调 batch-to-card，图片自动归档）
+    App.seedanceV2._inspConfirmBatchToCard = async function() {
+        var ids = this._inspBatchIds || [];
+        if (!ids.length) { App.showToast('没有可存词的资产', 'warning'); return; }
+        var gid = this._inspGroupId || 0;
+        var btn = document.getElementById('s2InspCardConfirm');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ 批量存卡中...'; }
+        try {
+            var d = await App.fetchJSON('/api/dreamina/inspiration/batch-to-card', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ asset_ids: ids, group_id: gid }),
+                _timeoutMs: 120000
+            });
+            var picker = document.getElementById('s2InspGroupPicker');
+            if (picker) picker.style.display = 'none';
+            if (d && d.ok) {
+                localStorage.setItem('cwl_last_group', String(gid));
+                App.showToast('✅ 批量存卡完成：成功 ' + d.done_count + (d.skipped_count ? '，跳过 ' + d.skipped_count : '') + (d.failed_count ? '，失败 ' + d.failed_count : ''), (d.failed_count ? 'warning' : 'success'));
+                this._inspLoadImported();
+            } else {
+                App.showToast('批量存卡失败: ' + ((d && d.detail) || '未知错误'), 'error');
+            }
+        } catch (e) { App.showToast('批量存卡异常: ' + e.message, 'error'); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = '📦 批量存入'; } }
     };
 
     App.seedanceV2._inspConfirmToCard = async function(aid) {
