@@ -949,7 +949,7 @@ def _save_version_snapshot(db, card_id: int):
 
 @router.get("/{card_id}/versions")
 def get_card_versions(card_id: int):
-    """获取词卡版本历史"""
+    """获取词卡版本历史（v5.38.61: 每版本带生成池统计 + 当前产物信息，供版本切换联动预览）"""
     db = get_db()
     _ensure_version_table(db)
     current = db.execute("SELECT id, version FROM word_card WHERE id=?", [card_id]).fetchone()
@@ -963,6 +963,30 @@ def get_card_versions(card_id: int):
     for r in rows:
         v = dict(r)
         v["is_current"] = v["version"] == current["version"]
+        # 该版本生成池统计（card_gen_tasks 按 version 隔离）
+        pool = db.execute(
+            "SELECT COUNT(1) n, SUM(CASE WHEN media_type='image' THEN 1 ELSE 0 END) img, "
+            "SUM(CASE WHEN media_type='video' THEN 1 ELSE 0 END) vid "
+            "FROM card_gen_tasks WHERE card_id=? AND version=? AND status='success' AND result_filename!=''",
+            [card_id, v["version"]]).fetchone()
+        v["pool_count"] = int(pool["n"] or 0) if pool else 0
+        v["pool_img"] = int(pool["img"] or 0) if pool else 0
+        v["pool_vid"] = int(pool["vid"] or 0) if pool else 0
+        # 该版本当前产物（is_current，供预览联动）
+        cur_task = db.execute(
+            "SELECT media_type, result_filename, result_original, poster_filename FROM card_gen_tasks "
+            "WHERE card_id=? AND version=? AND is_current=1 AND status='success' LIMIT 1",
+            [card_id, v["version"]]).fetchone()
+        if cur_task:
+            v["pool_current"] = {
+                "media_type": cur_task["media_type"],
+                "file": cur_task["result_filename"] or "",
+                "original": cur_task["result_original"] or "",
+                "poster": cur_task["poster_filename"] or "",
+                "url": "/api/card-gen/file/" + (cur_task["result_filename"] or ""),
+            }
+        else:
+            v["pool_current"] = None
         versions.append(v)
     return {"ok": True, "card_id": card_id, "current_version": current["version"], "versions": versions, "total": len(versions)}
 
@@ -980,20 +1004,49 @@ def get_version_detail(card_id: int, ver_id: int):
 
 @router.post("/{card_id}/rollback")
 def rollback_card(card_id: int, data: dict):
-    """回滚到指定版本"""
+    """回滚到指定版本（支持 version_id 行 id 或 version 版本号；v5.38.61: 回滚后联动该版本生成池当前产物为词卡预览）"""
     ver_id = data.get("version_id")
-    if not ver_id:
-        raise HTTPException(400, "请提供 version_id")
+    ver_no = data.get("version")
     db = get_db()
-    row = db.execute("SELECT * FROM word_card_versions WHERE id=? AND card_id=?", [ver_id, card_id]).fetchone()
+    if ver_id:
+        row = db.execute("SELECT * FROM word_card_versions WHERE id=? AND card_id=?", [ver_id, card_id]).fetchone()
+    elif ver_no:
+        row = db.execute("SELECT * FROM word_card_versions WHERE card_id=? AND version=? ORDER BY id DESC LIMIT 1",
+                         [card_id, ver_no]).fetchone()
+    else:
+        raise HTTPException(400, "请提供 version_id 或 version")
     if not row:
         raise HTTPException(404, "版本不存在")
     snapshot = json.loads(row["snapshot"])
     _save_version_snapshot(db, card_id)
+    # v5.38.61: 单条 UPDATE 恢复所有字段（原逐字段 UPDATE 导致 version 暴涨 13+）
     fields = ["name", "content", "meaning", "scene", "module", "category", "tags", "icon", "group_id", "sort_order", "card_role", "structured"]
+    sets = []
+    params = []
     for k in fields:
         if k in snapshot and snapshot[k] is not None:
-            db.execute(f"UPDATE word_card SET {k}=?, updated_at=datetime('now','localtime'), version=version+1 WHERE id=?", [snapshot[k], card_id])
+            sets.append(f"{k}=?")
+            params.append(snapshot[k])
+    if sets:
+        params.append(card_id)
+        db.execute(
+            f"UPDATE word_card SET {', '.join(sets)}, updated_at=datetime('now','localtime'), version=version+1 WHERE id=?",
+            params)
+    # v5.38.61: 回滚后联动该版本生成池当前产物 → 词卡预览（各历史版本独立图池/视频池，互不影响）
+    try:
+        cur_task = db.execute(
+            "SELECT media_type, result_filename, result_original, poster_filename FROM card_gen_tasks "
+            "WHERE card_id=? AND version=? AND is_current=1 AND status='success' LIMIT 1",
+            [card_id, row["version"]]).fetchone()
+        if cur_task:
+            if cur_task["media_type"] == "video":
+                db.execute("UPDATE word_card SET thumbnail=?, preview_media=?, original_ref='', media_type='video' WHERE id=?",
+                           [cur_task["poster_filename"] or "", cur_task["result_filename"] or "", card_id])
+            else:
+                db.execute("UPDATE word_card SET thumbnail=?, preview_media='', original_ref=?, media_type='image' WHERE id=?",
+                           [cur_task["result_filename"] or "", cur_task["result_original"] or cur_task["result_filename"] or "", card_id])
+    except Exception as e:
+        print(f"[WordCards] 版本预览联动失败: {e}")
     safe_commit()
     return {"ok": True, "card_id": card_id, "rolled_to_version": row["version"]}
 

@@ -226,6 +226,11 @@ def _ensure_card_gen_table():
             updated_at TEXT DEFAULT (datetime('now','localtime'))
         )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_card_gen_card ON card_gen_tasks(card_id, id)")
+        # v5.38.61: 生成池按词卡版本隔离（各版本独立图池/视频池，互不影响）
+        cols = [r["name"] for r in c.execute("PRAGMA table_info(card_gen_tasks)").fetchall()]
+        if "version" not in cols:
+            c.execute("ALTER TABLE card_gen_tasks ADD COLUMN version INTEGER DEFAULT 1")
+            print("[CardGen] card_gen_tasks 增加列 version")
         c.commit()
     finally:
         c.close()
@@ -462,39 +467,52 @@ def _poll_dreamina_video(submit_id: str, timeout_sec: int = 900):
 
 # ==================== 产物归档 ====================
 
+def _card_version(c, card_id: int) -> int:
+    """词卡当前版本号（v5.38.61：生成池按版本隔离）"""
+    try:
+        r = c.execute("SELECT version FROM word_card WHERE id=?", [card_id]).fetchone()
+        return int(r[0] or 1) if r else 1
+    except Exception:
+        return 1
+
+
 def _mark_current(c, card_id: int, task_id: int):
-    """同卡其他记录取消当前，本记录设为当前"""
-    c.execute("UPDATE card_gen_tasks SET is_current=0 WHERE card_id=?", [card_id])
+    """同卡同版本其他记录取消当前，本记录设为当前（v5.38.61：按版本作用域，各版本互不影响）"""
+    ver = _card_version(c, card_id)
+    c.execute("UPDATE card_gen_tasks SET is_current=0 WHERE card_id=? AND version=?", [card_id, ver])
     c.execute("UPDATE card_gen_tasks SET is_current=1 WHERE id=?", [task_id])
+    c.execute("UPDATE card_gen_tasks SET version=? WHERE id=?", [ver, task_id])
 
 
 def _preserve_current_preview(c, card_id: int):
-    """v5.37.15: 生成归档前，把词卡当前预览存为历史记录（原图/旧视频不丢失，切换按钮始终可用）"""
+    """v5.37.15: 生成归档前，把词卡当前预览存为历史记录（原图/旧视频不丢失，切换按钮始终可用）
+    v5.38.61: 存档归入当前版本池"""
     try:
         card = c.execute("SELECT thumbnail, original_ref, preview_media, media_type FROM word_card WHERE id=?", [card_id]).fetchone()
         if not card:
             return
+        ver = _card_version(c, card_id)
         if card["media_type"] == "video" and card["preview_media"]:
             exists = c.execute(
-                "SELECT 1 FROM card_gen_tasks WHERE card_id=? AND media_type='video' AND result_filename=?",
-                [card_id, card["preview_media"]]).fetchone()
+                "SELECT 1 FROM card_gen_tasks WHERE card_id=? AND version=? AND media_type='video' AND result_filename=?",
+                [card_id, ver, card["preview_media"]]).fetchone()
             if not exists:
                 c.execute(
                     """INSERT INTO card_gen_tasks (card_id, task_type, prompt, status, media_type,
-                       result_filename, poster_filename, is_current)
-                       VALUES (?, 'original', '', 'success', 'video', ?, ?, 0)""",
-                    [card_id, card["preview_media"], card["thumbnail"] or ""])
+                       result_filename, poster_filename, is_current, version)
+                       VALUES (?, 'original', '', 'success', 'video', ?, ?, 0, ?)""",
+                    [card_id, card["preview_media"], card["thumbnail"] or "", ver])
         elif card["media_type"] == "image" and (card["thumbnail"] or card["original_ref"]):
             exists = c.execute(
-                "SELECT 1 FROM card_gen_tasks WHERE card_id=? AND media_type='image' "
+                "SELECT 1 FROM card_gen_tasks WHERE card_id=? AND version=? AND media_type='image' "
                 "AND (result_filename=? OR result_original=?)",
-                [card_id, card["thumbnail"], card["original_ref"]]).fetchone()
+                [card_id, ver, card["thumbnail"], card["original_ref"]]).fetchone()
             if not exists:
                 c.execute(
                     """INSERT INTO card_gen_tasks (card_id, task_type, prompt, status, media_type,
-                       result_filename, result_original, is_current)
-                       VALUES (?, 'original', '', 'success', 'image', ?, ?, 0)""",
-                    [card_id, card["thumbnail"] or "", card["original_ref"] or ""])
+                       result_filename, result_original, is_current, version)
+                       VALUES (?, 'original', '', 'success', 'image', ?, ?, 0, ?)""",
+                    [card_id, card["thumbnail"] or "", card["original_ref"] or "", ver])
     except Exception as e:
         print(f"[CardGen] 预览存档失败: {e}")
 
@@ -816,12 +834,13 @@ def _create_tasks(card_ids, ttype, params, u) -> list:
                 continue
             cur = c.execute(
                 """INSERT INTO card_gen_tasks (card_id, task_type, prompt, source_image, model_version,
-                   ratio, resolution_type, duration, video_resolution, session, creator_id)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                   ratio, resolution_type, duration, video_resolution, session, creator_id, version)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                 [cid, ttype, prompt, card["original_ref"] or "",
                  params.get("model_version", ""), params.get("ratio", ""),
                  params.get("resolution_type", ""), params.get("duration", 5),
-                 params.get("video_resolution", ""), params.get("session", 0), u.get("id")])
+                 params.get("video_resolution", ""), params.get("session", 0), u.get("id"),
+                 _card_version(c, cid)])  # v5.38.61: 记录生成时词卡版本（池按版本隔离）
             out.append({"card_id": cid, "task_id": cur.lastrowid})
         c.commit()
     finally:
@@ -912,9 +931,9 @@ def create_card_gen_batch(data: CardGenBatchRequest, request: Request):
 
 @router.get("/api/card-gen/tasks")
 def list_card_gen_tasks(request: Request, card_id: int = Query(None),
-                        status: str = Query(None), active: int = Query(None),
+                        version: int = Query(None), status: str = Query(None), active: int = Query(None),
                         limit: int = Query(50, ge=1, le=200)):
-    """生成任务列表（?card_id= 词卡生成历史；?active=1 队列活动任务）"""
+    """生成任务列表（?card_id= 词卡生成历史；?version= 按词卡版本过滤池；?active=1 队列活动任务）"""
     _auth(request)
     _ensure_card_gen_table()
     sql = "SELECT * FROM card_gen_tasks WHERE 1=1"
@@ -922,6 +941,9 @@ def list_card_gen_tasks(request: Request, card_id: int = Query(None),
     if card_id:
         sql += " AND card_id=?"
         args.append(card_id)
+    if version:
+        sql += " AND version=?"   # v5.38.61: 版本池隔离
+        args.append(version)
     if status:
         sql += " AND status=?"
         args.append(status)
@@ -1086,10 +1108,11 @@ def regen_card_gen_task(tid: int, request: Request):
             raise HTTPException(400, "原任务无可复制参数")
         cur = c.execute(
             """INSERT INTO card_gen_tasks (card_id, task_type, prompt, source_image, model_version,
-               ratio, resolution_type, duration, video_resolution, session, creator_id, status)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,'queued')""",
+               ratio, resolution_type, duration, video_resolution, session, creator_id, status, version)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,'queued',?)""",
             [t["card_id"], t["task_type"], t["prompt"], t["source_image"], t["model_version"],
-             t["ratio"], t["resolution_type"], t["duration"], t["video_resolution"], t["session"], t["creator_id"]])
+             t["ratio"], t["resolution_type"], t["duration"], t["video_resolution"], t["session"], t["creator_id"],
+             _card_version(c, t["card_id"])])  # v5.38.61: 重生归入当前版本池
         new_id = cur.lastrowid
         c.commit()
     finally:

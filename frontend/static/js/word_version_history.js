@@ -31,19 +31,32 @@ App.wordEditor._showVersions = async function() {
         var d = await PK.api('/api/v4/word-cards/' + cid + '/versions');
         if (!d || !d.versions) throw new Error('无版本数据');
         var list = document.getElementById('wcVersionList');
-        var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">当前版本: v' + d.current_version + '</div>';
+        var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">当前版本: v' + d.current_version + ' · 每版本独立图池/视频池（互不影响）</div>';
         h += '<table style="width:100%;font-size:11px;border-collapse:collapse;">';
-        h += '<tr><th style="border-bottom:1px solid var(--border-color);padding:6px 8px;text-align:left;">版本</th><th style="border-bottom:1px solid var(--border-color);padding:6px 8px;text-align:left;">时间</th><th style="border-bottom:1px solid var(--border-color);padding:6px 8px;text-align:left;">备注</th><th style="border-bottom:1px solid var(--border-color);padding:6px 8px;">操作</th></tr>';
+        h += '<tr><th style="border-bottom:1px solid var(--border-color);padding:6px 8px;text-align:left;">版本</th><th style="border-bottom:1px solid var(--border-color);padding:6px 8px;text-align:left;">生成池</th><th style="border-bottom:1px solid var(--border-color);padding:6px 8px;text-align:left;">时间</th><th style="border-bottom:1px solid var(--border-color);padding:6px 8px;text-align:left;">备注</th><th style="border-bottom:1px solid var(--border-color);padding:6px 8px;">操作</th></tr>';
         for (var i = 0; i < d.versions.length; i++) {
             var v = d.versions[i];
             var isCurrent = v.version === d.current_version;
+            // v5.38.61: 生成池统计 + 当前产物缩略图
+            var poolTxt = (v.pool_count)
+                ? '<span>🖼 ' + (v.pool_img || 0) + ' · 🎬 ' + (v.pool_vid || 0) + '</span>'
+                : '<span style="color:var(--text-muted);">—</span>';
+            var thumbHtml = '';
+            if (v.pool_current) {
+                if (v.pool_current.media_type === 'video') {
+                    thumbHtml = '<span style="font-size:16px;" title="当前视频">🎬</span>';
+                } else {
+                    thumbHtml = '<img src="' + PK._esc(v.pool_current.url) + '" style="width:40px;height:30px;object-fit:cover;border-radius:4px;border:1px solid var(--border-color);" onerror="this.style.opacity=0.2">';
+                }
+            }
             h += '<tr style="' + (isCurrent ? 'background:rgba(79,70,229,0.04);' : '') + '">';
-            h += '<td style="padding:6px 8px;border-bottom:1px solid var(--border-color);">' + (isCurrent ? '\u27a1 ' : '') + 'v' + v.version + '</td>';
+            h += '<td style="padding:6px 8px;border-bottom:1px solid var(--border-color);">' + (isCurrent ? '\u27a1 ' : '') + 'v' + v.version + '<br>' + thumbHtml + '</td>';
+            h += '<td style="padding:6px 8px;border-bottom:1px solid var(--border-color);">' + poolTxt + '</td>';
             h += '<td style="padding:6px 8px;border-bottom:1px solid var(--border-color);">' + PK._esc(v.created_at || '') + '</td>';
             h += '<td style="padding:6px 8px;border-bottom:1px solid var(--border-color);">' + PK._esc(v.change_note || '-') + '</td>';
             h += '<td style="padding:6px 8px;border-bottom:1px solid var(--border-color);text-align:center;">';
             if (!isCurrent) {
-                h += '<button class="btn btn-xs btn-outline" onclick="App.wordEditor._rollbackTo(' + cid + ',' + v.version + ')">恢复</button>';
+                h += '<button class="btn btn-xs btn-outline" onclick="App.wordEditor._rollbackTo(' + cid + ',' + v.id + ')" title="切换到该版本（提示词+预览图联动）">切换到该版本</button>';
             }
             h += '</td></tr>';
         }
@@ -58,21 +71,23 @@ App.wordEditor._showVersions = async function() {
     }
 };
 
-App.wordEditor._rollbackTo = async function(cid, version) {
+App.wordEditor._rollbackTo = async function(cid, verId) {
     try {
-        var d = await PK.api('/api/v4/word-cards/' + cid + '/versions/rollback', {
+        // v5.38.61: 修正路径/参数（原调 /versions/rollback+version 与后端 /{card_id}/rollback+version_id 不匹配，回滚一直 404）
+        var d = await PK.api('/api/v4/word-cards/' + cid + '/rollback', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ version: version })
+            body: JSON.stringify({ version_id: verId })
         });
         if (d && d.ok) {
-            PK.toast('已回滚到 v' + d.rolled_to_version, 'success');
+            PK.toast('已切换到 v' + d.rolled_to_version + '（提示词与预览图已联动）', 'success');
             this.close();
             if (this._onSaved) this._onSaved();
             if (App.wordCards && App.wordCards.load) App.wordCards.load();
+            if (App.loadPrompts) { try { App.loadPrompts(); } catch (e) {} }
         }
     } catch(e) {
-        PK.toast('回滚未完成: ' + (e.detail || e.message), 'error');
+        PK.toast('切换未完成: ' + (e.detail || e.message), 'error');
     }
 };
 

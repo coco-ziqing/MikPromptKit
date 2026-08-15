@@ -168,34 +168,37 @@
         },
         _openHistoryPicker: function (cardId, anchor) {
             var self = this;
-            App.fetchJSON('/api/card-gen/tasks?card_id=' + cardId + '&limit=20').then(function (d) {
-                var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename && t.task_type !== 'original'; });
-                if (!tasks.length) return;
-                var ov = document.createElement('div');
-                ov.className = 'modal-overlay';
-                ov.style.cssText = 'display:flex;z-index:900;background:rgba(0,0,0,.5);align-items:center;justify-content:center;';
-                ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
-                var h = '<div class="modal-content" style="max-width:560px;max-height:80vh;overflow-y:auto;border-radius:14px;padding:14px 16px;" onclick="event.stopPropagation()">' +
-                    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-size:14px;font-weight:600;">🎬 生成历史（' + cardId + '）</span>' +
-                    '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></div>' +
-                    '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">点击产物切换词卡当前预览（原图文件保留，可随时切回）</div>';
-                tasks.forEach(function (t) {
-                    var cur = t.is_current ? '<span style="font-size:9px;background:#10b981;color:#fff;border-radius:8px;padding:1px 6px;margin-left:4px;">当前显示</span>' : '';
-                    var origTag = t.task_type === 'original' ? '<span style="font-size:9px;color:#94a3b8;margin-left:4px;">（生成前保留的素材）</span>' : '';
-                    var prev = t.media_type === 'video'
-                        ? '<video src="/api/thumbnails/video/' + t.result_filename + '" style="width:84px;height:56px;object-fit:cover;border-radius:6px;" muted loop preload="metadata"></video>'
-                        : '<img src="/api/thumbnails/file/' + t.result_filename + '" style="width:84px;height:56px;object-fit:cover;border-radius:6px;">';
-                    var meta = (t.task_type_label || t.task_type) + (t.media_type === 'video' ? ' · ' + (t.duration || 5) + 's' : '') + ' · ' + (t.created_at || '').slice(0, 16);
-                    h += '<div style="display:flex;gap:10px;align-items:center;padding:8px;border:1px solid var(--border-color);border-radius:10px;margin-bottom:6px;' + (t.is_current ? 'border-color:#10b981;' : '') + '">' +
-                        prev +
-                        '<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:600;">' + self._icons[t.task_type] + ' ' + meta + origTag + '</div>' +
-                        '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">' + self._esc((t.prompt || '').slice(0, 60)) + '</div></div>' +
-                        (t.is_current ? '' : '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#10b981;color:#10b981;" onclick="App.cardGen.activate(' + t.id + ',' + cardId + ',this)">设为当前</button>') +
-                        '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.delTask(' + t.id + ',this)">🗑</button></div>';
+            // v5.38.61: 先取词卡当前版本，生成池按版本隔离展示
+            App.fetchJSON('/api/v4/word-cards/' + cardId + '/versions').then(function (vd) {
+                var ver = (vd && vd.current_version) || 1;
+                return App.fetchJSON('/api/card-gen/tasks?card_id=' + cardId + '&version=' + ver + '&limit=20').then(function (d) {
+                    var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename && t.task_type !== 'original'; });
+                    if (!tasks.length) return;
+                    var ov = document.createElement('div');
+                    ov.className = 'modal-overlay';
+                    ov.style.cssText = 'display:flex;z-index:900;background:rgba(0,0,0,.5);align-items:center;justify-content:center;';
+                    ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+                    var h = '<div class="modal-content" style="max-width:560px;max-height:80vh;overflow-y:auto;border-radius:14px;padding:14px 16px;" onclick="event.stopPropagation()">' +
+                        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-size:14px;font-weight:600;">🎬 生成历史（' + cardId + ' · v' + ver + '）</span>' +
+                        '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></div>' +
+                        '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">当前版本 v' + ver + ' 的图池/视频池（各版本独立）· 点击产物切换词卡当前预览</div>';
+                    tasks.forEach(function (t) {
+                        var cur = t.is_current ? '<span style="font-size:9px;background:#10b981;color:#fff;border-radius:8px;padding:1px 6px;margin-left:4px;">当前显示</span>' : '';
+                        var prev = t.media_type === 'video'
+                            ? '<video src="/api/thumbnails/video/' + t.result_filename + '" style="width:84px;height:56px;object-fit:cover;border-radius:6px;" muted loop preload="metadata"></video>'
+                            : '<img src="/api/thumbnails/file/' + t.result_filename + '" style="width:84px;height:56px;object-fit:cover;border-radius:6px;">';
+                        var meta = (t.task_type_label || t.task_type) + (t.media_type === 'video' ? ' · ' + (t.duration || 5) + 's' : '') + ' · ' + (t.created_at || '').slice(0, 16);
+                        h += '<div style="display:flex;gap:10px;align-items:center;padding:8px;border:1px solid var(--border-color);border-radius:10px;margin-bottom:6px;' + (t.is_current ? 'border-color:#10b981;' : '') + '">' +
+                            prev +
+                            '<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:600;">' + self._icons[t.task_type] + ' ' + meta + '</div>' +
+                            '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">' + self._esc((t.prompt || '').slice(0, 60)) + '</div></div>' +
+                            (t.is_current ? '' : '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#10b981;color:#10b981;" onclick="App.cardGen.activate(' + t.id + ',' + cardId + ',this)">设为当前</button>') +
+                            '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.delTask(' + t.id + ',this)">🗑</button></div>';
+                    });
+                    h += '</div>';
+                    ov.innerHTML = h;
+                    document.body.appendChild(ov);
                 });
-                h += '</div>';
-                ov.innerHTML = h;
-                document.body.appendChild(ov);
             }).catch(function () {});
         },
         // v5.37.11: 卡片预览模式切换（当前图片→切视频，当前视频→切图片）
