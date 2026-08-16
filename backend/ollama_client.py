@@ -40,7 +40,8 @@ MODEL_TIERS = {
     "ultra":    ["qwen3.5:27b", "deepseek-r1:14b", "qwen3-coder-next:Q4_K_M"],
     "high":     ["glm-4.7-flash:latest", "qwen3.5:9b", "qwen2.5-coder:14b", "phi4:latest"],
     "medium":   ["qwen3.5:9b", "qwen:7b"],
-    "fast":     ["phi3:mini", "phi3:latest"],
+    # fast：轻量快速任务（v5.38.64：优先 qwen3.5:4b，简介生成等 <15s 完成）
+    "fast":     ["qwen3.5:4b", "phi3:mini", "phi3:latest"],
 }
 
 # Kimi 模型 → 按接口规模分级
@@ -61,7 +62,7 @@ FUNCTION_MODEL_MAP = {
     "rerank":            "high",     # 搜索重排 — 需要语义理解
     "thumbnail_desc":    "medium",   # 缩略图描述生成
     "role_parse":        "high",     # 角色设定解析 — 需 JSON 输出，避开 thinking 模型     
-    "vjshi_desc":        "high",     # 光厂素材简介 — 避开 thinking 模型（2026-08-14）
+    "vjshi_desc":        "fast",     # 光厂素材简介 — 轻量任务用 4b 快速模型（v5.38.64：原 high 60s+ 超时卡顿）
     "vision_ocr":        "high",     # OCR — 视觉模型专用
     "playground":        "high",     # Playground — 用户可切换
 }

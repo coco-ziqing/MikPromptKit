@@ -110,16 +110,22 @@
             var ta = ov.querySelector('#vjDesc');
             if (!ta) return;
             btn.disabled = true; btn.textContent = '⏳ 生成中...';
-            var d = await App.fetchJSON('/api/vjshi/llm-description', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: prompt, title: prompt })
-            });
-            btn.disabled = false; btn.textContent = '✨ AI 优化简介';
-            if (d && d.ok && d.description) {
-                ta.value = d.description;
-                this._toast('✅ 简介已优化', 'success');
-            } else {
-                this._toast((d && d.error) || '简介生成未完成（Ollama 可能未启动）', 'error');
+            try {
+                var d = await App.fetchJSON('/api/vjshi/llm-description', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: prompt, title: prompt }),
+                    _timeoutMs: 60000
+                });
+                btn.disabled = false; btn.textContent = '✨ AI 优化简介';
+                if (d && d.ok && d.description) {
+                    ta.value = d.description;
+                    this._toast('✅ 简介已优化', 'success');
+                } else {
+                    this._toast((d && d.error) || '简介生成未完成（Ollama 未启动或超时）', 'error');
+                }
+            } catch (e) {
+                btn.disabled = false; btn.textContent = '✨ AI 优化简介';
+                this._toast('简介生成超时（' + (e.message || '网络错误') + '）', 'error');
             }
         },
         submit: async function (genTaskId, cardId, videoFile, btn) {

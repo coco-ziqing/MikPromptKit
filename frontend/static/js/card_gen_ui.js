@@ -590,6 +590,7 @@
             ov.querySelector('.modal-content').innerHTML =
                 '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-size:14px;font-weight:600;">📊 生成任务队列</span>' +
                 '<span style="display:flex;gap:6px;"><button class="btn btn-xs btn-outline" onclick="App.cardGen.openPanel()">🔄 刷新</button>' +
+                (typeof App.vjshi !== 'undefined' && App.vjshi.openPanel ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;" onclick="App.vjshi.openPanel()">📤 光厂队列</button>' : '') +
                 '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></span></div>' +
                 '<div id="cgPanelBody" style="min-height:120px;">加载中...</div>';
             this._panelOv = ov;
