@@ -136,6 +136,11 @@ def _ensure_table():
             c.execute("ALTER TABLE vjshi_upload_tasks ADD COLUMN updated_at TEXT DEFAULT ''")
         if "progress_note" not in cols:
             c.execute("ALTER TABLE vjshi_upload_tasks ADD COLUMN progress_note TEXT DEFAULT ''")
+        # v5.39.0: 审核状态跟踪（reviewing=审核中/online=已上架/rejected=被拒）
+        if "review_status" not in cols:
+            c.execute("ALTER TABLE vjshi_upload_tasks ADD COLUMN review_status TEXT DEFAULT ''")
+        if "reject_reason" not in cols:
+            c.execute("ALTER TABLE vjshi_upload_tasks ADD COLUMN reject_reason TEXT DEFAULT ''")
         c.commit()
     finally:
         c.close()
@@ -1316,6 +1321,50 @@ def vjshi_resume(request: Request):
     _STATE["consec_fail"] = 0
     n = _spawn_queued_workers()
     return {"ok": True, "spawned": n}
+
+
+@router.put("/api/vjshi/tasks/{tid}/review")
+def vjshi_review(tid: int, request: Request, data: dict = Body(...)):
+    """人工录入投稿审核状态（v5.39.0）：reviewing=审核中 / online=已上架 / rejected=被拒
+    仅人工查看光厂后台后录入，系统不自动查官网"""
+    _team_guard(request)
+    status = (data.get("status") or "").strip()
+    if status not in ("reviewing", "online", "rejected"):
+        raise HTTPException(400, "status 仅支持 reviewing/online/rejected")
+    c = _db()
+    try:
+        t = c.execute("SELECT id FROM vjshi_upload_tasks WHERE id=?", [tid]).fetchone()
+        if not t:
+            raise HTTPException(404, "任务不存在")
+        reason = (data.get("reject_reason") or "").strip()
+        c.execute("UPDATE vjshi_upload_tasks SET review_status=?, reject_reason=?, updated_at=datetime('now','localtime') WHERE id=?",
+                  [status, reason, tid])
+        c.commit()
+        return {"ok": True, "task_id": tid, "review_status": status, "reject_reason": reason}
+    finally:
+        c.close()
+
+
+@router.post("/api/vjshi/review-batch")
+def vjshi_review_batch(request: Request, data: dict = Body(...)):
+    """批量录入审核状态（v5.39.0）：ids + status + reject_reason"""
+    _team_guard(request)
+    ids = data.get("ids") or []
+    status = (data.get("status") or "").strip()
+    if not ids or not isinstance(ids, list):
+        raise HTTPException(400, "ids 不能为空")
+    if status not in ("reviewing", "online", "rejected"):
+        raise HTTPException(400, "status 仅支持 reviewing/online/rejected")
+    reason = (data.get("reject_reason") or "").strip()
+    c = _db()
+    try:
+        cur = c.executemany(
+            "UPDATE vjshi_upload_tasks SET review_status=?, reject_reason=?, updated_at=datetime('now','localtime') WHERE id=?",
+            [(status, reason, tid) for tid in ids])
+        c.commit()
+        return {"ok": True, "updated": cur.rowcount}
+    finally:
+        c.close()
 
 
 def _watchdog_loop():

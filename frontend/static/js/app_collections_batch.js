@@ -214,6 +214,7 @@ Object.assign(App, {
                 // 一键完整流水线（2026-08-10：仅全词库模式显示）
                 '<button class="btn btn-sm" id="bgenPipelineBtn" onclick="App._batchRunPipeline()" style="display:none;border:1px solid #8b5cf6;color:#8b5cf6;background:rgba(139,92,246,0.06);font-size:12px;" title="自动执行：① Ollama 优化未优化的卡 → ② 保存到词卡详细档 → ③ 提交生成任务（按批次）"><i class="bi bi-rocket-takeoff"></i> 🚀 一键完整处理</button>' +
                 '<button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'batchGenDialog\').style.display=\'none\'">关闭</button>' +
+                '<button class="btn btn-sm" id="bgenQualityBtn" onclick="App._batchQualityCheck()" style="border:1px solid #10b981;color:#10b981;background:rgba(16,185,129,0.06);font-size:12px;" title="对选中的词卡做提示词质检评分（完整性/合规性/生产适配/文本质量），低分卡先处理再生成"><i class="bi bi-clipboard-check"></i> 🔍 质检评分</button>' +
                 '<button class="btn btn-primary btn-sm" id="bgenStartBtn" onclick="App._startBatchGen()"><i class="bi bi-play-fill"></i> 开始生成</button>' +
               '</div>' +
             '</div>';
@@ -1578,6 +1579,51 @@ Object.assign(App, {
             values[key] = v;
         });
         return values;
+    },
+
+    // v5.39.0: 词卡提示词质检评分（选中卡 → 规则评分 → 排序展示）
+    _batchQualityCheck: function () {
+        var ids = this._batchIds || [];
+        if (!ids.length) { this._toast('请先选中词卡', 'warning'); return; }
+        var ov = document.createElement('div');
+        ov.className = 'modal-overlay';
+        ov.style.cssText = 'display:flex;z-index:960;background:rgba(0,0,0,.55);align-items:center;justify-content:center;';
+        ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+        ov.innerHTML = '<div class="modal-content" style="max-width:820px;border-radius:14px;padding:16px;max-height:86vh;overflow-y:auto;" onclick="event.stopPropagation()">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-size:14px;font-weight:600;">🔍 提示词质检评分（' + ids.length + ' 张）</span>' +
+            '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></div>' +
+            '<div id="bgenQaBody" style="min-height:80px;"><p style="font-size:12px;color:var(--text-muted);">正在质检...</p></div></div>';
+        document.body.appendChild(ov);
+        App.fetchJSON('/api/v4/word-cards/quality-check', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ card_ids: ids, use_ai: false }),
+            _timeoutMs: 60000
+        }).then(function (d) {
+            var body = ov.querySelector('#bgenQaBody');
+            if (!d || !d.ok) { body.innerHTML = '<p style="font-size:12px;color:#ef4444;">质检失败：' + App._escape(String((d && d.detail) || '未知')) + '</p>'; return; }
+            var items = d.results || [];
+            var low = items.filter(function (x) { return x.score < 60; }).length;
+            var avg = items.length ? (items.reduce(function(a,b){return a+b.score;},0)/items.length).toFixed(1) : '-';
+            var h = '<p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">平均分 <b>' + avg + '</b> ｜ 低分卡(&lt;60) <b style="color:#ef4444;">' + low + '</b> 张（建议先处理再生成）</p>' +
+                '<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr style="background:var(--bg-card);"><th style="padding:6px;border:1px solid var(--border-color);text-align:left;">词卡</th><th style="padding:6px;border:1px solid var(--border-color);">总分</th><th style="padding:6px;border:1px solid var(--border-color);">完整</th><th style="padding:6px;border:1px solid var(--border-color);">合规</th><th style="padding:6px;border:1px solid var(--border-color);">生产</th><th style="padding:6px;border:1px solid var(--border-color);">文本</th><th style="padding:6px;border:1px solid var(--border-color);text-align:left;">问题</th></tr>';
+            items.forEach(function (it) {
+                var r = it.report || {};
+                var color = it.score >= 80 ? '#10b981' : (it.score >= 60 ? '#f59e0b' : '#ef4444');
+                var issues = (r.issues || []).join('；') || '—';
+                h += '<tr><td style="padding:6px;border:1px solid var(--border-color);">' + App._escape(it.name || ('#' + it.id)) + '</td>' +
+                    '<td style="padding:6px;border:1px solid var(--border-color);text-align:center;font-weight:700;color:' + color + ';">' + it.score + '</td>' +
+                    '<td style="padding:6px;border:1px solid var(--border-color);text-align:center;">' + (r.complete||0) + '</td>' +
+                    '<td style="padding:6px;border:1px solid var(--border-color);text-align:center;">' + (r.compliance||0) + '</td>' +
+                    '<td style="padding:6px;border:1px solid var(--border-color);text-align:center;">' + (r.producible||0) + '</td>' +
+                    '<td style="padding:6px;border:1px solid var(--border-color);text-align:center;">' + (r.text_quality||0) + '</td>' +
+                    '<td style="padding:6px;border:1px solid var(--border-color);font-size:11px;color:#ef4444;">' + App._escape(issues) + '</td></tr>';
+            });
+            h += '</table><p style="font-size:10px;color:var(--text-muted);margin-top:8px;">评分：完整性30% + 合规25% + 生产20% + 文本15% + AI一致性10%（未启用为0）</p>';
+            body.innerHTML = h;
+        }).catch(function (e) {
+            var body = ov.querySelector('#bgenQaBody');
+            if (body) body.innerHTML = '<p style="font-size:12px;color:#ef4444;">质检异常：' + App._escape(e.message) + '</p>';
+        });
     },
 
     async _startBatchGen() {

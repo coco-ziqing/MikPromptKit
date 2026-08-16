@@ -10,7 +10,7 @@ import os
 import re
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 
 from database import get_db, safe_commit, safe_count, safe_count_dict, safe_execute, safe_fetch_one
@@ -1353,3 +1353,28 @@ def _fts_search(db, query: str) -> list:
         return list(ids)[:200]
     except Exception:
         return []
+
+
+# ==================== v5.39.0: 词卡提示词质检评分（P0） ====================
+
+@router.post('/quality-check')
+async def quality_check(data: dict = Body({})):
+    """批量质检评分：card_ids 必填；use_ai=true 时启用 Ollama 一致性评分（较慢）"""
+    from api.word_quality import check_cards
+    ids = data.get('card_ids') or []
+    use_ai = bool(data.get('use_ai'))
+    if not ids:
+        raise HTTPException(400, 'card_ids 不能为空')
+    if len(ids) > 200:
+        raise HTTPException(400, '单次质检最多 200 张')
+    result = check_cards(ids, use_ai)
+    return {'ok': True, **result}
+
+
+@router.get('/quality/list')
+def quality_list(limit: int = Query(200, ge=1, le=500), min_score: float = Query(0.0),
+                 keyword: str = Query('')):
+    """质检评分排序视图（高分优先）"""
+    from api.word_quality import list_quality
+    return {'ok': True, **list_quality(limit, min_score, keyword)}
+

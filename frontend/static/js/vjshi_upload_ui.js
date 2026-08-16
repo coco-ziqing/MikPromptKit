@@ -185,10 +185,15 @@
                 if (!d || !d.ok) { box.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:20px;text-align:center;">加载未完成</div>'; return; }
                 var tasks = d.tasks || [];
                 var st = d.state || {};
+                // v5.39.0: 审核状态筛选
+                var reviewFilter = (document.getElementById('vjReviewFilter') || {}).value || '';
+                if (reviewFilter) tasks = tasks.filter(function (t) { return (t.review_status || '') === reviewFilter; });
                 var act = tasks.filter(function (t) { return t.status === 'queued' || t.status === 'uploading' || t.status === 'filling'; });
                 var okc = tasks.filter(function (t) { return t.status === 'submitted'; }).length;
                 var fai = tasks.filter(function (t) { return t.status === 'fail'; }).length;
-                var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">进行中 ' + act.length + ' · 已提交 ' + okc + ' · 失败 ' + fai +
+                var h = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;"><span style="font-size:11px;color:var(--text-muted);">进行中 ' + act.length + ' · 已提交 ' + okc + ' · 失败 ' + fai +
+                    '<select id="vjReviewFilter" onchange="App.vjshi.openPanel()" style="font-size:11px;padding:2px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);margin-left:6px;">' +
+                    '<option value="">审核: 全部</option><option value="reviewing">⏳ 审核中</option><option value="online">✅ 已上架</option><option value="rejected">❌ 被拒</option></select></span>' +
                     (st.paused_reason ? ' <span style="color:#ef4444;">⏸ ' + self._esc(st.paused_reason) + ' <a href="javascript:void(0)" onclick="App.vjshi.resume()" style="color:#10b981;">恢复</a></span>' : '') +
                     (st.today_count ? ' · 今日 ' + st.today_count + '/' + (st.daily_limit || 30) : '') +
                     (st.hour_count ? ' · 本时 ' + st.hour_count + '/' + (st.hourly_limit || 6) : '') +
@@ -204,6 +209,11 @@
                         (t.submit_ref ? '<div style="font-size:10px;color:#10b981;margin-top:2px;">已提交: ' + self._esc(t.submit_ref.slice(0, 50)) + '</div>' : '') +
                         '</div>' +
                         self._statusBadge(t.status) +
+                        (t.review_status === 'online' ? '<span class="badge" style="background:#10b981;">✅ 已上架</span>' : (t.review_status === 'reviewing' ? '<span class="badge" style="background:#2563eb;">⏳ 审核中</span>' : (t.review_status === 'rejected' ? '<span class="badge" style="background:#ef4444;" title="' + self._esc(t.reject_reason || '') + '">❌ 被拒</span>' : ''))) +
+                        (t.status === 'submitted' ? '<span style="display:flex;gap:3px;">' +
+                            '<button class="btn btn-xs btn-outline" style="font-size:9px;padding:1px 6px;border-color:#2563eb;color:#2563eb;" onclick="App.vjshi.markReview(' + t.id + ',\'reviewing\')">⏳审核中</button>' +
+                            '<button class="btn btn-xs btn-outline" style="font-size:9px;padding:1px 6px;border-color:#10b981;color:#10b981;" onclick="App.vjshi.markReview(' + t.id + ',\'online\')">✅上架</button>' +
+                            '<button class="btn btn-xs btn-outline" style="font-size:9px;padding:1px 6px;border-color:#ef4444;color:#ef4444;" onclick="App.vjshi.markReview(' + t.id + ',\'rejected\')">❌被拒</button></span>' : '') +
                         (t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;" onclick="App.vjshi.retry(' + t.id + ')">🔄 重试</button>' : '') +
                         '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.vjshi.delTask(' + t.id + ')">🗑</button></div>';
                 });
@@ -230,6 +240,19 @@
         resume: async function () {
             var d = await App.fetchJSON('/api/vjshi/resume', { method: 'POST' });
             if (d && d.ok) { this._toast('✅ 队列已恢复', 'success'); this.openPanel(); }
+        },
+        // v5.39.0: 人工录入审核状态（reviewing/online/rejected）
+        markReview: async function (tid, status) {
+            var reason = '';
+            if (status === 'rejected') {
+                reason = prompt('录入被拒原因（如：标题不规范/关键词违规）：', '') || '';
+            }
+            var d = await App.fetchJSON('/api/vjshi/tasks/' + tid + '/review', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: status, reject_reason: reason })
+            });
+            if (d && d.ok) { this._toast('已标记：' + (status === 'online' ? '已上架' : status === 'reviewing' ? '审核中' : '被拒'), 'success'); this.openPanel(); }
+            else this._toast((d && d.detail) || '标记失败', 'error');
         },
         // v5.38.6: 浏览器模式切换（有头=可见窗口 / 无头=后台）
         toggleMode: async function () {
