@@ -100,6 +100,32 @@ class TestE2EFlow(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_hot_keyword_single_dim(self):
+        """热搜关键词排行表（单维热度）：导入 → 热度导向分池"""
+        xlsx = _make_xlsx_bytes([
+            ["排名", "热搜关键词", "热搜指数", "热度"],
+            [1, "AI动画", 92, 9200],
+            [2, "治愈系", 45, 4500],
+            [3, "冷门词", 8, 800],
+        ])
+        r = import_snapshot(FakeUpload(xlsx), "hot.xlsx", "excel", "热搜表-2026W33", "tester", "")
+        vid = r["version_id"]
+        res = analyze_version(vid)
+        self.assertTrue(res["single_dim"])
+        conn = get_conn()
+        try:
+            pools = conn.execute(
+                "SELECT p.pool_type, t.display_name FROM theme_pools p JOIN themes t ON t.id=p.theme_id "
+                "WHERE p.version_id=?", [vid]).fetchall()
+            pmap = {x["display_name"]: x["pool_type"] for x in pools}
+            self.assertEqual(pmap["AI动画"], "main_pool")   # 高热度
+            self.assertEqual(pmap["治愈系"], "blue_ocean")   # 中热度观察
+            self.assertEqual(pmap["冷门词"], "sunset")       # 低热度淘汰
+            note = conn.execute("SELECT note FROM snapshot_versions WHERE id=?", [vid]).fetchone()["note"]
+            self.assertIn("热搜关键词排行表", note)  # 表型自动识别标注
+        finally:
+            conn.close()
+
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(_TMP, ignore_errors=True)

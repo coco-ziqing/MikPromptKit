@@ -13,13 +13,41 @@ from db import get_conn, init_db, row_to_dict, save_upload_file, sha256_file
 
 # 支持的中文/英文列名映射
 COLUMN_MAP = {
-    "theme": ["题材", "主题", "素材题材", "题材名", "主题词", "theme", "topic", "subject", "名称", "题材名称"],
-    "demand": ["需求指数", "需求", "需求分", "指数", "demand", "demand_index", "需求热度"],
-    "opportunity": ["机会指数", "机会", "机会分", "opportunity", "opportunity_index", "机会度"],
+    # 题材/关键词列（含官方「热搜关键词排行表」列名）
+    "theme": ["题材", "主题", "素材题材", "题材名", "主题词", "关键词", "热搜关键词", "热搜词", "搜索词",
+              "theme", "topic", "subject", "keyword", "name", "名称", "题材名称"],
+    # 需求侧指数（含官方「热搜热度/搜索热度」列名）
+    "demand": ["需求指数", "需求", "需求分", "指数", "热度", "搜索热度", "热搜指数", "热搜热度",
+               "热度指数", "需求热度", "热力值", "demand", "demand_index", "heat", "hot", "popularity"],
+    # 机会维度指数（官方「视频机会排行表」核心列）
+    "opportunity": ["机会指数", "机会", "机会分", "机会值", "机会度", "opportunity", "opportunity_index", "opp"],
     "sales": ["销量", "销售数量", "数量", "sales", "qty", "sales_qty", "成交数"],
     "revenue": ["销售额", "销售额(元)", "销售金额", "金额", "revenue", "amount", "成交额"],
-    "rank": ["排名", "榜单位次", "位次", "rank", "ranking", "名次"],
+    "rank": ["排名", "榜单位次", "位次", "名次", "排行", "rank", "ranking", "no"],
 }
+
+# 官方表格类型识别：
+#   opportunity_rank = 视频机会排行表（含机会指数列，双维可评分）
+#   hot_keyword      = 热搜关键词排行表（含热度/热搜列，单维热度）
+TABLE_TYPE_HINTS = {
+    "opportunity_rank": ["机会指数", "机会", "opportunity"],
+    "hot_keyword": ["热搜", "热度", "搜索热度", "热搜指数", "heat", "hot", "popularity"],
+}
+TABLE_TYPE_LABELS = {
+    "opportunity_rank": "视频机会排行表（人工下载）",
+    "hot_keyword": "热搜关键词排行表（人工下载）",
+    "generic": "通用快照",
+}
+
+
+def detect_table_type(headers) -> str:
+    """根据表头识别官方表格类型"""
+    norm = [_norm_header(h) for h in headers]
+    if any(any(_norm_header(hint) in norm for hint in hints) for hints in [TABLE_TYPE_HINTS["opportunity_rank"]]):
+        return "opportunity_rank"
+    if any(any(_norm_header(hint) in norm for hint in hints) for hints in [TABLE_TYPE_HINTS["hot_keyword"]]):
+        return "hot_keyword"
+    return "generic"
 
 
 def _norm_header(h: str) -> str:
@@ -54,16 +82,18 @@ def _to_int(v):
     return int(_to_float(v))
 
 
-def parse_excel(path: str):
-    """解析人工 Excel 快照 → [(theme, demand, opp, sales, revenue, rank), ...]"""
+def parse_excel(path: str, return_meta: bool = False):
+    """解析人工 Excel 快照 → [(theme, demand, opp, sales, revenue, rank), ...]
+    return_meta=True 时返回 (records, table_type)"""
     import openpyxl
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
     wb.close()
     if not rows:
-        return []
+        return ([], "generic") if return_meta else []
     headers = [str(h) if h is not None else "" for h in rows[0]]
+    table_type = detect_table_type(headers)
     idx = {
         "theme": _match_column(headers, "theme"),
         "demand": _match_column(headers, "demand"),
@@ -87,11 +117,11 @@ def parse_excel(path: str):
             "revenue": _to_float(r[idx["revenue"]]) if idx["revenue"] >= 0 else 0.0,
             "rank_no": _to_int(r[idx["rank"]]) if idx["rank"] >= 0 else 0,
         })
-    return out
+    return (out, table_type) if return_meta else out
 
 
-def parse_csv(path: str):
-    """解析人工 CSV 快照（自动探测编码 UTF-8/GBK）"""
+def parse_csv(path: str, return_meta: bool = False):
+    """解析人工 CSV 快照（自动探测编码 UTF-8/GBK）；return_meta=True 时返回 (records, table_type)"""
     data = None
     for enc in ("utf-8-sig", "utf-8", "gbk"):
         try:
@@ -103,8 +133,9 @@ def parse_csv(path: str):
     if data is None:
         raise ValueError("CSV 编码无法识别（支持 UTF-8 / GBK）")
     if not data:
-        return []
+        return ([], "generic") if return_meta else []
     headers = [str(h) if h is not None else "" for h in data[0]]
+    table_type = detect_table_type(headers)
     idx = {
         "theme": _match_column(headers, "theme"),
         "demand": _match_column(headers, "demand"),
@@ -128,7 +159,7 @@ def parse_csv(path: str):
             "revenue": _to_float(r[idx["revenue"]]) if idx["revenue"] >= 0 else 0.0,
             "rank_no": _to_int(r[idx["rank"]]) if idx["rank"] >= 0 else 0,
         })
-    return out
+    return (out, table_type) if return_meta else out
 
 
 def import_snapshot(file, file_name: str, source_type: str, version_name: str,
@@ -142,9 +173,10 @@ def import_snapshot(file, file_name: str, source_type: str, version_name: str,
 
     try:
         if source_type == "csv" or ext == ".csv":
-            records = parse_csv(path)
+            parsed = parse_csv(path, return_meta=True)
         else:
-            records = parse_excel(path)
+            parsed = parse_excel(path, return_meta=True)
+        records, table_type = parsed
     except Exception as e:
         _log_upload(file_name, source_type, 0, 0, 0, str(e), fhash, uploaded_by)
         raise ValueError(f"文件解析失败：{e}")
@@ -154,12 +186,14 @@ def import_snapshot(file, file_name: str, source_type: str, version_name: str,
                     fhash, uploaded_by)
         raise ValueError("未解析到有效数据行，请检查表头命名（支持：题材/需求指数/机会指数/销量/销售额/排名）")
 
+    type_label = TABLE_TYPE_LABELS.get(table_type, table_type)
+    note_full = (note + " ｜ " if note else "") + f"表型识别：{type_label}"
     conn = get_conn()
     try:
         cur = conn.execute(
             "INSERT INTO snapshot_versions (name, source_type, file_name, file_hash, rows_count, status, uploaded_by, note) "
             "VALUES (?,?,?,?,?,?,?,?)",
-            [version_name or file_name, source_type, file_name, fhash, len(records), "imported", uploaded_by, note])
+            [version_name or file_name, source_type, file_name, fhash, len(records), "imported", uploaded_by, note_full])
         vid = cur.lastrowid
         for r in records:
             conn.execute(

@@ -65,6 +65,8 @@ def analyze_version(version_id: int) -> dict:
         groups, order = cluster_records(records)
         metrics = aggregate_metrics(groups, order, version_id)
         has_sales = any(m["sales_qty"] > 0 or m["revenue"] > 0 for m in metrics)
+        has_opportunity = any(m["opportunity_index"] > 0 for m in metrics)
+        single_dim = not has_opportunity  # 热搜关键词表：仅热度（需求）维度
 
         # 落库 themes
         for m in metrics:
@@ -79,7 +81,16 @@ def analyze_version(version_id: int) -> dict:
         for m in metrics:
             sales = sales_signal(m["sales_qty"], m["revenue"])
             comp = composite_score(m["demand_index"], m["opportunity_index"], sales, has_sales)
-            pool, reason = classify_pool(m["demand_index"], m["opportunity_index"])
+            if single_dim:
+                # 单维热搜数据：按热度（需求）导向分池，机会维度未提供
+                if m["demand_index"] >= POOL_THRESHOLD_DEMAND:
+                    pool, reason = "main_pool", f"热搜热度{m['demand_index']:.0f}≥{POOL_THRESHOLD_DEMAND}：高热度需求方向（单维热搜数据，机会维度未提供）"
+                elif m["demand_index"] >= 30:
+                    pool, reason = "blue_ocean", f"热搜热度{m['demand_index']:.0f}（单维热搜数据）：热度中等，建议观察"
+                else:
+                    pool, reason = "sunset", f"热搜热度{m['demand_index']:.0f}<30（单维热搜数据）：低热度，建议淘汰/收缩"
+            else:
+                pool, reason = classify_pool(m["demand_index"], m["opportunity_index"])
             results.append({
                 "theme_key": m["theme_key"],
                 "demand_index": m["demand_index"],
@@ -115,6 +126,7 @@ def analyze_version(version_id: int) -> dict:
             "version_id": version_id,
             "theme_count": len(results),
             "has_sales": has_sales,
+            "single_dim": single_dim,
             "pools": {pt: sum(1 for r in results if r["pool_type"] == pt) for pt in POOL_LABELS},
         }
     finally:

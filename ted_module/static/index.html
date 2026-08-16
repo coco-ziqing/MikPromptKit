@@ -76,9 +76,13 @@
         <div class="mt" id="upResult"></div>
       </div>
       <div>
-        <h3 style="margin-top:0;">Excel 表头模板（第一行）</h3>
+        <h3 style="margin-top:0;">官方表格直接上传（自动识别）</h3>
+        <table><tr><th>表</th><th>识别列</th><th>分析方式</th></tr>
+        <tr><td>视频机会排行表</td><td>机会指数 / 需求指数</td><td>双维评分 → 四类题材池</td></tr>
+        <tr><td>热搜关键词排行表</td><td>热搜 / 热度</td><td>单维热度 → 热度导向分池</td></tr></table>
+        <h3 style="margin-top:14px;">通用模板（第一行表头）</h3>
         <table><tr><th>题材</th><th>需求指数</th><th>机会指数</th><th>销量</th><th>销售额</th><th>排名</th></tr></table>
-        <p class="muted mt">兼容中英文表头：题材/主题/theme，需求指数/demand，机会指数/opportunity，销量/sales，销售额/revenue，排名/rank。缺列自动置 0；仅有题材+需求指数即可。</p>
+        <p class="muted mt">中英文列名均可（题材/关键词/theme、需求指数/热度/demand、机会指数/opportunity、销量/sales、销售额/revenue、排名/rank）。缺列自动置 0。详细指引见 ted_module/docs/DATA_PREP.md。</p>
         <h3 style="margin-top:14px;">版本记录（最近 10 个）</h3>
         <div id="upVersions"><p class="muted">加载中...</p></div>
       </div>

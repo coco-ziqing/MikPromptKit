@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.import_service import parse_csv, parse_excel
+from services.import_service import detect_table_type, parse_csv, parse_excel
 
 
 class FakeUpload:
@@ -26,6 +26,57 @@ def _make_xlsx(path, rows):
         ws.append(r)
     wb.save(path)
     wb.close()
+
+
+class TestOfficialTables(unittest.TestCase):
+    """官方两张表适配验证：视频机会排行表 / 热搜关键词排行表"""
+
+    def test_detect_opportunity_rank(self):
+        t = detect_table_type(["排名", "关键词", "机会指数", "需求指数"])
+        self.assertEqual(t, "opportunity_rank")
+
+    def test_detect_hot_keyword(self):
+        t = detect_table_type(["排名", "热搜关键词", "热搜指数", "热度"])
+        self.assertEqual(t, "hot_keyword")
+
+    def test_detect_generic(self):
+        self.assertEqual(detect_table_type(["题材", "销量"]), "generic")
+
+    def test_parse_opportunity_table(self):
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
+            p = f.name
+        try:
+            _make_xlsx(p, [
+                ["排名", "关键词", "机会指数", "需求指数"],
+                [1, "城市夜景", 80, 95],
+                [2, "国潮", 30, 88],
+            ])
+            recs, ttype = parse_excel(p, return_meta=True)
+            self.assertEqual(ttype, "opportunity_rank")
+            self.assertEqual(len(recs), 2)
+            self.assertEqual(recs[0]["theme_raw"], "城市夜景")
+            self.assertEqual(recs[0]["demand_index"], 95.0)
+            self.assertEqual(recs[0]["opportunity_index"], 80.0)
+            self.assertEqual(recs[0]["rank_no"], 1)
+        finally:
+            os.unlink(p)
+
+    def test_parse_hot_keyword_table(self):
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
+            p = f.name
+        try:
+            _make_xlsx(p, [
+                ["排名", "热搜关键词", "热搜指数", "热度"],
+                [1, "AI动画", 92, 9200],
+                [2, "治愈系", 45, 4500],
+            ])
+            recs, ttype = parse_excel(p, return_meta=True)
+            self.assertEqual(ttype, "hot_keyword")
+            self.assertEqual(recs[0]["theme_raw"], "AI动画")
+            self.assertEqual(recs[0]["demand_index"], 9200.0)  # 热度映射为需求指数（单维）
+            self.assertEqual(recs[0]["opportunity_index"], 0.0)
+        finally:
+            os.unlink(p)
 
 
 class TestParseExcel(unittest.TestCase):
