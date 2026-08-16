@@ -52,6 +52,34 @@
   .mt { margin-top: 10px; } .flex { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   pre.md { background: #1e293b; color: #e2e8f0; padding: 14px; border-radius: var(--radius); overflow: auto; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; }
   .banner { background: var(--primary-soft); border: 1px solid #c7d2fe; color: #3730a3; border-radius: var(--radius); padding: 10px 14px; font-size: 12.5px; margin-bottom: 14px; }
+
+  /* ===== 深色模式（与主项目 body.dark-theme 同源配色） ===== */
+  body.dark-theme {
+    --primary-light: #818cf8;
+    --primary-soft: #312e81;
+    --bg: #0f172a;
+    --card: #1e293b;
+    --border: #334155;
+    --txt: #e2e8f0;
+    --muted: #94a3b8;
+    --danger: #f87171;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+    --hover-shadow: 0 10px 15px -3px rgba(0,0,0,0.4);
+  }
+  body.dark-theme header, body.dark-theme nav { background: var(--card); border-color: var(--border); }
+  body.dark-theme header h1 { color: #a5b4fc; }
+  body.dark-theme header .tag { background: rgba(79,70,229,.2); color: #a5b4fc; }
+  body.dark-theme nav button.active { color: #a5b4fc; border-bottom-color: #818cf8; }
+  body.dark-theme nav button:hover { color: #e2e8f0; }
+  body.dark-theme input, body.dark-theme select, body.dark-theme textarea { background: #0f172a; border-color: #475569; color: #e2e8f0; }
+  body.dark-theme input:focus, body.dark-theme select:focus, body.dark-theme textarea:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.2); }
+  body.dark-theme th { background: var(--primary-soft); color: #e2e8f0; }
+  body.dark-theme tr:hover td { background: rgba(148,163,184,.08); }
+  body.dark-theme button.btn2 { background: var(--card); }
+  body.dark-theme button.btn2:hover { background: #334155; }
+  body.dark-theme pre.md { background: #0f172a; color: #cbd5e1; }
+  body.dark-theme .banner { background: rgba(99,102,241,.15); border-color: #4338ca; color: #a5b4fc; }
+  body.dark-theme .card h3 { color: #a5b4fc; }
 </style>
 </head>
 <body>
@@ -59,6 +87,8 @@
   <h1>需求分析</h1>
   <span class="tag">零外网 · 零抓取 · 人工上传</span>
   <span class="tag" id="complianceBadge">合规自检：-</span>
+  <span style="flex:1;"></span>
+  <span class="tag" id="tedThemeBtn" onclick="tedToggleTheme()" style="cursor:pointer;" title="切换深色/浅色模式">🌙 深色</span>
 </header>
 <nav>
   <button data-page="upload" class="active">上传快照</button>
@@ -430,6 +460,31 @@ loadVersions("anSalesVersion");
 loadVersions("plVersion");
 loadNotices();
 runSelfcheck();
+</script>
+
+<script>
+// ===== 深/浅色模式：跟随主项目主题（iframe postMessage）+ 独立访问 localStorage =====
+(function () {
+    "use strict";
+    var KEY = "promptkit_theme";   // 与主项目 app_theme.js 同 key
+    function apply(dark) {
+        document.body.classList.toggle("dark-theme", dark);
+        var b = document.getElementById("tedThemeBtn");
+        if (b) b.textContent = dark ? "☀️ 浅色" : "🌙 深色";
+    }
+    window.tedToggleTheme = function () {
+        var dark = !document.body.classList.contains("dark-theme");
+        apply(dark);
+        try { dark ? localStorage.setItem(KEY, "1") : localStorage.removeItem(KEY); } catch (e) {}
+        try { window.parent.postMessage({ type: "ted-theme", dark: dark }, "*"); } catch (e) {} // 通知父页（如已嵌入）
+    };
+    // 父页（词库）主题变化 → 同步
+    window.addEventListener("message", function (e) {
+        if (e.data && e.data.type === "ted-theme") apply(!!e.data.dark);
+    });
+    // 初始主题：localStorage（独立访问）优先，父页会在 onload 后覆盖同步
+    try { apply(localStorage.getItem(KEY) === "1" || localStorage.getItem(KEY) === "dark"); } catch (e) {}
+})();
 </script>
 </body>
 </html>

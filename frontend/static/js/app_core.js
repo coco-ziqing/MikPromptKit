@@ -1216,8 +1216,24 @@ var App = window.App || {
                 '<span style="display:flex;gap:10px;align-items:center;">' +
                 '<a href="http://127.0.0.1:8085" target="_blank" style="font-size:11px;color:#0d9488;">新窗口打开 ↗</a>' +
                 '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></span></div>' +
-                '<iframe src="http://127.0.0.1:8085" style="flex:1;width:100%;border:1px solid var(--border-color);border-radius:10px;background:#fff;"></iframe></div>';
+                '<iframe id="demandFrame" src="http://127.0.0.1:8085" style="flex:1;width:100%;border:1px solid var(--border-color);border-radius:10px;background:#fff;"></iframe></div>';
             document.body.appendChild(ov);
+            // 主题同步：加载完成后推送当前深浅色；监听主项目主题切换事件
+            var ifr = ov.querySelector('#demandFrame');
+            if (ifr) {
+                ifr.onload = function() {
+                    try { ifr.contentWindow.postMessage({type:'ted-theme', dark: App.isDarkTheme()}, '*'); } catch(e) {}
+                };
+            }
+            if (!App._demandThemeBound) {
+                App._demandThemeBound = true;
+                document.addEventListener('theme-changed', function(ev) {
+                    var f = document.getElementById('demandFrame');
+                    if (f && f.contentWindow) {
+                        try { f.contentWindow.postMessage({type:'ted-theme', dark: !!(ev.detail && ev.detail.dark)}, '*'); } catch(e) {}
+                    }
+                });
+            }
         });
     },
 
