@@ -45,6 +45,7 @@ DAILY_LIMIT = 30              # 单日上限
 HOURLY_LIMIT = 6              # 单小时上限（v5.38.62 合规整改：防集中刷量）
 MAX_BATCH_ITEMS = 20          # 单批入队上限（v5.38.62 合规整改）
 CONSECUTIVE_FAIL_LIMIT = 3    # 连续失败即停
+TASK_TIMEOUT_SEC = 900        # 单条任务总超时（v5.38.64 加固，防 Chrome/填表挂死）
 DEFAULT_PRICE = 10            # 默认售价（元）
 DEFAULT_IS_AI = True          # AI 标注默认勾选
 
@@ -468,6 +469,12 @@ def _upload_one(task_id: int):
     _vjshi_log(f"[任务{task_id} u_{t['creator_id'] or 0}] 开始执行：{os.path.basename(t['video_file'] or '')}")
     _task_update(task_id, status="uploading")
     _VJSHI_BUSY.set()
+    _deadline = time.time() + TASK_TIMEOUT_SEC  # v5.38.64 加固：任务总超时
+
+    def _chk(stage):
+        if time.time() > _deadline:
+            raise TimeoutError(f"任务总超时({TASK_TIMEOUT_SEC}s)，阶段：{stage}")
+
     pw = ctx = None
     _submitted = False
     try:
@@ -480,6 +487,7 @@ def _upload_one(task_id: int):
         # v5.38.63 合规整改：移除上传前首页导航跳转（消除规避意图表述），直接进入上传页
         upload_url = cfg.get("upload_url", UPLOAD_URL)
         page.goto(upload_url, wait_until="domcontentloaded", timeout=30000)
+        _chk("进入上传页")
         _human_pause(1.0, 2.5)
         if "login" in page.url.lower():
             _task_update(task_id, status="fail", error="登录已失效，请重新登录光厂", fail_category="login")
@@ -498,6 +506,7 @@ def _upload_one(task_id: int):
         _task_update(task_id, status="uploading", error="", progress_note="已选择文件")
         _human_pause(1.0, 2.5)
         # 3. 等待上传完成（轮询进度/上传完成标志，最多 10 分钟）
+        _chk("等待上传")
         uploaded = _wait_upload_done(page, cfg)
         if not uploaded:
             _task_update(task_id, status="fail", error="上传超时或未检测到完成", fail_category="upload")
@@ -544,8 +553,10 @@ def _upload_one(task_id: int):
                 break
             time.sleep(1)
         # 5. 完善信息填表
+        _chk("信息填表")
         fill_ok, fill_err = _fill_form(page, t_fill, cfg)
         if not fill_ok:
+            _vjshi_log(f"[任务{task_id}] 填表失败：{fill_err[:150]}")
             _task_update(task_id, status="fail", error=fill_err, fail_category="form_changed")
             return
         _vjshi_log(f"[任务{task_id}] 表单填写完成（标题/关键词/简介/价格/AI标注/风格）")
@@ -581,7 +592,11 @@ def _upload_one(task_id: int):
         _task_update(task_id, status="submitted", finished_at=_now_str(),
                      submit_ref=submitted_url)
         _submitted = True
+    except TimeoutError as e:
+        _vjshi_log(f"[任务{task_id}] {e}")
+        _task_update(task_id, status="fail", error=str(e), fail_category="timeout")
     except Exception as e:
+        _vjshi_log(f"[任务{task_id}] 上传异常: {type(e).__name__}: {str(e)[:150]}")
         _task_update(task_id, status="fail", error=f"上传异常: {e}", fail_category="other")
     finally:
         # v5.38.24: 提交成功保留浏览器窗口（查看提交结果）；失败/异常才关闭
@@ -863,7 +878,24 @@ def _fill_form(page, t, cfg):
 
 
 def _upload_worker(task_id: int):
-    """带防风控的任务执行体（全局锁串行）"""
+    """带防风控的任务执行体（全局锁串行；v5.38.64 加固：全局异常兜底，异常必落库 fail 不再卡状态）"""
+    global _STATE
+    try:
+        _upload_worker_inner(task_id)
+    except Exception as e:
+        _vjshi_log(f"任务{task_id} worker 异常兜底：{type(e).__name__}: {str(e)[:200]}")
+        try:
+            _task_update(task_id, status="fail", error=f"worker异常: {type(e).__name__}: {str(e)[:150]}", fail_category="other")
+        except Exception:
+            pass
+    finally:
+        try:
+            _VJSHI_BUSY.clear()
+        except Exception:
+            pass
+
+
+def _upload_worker_inner(task_id: int):
     global _STATE
     with _QUEUE_LOCK:
         # v5.38.16: 状态 re-check（retry 重复点击/多线程时只有 queued 才执行）
@@ -1286,5 +1318,31 @@ def vjshi_resume(request: Request):
     return {"ok": True, "spawned": n}
 
 
+def _watchdog_loop():
+    """运行中任务卡死看门狗（v5.38.64 加固）：uploading/filling 超 20 分钟无进展 → 自动终止置 fail
+    仅终止卡死任务，不发起任何上传/外部动作（合规）"""
+    while True:
+        try:
+            time.sleep(60)
+            c = _db()
+            try:
+                rows = c.execute(
+                    "SELECT id FROM vjshi_upload_tasks WHERE status IN ('uploading','filling') "
+                    "AND updated_at < datetime('now','localtime','-20 minutes')").fetchall()
+                for r in rows:
+                    c.execute(
+                        "UPDATE vjshi_upload_tasks SET status='fail', fail_category='timeout', "
+                        "error='上传/填表卡死超时（看门狗自动终止，可重试）', "
+                        "finished_at=datetime('now','localtime') WHERE id=?", [r["id"]])
+                    _vjshi_log(f"任务{r['id']} 看门狗终止：uploading/filling 超 20 分钟无进展")
+                if rows:
+                    c.commit()
+            finally:
+                c.close()
+        except Exception:
+            pass
+
+
 # 启动时接管孤儿任务
 threading.Thread(target=_resume_orphaned, daemon=True).start()
+threading.Thread(target=_watchdog_loop, daemon=True).start()  # v5.38.64 加固：卡死看门狗
