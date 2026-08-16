@@ -28,6 +28,10 @@ INSP_DIR = os.path.join(DATA_DIR, "dreamina_inspiration")
 CAPTURE_PROFILE_PATH = os.path.join(DATA_DIR, "capture_profile.json")
 DISCOVER_URL = "https://jimeng.jianying.com/ai-tool/home/discover"
 
+# v5.38.62 合规整改：收窄批量采集强度
+MAX_SCROLL_ROUNDS = 8       # 单次搜索自动滚动轮次硬上限（原为无界滚动到 count 条）
+MAX_IMPORT_ITEMS = 10       # 单次导入下载归档条数上限（限制批量下载公开内容）
+
 router = APIRouter(prefix="/api/dreamina/inspiration", tags=["dreamina-inspiration"])
 
 _IMPORT_LOCK = threading.Lock()  # 防并发启动浏览器
@@ -290,10 +294,10 @@ def _browser():
     if not _insp_headless_mode():
         # v5.38.49: 有头模式必开可见窗口（搜索前关闭旧实例，避免复用旧窗口用户无感知）
         _kill_profile_chrome_if_idle()
+    # v5.38.62 合规整改：移除 --disable-blink-features=AutomationControlled（不再隐藏自动化特征）
     ctx = pw.chromium.launch_persistent_context(
         PROFILE_DIR, channel="chrome", headless=_insp_headless_mode(),
-        viewport={"width": 1440, "height": 900}, locale="zh-CN",
-        args=["--disable-blink-features=AutomationControlled"])  # v5.38.53: 减少自动化特征
+        viewport={"width": 1440, "height": 900}, locale="zh-CN")
     if not _insp_headless_mode():
         # v5.38.50: 窗口置前（Chrome 启动不抢焦点，可能被遮挡）
         import threading as _th
@@ -380,9 +384,11 @@ def _fetch_items(keyword: str, media_type: str, count: int) -> list:
                     _human_pause(3.0, 6.0)  # 等搜索结果页加载
             except Exception:
                 pass
-        # 滚动加载（v5.38.53: 随机步长/随机停顿/偶尔回滚/偶尔移动鼠标，防机械化特征）
+        # 滚动加载（v5.38.62 合规整改：滚动轮次硬上限 MAX_SCROLL_ROUNDS，避免无界批量采集公开内容）
         idle = 0
-        while len(collected) < count:
+        scroll_rounds = 0
+        while len(collected) < count and scroll_rounds < MAX_SCROLL_ROUNDS:
+            scroll_rounds += 1
             before = len(collected)
             page.mouse.wheel(0, random.randint(400, 1800))
             _human_pause(1.2, 3.5)
@@ -602,7 +608,7 @@ def inspiration_preview(data: dict = Body(...)):
     keyword = (data.get("keyword") or "").strip()
     media_type = (data.get("media_type") or "").strip()
     count = int(data.get("count") or 20)
-    count = max(1, min(count, 100))
+    count = max(1, min(count, 40))  # v5.38.62: 预览上限 100→40（配合滚动轮次硬上限收窄采集）
     with _IMPORT_LOCK:
         items, reason = _fetch_items(keyword, media_type, count)
     return {"ok": True, "count": len(items), "items": items, "reason": reason}
@@ -612,12 +618,15 @@ def inspiration_preview(data: dict = Body(...)):
 def inspiration_import(data: dict = Body(...)):
     """下载归档选中的灵感（v5.38.33: 直接接收预览 items，避免重新搜索结果不一致）
     body: {items: [{web_asset_id, media_type, prompt, model_version, ratio, image_url, width, height}], keyword?}
+    v5.38.62 合规整改：仅下载用户显式勾选内容（个人灵感参考），单次上限 MAX_IMPORT_ITEMS 条
     """
     _ensure_table()
     items = data.get("items") or []
     keyword = (data.get("keyword") or "").strip()
     if not items:
         raise HTTPException(400, "items 不能为空")
+    if len(items) > MAX_IMPORT_ITEMS:
+        raise HTTPException(400, f"单次导入最多 {MAX_IMPORT_ITEMS} 条（合规整改限制批量下载），请分批导入")
     os.makedirs(INSP_DIR, exist_ok=True)
     c = _db()
     imported = 0

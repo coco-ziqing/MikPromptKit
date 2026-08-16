@@ -5,6 +5,10 @@ v5.38.0: 光厂（vjshi.com）AI 视频素材批量上传
 - 自动化：Playwright 持久化 profile（手机验证码人工登录一次）→ 串行上传 → 完善信息填表 → 提交
 - 防风控：45s/条间隔 · 单日限额 · 连续失败暂停 · 提交后停留 · 固定指纹
 - 字段配置：data/vjshi_form_config.json（_vjshi_inspect.py 实测抓取，可更新）
+- v5.38.62 合规整改：
+  · 服务重启不再自动续跑队列 → 置暂停待人工确认（resume）
+  · 新增单小时限额（6/小时）与批量入队上限（20/批）
+  · 日志补任务级关键步骤 + 脱敏账号标识（u_{creator_id}）
 """
 import json
 import os
@@ -38,13 +42,16 @@ UPLOAD_URL = "https://www.vjshi.com/upload-nav"
 # 防风控参数（可调）
 UPLOAD_INTERVAL_SEC = 45      # 单条间隔（默认 45s）
 DAILY_LIMIT = 30              # 单日上限
+HOURLY_LIMIT = 6              # 单小时上限（v5.38.62 合规整改：防集中刷量）
+MAX_BATCH_ITEMS = 20          # 单批入队上限（v5.38.62 合规整改）
 CONSECUTIVE_FAIL_LIMIT = 3    # 连续失败即停
 DEFAULT_PRICE = 10            # 默认售价（元）
 DEFAULT_IS_AI = True          # AI 标注默认勾选
 
 _QUEUE_LOCK = threading.Lock()
 _RESUME_STARTED = False
-_STATE = {"last_upload_ts": 0, "today_count": 0, "today_date": "", "consec_fail": 0, "paused_reason": ""}
+_STATE = {"last_upload_ts": 0, "today_count": 0, "today_date": "",
+          "hour_count": 0, "hour_start": 0.0, "consec_fail": 0, "paused_reason": ""}
 
 
 def _db():
@@ -484,6 +491,7 @@ def _upload_one(task_id: int):
     if not t or t["status"] in ("submitted", "fail"):
         return
 
+    _vjshi_log(f"[任务{task_id} u_{t.get('creator_id') or 0}] 开始执行：{os.path.basename(t['video_file'] or '')}")
     _task_update(task_id, status="uploading")
     _VJSHI_BUSY.set()
     pw = ctx = None
@@ -528,6 +536,7 @@ def _upload_one(task_id: int):
             _task_update(task_id, status="fail", error="上传超时或未检测到完成", fail_category="upload")
             return
         _task_update(task_id, status="filling")
+        _vjshi_log(f"[任务{task_id}] 文件上传完成，进入信息填表")
         # v5.38.18/20: 简介默认自动 AI 优化（占位/纯英文/过短 → 自动生成，LLM 失败保留原文案）
         t_fill = dict(t)
         cur_desc = (t_fill.get("description") or "").strip()
@@ -572,6 +581,7 @@ def _upload_one(task_id: int):
         if not fill_ok:
             _task_update(task_id, status="fail", error=fill_err, fail_category="form_changed")
             return
+        _vjshi_log(f"[任务{task_id}] 表单填写完成（标题/关键词/简介/价格/AI标注/风格）")
         # 5. 提交（v5.38.16: 提交后确认成功/失败，防误报）
         submit_sel = cfg.get("submit", "")
         submitted_url = page.url[:200]
@@ -580,6 +590,7 @@ def _upload_one(task_id: int):
             if btn:
                 _human_pause(0.8, 2.0)
                 btn.click(timeout=8000)
+                _vjshi_log(f"[任务{task_id}] 已点击提交按钮，等待平台确认")
                 _human_pause(2.0, 4.0)  # 提交后停留（模拟人工确认结果）
                 # 检测失败提示（10s 内）
                 fail_detected = None
@@ -608,7 +619,7 @@ def _upload_one(task_id: int):
     finally:
         # v5.38.24: 提交成功保留浏览器窗口（查看提交结果）；失败/异常才关闭
         if _submitted:
-            _vjshi_log(f"任务{task_id} 提交成功，保留浏览器窗口（下次任务自动清理）")
+            _vjshi_log(f"[任务{task_id}] 提交成功，保留浏览器窗口（下次任务自动清理）")
         else:
             try:
                 if ctx is not None:
@@ -896,13 +907,21 @@ def _upload_worker(task_id: int):
             _rc.close()
         if not _row or _row["status"] != "queued":
             return
-        # 单日限额
+        # 单日/单小时限额（v5.38.62：补单小时熔断）
         if _STATE["today_date"] != _today():
             _STATE["today_date"] = _today()
             _STATE["today_count"] = 0
             _STATE["consec_fail"] = 0
+        _now_h = time.time()
+        if not _STATE["hour_start"] or _now_h - _STATE["hour_start"] >= 3600:
+            _STATE["hour_start"] = _now_h
+            _STATE["hour_count"] = 0
+        # 队列暂停：保持 queued 等待人工恢复（v5.38.62：不再直接判失败，避免误伤队列）
         if _STATE["paused_reason"]:
-            _task_update(task_id, status="fail", error=f"队列已暂停: {_STATE['paused_reason']}", fail_category="paused")
+            _vjshi_log(f"任务{task_id} 跳过执行：{_STATE['paused_reason']}")
+            return
+        if _STATE["hour_count"] >= HOURLY_LIMIT:
+            _task_update(task_id, status="fail", error=f"已达单小时上传上限 {HOURLY_LIMIT} 条，请稍后重试", fail_category="hourly_limit")
             return
         if _STATE["today_count"] >= DAILY_LIMIT:
             _task_update(task_id, status="fail", error=f"已达单日上传上限 {DAILY_LIMIT} 条", fail_category="daily_limit")
@@ -922,16 +941,39 @@ def _upload_worker(task_id: int):
         if t:
             if t["status"] == "submitted":
                 _STATE["today_count"] += 1
+                _STATE["hour_count"] += 1
                 _STATE["consec_fail"] = 0
             elif t["status"] == "fail":
                 # v5.38.16: 配置/数据类错误（文件缺失/表单配置缺失）重试无意义，不累计暂停
-                if t["fail_category"] not in ("file_missing", "form_config_missing"):
+                # v5.38.62: 业务限额（日/小时上限）非真实失败，不累计熔断计数
+                if t["fail_category"] not in ("file_missing", "form_config_missing", "daily_limit", "hourly_limit"):
                     _STATE["consec_fail"] += 1
                     if _STATE["consec_fail"] >= CONSECUTIVE_FAIL_LIMIT:
                         _STATE["paused_reason"] = f"连续失败 {CONSECUTIVE_FAIL_LIMIT} 次，已暂停（可手动恢复）"
 
 
+def _spawn_queued_workers():
+    """为所有 queued 任务启动 worker（人工恢复队列时调用，v5.38.62）"""
+    try:
+        _ensure_table()
+        c = _db()
+        try:
+            rows = c.execute("SELECT id FROM vjshi_upload_tasks WHERE status='queued'").fetchall()
+        finally:
+            c.close()
+        n = 0
+        for r in rows:
+            threading.Thread(target=_upload_worker, args=(r["id"],), daemon=True).start()
+            n += 1
+        return n
+    except Exception as e:
+        print(f"[VJSHI] 队列恢复启动失败: {e}")
+        return 0
+
+
 def _resume_orphaned():
+    """服务启动接管（v5.38.62 合规整改）：不自动续跑上传，
+    中断任务回退 queued + 队列置暂停，等待人工确认恢复（resume）"""
     global _RESUME_STARTED
     if _RESUME_STARTED:
         return
@@ -943,10 +985,21 @@ def _resume_orphaned():
             rows = c.execute("SELECT id FROM vjshi_upload_tasks WHERE status IN ('queued','uploading','filling')").fetchall()
         finally:
             c.close()
-        for r in rows:
-            threading.Thread(target=_upload_worker, args=(r["id"],), daemon=True).start()
+        # 半途中断任务回退 queued（待人工确认后统一执行）
+        c2 = _db()
+        try:
+            c2.execute("UPDATE vjshi_upload_tasks SET status='queued', progress_note='服务重启中断，待人工确认恢复' "
+                       "WHERE status IN ('uploading','filling')")
+            c2.commit()
+        finally:
+            c2.close()
+        if rows:
+            _STATE["paused_reason"] = f"服务重启：{len(rows)} 条任务待人工确认恢复"
+            print(f"[VJSHI] 启动发现 {len(rows)} 条待处理任务，队列已暂停待人工确认（面板/API resume 恢复）")
+        else:
+            _STATE["paused_reason"] = ""
     except Exception as e:
-        print(f"[VJSHI] 孤儿任务接管失败: {e}")
+        print(f"[VJSHI] 启动接管失败: {e}")
 
 
 # ==================== API ====================
@@ -1158,6 +1211,8 @@ def vjshi_batch(data: VjshiBatchRequest, request: Request):
     _ensure_table()
     if not data.items:
         raise HTTPException(400, "items 不能为空")
+    if len(data.items) > MAX_BATCH_ITEMS:
+        raise HTTPException(400, f"单批最多 {MAX_BATCH_ITEMS} 条（合规整改限制批量提交），请分批提交")
     u = _auth(request)
     created = []
     c = _db()
@@ -1203,7 +1258,7 @@ def vjshi_list(request: Request, status: str = Query(None), limit: int = Query(5
             d = dict(r)
             d["video_url"] = f"/api/thumbnails/video/{os.path.basename(d['video_file'])}" if d["video_file"] else ""
             out.append(d)
-        return {"ok": True, "tasks": out, "state": {k: v for k, v in _STATE.items() if k != "last_upload_ts"}}
+        return {"ok": True, "tasks": out, "state": {k: v for k, v in _STATE.items() if k not in ("last_upload_ts", "hour_start")} | {"daily_limit": DAILY_LIMIT, "hourly_limit": HOURLY_LIMIT}}
     finally:
         c.close()
 
@@ -1243,11 +1298,12 @@ def vjshi_delete(tid: int, request: Request):
 
 @router.post("/api/vjshi/resume")
 def vjshi_resume(request: Request):
-    """手动恢复暂停的队列"""
+    """手动恢复暂停的队列（v5.38.62：恢复后自动为 queued 任务启动 worker）"""
     _team_guard(request)
     _STATE["paused_reason"] = ""
     _STATE["consec_fail"] = 0
-    return {"ok": True}
+    n = _spawn_queued_workers()
+    return {"ok": True, "spawned": n}
 
 
 # 启动时接管孤儿任务

@@ -10,6 +10,7 @@ build/
 
 # === 数据（含用户内容 + 加密密钥，绝不提交） ===
 data/
+# v5.38.62：data/vjshi/profile、data/dreamina_web_profile 含平台登录会话凭证，严禁提交/分发/备份外泄
 *.db
 *.db-shm
 *.db-wal

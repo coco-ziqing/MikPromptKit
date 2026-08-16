@@ -184,6 +184,7 @@
                 var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">进行中 ' + act.length + ' · 已提交 ' + okc + ' · 失败 ' + fai +
                     (st.paused_reason ? ' <span style="color:#ef4444;">⏸ ' + self._esc(st.paused_reason) + ' <a href="javascript:void(0)" onclick="App.vjshi.resume()" style="color:#10b981;">恢复</a></span>' : '') +
                     (st.today_count ? ' · 今日 ' + st.today_count + '/' + (st.daily_limit || 30) : '') +
+                    (st.hour_count ? ' · 本时 ' + st.hour_count + '/' + (st.hourly_limit || 6) : '') +
                     '</div>';
                 if (!tasks.length) h += '<div style="color:var(--text-muted);font-size:12px;padding:20px;text-align:center;">暂无上传任务</div>';
                 tasks.forEach(function (t) {

@@ -1199,6 +1199,8 @@
             if (cb.checked) sel.push(items[parseInt(cb.getAttribute('data-i'), 10)]);
         });
         if (!sel.length) { this._toast('请勾选至少一条', 'warning'); return; }
+        if (sel.length > 10) { this._toast('单次导入最多 10 条（合规限制），请减少勾选', 'warning'); return; }
+        if (!confirm('将下载并归档 ' + sel.length + ' 条灵感（即梦公开内容预览，仅供个人灵感收藏参考）到本地词库，确认继续？')) return;
         var self = this;
         var box = document.getElementById('s2InspProgress');
         if (box) { box.style.display = 'block'; box.innerHTML = '<div style="padding:10px;color:#f59e0b;">⏳ 正在下载 ' + sel.length + ' 张图片并归档...</div>'; }
@@ -1298,6 +1300,8 @@
                 sel.push(all[parseInt(cb.getAttribute('data-i'), 10)]);
             });
             if (!sel.length) { App.showToast('请勾选至少一条', 'warning'); return; }
+            if (sel.length > 10) { App.showToast('单次导入最多 10 条（合规限制），请减少勾选', 'warning'); return; }
+            if (!confirm('将下载并归档 ' + sel.length + ' 条灵感（即梦公开内容预览，仅供个人灵感收藏参考）到本地词库，确认继续？')) return;
             var box = document.getElementById('s2InspProgress');
             if (box) { box.style.display = 'block'; box.innerHTML = '<div style="padding:10px;color:#f59e0b;">⏳ 正在下载 ' + sel.length + ' 条并归档...</div>'; }
             App.fetchJSON('/api/dreamina/inspiration/import', {
@@ -1328,6 +1332,8 @@
         var cbs = document.querySelectorAll('#s2InspResult input[type=checkbox]');
         cbs.forEach(function(cb) { if (cb.checked) sel.push(items[parseInt(cb.getAttribute('data-i'), 10)]); });
         if (!sel.length) { this._toast('请勾选至少一条', 'warning'); return; }
+        if (sel.length > 10) { this._toast('单次导入最多 10 条（合规限制），请减少勾选', 'warning'); return; }
+        if (!confirm('将下载并归档 ' + sel.length + ' 条灵感（即梦公开内容预览，仅供个人灵感收藏参考）到本地词库，确认继续？')) return;
         var box = document.getElementById('s2InspProgress');
         if (box) { box.style.display = 'block'; box.innerHTML = '<div style="padding:10px;color:#f59e0b;">⏳ 正在下载 ' + sel.length + ' 张图片并归档...</div>'; }
         try {
