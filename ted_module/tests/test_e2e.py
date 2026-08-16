@@ -122,7 +122,7 @@ class TestE2EFlow(unittest.TestCase):
             self.assertEqual(pmap["治愈系"], "blue_ocean")   # 中热度观察
             self.assertEqual(pmap["冷门词"], "sunset")       # 低热度淘汰
             note = conn.execute("SELECT note FROM snapshot_versions WHERE id=?", [vid]).fetchone()["note"]
-            self.assertIn("热搜关键词排行表", note)  # 表型自动识别标注
+            self.assertIn("视频热搜排行表", note)  # 表型自动识别标注
         finally:
             conn.close()
 

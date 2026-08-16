@@ -93,6 +93,23 @@ def minmax_normalize(values):
     return [round((v - lo) / (hi - lo) * 100, 2) for v in values]
 
 
+def percentile_normalize(values):
+    """百分位排名归一化 0-100（官方长尾分布稳健：极端值不会压扁其余分数）
+    全 0 = 无信号，返回全 0；相同值按排序位置计；单元素：有值=100，无值=0"""
+    n = len(values)
+    if n == 0:
+        return []
+    if all(v == 0 for v in values):
+        return [0.0] * n
+    if n == 1:
+        return [100.0 if values[0] > 0 else 0.0]
+    order = sorted(range(n), key=lambda i: values[i])
+    ranks = [0.0] * n
+    for pos, i in enumerate(order):
+        ranks[i] = round(pos / (n - 1) * 100, 2)
+    return ranks
+
+
 def aggregate_metrics(groups, order, version_id):
     """按聚类结果聚合题材指标（均值），并做 min-max 归一化"""
     metrics = []
@@ -101,6 +118,7 @@ def aggregate_metrics(groups, order, version_id):
         n = len(recs)
         demand = sum(r.get("demand_index", 0) or 0 for r in recs) / n
         opp = sum(r.get("opportunity_index", 0) or 0 for r in recs) / n
+        works = sum(r.get("works_count", 0) or 0 for r in recs) / n
         sales = sum(r.get("sales_qty", 0) or 0 for r in recs)
         revenue = sum(r.get("revenue", 0) or 0 for r in recs)
         metrics.append({
@@ -109,13 +127,14 @@ def aggregate_metrics(groups, order, version_id):
             "aliases": sorted({clean_theme(r.get("theme_raw", "")) for r in recs} - {key}),
             "demand_raw": round(demand, 2),
             "opportunity_raw": round(opp, 2),
+            "works_count": round(works, 2),
             "sales_qty": round(sales, 2),
             "revenue": round(revenue, 2),
             "record_count": n,
         })
-    # 归一化（按版本内题材集合）
-    demand_norm = minmax_normalize([m["demand_raw"] for m in metrics])
-    opp_norm = minmax_normalize([m["opportunity_raw"] for m in metrics])
+    # 归一化（按版本内题材集合；官方长尾数据用百分位排名，避免极端值压扁）
+    demand_norm = percentile_normalize([m["demand_raw"] for m in metrics])
+    opp_norm = percentile_normalize([m["opportunity_raw"] for m in metrics])
     for i, m in enumerate(metrics):
         m["demand_index"] = demand_norm[i]
         m["opportunity_index"] = opp_norm[i]

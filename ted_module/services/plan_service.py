@@ -25,7 +25,7 @@ def generate_plan(version_id: int, generated_by: str = "") -> int:
         if not ver:
             raise ValueError("版本不存在")
         rows = conn.execute(
-            "SELECT p.*, t.display_name, m.sales_qty, m.revenue FROM theme_pools p "
+            "SELECT p.*, t.display_name, m.sales_qty, m.revenue, m.works_count FROM theme_pools p "
             "JOIN themes t ON t.id=p.theme_id "
             "LEFT JOIN theme_metrics m ON m.theme_id=p.theme_id AND m.version_id=p.version_id "
             "WHERE p.version_id=? ORDER BY p.rank_no", [version_id]).fetchall()
@@ -65,14 +65,14 @@ def generate_plan(version_id: int, generated_by: str = "") -> int:
                 md.append("（暂无）")
                 md.append("")
                 continue
-            md.append("| 排名 | 题材 | 综合分 | 需求 | 机会 | 销售信号 | 研判理由 |")
-            md.append("|------|------|--------|------|------|----------|----------|")
+            md.append("| 排名 | 题材 | 综合分 | 需求 | 机会 | 作品数 | 研判理由 |")
+            md.append("|------|------|--------|------|------|--------|----------|")
             for r in items:
                 sig = sales_signal(r["sales_qty"] or 0, r["revenue"] or 0)
                 md.append(
                     f"| {r['rank_no']} | {r['display_name']} | {r['composite_score']:.1f} | "
                     f"{r['demand_score']:.1f} | {r['opportunity_score']:.1f} | "
-                    f"{sig:.1f} | {r['reason']} |")
+                    f"{r['works_count'] or 0:.0f} | {r['reason']} |")
             md.append("")
 
         # 建议排期

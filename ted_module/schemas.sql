@@ -19,11 +19,13 @@ CREATE TABLE IF NOT EXISTS raw_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   version_id INTEGER NOT NULL,
   theme_raw TEXT NOT NULL,
-  demand_index REAL DEFAULT 0,      -- 官方需求指数（人工快照）
-  opportunity_index REAL DEFAULT 0, -- 官方机会指数（人工快照）
+  demand_index REAL DEFAULT 0,      -- 官方需求指数（机会表）/ 热度（热搜表）
+  opportunity_index REAL DEFAULT 0, -- 官方机会指数（机会表）
+  works_count REAL DEFAULT 0,       -- 作品数（热搜表：该搜索词下作品总量）
   sales_qty REAL DEFAULT 0,         -- 自有销售数量（人工 CSV）
   revenue REAL DEFAULT 0,           -- 自有销售额（人工 CSV）
   rank_no INTEGER DEFAULT 0,        -- 榜单排名（人工录入）
+  sheet_name TEXT DEFAULT '',       -- 来源 sheet（热搜榜/上升榜/机会排行）
   extra TEXT DEFAULT '{}',
   created_at TEXT DEFAULT (datetime('now','localtime'))
 );
@@ -55,6 +57,7 @@ CREATE TABLE IF NOT EXISTS theme_metrics (
   theme_id INTEGER NOT NULL,
   demand_index REAL DEFAULT 0,
   opportunity_index REAL DEFAULT 0,
+  works_count REAL DEFAULT 0,       -- 作品数聚合（热搜表）
   sales_qty REAL DEFAULT 0,
   revenue REAL DEFAULT 0,
   record_count INTEGER DEFAULT 0,

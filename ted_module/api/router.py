@@ -118,8 +118,11 @@ def pools(version_id: int = Query(0)):
                 raise HTTPException(404, "暂无已分析版本，请先上传并运行分析")
             version_id = row["id"]
         rows = conn.execute(
-            "SELECT p.*, t.display_name, t.aliases FROM theme_pools p "
-            "JOIN themes t ON t.id=p.theme_id WHERE p.version_id=? ORDER BY p.rank_no", [version_id]).fetchall()
+            "SELECT p.*, t.display_name, t.aliases, m.works_count, m.sheet_count FROM theme_pools p "
+            "JOIN themes t ON t.id=p.theme_id "
+            "LEFT JOIN (SELECT version_id, theme_id, works_count, COUNT(*) AS sheet_count FROM theme_metrics GROUP BY version_id, theme_id) m "
+            "ON m.theme_id=p.theme_id AND m.version_id=p.version_id "
+            "WHERE p.version_id=? ORDER BY p.rank_no", [version_id]).fetchall()
         ver = conn.execute("SELECT * FROM snapshot_versions WHERE id=?", [version_id]).fetchone()
         result = {"ok": True, "version_id": version_id,
                   "version_name": ver["name"] if ver else "",

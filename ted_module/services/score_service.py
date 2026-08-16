@@ -66,7 +66,15 @@ def analyze_version(version_id: int) -> dict:
         metrics = aggregate_metrics(groups, order, version_id)
         has_sales = any(m["sales_qty"] > 0 or m["revenue"] > 0 for m in metrics)
         has_opportunity = any(m["opportunity_index"] > 0 for m in metrics)
-        single_dim = not has_opportunity  # 热搜关键词表：仅热度（需求）维度
+        single_dim = not has_opportunity  # 热搜关键词表：仅作品数，无需求/机会指数
+        if single_dim:
+            # 热搜表：若已有需求侧值（热搜指数/热度列）则直接用；
+            # 官方热搜榜（仅作品数列）则用作品数百分位归一化作为热度分
+            from services.clean_service import percentile_normalize
+            if not any(m["demand_index"] > 0 for m in metrics) and any(m["works_count"] > 0 for m in metrics):
+                wnorm = percentile_normalize([m["works_count"] for m in metrics])
+                for m, w in zip(metrics, wnorm):
+                    m["demand_index"] = w
 
         # 落库 themes
         for m in metrics:
@@ -82,19 +90,20 @@ def analyze_version(version_id: int) -> dict:
             sales = sales_signal(m["sales_qty"], m["revenue"])
             comp = composite_score(m["demand_index"], m["opportunity_index"], sales, has_sales)
             if single_dim:
-                # 单维热搜数据：按热度（需求）导向分池，机会维度未提供
+                # 单维热搜数据（官方热搜榜：仅作品数，无需求/机会指数）：作品数归一化后按热度导向分池
                 if m["demand_index"] >= POOL_THRESHOLD_DEMAND:
-                    pool, reason = "main_pool", f"热搜热度{m['demand_index']:.0f}≥{POOL_THRESHOLD_DEMAND}：高热度需求方向（单维热搜数据，机会维度未提供）"
+                    pool, reason = "main_pool", f"作品数{m['works_count']:.0f}（热搜热度高）：高热度词，优先投产候选（单维热搜数据）"
                 elif m["demand_index"] >= 30:
-                    pool, reason = "blue_ocean", f"热搜热度{m['demand_index']:.0f}（单维热搜数据）：热度中等，建议观察"
+                    pool, reason = "blue_ocean", f"作品数{m['works_count']:.0f}（热搜热度中）：热度中等，建议观察（单维热搜数据）"
                 else:
-                    pool, reason = "sunset", f"热搜热度{m['demand_index']:.0f}<30（单维热搜数据）：低热度，建议淘汰/收缩"
+                    pool, reason = "sunset", f"作品数{m['works_count']:.0f}（热搜热度低）：低热度，建议淘汰/收缩（单维热搜数据）"
             else:
                 pool, reason = classify_pool(m["demand_index"], m["opportunity_index"])
             results.append({
                 "theme_key": m["theme_key"],
                 "demand_index": m["demand_index"],
                 "opportunity_index": m["opportunity_index"],
+                "works_count": m["works_count"],
                 "sales_signal": sales,
                 "composite_score": comp,
                 "pool_type": pool,
@@ -111,9 +120,9 @@ def analyze_version(version_id: int) -> dict:
         for i, r in enumerate(results, 1):
             tid = conn.execute("SELECT id FROM themes WHERE theme_key=?", [r["theme_key"]]).fetchone()["id"]
             conn.execute(
-                "INSERT INTO theme_metrics (version_id, theme_id, demand_index, opportunity_index, sales_qty, revenue, record_count) "
-                "VALUES (?,?,?,?,?,?,?)",
-                [version_id, tid, r["demand_index"], r["opportunity_index"],
+                "INSERT INTO theme_metrics (version_id, theme_id, demand_index, opportunity_index, works_count, sales_qty, revenue, record_count) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                [version_id, tid, r["demand_index"], r["opportunity_index"], r["works_count"],
                  r["sales_qty"], r["revenue"], r["record_count"]])
             conn.execute(
                 "INSERT INTO theme_pools (version_id, theme_id, pool_type, composite_score, demand_score, opportunity_score, reason, rank_no) "

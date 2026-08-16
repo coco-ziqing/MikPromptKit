@@ -268,9 +268,9 @@ function loadPools(){
       var items = (d.pools||{})[cfg[0]]||[];
       h += '<div class="card"><h3><span class="badge '+cfg[2]+'">'+cfg[1]+'</span>（'+items.length+'）</h3>';
       if(!items.length){ h += '<p class="muted">（暂无）</p></div>'; return; }
-      h += '<table><tr><th>#</th><th>题材</th><th>别名</th><th>综合分</th><th>需求</th><th>机会</th><th>研判理由</th></tr>';
+      h += '<table><tr><th>#</th><th>题材</th><th>别名</th><th>综合分</th><th>需求</th><th>机会</th><th>作品数</th><th>研判理由</th></tr>';
       items.forEach(function(it){
-        h += '<tr><td>'+it.rank_no+'</td><td><b>'+esc(it.display_name)+'</b></td><td class="muted">'+esc((it.aliases||[]).join("、")||"-")+'</td><td><b>'+it.composite_score+'</b></td><td>'+it.demand_score+'</td><td>'+it.opportunity_score+'</td><td>'+esc(it.reason)+'</td></tr>';
+        h += '<tr><td>'+it.rank_no+'</td><td><b>'+esc(it.display_name)+'</b></td><td class="muted">'+esc((it.aliases||[]).join("、")||"-")+'</td><td><b>'+it.composite_score+'</b></td><td>'+it.demand_score+'</td><td>'+it.opportunity_score+'</td><td>'+Math.round(it.works_count||0)+'</td><td>'+esc(it.reason)+'</td></tr>';
       });
       h += '</table></div>';
     });

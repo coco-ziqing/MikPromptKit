@@ -19,15 +19,27 @@ def get_conn():
 
 
 def init_db():
-    """幂等建表（仅本模块表）"""
+    """幂等建表（仅本模块表）+ 旧库幂等补列"""
     with open(_SCHEMA_PATH, encoding="utf-8") as f:
         schema = f.read()
     conn = get_conn()
     try:
         conn.executescript(schema)
+        _migrate_columns(conn)
         conn.commit()
     finally:
         conn.close()
+
+
+def _migrate_columns(conn):
+    """旧库补列（PRAGMA 探测，幂等）"""
+    def add_col(table, col, ddl):
+        cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+        if col not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+    add_col("raw_records", "sheet_name", "TEXT DEFAULT ''")
+    add_col("raw_records", "works_count", "REAL DEFAULT 0")
+    add_col("theme_metrics", "works_count", "REAL DEFAULT 0")
 
 
 def sha256_file(path: str) -> str:
