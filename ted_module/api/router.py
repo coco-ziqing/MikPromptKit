@@ -94,6 +94,48 @@ def upload_logs(limit: int = Query(50, ge=1, le=200)):
         conn.close()
 
 
+@router.delete("/upload-logs/{lid}")
+def delete_upload_log(lid: int):
+    """删除单条上传日志（留痕记录可管理）"""
+    conn = get_conn()
+    try:
+        cur = conn.execute("DELETE FROM upload_logs WHERE id=?", [lid])
+        conn.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404, "日志不存在")
+        return {"ok": True, "deleted": lid}
+    finally:
+        conn.close()
+
+
+@router.delete("/upload-logs")
+def clear_upload_logs():
+    """清空全部上传日志"""
+    conn = get_conn()
+    try:
+        cur = conn.execute("DELETE FROM upload_logs")
+        conn.commit()
+        return {"ok": True, "deleted": cur.rowcount}
+    finally:
+        conn.close()
+
+
+@router.put("/upload-logs/{lid}")
+def update_upload_log(lid: int, data: dict = Body(...)):
+    """编辑上传日志备注"""
+    conn = get_conn()
+    try:
+        exists = conn.execute("SELECT id FROM upload_logs WHERE id=?", [lid]).fetchone()
+        if not exists:
+            raise HTTPException(404, "日志不存在")
+        note = (data.get("note") or "").strip()
+        conn.execute("UPDATE upload_logs SET note=? WHERE id=?", [note, lid])
+        conn.commit()
+        return {"ok": True, "id": lid, "note": note}
+    finally:
+        conn.close()
+
+
 # ============ 分析 ============
 
 @router.post("/analyze/{version_id}")
@@ -133,6 +175,74 @@ def pools(version_id: int = Query(0)):
             d["aliases"] = json.loads(d.get("aliases") or "[]")
             result["pools"].setdefault(d["pool_type"], []).append(d)
         return result
+    finally:
+        conn.close()
+
+
+@router.post("/compare")
+def compare_versions(data: dict = Body(...)):
+    """版本对比：按题材匹配两版本池/综合分，输出 新上榜/掉榜/上升/下降/持平"""
+    va = data.get("version_a") or 0
+    vb = data.get("version_b") or 0
+    if not va or not vb or va == vb:
+        raise HTTPException(400, "需选择两个不同版本对比")
+    conn = get_conn()
+    try:
+        def _load(vid):
+            rows = conn.execute(
+                "SELECT p.composite_score, p.demand_score, p.opportunity_score, p.pool_type, t.theme_key, t.display_name "
+                "FROM theme_pools p JOIN themes t ON t.id=p.theme_id WHERE p.version_id=?", [vid]).fetchall()
+            ver = conn.execute("SELECT name FROM snapshot_versions WHERE id=?", [vid]).fetchone()
+            return (ver["name"] if ver else f"#{vid}"), {r["theme_key"]: dict(r) for r in rows}
+        name_a, pa = _load(va)
+        name_b, pb = _load(vb)
+        new_in, gone, up, down, same = [], [], [], [], []
+        for key, rb in pb.items():
+            ra = pa.get(key)
+            if not ra:
+                new_in.append(rb)
+            else:
+                diff = rb["composite_score"] - ra["composite_score"]
+                if diff > 2:
+                    up.append({**rb, "diff": round(diff, 2)})
+                elif diff < -2:
+                    down.append({**rb, "diff": round(diff, 2)})
+                else:
+                    same.append(rb)
+        for key, ra in pa.items():
+            if key not in pb:
+                gone.append(ra)
+        return {"ok": True, "version_a": name_a, "version_b": name_b,
+                "new_in": sorted(new_in, key=lambda x: -x["composite_score"]),
+                "gone": sorted(gone, key=lambda x: -x["composite_score"]),
+                "up": sorted(up, key=lambda x: -x["diff"]),
+                "down": sorted(down, key=lambda x: x["diff"]),
+                "same_count": len(same)}
+    finally:
+        conn.close()
+
+
+@router.get("/themes/{tid}/detail")
+def theme_detail(tid: int):
+    """题材详情：主档 + 各版本指标 + 池归属 + 台账 + 风险"""
+    conn = get_conn()
+    try:
+        t = conn.execute("SELECT * FROM themes WHERE id=?", [tid]).fetchone()
+        if not t:
+            raise HTTPException(404, "题材不存在")
+        d = dict(t)
+        d["aliases"] = json.loads(d.get("aliases") or "[]")
+        d["metrics"] = [dict(r) for r in conn.execute(
+            "SELECT m.*, v.name AS version_name FROM theme_metrics m "
+            "JOIN snapshot_versions v ON v.id=m.version_id WHERE m.theme_id=? ORDER BY m.version_id DESC", [tid]).fetchall()]
+        d["pools"] = [dict(r) for r in conn.execute(
+            "SELECT p.*, v.name AS version_name FROM theme_pools p "
+            "JOIN snapshot_versions v ON v.id=p.version_id WHERE p.theme_id=? ORDER BY p.version_id DESC", [tid]).fetchall()]
+        d["research"] = [dict(r) for r in conn.execute(
+            "SELECT * FROM research_records WHERE theme_id=? ORDER BY id DESC", [tid]).fetchall()]
+        d["risks"] = [dict(r) for r in conn.execute(
+            "SELECT * FROM risk_records WHERE theme_id=? ORDER BY id DESC", [tid]).fetchall()]
+        return {"ok": True, "theme": d}
     finally:
         conn.close()
 

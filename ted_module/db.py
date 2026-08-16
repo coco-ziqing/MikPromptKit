@@ -40,6 +40,7 @@ def _migrate_columns(conn):
     add_col("raw_records", "sheet_name", "TEXT DEFAULT ''")
     add_col("raw_records", "works_count", "REAL DEFAULT 0")
     add_col("theme_metrics", "works_count", "REAL DEFAULT 0")
+    add_col("upload_logs", "note", "TEXT DEFAULT ''")
 
 
 def sha256_file(path: str) -> str:

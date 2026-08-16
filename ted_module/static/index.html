@@ -150,6 +150,26 @@
     <div class="muted" style="margin-top:6px;">可选：合并销售记录版本（按题材匹配注入真实销量/收益信号，评分自动切换 0.5/0.3/0.2 权重）</div>
     <div class="mt" id="anResult"></div>
   </div>
+  <div class="card" id="vizCard" style="display:none;">
+    <h3>📊 可视化概览</h3>
+    <div class="flex" style="align-items:flex-start;">
+      <div id="vizDonut" style="width:190px;height:190px;flex-shrink:0;"></div>
+      <div id="vizLegend" style="flex:1;min-width:220px;padding-top:10px;"></div>
+    </div>
+    <h3 style="margin-top:14px;">主力投产池 TOP10</h3>
+    <div id="vizBars" style="margin-top:8px;"></div>
+  </div>
+  <div class="card">
+    <h3>🔄 版本对比（新上榜 / 上升 / 下降 / 掉榜）</h3>
+    <div class="flex">
+      <select id="cmpA" style="max-width:320px;"></select>
+      <span class="muted">↔</span>
+      <select id="cmpB" style="max-width:320px;"></select>
+      <button class="btn2" onclick="runCompare()">开始对比</button>
+    </div>
+    <div class="muted" style="margin-top:6px;">需两个版本均已运行分析；综合分变化 &gt;2 视为上升/下降</div>
+    <div id="cmpResult" class="mt"></div>
+  </div>
   <div id="poolViews"></div>
 </div>
 
@@ -314,6 +334,7 @@ function loadPools(){
   api("/pools").then(function(d){
     var box = document.getElementById("poolViews");
     if(!d.ok){ box.innerHTML = '<p class="muted">'+esc(d.detail||"暂无结果")+'</p>'; return; }
+    renderViz(d);
     var h = '<p class="muted" style="margin-bottom:10px;">数据版本：'+esc(d.version_name||"")+'（ID '+d.version_id+'）</p>';
     POOL_CFG.forEach(function(cfg){
       var items = (d.pools||{})[cfg[0]]||[];
@@ -422,12 +443,99 @@ function viewPlan(pid){
   });
 }
 
+
+// ============ 可视化（纯 SVG/CSS，零外部依赖） ============
+var POOL_META = [
+  ["main_pool", "主力投产池", "#16a34a"],
+  ["red_ocean", "内卷慎入池", "#dc2626"],
+  ["blue_ocean", "蓝海观察池", "#2563eb"],
+  ["sunset", "滞销淘汰池", "#94a3b8"]
+];
+function renderViz(d){
+  var card = document.getElementById("vizCard");
+  if(!card) return;
+  var pools = d.pools || {};
+  var total = 0;
+  POOL_META.forEach(function(m){ total += (pools[m[0]]||[]).length; });
+  if(!total){ card.style.display = "none"; return; }
+  card.style.display = "block";
+  // 环形图（SVG stroke-dasharray）
+  var R = 80, C = 2 * Math.PI * R;
+  var offset = 0, segs = "";
+  var legend = "";
+  POOL_META.forEach(function(m){
+    var n = (pools[m[0]]||[]).length;
+    var frac = n / total;
+    if(n > 0){
+      var dash = frac * C;
+      segs += '<circle r="'+R+'" cx="100" cy="100" fill="none" stroke="'+m[2]+'" stroke-width="26" stroke-dasharray="'+(dash-2)+' '+(C-dash+2)+'" stroke-dashoffset="'+(-offset)+'" transform="rotate(-90 100 100)"></circle>';
+      offset += dash;
+    }
+    legend += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12.5px;"><span style="width:12px;height:12px;border-radius:3px;background:'+m[2]+';display:inline-block;"></span><b>'+m[1]+'</b><span class="muted">'+n+' 个（'+Math.round(frac*100)+'%）</span></div>';
+  });
+  document.getElementById("vizDonut").innerHTML = '<svg width="190" height="190" viewBox="0 0 200 200">'+segs+'<text x="100" y="96" text-anchor="middle" font-size="26" font-weight="700" fill="var(--txt)">'+total+'</text><text x="100" y="118" text-anchor="middle" font-size="11" fill="var(--muted)">题材总数</text></svg>';
+  document.getElementById("vizLegend").innerHTML = legend;
+  // 主力池 TOP10 柱状图（纯 div）
+  var main = (pools["main_pool"]||[]).slice(0,10);
+  var bars = "";
+  if(!main.length){ bars = '<p class="muted">当前版本主力池为空</p>'; }
+  else {
+    var max = main[0].composite_score || 1;
+    main.forEach(function(it){
+      var w = Math.max(4, Math.round(it.composite_score / max * 100));
+      bars += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12px;">' +
+        '<span style="width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+esc(it.display_name)+'">'+esc(it.display_name)+'</span>' +
+        '<div style="flex:1;background:var(--border);border-radius:5px;height:16px;overflow:hidden;"><div style="width:'+w+'%;height:100%;background:linear-gradient(90deg,#4f46e5,#818cf8);border-radius:5px;"></div></div>' +
+        '<span style="width:44px;text-align:right;font-weight:600;">'+it.composite_score+'</span></div>';
+    });
+  }
+  document.getElementById("vizBars").innerHTML = bars;
+}
+
+// ============ 版本对比 ============
+function runCompare(){
+  var a = document.getElementById("cmpA").value, b = document.getElementById("cmpB").value;
+  if(!a || !b || a===b){ toast("请选择两个不同版本","err"); return; }
+  api("/compare", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({version_a:Number(a), version_b:Number(b)})}).then(function(d){
+    var box = document.getElementById("cmpResult");
+    if(!d.ok){ box.innerHTML = '<p class="err">'+esc(d.detail||"对比失败")+'</p>'; return; }
+    function tbl(title, arr, color){
+      if(!arr.length) return '<h4 style="margin:10px 0 4px;color:'+color+';font-size:13px;">'+title+'（0）</h4>';
+      var h = '<h4 style="margin:10px 0 4px;color:'+color+';font-size:13px;">'+title+'（'+arr.length+'）</h4><table><tr><th>题材</th><th>综合分</th><th>需求</th><th>机会</th>'+(arr[0].diff!=null?'<th>变化</th>':'')+'</tr>';
+      arr.forEach(function(it){
+        h += '<tr><td><b>'+esc(it.display_name)+'</b></td><td>'+it.composite_score+'</td><td>'+it.demand_score+'</td><td>'+it.opportunity_score+'</td>'+(it.diff!=null?'<td>'+(it.diff>0?'▲ +':'▼ ')+it.diff+'</td>':'')+'</tr>';
+      });
+      return h + '</table>';
+    }
+    box.innerHTML = '<p class="muted" style="margin-bottom:6px;">对比：'+esc(d.version_a)+' → '+esc(d.version_b)+'（'+esc(d.same_count)+' 个题材持平）</p>' +
+      tbl("🆕 新上榜", d.new_in, "#16a34a") + tbl("📈 上升", d.up, "#2563eb") +
+      tbl("📉 下降", d.down, "#f59e0b") + tbl("💤 掉榜", d.gone, "#94a3b8");
+  });
+}
+
+// ============ 上传日志 CRUD ============
+function delLog(id){
+  if(!confirm("删除该条上传日志？")) return;
+  api("/upload-logs/"+id, {method:"DELETE"}).then(function(d){ if(d.ok){ toast("已删除","ok"); loadLogs(); } });
+}
+function clearLogs(){
+  if(!confirm("清空全部上传日志？")) return;
+  api("/upload-logs", {method:"DELETE"}).then(function(d){ if(d.ok){ toast("已清空 "+d.deleted+" 条","ok"); loadLogs(); } });
+}
+function editLog(id, cur){
+  var note = prompt("编辑备注：", cur || "");
+  if(note === null) return;
+  api("/upload-logs/"+id, {method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({note: note})}).then(function(d){
+    if(d.ok){ toast("备注已更新","ok"); loadLogs(); } else toast(d.detail||"更新失败","err");
+  });
+}
+
 // 日志
 function loadLogs(){
   api("/upload-logs?limit=50").then(function(d){
     var arr = (d&&d.logs)||[];
-    document.getElementById("lgList").innerHTML = arr.length ? '<table><tr><th>ID</th><th>文件</th><th>类型</th><th>行数(总/成/败)</th><th>哈希</th><th>上传人</th><th>时间</th><th>错误</th></tr>'+arr.map(function(l){
-      return '<tr><td>'+l.id+'</td><td>'+esc(l.file_name)+'</td><td>'+esc(l.source_type)+'</td><td>'+l.rows_total+'/'+l.rows_ok+'/'+l.rows_fail+'</td><td class="muted">'+esc((l.file_hash||"").slice(0,10))+'</td><td>'+esc(l.uploaded_by||"-")+'</td><td>'+esc(l.created_at)+'</td><td class="err">'+esc(l.errors||"")+'</td></tr>';
+    document.getElementById("lgList").innerHTML = arr.length ? '<div style="margin-bottom:8px;"><button class="btn2" onclick="clearLogs()">🗑 清空全部</button></div><table><tr><th>ID</th><th>文件</th><th>类型</th><th>行数(总/成/败)</th><th>上传人</th><th>时间</th><th>备注</th><th>错误</th><th>操作</th></tr>'+arr.map(function(l){
+      return '<tr><td>'+l.id+'</td><td>'+esc(l.file_name)+'</td><td>'+esc(l.source_type)+'</td><td>'+l.rows_total+'/'+l.rows_ok+'/'+l.rows_fail+'</td><td>'+esc(l.uploaded_by||"-")+'</td><td>'+esc(l.created_at)+'</td><td class="muted">'+esc(l.note||"")+'</td><td class="err">'+esc(l.errors||"")+'</td><td style="white-space:nowrap;"><button class="btn2" style="padding:3px 8px;" onclick="editLog('+l.id+',\''+esc((l.note||"").replace(/\\'/g,""))+'\')">✏️</button> <button class="btn2" style="padding:3px 8px;color:#ef4444;border-color:#ef4444;" onclick="delLog('+l.id+')">🗑</button></td></tr>';
     }).join("")+'</table>' : '<p class="muted">暂无上传日志</p>';
   });
 }
@@ -458,6 +566,8 @@ loadVersions("upVersions", true);
 loadVersions("anVersion");
 loadVersions("anSalesVersion");
 loadVersions("plVersion");
+loadVersions("cmpA");
+loadVersions("cmpB");
 loadNotices();
 runSelfcheck();
 </script>
