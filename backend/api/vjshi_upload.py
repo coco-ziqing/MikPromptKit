@@ -465,7 +465,7 @@ def _upload_one(task_id: int):
     if not t or t["status"] in ("submitted", "fail"):
         return
 
-    _vjshi_log(f"[任务{task_id} u_{t.get('creator_id') or 0}] 开始执行：{os.path.basename(t['video_file'] or '')}")
+    _vjshi_log(f"[任务{task_id} u_{t['creator_id'] or 0}] 开始执行：{os.path.basename(t['video_file'] or '')}")
     _task_update(task_id, status="uploading")
     _VJSHI_BUSY.set()
     pw = ctx = None
