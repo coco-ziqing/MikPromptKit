@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TED 素材需求分析合规模块</title>
+<style>
+  :root { --primary:#0d9488; --bg:#f1f5f9; --card:#fff; --border:#e2e8f0; --txt:#0f172a; --muted:#64748b; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:"Microsoft YaHei",system-ui,sans-serif; background:var(--bg); color:var(--txt); font-size:14px; }
+  header { background:var(--primary); color:#fff; padding:14px 20px; display:flex; align-items:center; gap:12px; }
+  header h1 { font-size:17px; font-weight:600; }
+  header .tag { background:rgba(255,255,255,.2); border-radius:20px; padding:3px 10px; font-size:11px; }
+  nav { background:#fff; border-bottom:1px solid var(--border); display:flex; padding:0 12px; overflow-x:auto; }
+  nav button { border:none; background:none; padding:12px 16px; font-size:13px; cursor:pointer; color:var(--muted); white-space:nowrap; border-bottom:2px solid transparent; }
+  nav button.active { color:var(--primary); border-bottom-color:var(--primary); font-weight:600; }
+  main { padding:18px 20px; max-width:1200px; margin:0 auto; }
+  .page { display:none; }
+  .page.active { display:block; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:14px; }
+  .card h3 { font-size:14px; margin-bottom:12px; color:var(--primary); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 4px; }
+  input, select, textarea { width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px; background:#fff; }
+  textarea { min-height:70px; resize:vertical; }
+  button.btn { background:var(--primary); color:#fff; border:none; padding:9px 18px; border-radius:8px; font-size:13px; cursor:pointer; margin-top:10px; }
+  button.btn:hover { opacity:.9; }
+  button.btn2 { background:#fff; color:var(--primary); border:1px solid var(--primary); padding:6px 12px; border-radius:7px; font-size:12px; cursor:pointer; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th, td { border:1px solid var(--border); padding:7px 9px; text-align:left; vertical-align:top; }
+  th { background:#f8fafc; font-weight:600; white-space:nowrap; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; color:#fff; }
+  .b-main { background:#16a34a; } .b-red { background:#dc2626; } .b-blue { background:#2563eb; } .b-sunset { background:#94a3b8; }
+  .ok { color:#16a34a; } .err { color:#dc2626; } .muted { color:var(--muted); font-size:12px; }
+  .mt { margin-top:10px; } .flex { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  pre.md { background:#0f172a; color:#e2e8f0; padding:14px; border-radius:10px; overflow:auto; font-size:12.5px; line-height:1.6; white-space:pre-wrap; }
+  .banner { background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; border-radius:10px; padding:10px 14px; font-size:12.5px; margin-bottom:14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TED 素材需求分析合规模块</h1>
+  <span class="tag">零外网 · 零抓取 · 人工上传</span>
+  <span class="tag" id="complianceBadge">合规自检：-</span>
+</header>
+<nav>
+  <button data-page="upload" class="active">上传快照</button>
+  <button data-page="analyze">数据分析</button>
+  <button data-page="workbench">研判工作台</button>
+  <button data-page="notice">公告录入</button>
+  <button data-page="plan">规划书</button>
+  <button data-page="logs">上传日志</button>
+  <button data-page="compliance">合规自检</button>
+</nav>
+<main>
+
+<div class="banner">合规红线：本模块不访问光厂官网、不抓取任何榜单/指数/页面数据；所有数据仅来自<b>人工浏览整理后手动上传</b>的静态文件与人工录入。模块运行无外网 HTTP 请求、无浏览器自动化、无定时任务。</div>
+
+<!-- ======== 上传快照 ======== -->
+<div class="page active" id="page-upload">
+  <div class="card">
+    <h3>人工上传官方需求指数快照 / 自有销售 CSV</h3>
+    <div class="grid">
+      <div>
+        <label>文件（Excel 或 CSV）</label>
+        <input type="file" id="upFile" accept=".xlsx,.xls,.csv">
+        <label>快照版本名（如 2026-08-W33 官方指数）</label>
+        <input type="text" id="upName" placeholder="留空则用文件名">
+        <label>来源类型</label>
+        <select id="upType"><option value="excel">官方需求指数 Excel 快照</option><option value="csv">自有销售 CSV 报表</option></select>
+        <label>上传人</label>
+        <input type="text" id="upBy" placeholder="选填">
+        <label>备注</label>
+        <input type="text" id="upNote" placeholder="选填">
+        <button class="btn" onclick="doUpload()">上传（仅存本机）</button>
+        <div class="mt" id="upResult"></div>
+      </div>
+      <div>
+        <h3 style="margin-top:0;">Excel 表头模板（第一行）</h3>
+        <table><tr><th>题材</th><th>需求指数</th><th>机会指数</th><th>销量</th><th>销售额</th><th>排名</th></tr></table>
+        <p class="muted mt">兼容中英文表头：题材/主题/theme，需求指数/demand，机会指数/opportunity，销量/sales，销售额/revenue，排名/rank。缺列自动置 0；仅有题材+需求指数即可。</p>
+        <h3 style="margin-top:14px;">版本记录（最近 10 个）</h3>
+        <div id="upVersions"><p class="muted">加载中...</p></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======== 数据分析 ======== -->
+<div class="page" id="page-analyze">
+  <div class="card">
+    <h3>运行分析（清洗聚类 → 归一化 → 双维评分 → 四类题材池）</h3>
+    <div class="flex">
+      <select id="anVersion" style="max-width:340px;"></select>
+      <button class="btn2" onclick="runAnalyze()">▶ 运行分析</button>
+      <button class="btn2" onclick="loadPools()">刷新结果</button>
+    </div>
+    <div class="mt" id="anResult"></div>
+  </div>
+  <div id="poolViews"></div>
+</div>
+
+<!-- ======== 研判工作台 ======== -->
+<div class="page" id="page-workbench">
+  <div class="card">
+    <h3>题材人工研判工作台</h3>
+    <div class="flex">
+      <select id="wbTheme" style="max-width:320px;"></select>
+      <button class="btn2" onclick="loadWorkbench()">载入题材</button>
+    </div>
+    <div id="wbDetail" class="mt"></div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>新增考察记录</h3>
+      <input type="hidden" id="rsTheme">
+      <label>考察日期</label><input type="text" id="rsDate" placeholder="2026-08-16">
+      <label>考察人</label><input type="text" id="rsWho">
+      <label>结论 / 判断</label><textarea id="rsConclusion"></textarea>
+      <label>依据（人工观察记录）</label><textarea id="rsEvidence"></textarea>
+      <label>风险点</label><textarea id="rsRisk"></textarea>
+      <label>决策</label>
+      <select id="rsDecision"><option>待定</option><option>投产</option><option>观察</option><option>放弃</option></select>
+      <button class="btn" onclick="addResearch()">保存考察记录</button>
+    </div>
+    <div class="card">
+      <h3>新增风险记录</h3>
+      <input type="hidden" id="rkTheme">
+      <label>风险类型</label><input type="text" id="rkType" placeholder="合规/市场/竞争/供应链">
+      <label>风险等级</label>
+      <select id="rkLevel"><option>中</option><option>高</option><option>低</option></select>
+      <label>风险描述</label><textarea id="rkDesc"></textarea>
+      <label>应对措施</label><textarea id="rkMit"></textarea>
+      <button class="btn" onclick="addRisk()">保存风险记录</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======== 公告录入 ======== -->
+<div class="page" id="page-notice">
+  <div class="card">
+    <h3>官方公告人工录入</h3>
+    <label>标题</label><input type="text" id="ntTitle">
+    <label>内容（人工粘贴，不得自动获取）</label><textarea id="ntContent" style="min-height:140px;"></textarea>
+    <div class="grid">
+      <div><label>发布日期</label><input type="text" id="ntDate" placeholder="2026-08-16"></div>
+      <div><label>来源说明（人工填写）</label><input type="text" id="ntSrc" placeholder="如：人工浏览官网公告页后整理"></div>
+    </div>
+    <label>录入人</label><input type="text" id="ntBy" style="max-width:280px;">
+    <button class="btn" onclick="addNotice()">保存公告</button>
+    <div class="mt" id="ntResult"></div>
+  </div>
+  <div class="card"><h3>已录入公告</h3><div id="ntList"></div></div>
+</div>
+
+<!-- ======== 规划书 ======== -->
+<div class="page" id="page-plan">
+  <div class="card">
+    <h3>生成题材开发规划书（含合规风控章节）</h3>
+    <div class="flex">
+      <select id="plVersion" style="max-width:340px;"></select>
+      <button class="btn2" onclick="genPlan()">生成规划书</button>
+    </div>
+    <div class="mt" id="plResult"></div>
+  </div>
+  <div class="card"><h3>历史规划书</h3><div id="plList"></div></div>
+  <div class="card"><h3>规划书内容预览</h3><pre class="md" id="plPreview">（生成后展示）</pre></div>
+</div>
+
+<!-- ======== 上传日志 ======== -->
+<div class="page" id="page-logs">
+  <div class="card"><h3>上传日志（留痕）</h3><div id="lgList"></div></div>
+</div>
+
+<!-- ======== 合规自检 ======== -->
+<div class="page" id="page-compliance">
+  <div class="card">
+    <h3>合规自检报告</h3>
+    <button class="btn2" onclick="runSelfcheck()">重新自检</button>
+    <div class="mt" id="cpResult"></div>
+  </div>
+</div>
+
+</main>
+<script>
+"use strict";
+var API = "/api/ted";
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function j(e){ return e.json ? e.json() : Promise.resolve(e); }
+function toast(msg, ok){ var d=document.createElement("div"); d.style.cssText="position:fixed;top:14px;right:14px;z-index:999;background:"+(ok?"#16a34a":"#dc2626")+";color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;"; d.textContent=msg; document.body.appendChild(d); setTimeout(function(){d.remove();},3000); }
+function api(path, opt){ return fetch(API+path, opt).then(function(r){ return r.json().catch(function(){ return {ok:false}; }); }); }
+
+// 导航
+document.querySelectorAll("nav button").forEach(function(b){
+  b.onclick = function(){ document.querySelectorAll("nav button").forEach(function(x){x.classList.remove("active");}); b.classList.add("active");
+    document.querySelectorAll(".page").forEach(function(p){p.classList.remove("active");}); document.getElementById("page-"+b.dataset.page).classList.add("active");
+    if(b.dataset.page==="analyze"){ loadVersions("anVersion"); loadPools(); }
+    if(b.dataset.page==="workbench"){ loadThemes("wbTheme"); }
+    if(b.dataset.page==="plan"){ loadVersions("plVersion"); loadPlans(); }
+    if(b.dataset.page==="logs"){ loadLogs(); }
+    if(b.dataset.page==="compliance"){ runSelfcheck(); }
+  };
+});
+
+// 上传
+function doUpload(){
+  var f = document.getElementById("upFile").files[0];
+  if(!f){ toast("请先选择文件","err"); return; }
+  var fd = new FormData();
+  fd.append("file", f);
+  fd.append("source_type", document.getElementById("upType").value);
+  fd.append("version_name", document.getElementById("upName").value);
+  fd.append("uploaded_by", document.getElementById("upBy").value);
+  fd.append("note", document.getElementById("upNote").value);
+  var box = document.getElementById("upResult");
+  box.innerHTML = '<p class="muted">上传中（仅写入本机独立库）...</p>';
+  fetch(API+"/upload", {method:"POST", body:fd}).then(function(r){ return r.json(); }).then(function(d){
+    if(d.ok){ box.innerHTML = '<p class="ok">✅ 导入成功：版本 ID '+d.version_id+'，共 '+d.rows+' 行，文件哈希 '+esc(d.file_hash)+'</p>'; toast("导入成功","ok"); loadVersions("upVersions", true); }
+    else { box.innerHTML = '<p class="err">❌ '+esc(d.detail||"失败")+'</p>'; }
+  }).catch(function(e){ box.innerHTML = '<p class="err">上传异常：'+esc(e.message)+'</p>'; });
+}
+
+function loadVersions(selId, isList){
+  api("/versions?limit=50").then(function(d){
+    var vs = (d&&d.versions)||[];
+    var sel = document.getElementById(selId);
+    if(sel){ sel.innerHTML = vs.map(function(v){ return '<option value="'+v.id+'">#'+v.id+' '+esc(v.name)+'（'+v.source_type+'，'+v.rows_count+'行，'+esc(v.status)+'）</option>'; }).join("") || '<option value="0">暂无版本</option>'; }
+    if(isList){
+      var box = document.getElementById("upVersions");
+      if(!vs.length){ box.innerHTML = '<p class="muted">暂无上传记录</p>'; return; }
+      box.innerHTML = '<table><tr><th>ID</th><th>版本名</th><th>类型</th><th>行数</th><th>状态</th><th>上传人</th><th>时间</th></tr>' + vs.slice(0,10).map(function(v){
+        return '<tr><td>'+v.id+'</td><td>'+esc(v.name)+'</td><td>'+esc(v.source_type)+'</td><td>'+v.rows_count+'</td><td>'+esc(v.status)+'</td><td>'+esc(v.uploaded_by||"-")+'</td><td>'+esc(v.created_at)+'</td></tr>';
+      }).join("") + '</table>';
+    }
+  });
+}
+
+// 分析
+function runAnalyze(){
+  var vid = document.getElementById("anVersion").value;
+  if(!vid){ toast("请先选择版本","err"); return; }
+  api("/analyze/"+vid, {method:"POST"}).then(function(d){
+    if(d.ok){
+      var p = d.pools||{};
+      document.getElementById("anResult").innerHTML =
+        '<p class="ok">✅ 分析完成：'+(d.theme_count||0)+' 个题材（清洗聚类后），销售信号：'+(d.has_sales?"启用":"无销售数据")+'</p>' +
+        '<div class="flex mt">' +
+        '<span class="badge b-main">主力投产 '+(p.main_pool||0)+'</span>' +
+        '<span class="badge b-red">内卷慎入 '+(p.red_ocean||0)+'</span>' +
+        '<span class="badge b-blue">蓝海观察 '+(p.blue_ocean||0)+'</span>' +
+        '<span class="badge b-sunset">滞销淘汰 '+(p.sunset||0)+'</span></div>';
+      loadPools(); toast("分析完成","ok");
+    } else { toast(d.detail||"分析失败","err"); }
+  });
+}
+
+var POOL_CFG = [["main_pool","主力投产池","b-main"],["red_ocean","内卷慎入池","b-red"],["blue_ocean","蓝海观察池","b-blue"],["sunset","滞销淘汰池","b-sunset"]];
+function loadPools(){
+  api("/pools").then(function(d){
+    var box = document.getElementById("poolViews");
+    if(!d.ok){ box.innerHTML = '<p class="muted">'+esc(d.detail||"暂无结果")+'</p>'; return; }
+    var h = '<p class="muted" style="margin-bottom:10px;">数据版本：'+esc(d.version_name||"")+'（ID '+d.version_id+'）</p>';
+    POOL_CFG.forEach(function(cfg){
+      var items = (d.pools||{})[cfg[0]]||[];
+      h += '<div class="card"><h3><span class="badge '+cfg[2]+'">'+cfg[1]+'</span>（'+items.length+'）</h3>';
+      if(!items.length){ h += '<p class="muted">（暂无）</p></div>'; return; }
+      h += '<table><tr><th>#</th><th>题材</th><th>别名</th><th>综合分</th><th>需求</th><th>机会</th><th>研判理由</th></tr>';
+      items.forEach(function(it){
+        h += '<tr><td>'+it.rank_no+'</td><td><b>'+esc(it.display_name)+'</b></td><td class="muted">'+esc((it.aliases||[]).join("、")||"-")+'</td><td><b>'+it.composite_score+'</b></td><td>'+it.demand_score+'</td><td>'+it.opportunity_score+'</td><td>'+esc(it.reason)+'</td></tr>';
+      });
+      h += '</table></div>';
+    });
+    box.innerHTML = h;
+  });
+}
+
+// 工作台
+function loadThemes(selId){
+  api("/themes?limit=500").then(function(d){
+    var ts = (d&&d.themes)||[];
+    var sel = document.getElementById(selId);
+    if(sel){ sel.innerHTML = ts.map(function(t){ return '<option value="'+t.id+'">'+esc(t.display_name)+'</option>'; }).join("") || '<option value="0">暂无题材（先上传并分析）</option>'; }
+  });
+}
+function loadWorkbench(){
+  var tid = document.getElementById("wbTheme").value;
+  if(!tid){ toast("请先选择题材","err"); return; }
+  document.getElementById("rsTheme").value = tid;
+  document.getElementById("rkTheme").value = tid;
+  var box = document.getElementById("wbDetail");
+  api("/research?theme_id="+tid).then(function(d){
+    var rs = (d&&d.records)||[];
+    var h = '<h3 style="color:var(--primary);">考察台账（'+rs.length+'）</h3>';
+    h += rs.length ? '<table class="mt"><tr><th>日期</th><th>考察人</th><th>结论</th><th>依据</th><th>风险点</th><th>决策</th></tr>'+rs.map(function(r){
+      return '<tr><td>'+esc(r.research_date||"-")+'</td><td>'+esc(r.researcher||"-")+'</td><td>'+esc(r.conclusion||"-")+'</td><td>'+esc(r.evidence||"-")+'</td><td>'+esc(r.risk_points||"-")+'</td><td><b>'+esc(r.decision||"-")+'</b></td></tr>';
+    }).join("")+'</table>' : '<p class="muted mt">暂无考察记录</p>';
+    return api("/risks?theme_id="+tid).then(function(d2){
+      var rk = (d2&&d2.records)||[];
+      h += '<h3 style="color:var(--primary);margin-top:14px;">风险记录（'+rk.length+'）</h3>';
+      h += rk.length ? '<table class="mt"><tr><th>类型</th><th>等级</th><th>描述</th><th>应对</th></tr>'+rk.map(function(r){
+        return '<tr><td>'+esc(r.risk_type||"-")+'</td><td>'+esc(r.risk_level||"-")+'</td><td>'+esc(r.description||"-")+'</td><td>'+esc(r.mitigation||"-")+'</td></tr>';
+      }).join("")+'</table>' : '<p class="muted mt">暂无风险记录</p>';
+      box.innerHTML = h;
+    });
+  });
+}
+function addResearch(){
+  var tid = document.getElementById("rsTheme").value;
+  if(!tid){ toast("请先选择题材","err"); return; }
+  api("/research", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({
+    theme_id: Number(tid), research_date: document.getElementById("rsDate").value,
+    researcher: document.getElementById("rsWho").value, conclusion: document.getElementById("rsConclusion").value,
+    evidence: document.getElementById("rsEvidence").value, risk_points: document.getElementById("rsRisk").value,
+    decision: document.getElementById("rsDecision").value
+  })}).then(function(d){ if(d.ok){ toast("考察记录已保存","ok"); loadWorkbench(); } else toast(d.detail||"失败","err"); });
+}
+function addRisk(){
+  var tid = document.getElementById("rkTheme").value;
+  if(!tid){ toast("请先选择题材","err"); return; }
+  api("/risks", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({
+    theme_id: Number(tid), risk_type: document.getElementById("rkType").value,
+    risk_level: document.getElementById("rkLevel").value, description: document.getElementById("rkDesc").value,
+    mitigation: document.getElementById("rkMit").value
+  })}).then(function(d){ if(d.ok){ toast("风险记录已保存","ok"); loadWorkbench(); } else toast(d.detail||"失败","err"); });
+}
+
+// 公告
+function addNotice(){
+  api("/announcements", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({
+    title: document.getElementById("ntTitle").value, content: document.getElementById("ntContent").value,
+    publish_date: document.getElementById("ntDate").value, source_hint: document.getElementById("ntSrc").value,
+    entered_by: document.getElementById("ntBy").value
+  })}).then(function(d){
+    document.getElementById("ntResult").innerHTML = d.ok ? '<p class="ok">✅ 已录入（ID '+d.id+'）</p>' : '<p class="err">'+esc(d.detail||"失败")+'</p>';
+    if(d.ok) loadNotices();
+  });
+}
+function loadNotices(){
+  api("/announcements?limit=20").then(function(d){
+    var arr = (d&&d.announcements)||[];
+    document.getElementById("ntList").innerHTML = arr.length ? arr.map(function(a){
+      return '<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;"><b>'+esc(a.title)+'</b> <span class="muted">'+esc(a.publish_date||"")+'</span><div class="mt">'+esc(a.content)+'</div><div class="muted mt">来源：'+esc(a.source_hint||"-")+' ｜ 录入：'+esc(a.entered_by||"-")+' ｜ '+esc(a.created_at)+'</div></div>';
+    }).join("") : '<p class="muted">暂无公告</p>';
+  });
+}
+
+// 规划书
+function genPlan(){
+  var vid = document.getElementById("plVersion").value;
+  if(!vid){ toast("请先选择版本","err"); return; }
+  api("/plan/generate", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({version_id: Number(vid)})}).then(function(d){
+    if(d.ok){ toast("规划书已生成","ok"); document.getElementById("plResult").innerHTML = '<p class="ok">✅ 规划书 ID '+d.plan_id+'</p>'; loadPlans(); viewPlan(d.plan_id); }
+    else toast(d.detail||"生成失败","err");
+  });
+}
+function loadPlans(){
+  api("/plans?limit=20").then(function(d){
+    var arr = (d&&d.plans)||[];
+    document.getElementById("plList").innerHTML = arr.length ? '<table><tr><th>ID</th><th>标题</th><th>状态</th><th>时间</th><th></th></tr>'+arr.map(function(p){
+      return '<tr><td>'+p.id+'</td><td>'+esc(p.title)+'</td><td>'+esc(p.status)+'</td><td>'+esc(p.generated_at)+'</td><td><button class="btn2" onclick="viewPlan('+p.id+')">查看</button></td></tr>';
+    }).join("")+'</table>' : '<p class="muted">暂无规划书</p>';
+  });
+}
+function viewPlan(pid){
+  api("/plan/"+pid).then(function(d){
+    if(d.ok) document.getElementById("plPreview").textContent = d.plan.content_md;
+  });
+}
+
+// 日志
+function loadLogs(){
+  api("/upload-logs?limit=50").then(function(d){
+    var arr = (d&&d.logs)||[];
+    document.getElementById("lgList").innerHTML = arr.length ? '<table><tr><th>ID</th><th>文件</th><th>类型</th><th>行数(总/成/败)</th><th>哈希</th><th>上传人</th><th>时间</th><th>错误</th></tr>'+arr.map(function(l){
+      return '<tr><td>'+l.id+'</td><td>'+esc(l.file_name)+'</td><td>'+esc(l.source_type)+'</td><td>'+l.rows_total+'/'+l.rows_ok+'/'+l.rows_fail+'</td><td class="muted">'+esc((l.file_hash||"").slice(0,10))+'</td><td>'+esc(l.uploaded_by||"-")+'</td><td>'+esc(l.created_at)+'</td><td class="err">'+esc(l.errors||"")+'</td></tr>';
+    }).join("")+'</table>' : '<p class="muted">暂无上传日志</p>';
+  });
+}
+
+// 合规自检
+function runSelfcheck(){
+  api("/compliance/selfcheck").then(function(d){
+    var r = (d&&d.report)||{};
+    var ok = r.ok;
+    var badge = document.getElementById("complianceBadge");
+    badge.textContent = "合规自检：" + (ok ? "✅ 通过（零外网/零抓取/零定时）" : "❌ 异常");
+    badge.style.background = ok ? "rgba(255,255,255,.25)" : "#dc2626";
+    var h = '<p class="'+(ok?"ok":"err")+'"><b>自检结论：'+(ok?"通过":"异常")+'</b></p>';
+    h += '<table class="mt"><tr><th>检查项</th><th>结果</th></tr>';
+    h += '<tr><td>无外网 HTTP 请求（requests/urllib/socket/http.client/aiohttp/httpx）</td><td class="'+(r.no_network_access?"ok":"err")+'">'+(r.no_network_access?"✅ 通过":"❌ 命中")+'</td></tr>';
+    h += '<tr><td>无浏览器自动化（playwright/selenium/webdriver/scrapy）</td><td class="'+(r.no_browser_automation?"ok":"err")+'">'+(r.no_browser_automation?"✅ 通过":"❌ 命中")+'</td></tr>';
+    h += '<tr><td>无定时任务（schedule/cron/apscheduler/threading.Timer）</td><td class="'+(r.no_scheduler?"ok":"err")+'">'+(r.no_scheduler?"✅ 通过":"❌ 命中")+'</td></tr>';
+    h += '<tr><td>数据来源</td><td>'+esc(r.data_source)+'</td></tr></table>';
+    h += '<p class="muted mt">检查时间：'+esc(r.checked_at)+'</p>';
+    var f = (r.network_findings||[]).concat(r.scheduler_findings||[]);
+    if(f.length){ h += '<h3 class="mt">命中明细</h3>'+f.map(function(x){ return '<p class="err">'+esc(x.file)+':'+x.line+' — '+esc(x.pattern)+'</p>'; }).join(""); }
+    document.getElementById("cpResult").innerHTML = h;
+  });
+}
+
+// 初始化
+loadVersions("upVersions", true);
+loadVersions("anVersion");
+loadVersions("plVersion");
+loadNotices();
+runSelfcheck();
+</script>
+</body>
+</html>
