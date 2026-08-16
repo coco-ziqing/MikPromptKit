@@ -59,6 +59,7 @@ from api.vjshi_upload import router as vjshi_router  # v5.38.0 光厂素材上�
 from api.versions import router as versions_router
 from api.word_cards import router as word_card_router
 from api.workflow import router as workflow_router
+from api.production_funnel import router as production_funnel_router  # v5.40.1 生产漏斗
 from audit import router as audit_router  # Phase35 用户活动审计日志
 from auth import router as auth_router
 from health import router as health_router
@@ -81,6 +82,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(stats_router)
     app.include_router(templates_router)
     app.include_router(workflow_router)
+    app.include_router(production_funnel_router)  # v5.40.1 生产链路漏斗
     app.include_router(comfyui_router)
     app.include_router(dreamina_router)
     app.include_router(dreamina_inspiration_router)  # v5.38.32 即梦灵感导入

@@ -59,6 +59,10 @@ def analyze_version(version_id: int, sales_version_id: int = 0) -> dict:
     init_db()
     conn = get_conn()
     try:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(theme_pools)").fetchall()]
+        if "verified_orders" not in cols:
+            conn.execute("ALTER TABLE theme_pools ADD COLUMN verified_orders INTEGER DEFAULT 0")
+            conn.commit()
         rows = conn.execute("SELECT * FROM raw_records WHERE version_id=?", [version_id]).fetchall()
         if not rows:
             raise ValueError("该版本无原始数据，请先上传快照")
@@ -175,10 +179,10 @@ def analyze_version(version_id: int, sales_version_id: int = 0) -> dict:
                 [version_id, tid, r["demand_index"], r["opportunity_index"], r["works_count"],
                  r["sales_qty"], r["revenue"], r["record_count"]])
             conn.execute(
-                "INSERT INTO theme_pools (version_id, theme_id, pool_type, composite_score, demand_score, opportunity_score, reason, rank_no) "
-                "VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO theme_pools (version_id, theme_id, pool_type, composite_score, demand_score, opportunity_score, reason, rank_no, verified_orders) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
                 [version_id, tid, r["pool_type"], r["composite_score"], r["demand_index"],
-                 r["opportunity_index"], r["reason"], i])
+                 r["opportunity_index"], r["reason"], i, r.get("merged_orders", 0)])
         conn.execute("UPDATE snapshot_versions SET status='analyzed' WHERE id=?", [version_id])
         conn.commit()
         return {

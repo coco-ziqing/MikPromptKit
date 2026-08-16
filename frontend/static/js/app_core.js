@@ -1189,6 +1189,52 @@ var App = window.App || {
 
 
     // ===== AI 模型管理中心（入口）=====
+    // ===== 生产链路漏斗（v5.40.1 P2：题材池→词卡→生成→投稿→上架→销售） =====
+    openProductionFunnel: function () {
+        var self = this;
+        var ov = document.createElement('div');
+        ov.className = 'modal-overlay';
+        ov.style.cssText = 'display:flex;z-index:955;background:rgba(0,0,0,.55);align-items:center;justify-content:center;';
+        ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+        ov.innerHTML = '<div class="modal-content" style="max-width:720px;border-radius:14px;padding:18px;max-height:88vh;overflow-y:auto;" onclick="event.stopPropagation()">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><span style="font-size:15px;font-weight:700;">📊 生产链路漏斗</span>' +
+            '<span style="display:flex;gap:6px;"><button class="btn btn-xs btn-outline" onclick="App.openProductionFunnel()">🔄 刷新</button>' +
+            '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></span></div>' +
+            '<div id="funnelBody" style="min-height:120px;"><p style="font-size:12px;color:var(--text-muted);">统计中...</p></div></div>';
+        document.body.appendChild(ov);
+        App.fetchJSON('/api/production/funnel', {}, { _timeoutMs: 10000 }).then(function (d) {
+            var body = ov.querySelector('#funnelBody');
+            if (!d || !d.ok) { body.innerHTML = '<p style="font-size:12px;color:#ef4444;">统计失败</p>'; return; }
+            var st = d.stages || {};
+            var th = st.themes;
+            // 漏斗级：题材池 / 词卡 / 生成 / 投稿 / 已上架 / 销售验证
+            var levels = [
+                { name: '题材池（需求分析）', val: th ? th.total : null, sub: th ? ('主力 ' + th.main_pool + ' · 内卷 ' + th.red_ocean + ' · 蓝海 ' + th.blue_ocean + ' · 滞销 ' + th.sunset + (th.version ? ' · ' + th.version : '')) : '需求分析模块未运行' },
+                { name: '词卡（质检评分）', val: st.cards ? st.cards.total : 0, sub: st.cards ? ('已质检 ' + st.cards.quality_checked + ' 张') : '' },
+                { name: '生成任务', val: st.generated ? st.generated.total : 0, sub: st.generated ? ('完成 ' + st.generated.done) : '' },
+                { name: '投稿任务', val: st.submitted ? st.submitted.total : 0, sub: st.submitted ? ('已上架 ' + st.submitted.online + ' · 审核中 ' + st.submitted.reviewing + ' · 被拒 ' + st.submitted.rejected) : '' },
+                { name: '上架在架', val: st.catalog ? st.catalog.online : 0, sub: st.catalog ? ('剔除 ' + st.catalog.removed + ' · 累计销量 ' + st.catalog.sales_qty + ' · 收益 ¥' + st.catalog.revenue) : '' },
+            ];
+            var maxv = 1;
+            levels.forEach(function (l) { if (l.val && l.val > maxv) maxv = l.val; });
+            var h = '';
+            levels.forEach(function (l, i) {
+                var w = l.val === null ? 0 : Math.round((l.val || 0) / maxv * 100);
+                var cv = (i > 0 && levels[i - 1].val) ? Math.round((l.val || 0) / levels[i - 1].val * 100) : null;
+                h += '<div style="margin-bottom:10px;">' +
+                    '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>' + l.name + '</span>' +
+                    '<span><b>' + (l.val === null ? '—' : l.val) + '</b>' + (cv !== null ? ' <span style="color:var(--text-muted);font-size:10px;">转化 ' + cv + '%</span>' : '') + '</span></div>' +
+                    '<div style="height:22px;background:var(--border-color);border-radius:6px;overflow:hidden;"><div style="width:' + Math.max(w, l.val ? 3 : 0) + '%;height:100%;background:linear-gradient(90deg,#4f46e5,' + (i === 4 ? '#10b981' : '#818cf8') + ');border-radius:6px;"></div></div>' +
+                    (l.sub ? '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">' + App._escape(l.sub) + '</div>' : '') + '</div>';
+            });
+            h += '<p style="font-size:10px;color:var(--text-muted);margin-top:8px;">题材池来自需求分析模块(:8085)；词卡/生成/投稿/台账来自本机统计。刷新词库或上传新数据后重新查看。</p>';
+            body.innerHTML = h;
+        }).catch(function () {
+            var body = ov.querySelector('#funnelBody');
+            if (body) body.innerHTML = '<p style="font-size:12px;color:#ef4444;">统计异常</p>';
+        });
+    },
+
     // ===== 需求分析（独立模块 :8085，工具菜单入口） =====
     openDemandAnalysis: function() {
         var self = this;
