@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""TED 素材需求分析合规模块 — 独立服务入口（独立端口 8085，零侵入主项目）
+"""需求分析 — 独立服务入口（独立端口 8085，零侵入主项目）
 
 启动：python ted_module/main.py  →  http://127.0.0.1:8085
 """
@@ -18,7 +18,7 @@ from db import init_db
 from api.router import router
 
 app = FastAPI(
-    title="TED 素材需求分析合规模块",
+    title="需求分析",
     description="基于光厂官方公开指数【人工快照】的本地分析工具：零外网、零抓取、零定时任务，数据全靠人工上传。",
     version="1.0.0",
 )
@@ -36,10 +36,10 @@ def index():
 
 @app.get("/api/health")
 def api_health():
-    return {"ok": True, "module": "TED", "version": "1.0.0", "mode": "offline-only"}
+    return {"ok": True, "module": "需求分析", "version": "1.0.0", "mode": "offline-only"}
 
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"[TED] 素材需求分析合规模块启动：http://127.0.0.1:{PORT} （独立服务，零外网）")
+    print(f"[需求分析] 需求分析启动：http://127.0.0.1:{PORT} （独立服务，零外网）")
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")

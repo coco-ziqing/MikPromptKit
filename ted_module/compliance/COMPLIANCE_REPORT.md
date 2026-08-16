@@ -1,4 +1,4 @@
-# TED 素材需求分析合规模块 — 合规自检报告
+# 需求分析 — 合规自检报告
 
 - **报告生成**：2026-08-16（v1.0.0）
 - **自检方式**：静态源码扫描（`services/compliance_service.py`）+ 单元测试断言（`tests/test_compliance.py`）+ 运行时端点（`GET /api/ted/compliance/selfcheck`）

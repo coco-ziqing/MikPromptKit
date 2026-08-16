@@ -59,7 +59,7 @@ def compliance_report() -> dict:
     sched = scan_schedulers()
     report = {
         "ok": net["ok"] and sched["ok"],
-        "module": "TED素材需求分析合规模块",
+        "module": "需求分析",
         "no_network_access": net["ok"],
         "no_browser_automation": net["ok"],
         "no_scheduler": sched["ok"],

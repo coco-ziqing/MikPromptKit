@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""TED 模块 API 路由（独立 router，仅挂载到本模块独立服务）"""
+"""需求分析 API 路由（独立 router，仅挂载到本模块独立服务）"""
 import json
 
 from fastapi import APIRouter, Body, File, Form, HTTPException, Query, UploadFile
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/ted", tags=["ted"])
 @router.get("/health")
 def health():
     init_db()
-    return {"ok": True, "module": "TED素材需求分析合规模块", "version": "1.0.0",
+    return {"ok": True, "module": "需求分析", "version": "1.0.0",
             "network": "offline-only", "data_source": "manual-upload-only"}
 
 
