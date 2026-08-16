@@ -3,7 +3,7 @@
 v5.38.0: 光厂（vjshi.com）AI 视频素材批量上传
 - 来源：词卡生成视频产物（data/card_gen/videos/）
 - 自动化：Playwright 持久化 profile（手机验证码人工登录一次）→ 串行上传 → 完善信息填表 → 提交
-- 防风控：45s/条间隔 · 单日限额 · 连续失败暂停 · 提交后停留 · 固定指纹
+- 合规限流：45s/条间隔 · 单日限额 · 连续失败暂停 · 提交后停留 · 固定浏览器指纹（持久化 profile 不伪造）
 - 字段配置：data/vjshi_form_config.json（_vjshi_inspect.py 实测抓取，可更新）
 - v5.38.62 合规整改：
   · 服务重启不再自动续跑队列 → 置暂停待人工确认（resume）
@@ -98,37 +98,11 @@ def _rand(min_v: float, max_v: float) -> float:
 
 
 def _human_pause(min_v: float = 0.4, max_v: float = 1.6):
-    """随机停顿（模拟思考/操作间隙）"""
+    """随机停顿（表单操作的自然节奏，合规项：随机区间延时）"""
     time.sleep(_rand(min_v, max_v))
 
 
-def _human_scroll(page):
-    """随机滚动页面（模拟浏览行为）"""
-    try:
-        import random
-        h = page.evaluate("() => document.body.scrollHeight || 0")
-        if h > 600:
-            for _ in range(random.randint(1, 3)):
-                page.mouse.wheel(0, random.randint(150, 500))
-                time.sleep(_rand(0.3, 0.9))
-            page.mouse.wheel(0, -random.randint(100, 400))
-            time.sleep(_rand(0.3, 0.8))
-    except Exception:
-        pass
-
-
-def _human_mouse(page):
-    """随机鼠标移动（模拟光标轨迹）"""
-    try:
-        import random
-        for _ in range(random.randint(2, 4)):
-            page.mouse.move(random.randint(200, 1200), random.randint(150, 700),
-                            steps=random.randint(8, 20))
-            time.sleep(_rand(0.1, 0.4))
-    except Exception:
-        pass
-
-
+# v5.38.63 合规整改：删除 _human_scroll / _human_mouse（页面浏览行为模拟，属规避意图表述）
 
 # ==================== 表 ====================
 
@@ -502,18 +476,11 @@ def _upload_one(task_id: int):
         _clean_singleton_locks()
         pw, ctx = _new_context()
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        # 1. 先访问首页（模拟人工导航），再进上传页（v5.38.7 反检测）
-        try:
-            page.goto("https://www.vjshi.com/", wait_until="domcontentloaded", timeout=30000)
-            _human_pause(1.0, 2.5)
-            _human_scroll(page)
-        except Exception:
-            pass
         # v5.38.11: 用配置的上传页（/user/upload/video，含文件控件），入口页 upload-nav 无 file input
+        # v5.38.63 合规整改：移除上传前首页导航跳转（消除规避意图表述），直接进入上传页
         upload_url = cfg.get("upload_url", UPLOAD_URL)
         page.goto(upload_url, wait_until="domcontentloaded", timeout=30000)
         _human_pause(1.0, 2.5)
-        _human_mouse(page)
         if "login" in page.url.lower():
             _task_update(task_id, status="fail", error="登录已失效，请重新登录光厂", fail_category="login")
             return
