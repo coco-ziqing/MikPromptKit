@@ -162,6 +162,7 @@
 
                 '<button class="btn btn-xs btn-outline" id="vjModeBtn" onclick="App.vjshi.toggleMode()" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;">⚙️ 执行方式</button>' +
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openPanel()" style="font-size:10px;">🔄 刷新</button>' +
+                '<button class="btn btn-xs btn-outline" onclick="App.vjshi.clearTasks()" style="font-size:10px;border-color:#ef4444;color:#ef4444;">🗑 清除全部</button>' +
                 '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></span></div>' +
                 '<div id="vjPanelBody" style="min-height:100px;">加载中...</div></div>';
             document.body.appendChild(ov);
@@ -212,6 +213,13 @@
             if (!confirm('删除此上传任务？')) return;
             var d = await App.fetchJSON('/api/vjshi/tasks/' + tid, { method: 'DELETE' });
             if (d && d.ok) { this._toast('已删除', 'success'); this.openPanel(); }
+        },
+        // v5.38.64: 清除全部队列记录
+        clearTasks: async function () {
+            if (!confirm('确定清除全部上传队列记录？（含已完成/失败/进行中，进行中任务将被取消）')) return;
+            var d = await App.fetchJSON('/api/vjshi/tasks', { method: 'DELETE' });
+            if (d && d.ok) { this._toast('已清除 ' + d.deleted + ' 条记录', 'success'); this.openPanel(); }
+            else this._toast((d && d.detail) || '清除失败', 'error');
         },
         resume: async function () {
             var d = await App.fetchJSON('/api/vjshi/resume', { method: 'POST' });

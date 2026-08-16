@@ -1263,6 +1263,19 @@ def vjshi_delete(tid: int, request: Request):
         c.close()
 
 
+@router.delete("/api/vjshi/tasks")
+def vjshi_clear_tasks(request: Request):
+    """清空全部上传队列记录（含进行中；worker 对已删任务的状态更新无副作用）"""
+    _team_guard(request)
+    c = _db()
+    try:
+        cur = c.execute("DELETE FROM vjshi_upload_tasks")
+        c.commit()
+        return {"ok": True, "deleted": cur.rowcount}
+    finally:
+        c.close()
+
+
 @router.post("/api/vjshi/resume")
 def vjshi_resume(request: Request):
     """手动恢复暂停的队列（v5.38.62：恢复后自动为 queued 任务启动 worker）"""
