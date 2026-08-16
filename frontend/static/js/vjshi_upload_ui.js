@@ -70,8 +70,9 @@
             ov.innerHTML = '<div class="modal-content" style="max-width:540px;border-radius:14px;padding:16px;max-height:88vh;overflow-y:auto;" onclick="event.stopPropagation()">' +
                 '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-size:14px;font-weight:600;">📤 投稿光厂</span>' +
                 '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></div>' +
-                (videoFile ? '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">视频: ' + self._esc(videoFile) +
+                (videoFile ? '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">视频: ' + self._esc(videoFile) +
                     ' <video src="/api/thumbnails/video/' + self._esc(videoFile) + '" style="width:120px;height:68px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-left:4px;" muted loop preload="metadata" onmouseenter="this.play()" onmouseleave="this.pause()"></video></div>' : '') +
+                (videoFile ? '<div id="vjQaBox" style="font-size:11px;margin:4px 0 8px;padding:6px 8px;border-radius:6px;background:rgba(127,127,127,.06);">🔍 视频质检中...</div>' : '') +
                 '<label style="font-size:11px;color:var(--text-muted);">标题</label>' +
                 '<input id="vjTitle" style="width:100%;margin:4px 0 8px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:12px;" value="' + self._esc(meta.title || '') + '">' +
                 '<label style="font-size:11px;color:var(--text-muted);">关键词（逗号分隔）</label>' +
@@ -88,6 +89,28 @@
                 '<button class="btn btn-secondary btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>' +
                 '<button class="btn btn-primary btn-sm" onclick="App.vjshi.submit(' + (genTaskId || 0) + ',' + (cardId || 0) + ',\'' + self._esc(videoFile || '') + '\',this)">📤 确认投稿</button></div></div>';
             document.body.appendChild(ov);
+            // v5.40.0 P1: 投稿前视频质检（ffprobe 本地解析）
+            if (videoFile) {
+                App.fetchJSON('/api/vjshi/precheck-video', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ video_file: videoFile }), _timeoutMs: 30000
+                }).then(function (d) {
+                    var box = ov.querySelector('#vjQaBox');
+                    if (!box) return;
+                    if (!d || !d.ok) { box.innerHTML = '⚠️ 质检服务暂不可用（不影响提交）'; return; }
+                    var m = d.metrics || {};
+                    var issues = d.issues || [];
+                    var errs = issues.filter(function (i) { return i.level === 'error'; });
+                    var warns = issues.filter(function (i) { return i.level === 'warning'; });
+                    self._vjQaPass = !errs.length;
+                    var h = '🔍 视频质检：' + (errs.length ? '<b style="color:#ef4444;">不通过（' + errs.length + ' 项）</b>' : (d.ok ? '<b style="color:#10b981;">通过</b>' : '<b style="color:#f59e0b;">警告</b>')) +
+                        ' <span style="color:var(--text-muted);">' + (m.duration || '-') + 's · ' + (m.width || '?') + 'x' + (m.height || '?') + ' · ' + (m.codec || '-') + ' · ' + (m.size_mb || '-') + 'MB</span>';
+                    (errs.concat(warns)).forEach(function (i) { h += '<div style="color:' + (i.level === 'error' ? '#ef4444' : '#f59e0b') + ';">· ' + self._esc(i.msg) + '</div>'; });
+                    if (!errs.length && !warns.length) h += '<div style="color:#10b981;">✅ 时长/分辨率/编码/大小均达标</div>';
+                    box.innerHTML = h;
+                    box.style.background = errs.length ? 'rgba(239,68,68,.08)' : (warns.length ? 'rgba(245,158,11,.08)' : 'rgba(16,185,129,.08)');
+                }).catch(function () {});
+            }
             // v5.38.6: 检测登录状态，未登录先引导
             App.fetchJSON('/api/vjshi/login-status').then(function (d) {
                 var hint = ov.querySelector('#vjLoginHint');
@@ -129,6 +152,8 @@
             }
         },
         submit: async function (genTaskId, cardId, videoFile, btn) {
+            // v5.40.0 P1: 视频质检不通过拦截
+            if (this._vjQaPass === false) { this._toast('视频质检不通过（时长/分辨率等），请先处理视频', 'error'); return; }
             var ov = btn.closest('.modal-overlay');
             var body = {
                 card_id: cardId, gen_task_id: genTaskId, video_file: videoFile,
@@ -167,6 +192,7 @@
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openLogin()" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;">🔑 登录光厂</button>' +
 
                 '<button class="btn btn-xs btn-outline" id="vjModeBtn" onclick="App.vjshi.toggleMode()" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;">⚙️ 执行方式</button>' +
+                '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openCatalog()" style="font-size:10px;border-color:#10b981;color:#10b981;">📒 上架台账</button>' +
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openPanel()" style="font-size:10px;">🔄 刷新</button>' +
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.clearTasks()" style="font-size:10px;border-color:#ef4444;color:#ef4444;">🗑 清除全部</button>' +
                 '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></span></div>' +
@@ -176,6 +202,87 @@
             this._showMode();
             this._pollPanel();
         },
+        // v5.40.0 P1: 上架作品台账（人工录入光厂作品链接/表现/剔除）
+        openCatalog: function () {
+            var self = this;
+            var ov = document.createElement('div');
+            ov.className = 'modal-overlay';
+            ov.style.cssText = 'display:flex;z-index:905;background:rgba(0,0,0,.55);align-items:center;justify-content:center;';
+            ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+            ov.innerHTML = '<div class="modal-content" style="max-width:900px;border-radius:14px;padding:16px;max-height:88vh;overflow-y:auto;" onclick="event.stopPropagation()">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-size:14px;font-weight:600;">📒 上架作品台账</span>' +
+                '<span style="display:flex;gap:6px;">' +
+                '<button class="btn btn-xs btn-outline" onclick="App.vjshi.catalogAddFromOnline()" style="font-size:10px;border-color:#10b981;color:#10b981;" title="把已标记上架的任务一键加入台账">➕ 从已上架任务加入</button>' +
+                '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openCatalog()" style="font-size:10px;">🔄 刷新</button>' +
+                '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></span></div>' +
+                '<div id="vjCatalogBody" style="min-height:100px;">加载中...</div></div>';
+            document.body.appendChild(ov);
+            this._catalogOv = ov;
+            this._loadCatalog();
+        },
+        _loadCatalog: function () {
+            var self = this;
+            if (!this._catalogOv || !document.body.contains(this._catalogOv)) return;
+            App.fetchJSON('/api/vjshi/catalog?limit=100').then(function (d) {
+                var box = self._catalogOv.querySelector('#vjCatalogBody');
+                if (!box) return;
+                var items = (d && d.items) || [];
+                if (!items.length) { box.innerHTML = '<p style="font-size:12px;color:var(--text-muted);padding:20px;text-align:center;">暂无台账条目（投稿上架后点「从已上架任务加入」或手动录入）</p>'; return; }
+                var h = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th style="padding:6px;border:1px solid var(--border-color);">标题</th><th style="padding:6px;border:1px solid var(--border-color);">题材</th><th style="padding:6px;border:1px solid var(--border-color);">链接</th><th style="padding:6px;border:1px solid var(--border-color);">上架</th><th style="padding:6px;border:1px solid var(--border-color);">销量</th><th style="padding:6px;border:1px solid var(--border-color);">收益</th><th style="padding:6px;border:1px solid var(--border-color);">状态</th><th style="padding:6px;border:1px solid var(--border-color);">操作</th></tr>';
+                items.forEach(function (it) {
+                    var removed = it.status === 'removed';
+                    h += '<tr><td style="padding:6px;border:1px solid var(--border-color);">' + self._esc(it.title || it.video_file) + '</td>' +
+                        '<td style="padding:6px;border:1px solid var(--border-color);">' + self._esc(it.theme || '-') + '</td>' +
+                        '<td style="padding:6px;border:1px solid var(--border-color);">' + (it.online_url ? '<a href="' + self._esc(it.online_url) + '" target="_blank" style="color:#6366f1;font-size:11px;">链接 ↗</a>' : '-') + '</td>' +
+                        '<td style="padding:6px;border:1px solid var(--border-color);">' + self._esc(it.review_date || '-') + '</td>' +
+                        '<td style="padding:6px;border:1px solid var(--border-color);text-align:center;">' + (it.sales_qty || 0) + '</td>' +
+                        '<td style="padding:6px;border:1px solid var(--border-color);text-align:center;">' + (it.revenue || 0) + '</td>' +
+                        '<td style="padding:6px;border:1px solid var(--border-color);">' + (removed ? '<span style="color:#ef4444;">❌ 已剔除</span>' : '<span style="color:#10b981;">✅ 在架</span>') + (removed && it.remove_reason ? '<div style="font-size:10px;color:var(--text-muted);">' + self._esc(it.remove_reason) + '</div>' : '') + '</td>' +
+                        '<td style="padding:6px;border:1px solid var(--border-color);white-space:nowrap;">' +
+                        '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.vjshi.catalogPerf(' + it.id + ')">📊 表现</button> ' +
+                        (removed ? '' : '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.vjshi.catalogRemove(' + it.id + ')">🗑 剔除</button>') +
+                        '</td></tr>';
+                });
+                h += '</table>';
+                box.innerHTML = h;
+            });
+        },
+        // 从已标记上架(submitted+review_status=online)的任务加入台账
+        catalogAddFromOnline: function () {
+            var self = this;
+            App.fetchJSON('/api/vjshi/tasks?limit=200').then(function (d) {
+                var tasks = (d && d.tasks || []).filter(function (t) { return t.review_status === 'online'; });
+                if (!tasks.length) { self._toast('暂无已标记上架的任务（先在队列中标记 ✅上架）', 'warning'); return; }
+                tasks.forEach(function (t, idx) {
+                    setTimeout(function () {
+                        App.fetchJSON('/api/vjshi/catalog', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ task_id: t.id })
+                        }).then(function (r) {
+                            if (idx === tasks.length - 1) { self._toast('已加入 ' + tasks.length + ' 条台账', 'success'); self.openCatalog(); }
+                        });
+                    }, idx * 200);
+                });
+            });
+        },
+        catalogPerf: function (cid) {
+            var self = this;
+            var sq = prompt('录入销量（件）：', '0') || '0';
+            var rv = prompt('录入收益（元）：', '0') || '0';
+            App.fetchJSON('/api/vjshi/catalog/' + cid, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sales_qty: parseFloat(sq) || 0, revenue: parseFloat(rv) || 0 })
+            }).then(function (d) { if (d && d.ok) { self._toast('已更新表现', 'success'); self.openCatalog(); } });
+        },
+        catalogRemove: function (cid) {
+            var self = this;
+            var reason = prompt('剔除原因（如：质量差/无人购买）：', '') || '';
+            App.fetchJSON('/api/vjshi/catalog/' + cid, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'removed', remove_reason: reason })
+            }).then(function (d) { if (d && d.ok) { self._toast('已标记剔除', 'success'); self.openCatalog(); } });
+        },
+
         _pollPanel: function () {
             var self = this;
             if (!this._panelOv || !document.body.contains(this._panelOv)) return;

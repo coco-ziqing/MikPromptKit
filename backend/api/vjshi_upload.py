@@ -141,6 +141,22 @@ def _ensure_table():
             c.execute("ALTER TABLE vjshi_upload_tasks ADD COLUMN review_status TEXT DEFAULT ''")
         if "reject_reason" not in cols:
             c.execute("ALTER TABLE vjshi_upload_tasks ADD COLUMN reject_reason TEXT DEFAULT ''")
+        # v5.40.0: 上架作品台账
+        c.execute("""CREATE TABLE IF NOT EXISTS vjshi_online_catalog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER DEFAULT 0,
+            video_file TEXT DEFAULT '',
+            title TEXT DEFAULT '',
+            theme TEXT DEFAULT '',
+            online_url TEXT DEFAULT '',
+            review_date TEXT DEFAULT '',
+            sales_qty REAL DEFAULT 0,
+            revenue REAL DEFAULT 0,
+            status TEXT DEFAULT 'online',
+            remove_reason TEXT DEFAULT '',
+            removed_at TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+        )""")
         c.commit()
     finally:
         c.close()
@@ -502,6 +518,18 @@ def _upload_one(task_id: int):
         if not video_path:
             _task_update(task_id, status="fail", error=f"视频文件不存在: {t['video_file']}", fail_category="file_missing")
             return
+        # v5.40.0 P1: 提交前本地视频质检（时长/分辨率/编码/大小，不合格拦截）
+        try:
+            from api.video_quality import check_video
+            vq = check_video(video_path)
+            if not vq["ok"]:
+                errs = "; ".join(i["msg"] for i in vq.get("issues", []) if i.get("level") == "error")
+                _task_update(task_id, status="fail", error=f"视频质检不通过: {errs}", fail_category="video_invalid")
+                _vjshi_log(f"[任务{task_id}] 视频质检拦截：{errs}")
+                return
+            _vjshi_log(f"[任务{task_id}] 视频质检通过（{vq['metrics'].get('duration')}s {vq['metrics'].get('width')}x{vq['metrics'].get('height')} {vq['metrics'].get('codec')}）")
+        except Exception as e:
+            _vjshi_log(f"[任务{task_id}] 视频质检异常（放行）: {type(e).__name__}: {str(e)[:120]}")
         file_input = page.query_selector(cfg.get("upload_file_selector", "input[type=file]"))
         if not file_input:
             _task_update(task_id, status="fail", error="未找到文件上传控件（页面结构可能变化）", fail_category="form_changed")
@@ -950,7 +978,7 @@ def _upload_worker_inner(task_id: int):
             elif t["status"] == "fail":
                 # v5.38.16: 配置/数据类错误（文件缺失/表单配置缺失）重试无意义，不累计暂停
                 # v5.38.62: 业务限额（日/小时上限）非真实失败，不累计熔断计数
-                if t["fail_category"] not in ("file_missing", "form_config_missing", "daily_limit", "hourly_limit"):
+                if t["fail_category"] not in ("file_missing", "form_config_missing", "daily_limit", "hourly_limit", "video_invalid"):
                     _STATE["consec_fail"] += 1
                     if _STATE["consec_fail"] >= CONSECUTIVE_FAIL_LIMIT:
                         _STATE["paused_reason"] = f"连续失败 {CONSECUTIVE_FAIL_LIMIT} 次，已暂停（可手动恢复）"
@@ -1141,6 +1169,116 @@ def vjshi_meta(request: Request, card_id: int = 0, gen_task_id: int = 0, video_f
     """预览自动生成的素材字段（投稿弹窗编辑用）"""
     _upload_perm_guard(request)
     return {"ok": True, "meta": _build_meta(card_id, gen_task_id, video_file)}
+
+
+@router.post("/api/vjshi/precheck-video")
+def vjshi_precheck_video(request: Request, data: dict = Body(...)):
+    """投稿前本地视频质检（v5.40.0 P1，ffprobe 解析）：时长/分辨率/编码/大小/fps"""
+    _upload_perm_guard(request)
+    video_file = (data.get("video_file") or "").strip()
+    path = _resolve_video_path(video_file)
+    if not path:
+        raise HTTPException(400, f"视频文件不存在: {video_file}")
+    from api.video_quality import check_video
+    return {"ok": True, **check_video(path)}
+
+
+# ==================== 上架作品台账（v5.40.0 P1） ====================
+
+@router.post("/api/vjshi/catalog")
+def vjshi_catalog_add(request: Request, data: dict = Body(...)):
+    """新增上架台账条目（人工录入：光厂作品链接/上架日期等）"""
+    _team_guard(request)
+    _ensure_table()
+    task_id = data.get("task_id") or 0
+    title = (data.get("title") or "").strip()
+    video_file = (data.get("video_file") or "").strip()
+    # 从任务带出标题/文件
+    if task_id and not title:
+        c = _db()
+        try:
+            t = c.execute("SELECT title, video_file FROM vjshi_upload_tasks WHERE id=?", [task_id]).fetchone()
+            if t:
+                title = t["title"] or title
+                video_file = video_file or t["video_file"] or ""
+        finally:
+            c.close()
+    if not title and not video_file:
+        raise HTTPException(400, "title 或 video_file 必填")
+    c = _db()
+    try:
+        cur = c.execute(
+            "INSERT INTO vjshi_online_catalog (task_id, video_file, title, theme, online_url, review_date) "
+            "VALUES (?,?,?,?,?,?)",
+            [task_id, video_file, title, (data.get("theme") or "").strip(),
+             (data.get("online_url") or "").strip(), (data.get("review_date") or "").strip()])
+        c.commit()
+        return {"ok": True, "id": cur.lastrowid}
+    finally:
+        c.close()
+
+
+@router.get("/api/vjshi/catalog")
+def vjshi_catalog_list(request: Request, status: str = Query(None), limit: int = Query(100, ge=1, le=500)):
+    _team_guard(request)
+    _ensure_table()
+    sql = "SELECT * FROM vjshi_online_catalog WHERE 1=1"
+    args = []
+    if status:
+        sql += " AND status=?"
+        args.append(status)
+    sql += " ORDER BY id DESC LIMIT ?"
+    args.append(limit)
+    c = _db()
+    try:
+        rows = c.execute(sql, args).fetchall()
+        return {"ok": True, "items": [dict(r) for r in rows]}
+    finally:
+        c.close()
+
+
+@router.put("/api/vjshi/catalog/{cid}")
+def vjshi_catalog_update(cid: int, request: Request, data: dict = Body(...)):
+    """更新台账：表现数据（销量/收益）或剔除（status=removed + 原因）"""
+    _team_guard(request)
+    _ensure_table()
+    c = _db()
+    try:
+        exists = c.execute("SELECT id FROM vjshi_online_catalog WHERE id=?", [cid]).fetchone()
+        if not exists:
+            raise HTTPException(404, "台账条目不存在")
+        sets, vals = [], []
+        if "sales_qty" in data:
+            sets.append("sales_qty=?"); vals.append(float(data.get("sales_qty") or 0))
+        if "revenue" in data:
+            sets.append("revenue=?"); vals.append(float(data.get("revenue") or 0))
+        if "online_url" in data:
+            sets.append("online_url=?"); vals.append(str(data.get("online_url") or ""))
+        if data.get("status") == "removed":
+            sets.append("status='removed'")
+            sets.append("remove_reason=?"); vals.append(str(data.get("remove_reason") or ""))
+            sets.append("removed_at=datetime('now','localtime')")
+        if not sets:
+            raise HTTPException(400, "无更新字段")
+        vals.append(cid)
+        c.execute(f"UPDATE vjshi_online_catalog SET {', '.join(sets)} WHERE id=?", vals)
+        c.commit()
+        return {"ok": True, "id": cid}
+    finally:
+        c.close()
+
+
+@router.delete("/api/vjshi/catalog/{cid}")
+def vjshi_catalog_delete(cid: int, request: Request):
+    _team_guard(request)
+    _ensure_table()
+    c = _db()
+    try:
+        c.execute("DELETE FROM vjshi_online_catalog WHERE id=?", [cid])
+        c.commit()
+        return {"ok": True}
+    finally:
+        c.close()
 
 
 @router.post("/api/vjshi/llm-description")
