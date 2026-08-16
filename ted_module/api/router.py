@@ -97,10 +97,11 @@ def upload_logs(limit: int = Query(50, ge=1, le=200)):
 # ============ 分析 ============
 
 @router.post("/analyze/{version_id}")
-def analyze(version_id: int):
-    """清洗聚类 → 归一化 → 评分 → 四池划分 → 落库"""
+def analyze(version_id: int, sales_version_id: int = Query(0)):
+    """清洗聚类 → 归一化 → 评分 → 四池划分 → 落库
+    sales_version_id: 可选，合并销售记录版本（按题材匹配注入真实销量信号）"""
     try:
-        result = score_service.analyze_version(version_id)
+        result = score_service.analyze_version(version_id, sales_version_id)
         return {"ok": True, **result}
     except ValueError as e:
         raise HTTPException(400, str(e))

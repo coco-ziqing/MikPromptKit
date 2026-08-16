@@ -51,9 +51,10 @@ POOL_LABELS = {
 }
 
 
-def analyze_version(version_id: int) -> dict:
-    """对指定版本执行：聚类 → 聚合归一化 → 评分 → 分池 → 落库（theme_metrics + theme_pools）"""
-    from services.clean_service import aggregate_metrics, cluster_records
+def analyze_version(version_id: int, sales_version_id: int = 0) -> dict:
+    """对指定版本执行：聚类 → 聚合归一化 → 评分 → 分池 → 落库（theme_metrics + theme_pools）
+    sales_version_id: 可选，合并销售记录版本（按题材匹配注入真实销量/收益信号）"""
+    from services.clean_service import aggregate_metrics, cluster_records, percentile_normalize
 
     init_db()
     conn = get_conn()
@@ -64,17 +65,50 @@ def analyze_version(version_id: int) -> dict:
         records = [dict(r) for r in rows]
         groups, order = cluster_records(records)
         metrics = aggregate_metrics(groups, order, version_id)
+
+        # 跨版本合并：销售记录版本 → 按题材 key 匹配注入 sales_qty/revenue（真实出单验证）
+        merged_orders = 0
+        if sales_version_id and sales_version_id != version_id:
+            srows = conn.execute("SELECT * FROM raw_records WHERE version_id=?", [sales_version_id]).fetchall()
+            if srows:
+                sgroups, sorder = cluster_records([dict(r) for r in srows])
+                sales_map = {}
+                for key in sorder:
+                    recs = sgroups[key]
+                    sales_map[key] = {
+                        "sales_qty": sum(r.get("sales_qty", 0) or 0 for r in recs),
+                        "revenue": sum(r.get("revenue", 0) or 0 for r in recs),
+                        "orders": len(recs),
+                    }
+                for m in metrics:
+                    if m["theme_key"] in sales_map:
+                        sm = sales_map[m["theme_key"]]
+                        m["sales_qty"] = sm["sales_qty"]
+                        m["revenue"] = sm["revenue"]
+                        m["merged_orders"] = sm["orders"]
+                        merged_orders += sm["orders"]
+                if merged_orders:
+                    for m in metrics:
+                        m.pop("_dim_source", None)
+
         has_sales = any(m["sales_qty"] > 0 or m["revenue"] > 0 for m in metrics)
         has_opportunity = any(m["opportunity_index"] > 0 for m in metrics)
-        single_dim = not has_opportunity  # 热搜关键词表：仅作品数，无需求/机会指数
+        single_dim = not has_opportunity  # 无需求/机会指数的单维版本
         if single_dim:
-            # 热搜表：若已有需求侧值（热搜指数/热度列）则直接用；
-            # 官方热搜榜（仅作品数列）则用作品数百分位归一化作为热度分
-            from services.clean_service import percentile_normalize
+            # 单维数据源判定：作品数（官方热搜榜）→ 销售次数（自有销售记录）→ 原始需求值
             if not any(m["demand_index"] > 0 for m in metrics) and any(m["works_count"] > 0 for m in metrics):
                 wnorm = percentile_normalize([m["works_count"] for m in metrics])
                 for m, w in zip(metrics, wnorm):
                     m["demand_index"] = w
+                    m["_dim_source"] = "works"
+            elif not any(m["demand_index"] > 0 for m in metrics) and any(m["sales_qty"] > 0 for m in metrics):
+                snorm = percentile_normalize([m["sales_qty"] for m in metrics])
+                for m, sc in zip(metrics, snorm):
+                    m["demand_index"] = sc
+                    m["_dim_source"] = "sales"
+            else:
+                for m in metrics:
+                    m["_dim_source"] = "demand"
 
         # 落库 themes
         for m in metrics:
@@ -90,13 +124,28 @@ def analyze_version(version_id: int) -> dict:
             sales = sales_signal(m["sales_qty"], m["revenue"])
             comp = composite_score(m["demand_index"], m["opportunity_index"], sales, has_sales)
             if single_dim:
-                # 单维热搜数据（官方热搜榜：仅作品数，无需求/机会指数）：作品数归一化后按热度导向分池
-                if m["demand_index"] >= POOL_THRESHOLD_DEMAND:
-                    pool, reason = "main_pool", f"作品数{m['works_count']:.0f}（热搜热度高）：高热度词，优先投产候选（单维热搜数据）"
-                elif m["demand_index"] >= 30:
-                    pool, reason = "blue_ocean", f"作品数{m['works_count']:.0f}（热搜热度中）：热度中等，建议观察（单维热搜数据）"
+                src = m.get("_dim_source", "demand")
+                if src == "sales":
+                    if m["demand_index"] >= POOL_THRESHOLD_DEMAND:
+                        pool, reason = "main_pool", f"销售次数{m['sales_qty']:.0f}（销售表现高）：已实际出单，优先投产候选（单维销售数据）"
+                    elif m["demand_index"] >= 30:
+                        pool, reason = "blue_ocean", f"销售次数{m['sales_qty']:.0f}（销售表现中）：少量出单，建议观察（单维销售数据）"
+                    else:
+                        pool, reason = "sunset", f"销售次数{m['sales_qty']:.0f}（销售表现低）：无/极少出单，建议收缩（单维销售数据）"
+                elif src == "works":
+                    if m["demand_index"] >= POOL_THRESHOLD_DEMAND:
+                        pool, reason = "main_pool", f"作品数{m['works_count']:.0f}（热搜热度高）：高热度词，优先投产候选（单维热搜数据）"
+                    elif m["demand_index"] >= 30:
+                        pool, reason = "blue_ocean", f"作品数{m['works_count']:.0f}（热搜热度中）：热度中等，建议观察（单维热搜数据）"
+                    else:
+                        pool, reason = "sunset", f"作品数{m['works_count']:.0f}（热搜热度低）：低热度，建议淘汰/收缩（单维热搜数据）"
                 else:
-                    pool, reason = "sunset", f"作品数{m['works_count']:.0f}（热搜热度低）：低热度，建议淘汰/收缩（单维热搜数据）"
+                    if m["demand_index"] >= POOL_THRESHOLD_DEMAND:
+                        pool, reason = "main_pool", f"热度{m['demand_index']:.0f}：高热度方向，优先投产候选（单维数据）"
+                    elif m["demand_index"] >= 30:
+                        pool, reason = "blue_ocean", f"热度{m['demand_index']:.0f}：热度中等，建议观察（单维数据）"
+                    else:
+                        pool, reason = "sunset", f"热度{m['demand_index']:.0f}：低热度，建议淘汰/收缩（单维数据）"
             else:
                 pool, reason = classify_pool(m["demand_index"], m["opportunity_index"])
             results.append({
@@ -111,6 +160,7 @@ def analyze_version(version_id: int) -> dict:
                 "sales_qty": m["sales_qty"],
                 "revenue": m["revenue"],
                 "record_count": m["record_count"],
+                "merged_orders": m.get("merged_orders", 0),
             })
         results.sort(key=lambda x: -x["composite_score"])
 
@@ -136,6 +186,7 @@ def analyze_version(version_id: int) -> dict:
             "theme_count": len(results),
             "has_sales": has_sales,
             "single_dim": single_dim,
+            "merged_orders": merged_orders,
             "pools": {pt: sum(1 for r in results if r["pool_type"] == pt) for pt in POOL_LABELS},
         }
     finally:

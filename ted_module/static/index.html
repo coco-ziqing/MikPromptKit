@@ -96,9 +96,11 @@
     <h3>运行分析（清洗聚类 → 归一化 → 双维评分 → 四类题材池）</h3>
     <div class="flex">
       <select id="anVersion" style="max-width:340px;"></select>
+      <select id="anSalesVersion" style="max-width:300px;"></select>
       <button class="btn2" onclick="runAnalyze()">▶ 运行分析</button>
       <button class="btn2" onclick="loadPools()">刷新结果</button>
     </div>
+    <div class="muted" style="margin-top:6px;">可选：合并销售记录版本（按题材匹配注入真实销量/收益信号，评分自动切换 0.5/0.3/0.2 权重）</div>
     <div class="mt" id="anResult"></div>
   </div>
   <div id="poolViews"></div>
@@ -243,11 +245,13 @@ function loadVersions(selId, isList){
 function runAnalyze(){
   var vid = document.getElementById("anVersion").value;
   if(!vid){ toast("请先选择版本","err"); return; }
-  api("/analyze/"+vid, {method:"POST"}).then(function(d){
+  var svid = document.getElementById("anSalesVersion").value || 0;
+  var url = "/analyze/"+vid + (svid ? "?sales_version_id="+svid : "");
+  api(url, {method:"POST"}).then(function(d){
     if(d.ok){
       var p = d.pools||{};
       document.getElementById("anResult").innerHTML =
-        '<p class="ok">✅ 分析完成：'+(d.theme_count||0)+' 个题材（清洗聚类后），销售信号：'+(d.has_sales?"启用":"无销售数据")+'</p>' +
+        '<p class="ok">✅ 分析完成：'+(d.theme_count||0)+' 个题材（清洗聚类后）；销售信号：'+(d.has_sales?"启用":"无")+(d.merged_orders?'（合并出单 '+d.merged_orders+' 笔）':'')+(d.single_dim?'；单维数据':'')+'</p>' +
         '<div class="flex mt">' +
         '<span class="badge b-main">主力投产 '+(p.main_pool||0)+'</span>' +
         '<span class="badge b-red">内卷慎入 '+(p.red_ocean||0)+'</span>' +
@@ -405,6 +409,7 @@ function runSelfcheck(){
 // 初始化
 loadVersions("upVersions", true);
 loadVersions("anVersion");
+loadVersions("anSalesVersion");
 loadVersions("plVersion");
 loadNotices();
 runSelfcheck();

@@ -15,20 +15,23 @@ import time
 
 from db import get_conn, init_db, row_to_dict, save_upload_file, sha256_file
 
-# 支持的中文/英文列名映射（含官方「搜索词/作品数」列）
+# 支持的中文/英文列名映射（含官方「搜索词/作品数/展示/转化/收益」列）
 COLUMN_MAP = {
-    # 题材/关键词/搜索词列
+    # 题材/关键词/搜索词/视频标题列
     "theme": ["搜索词", "题材", "主题", "素材题材", "题材名", "主题词", "关键词", "热搜关键词", "热搜词",
               "theme", "topic", "subject", "keyword", "name", "名称", "题材名称"],
-    # 需求侧指数
-    "demand": ["需求指数", "需求", "需求分", "指数", "热度", "搜索热度", "热搜指数", "热搜热度",
-               "热度指数", "需求热度", "热力值", "demand", "demand_index", "heat", "hot", "popularity"],
-    # 机会维度指数（官方「视频机会排行表」核心列）
-    "opportunity": ["机会指数", "机会", "机会分", "机会值", "机会度", "opportunity", "opportunity_index", "opp"],
-    # 作品数（官方「视频热搜排行表」核心列：该搜索词下作品总量）
+    "title": ["视频标题", "作品标题", "标题", "title", "video_title"],
+    # 需求侧指数（含官方展示次数/热搜热度列）
+    "demand": ["需求指数", "展示次数", "展示", "需求", "需求分", "指数", "热度", "搜索热度", "热搜指数", "热搜热度",
+               "热度指数", "需求热度", "热力值", "demand", "demand_index", "heat", "hot", "popularity", "views", "impressions"],
+    # 机会维度指数（官方机会表/关键词分析转化率）
+    "opportunity": ["机会指数", "转化率", "机会", "机会分", "机会值", "机会度",
+                    "opportunity", "opportunity_index", "opp", "conversion"],
+    # 作品数（官方热搜表）
     "works": ["作品数", "作品数量", "作品", "works", "work_count", "works_count", "count"],
-    "sales": ["销量", "销售数量", "数量", "sales", "qty", "sales_qty", "成交数"],
-    "revenue": ["销售额", "销售额(元)", "销售金额", "金额", "revenue", "amount", "成交额"],
+    "sales": ["销售次数", "销量", "销售数量", "数量", "sales", "qty", "sales_qty", "成交数"],
+    "revenue": ["收益金额", "收益", "销售收入", "销售额", "销售额(元)", "销售金额", "金额",
+                "revenue", "amount", "成交额"],
     "rank": ["排名", "榜单位次", "位次", "名次", "排行", "rank", "ranking", "no"],
 }
 
@@ -36,23 +39,25 @@ COLUMN_MAP = {
 TABLE_TYPE_HINTS = {
     "opportunity_rank": ["机会指数", "需求指数", "opportunity"],
     "hot_keyword": ["作品数", "热搜", "热度", "works"],
+    "keyword_analysis": ["展示次数", "点击次数", "转化率", "点击率"],
+    "sales_record": ["购买时间", "订单编号", "收益金额", "购买账号"],
 }
 TABLE_TYPE_LABELS = {
     "opportunity_rank": "视频机会排行表（人工下载）",
     "hot_keyword": "视频热搜排行表（人工下载）",
+    "keyword_analysis": "视频关键词分析周报（人工下载）",
+    "sales_record": "自有视频销售记录（人工导出）",
     "generic": "通用快照",
 }
 
 
 def detect_table_type(headers) -> str:
-    """根据表头识别官方表格类型：机会榜（需求+机会指数）/ 热搜榜（作品数）"""
+    """根据表头识别官方表格类型：机会榜/热搜榜/关键词分析/销售记录"""
     norm = [_norm_header(h) for h in headers]
-    for hint in TABLE_TYPE_HINTS["opportunity_rank"]:
-        if _norm_header(hint) in norm:
-            return "opportunity_rank"
-    for hint in TABLE_TYPE_HINTS["hot_keyword"]:
-        if _norm_header(hint) in norm:
-            return "hot_keyword"
+    for ttype in ("opportunity_rank", "hot_keyword", "keyword_analysis", "sales_record"):
+        for hint in TABLE_TYPE_HINTS[ttype]:
+            if _norm_header(hint) in norm:
+                return ttype
     return "generic"
 
 
@@ -89,14 +94,19 @@ def _to_int(v):
 
 
 def _find_header_row(rows):
-    """定位表头行：官方表 R1 是「榜单时间/下载时间」元信息行，R2 才是表头。
-    策略：前 6 行内找同时含「排名/排行」且含数据列名（搜索词/题材/需求/机会/作品/热度/指数）的行。"""
+    """定位表头行：官方表 R1 是元信息行（榜单时间/下载时间/时间范围），R2 才是表头；
+    通用模板第一行即表头。策略：跳过元信息行（时间范围/下载/导出/榜单时间），
+    找首个含数据列名（搜索词/关键词/题材/需求/机会/作品/购买时间/订单编号/收益金额/展示次数/转化率/标题）的行。"""
+    meta_markers = ("时间范围", "下载时间", "下载文件时间", "导出时间", "榜单时间", "生成时间")
+    data_markers = ("搜索词", "关键词", "题材", "需求", "机会", "作品", "热度", "指数", "主题",
+                    "购买时间", "订单编号", "收益金额", "展示次数", "点击次数", "转化率", "视频标题", "标题", "销量", "销售额")
     for i, r in enumerate(rows[:6]):
         if not r:
             continue
         joined = "".join(str(v) for v in r if v is not None)
-        if ("排名" in joined or "排行" in joined) and any(
-                k in joined for k in ("搜索词", "题材", "需求", "机会", "作品", "热度", "指数", "主题")):
+        if any(m in joined for m in meta_markers):
+            continue
+        if any(m in joined for m in data_markers):
             return i
     return 0
 
@@ -110,6 +120,7 @@ def _parse_rows(rows, sheet_name: str = ""):
     table_type = detect_table_type(headers)
     idx = {
         "theme": _match_column(headers, "theme"),
+        "title": _match_column(headers, "title"),
         "demand": _match_column(headers, "demand"),
         "opportunity": _match_column(headers, "opportunity"),
         "works": _match_column(headers, "works"),
@@ -121,7 +132,11 @@ def _parse_rows(rows, sheet_name: str = ""):
     for r in rows[hdr_idx + 1:]:
         if not r or all(v is None or str(v).strip() == "" for v in r):
             continue
-        theme = str(r[idx["theme"]]).strip() if idx["theme"] >= 0 and idx["theme"] < len(r) else ""
+        raw_theme = r[idx["theme"]] if idx["theme"] >= 0 and idx["theme"] < len(r) else None
+        theme = str(raw_theme).strip() if raw_theme is not None else ""
+        # 销售记录等：搜索词为空（含 None/空串）时回退视频标题
+        if not theme and idx["title"] >= 0 and idx["title"] < len(r) and r[idx["title"]] is not None:
+            theme = str(r[idx["title"]]).strip()
         if not theme:
             continue
         out.append({
@@ -129,7 +144,7 @@ def _parse_rows(rows, sheet_name: str = ""):
             "demand_index": _to_float(r[idx["demand"]]) if idx["demand"] >= 0 else 0.0,
             "opportunity_index": _to_float(r[idx["opportunity"]]) if idx["opportunity"] >= 0 else 0.0,
             "works_count": _to_float(r[idx["works"]]) if idx["works"] >= 0 else 0.0,
-            "sales_qty": _to_float(r[idx["sales"]]) if idx["sales"] >= 0 else 0.0,
+            "sales_qty": _to_float(r[idx["sales"]]) if idx["sales"] >= 0 else (1.0 if table_type == "sales_record" else 0.0),
             "revenue": _to_float(r[idx["revenue"]]) if idx["revenue"] >= 0 else 0.0,
             "rank_no": _to_int(r[idx["rank"]]) if idx["rank"] >= 0 else 0,
             "sheet_name": sheet_name,
