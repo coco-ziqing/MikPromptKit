@@ -84,6 +84,15 @@
         '<div class="stat-chip">🟢 共创者 <span class="num">'+stats.editor+'</span></div>'+
         '<div class="stat-chip">⚪ 鉴赏者 <span class="num">'+stats.viewer+'</span></div>';
 
+      // 团队上传权限（光厂投稿，v5.38.63 迁移至团队空间卡片）
+      var permMap = {}, permIsAdmin = false;
+      try {
+        var prm = await fetch('/api/team/permissions').then(function(r){return r.json();}).catch(function(){return {};});
+        permIsAdmin = !!(prm && prm.is_admin);
+        ((prm && prm.members) || []).forEach(function(m){ permMap[m.id] = m; });
+      } catch(e) {}
+      this._permMap = permMap; this._permIsAdmin = permIsAdmin;
+
       var grid = document.getElementById('aum_grid');
       if (!grid) return;
       if (!this._users.length) { grid.innerHTML = '<div class="empty"><div class="icon">👤</div><h4>暂无伙伴</h4><p style="color:var(--text-muted);font-size:12px;">点击邀请伙伴开始共创</p></div>'; return; }
@@ -104,11 +113,13 @@
           '<div class="user-username">@'+u.username+'</div></div></div>'+
           '<div class="user-meta"><span class="badge badge-'+u.role+'">'+(roles[u.role]||u.role)+'</span>'+
           '<span class="aum-live-badge" data-uid="'+u.id+'" style="font-weight:600;color:#64748b;">⚫ 离线</span>'+
-          '<span><span class="status-dot '+(u.is_active?'status-active':'status-inactive')+'"></span>'+(u.is_active?'可协作':'已暂停')+'</span></div>'+
+          '<span><span class="status-dot '+(u.is_active?'status-active':'status-inactive')+'"></span>'+(u.is_active?'可协作':'已暂停')+'</span>'+
+          ((permMap[u.id] && permMap[u.id].upload) ? '<span class="badge" style="background:#f59e0b;">📤 光厂上传</span>' : '')+'</div>'+
           '<div class="user-footer">'+(u.last_login_at?'最后活跃: '+u.last_login_at.substring(0,10):'从未登录')+'</div>'+
           '<div class="user-card-actions"><button class="btn-outline" onclick="event.stopPropagation();AUM.copyCreds('+u.id+',\''+_e(u.username)+'\')">📋 一键复制</button><button class="btn-outline" onclick="event.stopPropagation();AUM.showForm('+u.id+')">✏ 编辑</button>'+
           '<button class="btn-outline" onclick="event.stopPropagation();AUM.openLog('+u.id+',\''+_e(u.display_name||u.username)+'\')">📜 足迹回放</button>'+
           '<button class="btn-outline" onclick="event.stopPropagation();AUM.toggle('+u.id+','+(u.is_active?0:1)+')" style="color:'+(u.is_active?'var(--danger)':'var(--success)')+';">'+(u.is_active?'⏸ 暂停协作':'▶ 恢复协作')+'</button>'+
+          (permIsAdmin ? '<button class="btn-outline" style="color:#f59e0b;border-color:#f59e0b;" onclick="event.stopPropagation();AUM.toggleUpload('+u.id+','+((permMap[u.id]&&permMap[u.id].upload)?0:1)+')" title="光厂投稿上传权限（仅主理人可设）">📤 '+(permMap[u.id]&&permMap[u.id].upload?'上传:开':'上传:关')+'</button>' : '')+
           '<button class="btn-outline btn-outline-danger" onclick="event.stopPropagation();AUM.deleteUser('+u.id+',\''+_e(u.display_name||u.username)+'\')">🗑</button></div></div>';
       }).join('');
       this._updateLive();
@@ -289,6 +300,17 @@
           ov.remove(); self.load();
         } catch(e) { this._toast?this._toast('操作未完成，稍后再试','error'):(typeof PK!=='undefined'&&PK.toast?PK.toast('操作未完成，稍后再试','error'):alert('操作未完成，稍后再试')); }
       };
+    },
+
+    toggleUpload: async function(uid, on) {
+      if (!confirm('确定'+(on?'开启':'关闭')+'该账号的光厂上传权限？')) return;
+      var d = await fetch('/api/team/permissions/'+uid, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({upload: on?1:0})}).then(function(r){return r.json();}).catch(function(){return {};});
+      if (d && d.ok) {
+        if (typeof App !== 'undefined' && App.showToast) App.showToast('已'+(on?'开启':'关闭')+'上传权限', 'success');
+        this.load();
+      } else {
+        if (typeof App !== 'undefined' && App.showToast) App.showToast((d&&d.detail)||'设置失败（需团队版）', 'error');
+      }
     },
 
     toggle: async function(uid, active) {
