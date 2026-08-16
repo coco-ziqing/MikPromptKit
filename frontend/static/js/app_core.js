@@ -1189,6 +1189,38 @@ var App = window.App || {
 
 
     // ===== AI 模型管理中心（入口）=====
+    // ===== 需求分析（独立模块 :8085，工具菜单入口） =====
+    openDemandAnalysis: function() {
+        var self = this;
+        var probe = function(url, timeoutMs) {
+            return new Promise(function(resolve) {
+                var ctrl = new AbortController();
+                var t = setTimeout(function(){ ctrl.abort(); }, timeoutMs);
+                fetch(url, { method: 'GET', signal: ctrl.signal })
+                    .then(function(r) { clearTimeout(t); resolve(r.ok); })
+                    .catch(function() { clearTimeout(t); resolve(false); });
+            });
+        };
+        probe('http://127.0.0.1:8085/api/ted/health', 2500).then(function(up) {
+            if (!up) {
+                if (!confirm('需求分析服务未启动（端口 8085）。\n\n请先启动：双击 MikPromptKit\\ted_module\\start.bat\n或运行：python ted_module/main.py\n\n启动后自动打开，是否继续？')) return;
+                window.open('http://127.0.0.1:8085', '_blank');
+                return;
+            }
+            var ov = document.createElement('div');
+            ov.className = 'modal-overlay';
+            ov.style.cssText = 'display:flex;z-index:950;background:rgba(0,0,0,.55);align-items:center;justify-content:center;';
+            ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+            ov.innerHTML = '<div class="modal-content" style="width:94vw;max-width:1200px;height:88vh;border-radius:14px;padding:10px;display:flex;flex-direction:column;" onclick="event.stopPropagation()">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 6px 8px;"><span style="font-size:14px;font-weight:600;">📊 需求分析</span>' +
+                '<span style="display:flex;gap:10px;align-items:center;">' +
+                '<a href="http://127.0.0.1:8085" target="_blank" style="font-size:11px;color:#0d9488;">新窗口打开 ↗</a>' +
+                '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></span></div>' +
+                '<iframe src="http://127.0.0.1:8085" style="flex:1;width:100%;border:1px solid var(--border-color);border-radius:10px;background:#fff;"></iframe></div>';
+            document.body.appendChild(ov);
+        });
+    },
+
     openModelManager: function() {
         var panel = document.getElementById('viewModelManager');
         if (!panel) { this._mmCreatePanel(); panel = document.getElementById('viewModelManager'); }
