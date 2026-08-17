@@ -359,17 +359,19 @@
             });
             return h + '</select>';
         },
-        _upscaleParamsHtml: function () {
+        _upscaleParamsHtml: function (def) {
+            def = def || {};
             return '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">参数</div>' +
                 '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
-                '<label style="font-size:11px;color:var(--text-muted);">分辨率 ' + this._sel('cgRes', ['2k', '4k', '8k'], '4k') + '</label></div>';
+                '<label style="font-size:11px;color:var(--text-muted);">分辨率 ' + this._sel('cgRes', ['2k', '4k', '8k'], def.resolution_type || '4k') + '</label></div>';
         },
-        _imgParamsHtml: function (taskType) {
+        _imgParamsHtml: function (taskType, def) {
+            def = def || {};
             return '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">参数</div>' +
                 '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">' +
-                '<label style="font-size:11px;color:var(--text-muted);">模型 ' + this._sel('cgModel', ['3.0', '3.1', '4.0', '4.1', '4.5', '4.6', '4.7', '5.0', '5.0Pro'], '5.0') + '</label>' +
-                '<label style="font-size:11px;color:var(--text-muted);">比例 ' + this._sel('cgRatio', ['21:9', '16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'], '1:1') + '</label>' +
-                '<label style="font-size:11px;color:var(--text-muted);">分辨率 ' + this._sel('cgRes', ['1k', '2k', '4k'], '2k') + '</label></div>' +
+                '<label style="font-size:11px;color:var(--text-muted);">模型 ' + this._sel('cgModel', ['3.0', '3.1', '4.0', '4.1', '4.5', '4.6', '4.7', '5.0', '5.0Pro'], def.model_version || '5.0') + '</label>' +
+                '<label style="font-size:11px;color:var(--text-muted);">比例 ' + this._sel('cgRatio', ['21:9', '16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'], def.ratio || '1:1') + '</label>' +
+                '<label style="font-size:11px;color:var(--text-muted);">分辨率 ' + this._sel('cgRes', ['1k', '2k', '4k'], def.resolution_type || '2k') + '</label></div>' +
                 '<label style="font-size:11px;color:var(--text-muted);">提示词</label>' +
                 '<textarea id="cgPrompt" style="width:100%;min-height:80px;margin-top:4px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;">' + this._esc((this._cardData(this._curCard) || {}).content || '') + '</textarea>';
         },
@@ -420,16 +422,23 @@
         _videoDurChanged: function (sel) {
             this._updateCost();
         },
-        _videoParamsHtml: function (taskType) {
+        _videoParamsHtml: function (taskType, def) {
+            def = def || {};
+            var model = def.model_version || 'seedance2.0_vip';
+            var dur = def.duration || 5;
+            var res = def.video_resolution || '720p';
+            var ratio = def.ratio || '16:9';
+            var durOpts = this._videoDurOptions(model);
+            if (!durOpts.some(function (o) { return o.v === dur; })) dur = 5;
             return '<div style="font-size:12px;font-weight:600;margin-bottom:6px;">参数</div>' +
                 '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">' +
                 '<label style="font-size:11px;color:var(--text-muted);">模型 <select id="cgVModel" onchange="App.cardGen._videoModelChanged(this)" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
-                ['seedance2.0_vip', 'seedance2.0', 'seedance2.0fast', 'seedance2.0fast_vip', 'seedance2.0mini', 'seedance1.5pro', 'seedance2.5'].map(function (m) { return '<option value="' + m + '"' + (m === 'seedance2.0_vip' ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></label>' +
+                ['seedance2.0_vip', 'seedance2.0', 'seedance2.0fast', 'seedance2.0fast_vip', 'seedance2.0mini', 'seedance1.5pro', 'seedance2.5'].map(function (m) { return '<option value="' + m + '"' + (m === model ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></label>' +
                                 '<label style="font-size:11px;color:var(--text-muted);">时长 <select id="cgVDur" onchange="App.cardGen._videoDurChanged(this)" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
-                this._videoDurOptions('seedance2.0_vip').map(function (o) { return '<option value="' + o.v + '"' + (o.v === 5 ? ' selected' : '') + '>' + o.l + '</option>'; }).join('') + '</select></label>' +
+                durOpts.map(function (o) { return '<option value="' + o.v + '"' + (o.v === dur ? ' selected' : '') + '>' + o.l + '</option>'; }).join('') + '</select></label>' +
                 '<label style="font-size:11px;color:var(--text-muted);">分辨率 <select id="cgVRes" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">' +
-                this._videoResOptions('seedance2.0_vip').map(function (v) { return '<option value="' + v + '"' + (v === '720p' ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></label>' +
-                (taskType === 'text2video' ? '<label style="font-size:11px;color:var(--text-muted);">比例 ' + this._sel('cgVRatio', ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], '16:9') + '</label>' : '') +
+                this._videoResOptions(model).map(function (v) { return '<option value="' + v + '"' + (v === res ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></label>' +
+                (taskType === 'text2video' ? '<label style="font-size:11px;color:var(--text-muted);">比例 ' + this._sel('cgVRatio', ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], ratio) + '</label>' : '') +
                 '</div>' +
                 '<div style="display:flex;align-items:center;gap:6px;margin-top:8px;">' +
                 '<label style="font-size:11px;color:var(--text-muted);">提示词</label>' +
@@ -675,7 +684,7 @@
                         (t.status === 'success' ? (t.is_current ? '<span style="font-size:9px;color:#10b981;">当前显示</span>' : '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#10b981;color:#10b981;" onclick="App.cardGen.activate(' + t.id + ',' + t.card_id + ',null)">设为当前</button>') : '') +
                         (App.vjshi && App.vjshi.submitBtnHtml ? App.vjshi.submitBtnHtml(t) : '') +
                         (t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;" onclick="App.cardGen.retry(' + t.id + ')">🔄 重试</button>' : '') +
-                        (t.status === 'success' || t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.cardGen.regen(' + t.id + ')" title="用相同参数再次生成">♻ 重新生成</button>' : '') +
+                        (t.status === 'success' || t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.cardGen.openRegen(' + t.id + ')" title="重新生成（可调整参数后提交）">♻ 重新生成</button>' : '') +
                         '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;" onclick="App.cardGen.locateCard(' + t.card_id + ',' + (t.group_id || 0) + ')" title="在词库中定位到此词卡">📍 词卡</button>' +
                         // v5.38.8: 成功/失败记录均可单独删除
                         (t.status === 'success' || t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.delTask(' + t.id + ',null)" title="删除此记录">🗑</button>' : '') +
@@ -691,10 +700,88 @@
             else this._toast((d && d.detail) || '重试未完成', 'error');
         },
         // v5.37.5: 重生（同参数再次生成）/ 清空记录 / 词卡定位
+        // v5.41.3: 同参数直接重新生成（保留原行为；成功后关闭重生成弹窗）
         regen: async function (tid) {
             var d = await App.fetchJSON('/api/card-gen/tasks/' + tid + '/regen', { method: 'POST' });
-            if (d && d.ok) { this._toast('♻ 已重新入队（同参数）', 'success'); this._ensureQueueBar(); }
+            if (d && d.ok) {
+                this._toast('♻ 已重新入队（同参数）', 'success');
+                var ov = document.getElementById('cgRegen_' + tid);
+                if (ov) ov.remove();
+                this._ensureQueueBar();
+            }
             else this._toast((d && d.detail) || '重生未完成', 'error');
+        },
+        // v5.41.3: 重新生成弹窗（预填原参数；质检不通过时提示并建议合规值）
+        openRegen: async function (tid) {
+            var self = this;
+            var d = await App.fetchJSON('/api/card-gen/tasks/' + tid);
+            if (!d || !d.ok || !d.task) { this._toast('加载原任务参数失败', 'error'); return; }
+            var t = d.task;
+            var isV = t.task_type === 'text2video' || t.task_type === 'image2video';
+            var isU = t.task_type === 'upscale';
+            this._curCard = t.card_id;
+            this._curType = t.task_type;
+            this._regenTaskData = t;
+            var ov = this._modal('');
+            ov.id = 'cgRegen_' + tid;
+            // 质检合规提示（光厂要求时长 ≥5s）
+            var warn = '';
+            if (isV && t.duration && t.duration < 5) {
+                warn = '<div style="font-size:11px;color:#ef4444;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:6px 8px;margin-bottom:8px;">⚠️ 原任务时长 ' + t.duration + 's 不满足投稿质检要求（≥5s），已自动建议 5s，请确认或继续调整后再提交</div>';
+            }
+            ov.querySelector('.modal-content').innerHTML =
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-size:14px;font-weight:600;">♻ 重新生成 <span style="font-size:11px;color:var(--text-muted);">' + self._esc(t.card_name || '词卡#' + t.card_id) + ' · ' + (t.task_type_label || t.task_type) + '</span></span>' +
+                '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></div>' +
+                warn +
+                (isV ? this._videoParamsHtml(t.task_type, { model_version: t.model_version, duration: (t.duration && t.duration < 5 ? 5 : t.duration), video_resolution: t.video_resolution, ratio: t.ratio })
+                     : (isU ? this._upscaleParamsHtml(t) : this._imgParamsHtml(t.task_type, t))) +
+                '<div id="cgCost" style="font-size:11px;color:var(--text-muted);margin:6px 0;padding:6px 8px;background:rgba(245,158,11,.06);border:1px dashed rgba(245,158,11,.35);border-radius:8px;">计算中...</div>' +
+                '<div style="font-size:10px;color:#f59e0b;margin:6px 0;">⚠️ 重新生成消耗即梦积分，完成后自动设为当前预览</div>' +
+                '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">' +
+                '<button class="btn btn-secondary btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>' +
+                '<button class="btn btn-sm" style="border:1px solid #8b5cf6;color:#8b5cf6;background:transparent;" onclick="App.cardGen.regen(' + tid + ')" title="不改动参数，按原任务参数直接再生成一次">♻ 同参数直接生成</button>' +
+                '<button class="btn btn-primary btn-sm" id="cgRegenGo" onclick="App.cardGen.regenWith(' + tid + ')">🚀 按调整后参数生成</button></div>';
+            var ta = ov.querySelector('#cgPrompt');
+            if (ta) ta.value = t.prompt || '';
+            this._loadCredits().then(function () { self._updateCost(); });
+        },
+        // v5.41.3: 按调整后参数提交重生成
+        regenWith: async function (tid) {
+            var ov = document.getElementById('cgRegen_' + tid);
+            if (!ov) return;
+            var t = this._regenTaskData || {};
+            var isV = t.task_type === 'text2video' || t.task_type === 'image2video';
+            var isU = t.task_type === 'upscale';
+            var params = {};
+            var promptEl = ov.querySelector('#cgPrompt');
+            if (promptEl) params.prompt = promptEl.value.trim();
+            if (isU) params.resolution_type = ov.querySelector('#cgRes').value;
+            else if (isV) {
+                params.model_version = ov.querySelector('#cgVModel').value;
+                params.duration = parseInt(ov.querySelector('#cgVDur').value, 10);
+                params.video_resolution = ov.querySelector('#cgVRes').value;
+                if (t.task_type === 'text2video') params.ratio = ov.querySelector('#cgVRatio').value;
+            } else {
+                params.model_version = ov.querySelector('#cgModel').value;
+                params.ratio = ov.querySelector('#cgRatio').value;
+                params.resolution_type = ov.querySelector('#cgRes').value;
+            }
+            var go = ov.querySelector('#cgRegenGo');
+            if (go) { go.disabled = true; go.textContent = '⏳ 提交中...'; }
+            var res = await fetch('/api/card-gen/tasks/' + tid + '/regen', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ params: params })
+            });
+            var d = null;
+            try { d = await res.json(); } catch (e) {}
+            if (res.ok && d && d.ok) {
+                this._toast('🚀 已按调整后参数重新入队', 'success');
+                ov.remove();
+                this._ensureQueueBar();
+            } else {
+                this._toast((d && d.detail) || '提交未完成 (HTTP ' + res.status + ')', 'error');
+                if (go) { go.disabled = false; go.textContent = '🚀 按调整后参数生成'; }
+            }
         },
         clearAll: async function () {
             if (!confirm('清空全部生成记录？（成功/失败记录及其产物文件将删除，词卡当前预览引用的文件保留；正在进行的任务不受影响）')) return;

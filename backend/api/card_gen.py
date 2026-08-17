@@ -1121,10 +1121,11 @@ def clear_card_gen_tasks(request: Request, clear: int = Query(1)):
 
 
 @router.post("/api/card-gen/tasks/{tid}/regen")
-def regen_card_gen_task(tid: int, request: Request):
-    """重生：用原任务相同参数新建任务入队（成功/失败记录均可再次生成）"""
+def regen_card_gen_task(tid: int, request: Request, data: dict = Body(default=None)):
+    """重生：同参数再生成；v5.41.3: 支持 body {params} 覆盖参数（调整后提交）"""
     _team_guard(request)
     _ensure_card_gen_table()
+    params = (data or {}).get("params") if isinstance(data, dict) else None
     c = _db()
     try:
         t = c.execute("SELECT * FROM card_gen_tasks WHERE id=?", [tid]).fetchone()
@@ -1132,12 +1133,16 @@ def regen_card_gen_task(tid: int, request: Request):
             raise HTTPException(404, "任务不存在")
         if not t["prompt"] and not t["source_image"]:
             raise HTTPException(400, "原任务无可复制参数")
+        p = _validate_params(t["task_type"], params) if params is not None else {}
+        prompt = (p.get("prompt") or "").strip() or t["prompt"]
         cur = c.execute(
             """INSERT INTO card_gen_tasks (card_id, task_type, prompt, source_image, model_version,
                ratio, resolution_type, duration, video_resolution, session, creator_id, status, version)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,'queued',?)""",
-            [t["card_id"], t["task_type"], t["prompt"], t["source_image"], t["model_version"],
-             t["ratio"], t["resolution_type"], t["duration"], t["video_resolution"], t["session"], t["creator_id"],
+            [t["card_id"], t["task_type"], prompt, t["source_image"],
+             p.get("model_version", t["model_version"]), p.get("ratio", t["ratio"]),
+             p.get("resolution_type", t["resolution_type"]), p.get("duration", t["duration"]),
+             p.get("video_resolution", t["video_resolution"]), t["session"], t["creator_id"],
              _card_version(c, t["card_id"])])  # v5.38.61: 重生归入当前版本池
         new_id = cur.lastrowid
         c.commit()
