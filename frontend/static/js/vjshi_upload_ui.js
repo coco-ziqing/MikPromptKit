@@ -170,7 +170,11 @@
             }).then(function (d) {
                 var box = ov.querySelector('#vjQaBox');
                 if (!box) return;
-                if (!d || !d.ok) { box.innerHTML = '⚠️ 质检服务暂不可用（不影响提交）'; return; }
+                // v5.41.2: 区分「服务不可用」与「质检不通过」——质检不通过要显示具体问题并拦截
+                if (!d || d.service_error || !(d.metrics || {}).duration) {
+                    box.innerHTML = '⚠️ 质检服务暂不可用（不影响提交）';
+                    return;
+                }
                 var m = d.metrics || {};
                 var issues = d.issues || [];
                 var errs = issues.filter(function (i) { return i.level === 'error'; });

@@ -122,7 +122,9 @@ def check_video(path: str) -> dict:
     """质检：返回 {ok, metrics, issues:[{level,code,msg}]}"""
     m = probe_video(path)
     if "error" in m:
-        return {"ok": False, "metrics": {}, "issues": [{"level": "error", "code": "probe_fail", "msg": m["error"]}]}
+        # v5.41.2: service_error 区分「服务不可用」与「质检不通过」
+        return {"ok": False, "service_error": True, "metrics": {},
+                "issues": [{"level": "error", "code": "probe_fail", "msg": m["error"]}]}
     issues = []
     d = m["duration"]
     if d < RULES["min_duration_s"]:
