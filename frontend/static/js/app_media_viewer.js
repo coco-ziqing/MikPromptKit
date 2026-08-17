@@ -15,7 +15,7 @@ Object.assign(App, {
         var self = this;
         if (!promptId) return;
         App.fetchJSON('/api/card-gen/tasks?card_id=' + promptId + '&limit=50').then(function (d) {
-            var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename; });
+            var tasks = (d && d.tasks || []).filter(function (t) { return (t.status === 'success' || t.status === 'done') && t.result_filename; });
             var images = tasks.filter(function (t) { return t.media_type === 'image'; });
             var videos = tasks.filter(function (t) { return t.media_type === 'video'; });
             // 仅两类产物都有时才显示切换栏（否则无意义）
@@ -34,7 +34,7 @@ Object.assign(App, {
     // 切换查看器模式：image → openImageViewer(原图)；video → openVideoViewer(视频)
     _switchViewerMode: function (promptId, type) {
         App.fetchJSON('/api/card-gen/tasks?card_id=' + promptId + '&limit=50').then(function (d) {
-            var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename; });
+            var tasks = (d && d.tasks || []).filter(function (t) { return (t.status === 'success' || t.status === 'done') && t.result_filename; });
             var pick = tasks.filter(function (t) { return t.media_type === type; });
             if (!pick.length) { App.showToast('无' + (type === 'video' ? '视频' : '图片') + '产物', 'warning'); return; }
             // 优先当前显示(is_current)，否则最新
@@ -61,7 +61,7 @@ Object.assign(App, {
         if (!cardId) return;
         App.fetchJSON('/api/card-gen/tasks?card_id=' + cardId + '&limit=50').then(function (d) {
             var tasks = (d && d.tasks || []).filter(function (t) {
-                return t.status === 'success' && t.media_type === 'video' && t.result_filename;
+                return (t.status === 'success' || t.status === 'done') && t.media_type === 'video' && t.result_filename;
             });
             if (!tasks.length) {
                 // 全部删光 → 停止播放

@@ -17,7 +17,7 @@
         _icons: { upscale: '🔍', image2image: '🎨', text2image: '🖼', text2video: '🎬', image2video: '🎬' },
         _statusBadge: function (s) {
             var m = { queued: ['⏳ 排队中', '#94a3b8'], submitting: ['📤 提交中', '#f59e0b'],
-                querying: ['🎨 生成中', '#3b82f6'], success: ['✅ 完成', '#10b981'], fail: ['❌ 失败', '#ef4444'] };
+                querying: ['🎨 生成中', '#3b82f6'], success: ['✅ 完成', '#10b981'], fail: ['❌ 失败', '#ef4444'], done: ['✅ 完成', '#10b981'] };
             var b = m[s] || [s, '#94a3b8'];
             return '<span style="color:' + b[1] + ';font-size:11px;">' + b[0] + '</span>';
         },
@@ -43,7 +43,7 @@
                 if (s < 60) return s + 's';
                 return Math.floor(s / 60) + 'm' + pad(s % 60) + 's';
             };
-            if (t.status === 'success' || t.status === 'fail') {
+            if (t.status === 'success' || t.status === 'fail' || t.status === 'done') {
                 var d = diff(t.created_at, t.finished_at || t.updated_at);
                 if (d >= 0) return '· 耗时 ' + fmt(d);
                 return '';
@@ -203,7 +203,7 @@
             App.fetchJSON('/api/v4/word-cards/' + cardId + '/versions').then(function (vd) {
                 var ver = (vd && vd.current_version) || 1;
                 return App.fetchJSON('/api/card-gen/tasks?card_id=' + cardId + '&version=' + ver + '&limit=20').then(function (d) {
-                    var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename && t.task_type !== 'original'; });
+                    var tasks = (d && d.tasks || []).filter(function (t) { return (t.status === 'success' || t.status === 'done') && t.result_filename && t.task_type !== 'original'; });
                     if (!tasks.length) return;
                     var ov = document.createElement('div');
                     ov.className = 'modal-overlay';
@@ -236,7 +236,7 @@
         _toggleCardMode: async function (cardId) {
             var self = this;
             var d = await App.fetchJSON('/api/card-gen/tasks?card_id=' + cardId + '&limit=50');
-            var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename; });
+            var tasks = (d && d.tasks || []).filter(function (t) { return (t.status === 'success' || t.status === 'done') && t.result_filename; });
             var cur = tasks.filter(function (t) { return t.is_current; });
             var curType = (cur[0] || {}).media_type;
             var target = curType === 'video' ? 'image' : 'video';
@@ -585,7 +585,7 @@
             App.fetchJSON('/api/card-gen/tasks?card_id=' + cardId + '&limit=20').then(function (d) {
                 var box = document.getElementById('cgDetailHistory');
                 if (!box) return;
-                var tasks = (d && d.tasks || []).filter(function (t) { return t.status === 'success' && t.result_filename && t.task_type !== 'original'; });
+                var tasks = (d && d.tasks || []).filter(function (t) { return (t.status === 'success' || t.status === 'done') && t.result_filename && t.task_type !== 'original'; });
                 if (!tasks.length) { box.innerHTML = '<span style="color:#94a3b8;">暂无 AI 生成记录</span>'; return; }
                 var h = '';
                 tasks.forEach(function (t) {
@@ -643,13 +643,13 @@
                 var tasks = (d && d.tasks || []).filter(function (t) { return t.task_type !== 'original'; });
                 // v5.37.4: 新完成的任务 → 刷新词卡列表（缩略预览框自动载入产物）
                 self._seenDone = self._seenDone || {};
-                var newDone = tasks.filter(function (t) { return t.status === 'success' && !self._seenDone[t.id]; });
-                tasks.forEach(function (t) { if (t.status === 'success') self._seenDone[t.id] = 1; });
+                var newDone = tasks.filter(function (t) { return (t.status === 'success' || t.status === 'done') && !self._seenDone[t.id]; });
+                tasks.forEach(function (t) { if (t.status === 'success' || t.status === 'done') self._seenDone[t.id] = 1; });
                 if (newDone.length) self._refreshCardList();
                 var box = self._panelOv.querySelector('#cgPanelBody');
                 if (!box) return;
-                var act = tasks.filter(function (t) { return t.status !== 'success' && t.status !== 'fail'; });
-                var okc = tasks.filter(function (t) { return t.status === 'success'; }).length;
+                var act = tasks.filter(function (t) { return t.status !== 'success' && t.status !== 'fail' && t.status !== 'done'; });
+                var okc = tasks.filter(function (t) { return t.status === 'success' || t.status === 'done'; }).length;
                 var fai = tasks.filter(function (t) { return t.status === 'fail'; }).length;
                 var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">进行中 ' + act.length + ' · 成功 ' + okc + ' · 失败 ' + fai + '</div>' +
                     '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">' +
@@ -660,7 +660,7 @@
                 if (!tasks.length) h += '<div style="color:var(--text-muted);font-size:12px;padding:20px;text-align:center;">暂无任务</div>';
                 tasks.forEach(function (t) {
                     var prev = '';
-                    if (t.status === 'success' && t.result_filename) {
+                    if ((t.status === 'success' || t.status === 'done') && t.result_filename) {
                         var openFn = t.media_type === 'video'
                             ? 'App.openVideoViewer(\'' + t.result_filename + '\',' + t.card_id + ')'
                             : 'App.openImageViewer(\'' + (t.result_original || t.result_filename) + '\',' + t.card_id + ')';
@@ -668,7 +668,7 @@
                             ? '<video src="/api/thumbnails/video/' + t.result_filename + '" style="width:72px;height:46px;object-fit:cover;border-radius:6px;cursor:pointer;" muted loop preload="metadata" title="点击查看原视频" onclick="' + openFn + '"></video>'
                             : '<img src="/api/thumbnails/file/' + t.result_filename + '" style="width:72px;height:46px;object-fit:cover;border-radius:6px;cursor:pointer;" title="点击查看原图" onclick="' + openFn + '">';
                     }
-                    var sel = (t.status === 'success' || t.status === 'fail')
+                    var sel = (t.status === 'success' || t.status === 'fail' || t.status === 'done')
                         ? '<input type="checkbox" class="cgSel" data-id="' + t.id + '" onchange="App.cardGen.updateSel()" style="accent-color:#6366f1;flex-shrink:0;">'
                         : '<span style="width:14px;flex-shrink:0;"></span>';
                     h += '<div style="display:flex;gap:10px;align-items:center;padding:7px 8px;border:1px solid ' + (t.status === 'fail' ? 'rgba(239,68,68,.4)' : 'var(--border-color)') + ';border-radius:10px;margin-bottom:6px;">' +
@@ -679,15 +679,15 @@
                         (t.status === 'querying' && t.progress ? ' <span style="font-size:10px;color:#3b82f6;">' + t.progress + '%</span>' : '') +
                         (self._durText(t) ? ' <span style="font-size:10px;color:var(--text-muted);">' + self._durText(t) + '</span>' : '') +
                         (t.status === 'fail' && t.fail_category ? ' <span style="font-size:9px;color:#ef4444;border:1px solid rgba(239,68,68,.4);border-radius:4px;padding:0 4px;">' + self._failLabel(t.fail_category) + '</span>' : '') +
-                        self._bar(t.status === 'querying' ? t.progress : (t.status === 'success' ? 100 : 0)) +
+                        self._bar(t.status === 'querying' ? t.progress : (t.status === 'success' || t.status === 'done' ? 100 : 0)) +
                         (t.error ? '<div style="font-size:10px;color:#ef4444;margin-top:2px;">' + self._esc(t.error) + '</div>' : '') + '</div></div>' +
-                        (t.status === 'success' ? (t.is_current ? '<span style="font-size:9px;color:#10b981;">当前显示</span>' : '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#10b981;color:#10b981;" onclick="App.cardGen.activate(' + t.id + ',' + t.card_id + ',null)">设为当前</button>') : '') +
+                        (t.status === 'success' || t.status === 'done' ? (t.is_current ? '<span style="font-size:9px;color:#10b981;">当前显示</span>' : '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#10b981;color:#10b981;" onclick="App.cardGen.activate(' + t.id + ',' + t.card_id + ',null)">设为当前</button>') : '') +
                         (App.vjshi && App.vjshi.submitBtnHtml ? App.vjshi.submitBtnHtml(t) : '') +
                         (t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;" onclick="App.cardGen.retry(' + t.id + ')">🔄 重试</button>' : '') +
-                        (t.status === 'success' || t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.cardGen.openRegen(' + t.id + ')" title="重新生成（可调整参数后提交）">♻ 重新生成</button>' : '') +
+                        (t.status === 'success' || t.status === 'fail' || t.status === 'done' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;" onclick="App.cardGen.openRegen(' + t.id + ')" title="重新生成（可调整参数后提交）">♻ 重新生成</button>' : '') +
                         '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;" onclick="App.cardGen.locateCard(' + t.card_id + ',' + (t.group_id || 0) + ')" title="在词库中定位到此词卡">📍 词卡</button>' +
                         // v5.38.8: 成功/失败记录均可单独删除
-                        (t.status === 'success' || t.status === 'fail' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.delTask(' + t.id + ',null)" title="删除此记录">🗑</button>' : '') +
+                        (t.status === 'success' || t.status === 'fail' || t.status === 'done' ? '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.delTask(' + t.id + ',null)" title="删除此记录">🗑</button>' : '') +
                         '</div>';
                 });
                 box.innerHTML = h;
@@ -885,8 +885,8 @@
                     var ts = (d && d.tasks) || [];
                     // v5.37.10: 面板关闭时也检测新完成任务 → 自动刷新词卡显示
                     self._seenDone = self._seenDone || {};
-                    var newDone = ts.filter(function (t) { return t.status === 'success' && !self._seenDone[t.id]; });
-                    ts.forEach(function (t) { if (t.status === 'success') self._seenDone[t.id] = 1; });
+                    var newDone = ts.filter(function (t) { return (t.status === 'success' || t.status === 'done') && !self._seenDone[t.id]; });
+                    ts.forEach(function (t) { if (t.status === 'success' || t.status === 'done') self._seenDone[t.id] = 1; });
                     if (newDone.length) self._refreshCardList();
                     var act = ts.filter(function (t) { return t.status === 'queued' || t.status === 'submitting' || t.status === 'querying'; });
                     var st = document.getElementById('cgQStats');

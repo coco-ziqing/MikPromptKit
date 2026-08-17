@@ -596,7 +596,7 @@ def _activate_task(task_id: int):
         t = c.execute("SELECT * FROM card_gen_tasks WHERE id=?", [task_id]).fetchone()
         if not t:
             raise HTTPException(404, "生成记录不存在")
-        if t["status"] != "success" or not t["result_filename"]:
+        if t["status"] not in ("success", "done") or not t["result_filename"]:
             raise HTTPException(400, "该记录无可用产物")
         card_id = t["card_id"]
         if t["media_type"] == "video":
@@ -973,13 +973,13 @@ def card_gen_history_summary(request: Request, card_ids: str = ""):
         ph = ",".join("?" * len(ids))
         rows = c.execute(
             "SELECT card_id, COUNT(1) n FROM card_gen_tasks "
-            "WHERE card_id IN (%s) AND status='success' AND result_filename!='' GROUP BY card_id" % ph, ids).fetchall()
+            "WHERE card_id IN (%s) AND status IN ('success','done') AND result_filename!='' GROUP BY card_id" % ph, ids).fetchall()
         for r in rows:
             out[str(r["card_id"])] = {"count": r["n"], "img_count": 0, "vid_count": 0, "current": None}
         # v5.37.11: 图片/视频产物分别计数（卡片模式切换按钮显示条件）
         type_rows = c.execute(
             "SELECT card_id, media_type, COUNT(1) n FROM card_gen_tasks "
-            "WHERE card_id IN (%s) AND status='success' AND result_filename!='' AND media_type IN ('image','video') "
+            "WHERE card_id IN (%s) AND status IN ('success','done') AND result_filename!='' AND media_type IN ('image','video') "
             "GROUP BY card_id, media_type" % ph, ids).fetchall()
         for r in type_rows:
             key = str(r["card_id"])
@@ -1010,7 +1010,7 @@ def batch_delete_card_gen_tasks(data: dict = Body(...), request: Request = None)
     try:
         ph = ",".join("?" * len(ids))
         rows = c.execute(
-            "SELECT * FROM card_gen_tasks WHERE id IN (%s) AND status IN ('success','fail')" % ph,
+            "SELECT * FROM card_gen_tasks WHERE id IN (%s) AND status IN ('success','fail','done')" % ph,
             ids).fetchall()
         for t in rows:
             _remove_task_files(c, t)
@@ -1110,10 +1110,10 @@ def clear_card_gen_tasks(request: Request, clear: int = Query(1)):
     _ensure_card_gen_table()
     c = _db()
     try:
-        rows = c.execute("SELECT * FROM card_gen_tasks WHERE status IN ('success','fail')").fetchall()
+        rows = c.execute("SELECT * FROM card_gen_tasks WHERE status IN ('success','fail','done')").fetchall()
         for t in rows:
             _remove_task_files(c, t)
-        c.execute("DELETE FROM card_gen_tasks WHERE status IN ('success','fail')")
+        c.execute("DELETE FROM card_gen_tasks WHERE status IN ('success','fail','done')")
         c.commit()
         return {"ok": True, "cleared": len(rows)}
     finally:
