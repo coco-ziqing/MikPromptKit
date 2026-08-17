@@ -38,6 +38,15 @@ function Show-Tail($file, $lines = 25) {
         Get-Content $file -Tail $lines -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkGray }
     }
 }
+function Show-Diagnosis($file) {
+    if (-not (Test-Path $file)) { return }
+    $joined = ((Get-Content $file -Tail 80 -ErrorAction SilentlyContinue) -join "`n")
+    if ($joined -match "ModuleNotFoundError|No module named") { Write-Host "    [诊断] 依赖缺失 → 运行: $py -m pip install -r requirements.txt" -ForegroundColor Yellow }
+    elseif ($joined -match "address already in use|WinError 10048") { Write-Host "    [诊断] 端口被占用 → 结束占用进程或修改 PORT 后重试" -ForegroundColor Yellow }
+    elseif ($joined -match "database is locked") { Write-Host "    [诊断] 数据库被锁 → 稍后重试，或重启机器释放锁" -ForegroundColor Yellow }
+    elseif ($joined -match "SyntaxError|Traceback") { Write-Host "    [诊断] 代码/配置异常 → 查看上方 Traceback 定位问题" -ForegroundColor Yellow }
+    elseif ($joined -match "disk|space|No space") { Write-Host "    [诊断] 磁盘空间不足 → 清理磁盘后重试" -ForegroundColor Yellow }
+}
 function Get-FirstLine($str) {
     if ($str -is [array]) { $str = $str[0] }
     if ($null -eq $str) { return "" }
@@ -116,6 +125,14 @@ if ($disk) {
     else { Write-Ok "磁盘剩余 $freeGB GB" }
 }
 
+# WAL 文件大小（SQLite 异常退出时膨胀，服务启动后自动 checkpoint 回收）
+$walFile = "$DB-wal"
+if (Test-Path $walFile) {
+    $walMB = [math]::Round((Get-Item $walFile).Length / 1MB, 1)
+    if ($walMB -gt 100) { Write-Warn "WAL 文件 ${walMB}MB 偏大（可能上次异常退出），服务启动后会自动 checkpoint 回收" }
+    elseif ($walMB -gt 10) { Write-Host "    WAL 文件 ${walMB}MB（正常范围）" -ForegroundColor Gray }
+}
+
 # Python 真实解释器（过滤 stub + 版本下限 >= 3.10）
 $py = $null
 $candidates = @()
@@ -190,7 +207,14 @@ if ($listener) {
         Write-Warn "端口 $PORT 已被本服务占用 (PID $pidStr)，跳过启动"
         $alreadyRunning = $true
     } else {
-        Exit-Box "端口 $PORT 被其他程序占用: $($proc.ProcessName) (PID $pidStr)，请先释放该端口"
+        $occPath = ""; $occStart = ""
+        try { $occPath = (Get-Process -Id $pidStr -ErrorAction SilentlyContinue).Path } catch {}
+        try { $occStart = (Get-Process -Id $pidStr -ErrorAction SilentlyContinue).StartTime.ToString("yyyy-MM-dd HH:mm:ss") } catch {}
+        Write-Host "    占用进程: $($proc.ProcessName) (PID $pidStr)" -ForegroundColor Yellow
+        if ($occPath) { Write-Host "    程序路径: $occPath" -ForegroundColor Gray }
+        if ($occStart) { Write-Host "    启动时间: $occStart" -ForegroundColor Gray }
+        Write-Host "    处理建议: 残留进程请 taskkill /PID $pidStr /F；其他程序请修改 PORT 后重试" -ForegroundColor Yellow
+        Exit-Box "端口 $PORT 被其他程序占用，请先释放该端口"
     }
 } else {
     # 端口未监听但已有 main.py 进程 → 服务正在启动中（防并发双击重复拉起）
@@ -214,24 +238,37 @@ if (-not $alreadyRunning) {
     if ($p.HasExited) {
         Write-Fail "服务进程启动即退出 (code $($p.ExitCode))"
         Show-Tail $STDERR_LOG; Show-Tail $STDOUT_LOG; Show-Tail (Join-Path $ROOT "data\server_stderr.log")
+        Show-Diagnosis $STDERR_LOG
         Exit-Box
     }
     Write-Host "    等待服务就绪（启动时可能重建语义索引，最多 120 秒）..." -ForegroundColor Gray
-    $ready = $false
-    for ($i = 0; $i -lt 120; $i++) {
-        if ($p.HasExited) { break }
-        if (netstat -ano | Select-String ":$PORT\s" | Select-String "LISTENING") { $ready = $true; break }
-        if ($i % 10 -eq 9) { Write-Host "      ...已等待 $($i + 1) 秒" -ForegroundColor DarkGray }
-        Start-Sleep -Seconds 1
-    }
-    if (-not $ready) {
-        Write-Fail "等待端口 $PORT 就绪超时（120 秒）"
-        if ($p.HasExited) { Write-Fail "服务进程已退出 (code $($p.ExitCode))" }
-        Show-Tail $STDERR_LOG; Show-Tail $STDOUT_LOG; Show-Tail (Join-Path $ROOT "data\server_stderr.log")
-        Exit-Box
-    }
+} else {
+    Write-Host "    已有服务进程/端口，等待就绪（最多 120 秒）..." -ForegroundColor Gray
+}
+# 统一等待端口就绪（新启动与已运行场景都验证，防止"误报就绪"）
+$ready = $false
+for ($i = 0; $i -lt 120; $i++) {
+    if ($p -and $p.HasExited) { break }
+    if (netstat -ano | Select-String ":$PORT\s" | Select-String "LISTENING") { $ready = $true; break }
+    if ($i % 10 -eq 9) { Write-Host "      ...已等待 $($i + 1) 秒" -ForegroundColor DarkGray }
+    Start-Sleep -Seconds 1
+}
+if (-not $ready) {
+    Write-Fail "等待端口 $PORT 就绪超时（120 秒）"
+    if ($p -and $p.HasExited) { Write-Fail "服务进程已退出 (code $($p.ExitCode))" }
+    Show-Tail $STDERR_LOG; Show-Tail $STDOUT_LOG; Show-Tail (Join-Path $ROOT "data\server_stderr.log")
+    Show-Diagnosis $STDERR_LOG
+    Exit-Box
 }
 Write-Ok "服务已就绪，监听 0.0.0.0:$PORT"
+
+# 记录服务 PID（供停止/诊断脚本使用）
+$ln0 = netstat -ano | Select-String ":$PORT\s" | Select-String "LISTENING"
+if ($ln0) {
+    $svcPid = (($ln0[0].ToString().Trim()) -split "\s+")[-1]
+    try { Set-Content -Path (Join-Path $ROOT "data\server.pid") -Value $svcPid -Encoding ASCII } catch {}
+    Write-Host "    服务 PID: $svcPid（已写入 data\server.pid）" -ForegroundColor Gray
+}
 
 # 就绪后短窗二次确认（防"端口一闪而过"的启动即崩）
 Start-Sleep -Seconds 2
@@ -239,12 +276,50 @@ if (-not (netstat -ano | Select-String ":$PORT\s" | Select-String "LISTENING")) 
     Write-Warn "服务端口在就绪后消失，疑似进程崩溃，请查看 data/start_dev_stderr.log"
 }
 
-# HTTP 层健康检查（端口通 != 应用正常，可能 500）
-try {
-    $resp = Invoke-WebRequest -Uri $URL -UseBasicParsing -TimeoutSec 15
-    if ($resp.StatusCode -eq 200) { Write-Ok "HTTP 健康检查通过 (200)" }
-    else { Write-Warn "HTTP 返回 $($resp.StatusCode)，应用层可能异常" }
-} catch { Write-Warn "HTTP 健康检查异常: $($_.Exception.Message)" }
+# 强力加固: 就绪后存活探针（8 秒后端口仍在 = 稳定；崩溃则自动重启一次）
+Start-Sleep -Seconds 8
+if (-not (netstat -ano | Select-String ":$PORT\s" | Select-String "LISTENING")) {
+    Write-Warn "检测到服务崩溃，自动重启一次..."
+    Start-Process -FilePath $py -ArgumentList "backend/main.py" -WorkingDirectory $ROOT -WindowStyle Hidden `
+         -RedirectStandardOutput $STDOUT_LOG -RedirectStandardError $STDERR_LOG | Out-Null
+    Start-Sleep -Seconds 12
+    if (netstat -ano | Select-String ":$PORT\s" | Select-String "LISTENING") { Write-Ok "自动重启成功" }
+    else {
+        Write-Fail "自动重启失败，请查看日志"
+        Show-Tail $STDERR_LOG; Show-Diagnosis $STDERR_LOG
+    }
+}
+
+# HTTP 层健康检查（/api/health/check JSON：error_count=0 视为健康；ComfyUI 未启动属正常 warning）
+$healthJson = $null
+for ($i = 0; $i -lt 6; $i++) {
+    try {
+        $resp = Invoke-WebRequest -Uri "$URL/api/health/check" -UseBasicParsing -TimeoutSec 10
+        if ($resp.StatusCode -eq 200) {
+            try { $healthJson = $resp.Content | ConvertFrom-Json } catch {}
+            break
+        }
+    } catch {}
+    if ($i -lt 5) {
+        Write-Host "      健康检查第 $($i + 1) 次未就绪（启动期索引重建属正常），5 秒后重试..." -ForegroundColor DarkGray
+        Start-Sleep -Seconds 5
+    }
+}
+if ($healthJson) {
+    $errN = [int]$healthJson.error_count
+    if ($errN -eq 0) { Write-Ok "健康检查通过 (checked $($healthJson.checked)/$($healthJson.total_checks), error 0)" }
+    else { Write-Warn "健康检查异常: error_count=$errN" }
+    foreach ($ck in ($healthJson.results.PSObject.Properties)) {
+        $v = $ck.Value
+        if (-not $v.ok) {
+            $hint = ""; if ($v.hint) { $hint = " · $($v.hint)" }
+            Write-Host "      ⚠ $($v.label): 未通过$hint" -ForegroundColor Yellow
+        }
+    }
+    if ([int]$healthJson.skipped -gt 0) { Write-Host "      跳过 $($healthJson.skipped) 项（可选服务未启动属正常）" -ForegroundColor Gray }
+} else {
+    Write-Warn "健康检查端点未就绪（服务可能仍在启动或异常），请查看 data/start_dev_stderr.log"
+}
 
 # ---------- 5/5 防火墙检查 + 打开浏览器 ----------
 Write-Step "5/5 网络与浏览器"
@@ -255,15 +330,23 @@ if ($fwText -match "PromptKit") {
     Write-Warn "未检测到 PromptKit 入站规则，局域网设备可能无法访问；可运行 firewall_open.bat 或管理员放行 TCP $PORT"
 }
 
-$lanIP = "127.0.0.1"
+$lanIPs = @()
 ipconfig | Select-String "IPv4" | ForEach-Object {
-    if ($_ -match '(\d+\.\d+\.\d+\.\d+)') {
-        $ip = $matches[1]
-        if ($ip -match '^192\.168\.0\.') { $lanIP = $ip }
-    }
+    if ($_ -match '(\d+\.\d+\.\d+\.\d+)') { $lanIPs += $matches[1] }
 }
+$lanIPs = @($lanIPs | Select-Object -Unique)
 Write-Host "    本机访问 : $URL" -ForegroundColor Yellow
-Write-Host "    局域网   : http://$lanIP`:$PORT" -ForegroundColor Yellow
+if ($lanIPs.Count) {
+    foreach ($ip in $lanIPs) { Write-Host "    局域网   : http://$ip`:$PORT" -ForegroundColor Yellow }
+    try {
+        $r2 = Invoke-WebRequest -Uri "http://$($lanIPs[0])`:$PORT" -UseBasicParsing -TimeoutSec 6
+        Write-Ok "局域网可达: http://$($lanIPs[0])`:$PORT ($($r2.StatusCode))"
+    } catch {
+        Write-Warn "局域网自测未通: http://$($lanIPs[0])`:$PORT（防火墙未放行或网络隔离）"
+    }
+} else {
+    Write-Warn "未检测到 IPv4 地址，仅本机可访问"
+}
 try { Start-Process $URL } catch { Write-Warn "自动打开浏览器失败，请手动访问 $URL" }
 
 Write-Host ""
