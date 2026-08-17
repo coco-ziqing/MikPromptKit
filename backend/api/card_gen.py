@@ -998,6 +998,32 @@ def card_gen_history_summary(request: Request, card_ids: str = ""):
     return {"ok": True, "summaries": out}
 
 
+@router.post("/api/card-gen/tasks/batch-delete")
+def batch_delete_card_gen_tasks(data: dict = Body(...), request: Request = None):
+    """v5.41.1: 批量删除生成记录（仅终态 success/fail；产物文件被词卡当前预览引用时保留）"""
+    _team_guard(request)
+    _ensure_card_gen_table()
+    ids = [int(x) for x in (data.get("ids") or []) if str(x).strip().isdigit()]
+    if not ids:
+        raise HTTPException(400, "未选择要删除的记录")
+    c = _db()
+    try:
+        ph = ",".join("?" * len(ids))
+        rows = c.execute(
+            "SELECT * FROM card_gen_tasks WHERE id IN (%s) AND status IN ('success','fail')" % ph,
+            ids).fetchall()
+        for t in rows:
+            _remove_task_files(c, t)
+        del_ids = [t["id"] for t in rows]
+        if del_ids:
+            ph2 = ",".join("?" * len(del_ids))
+            c.execute("DELETE FROM card_gen_tasks WHERE id IN (%s)" % ph2, del_ids)
+        c.commit()
+        return {"ok": True, "deleted": len(rows), "skipped": len(ids) - len(rows)}
+    finally:
+        c.close()
+
+
 @router.get("/api/card-gen/tasks/{tid}")
 def get_card_gen_task(tid: int, request: Request):
     _auth(request)

@@ -21,6 +21,37 @@
             var b = m[s] || [s, '#94a3b8'];
             return '<span style="color:' + b[1] + ';font-size:11px;">' + b[0] + '</span>';
         },
+        // v5.41.1: 失败分类中文标签
+        _failLabel: function (cat) {
+            var m = { concurrency: '并发限制', param: '参数错误', compliance: '内容不合规', upload: '上传失败',
+                timeout: '超时', login: '登录失效', credit: '积分不足', unknown: '未知错误' };
+            return m[cat] || '';
+        },
+        // v5.41.1: 耗时/等待显示（created_at / finished_at 为 localtime 字符串）
+        _durText: function (t) {
+            var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+            var diff = function (a, b) {
+                if (!a || !b) return -1;
+                var pa = a.split(/[- :]/), pb = b.split(/[- :]/);
+                if (pa.length < 6 || pb.length < 6) return -1;
+                var da = new Date(+pa[0], +pa[1] - 1, +pa[2], +pa[3], +pa[4], +pa[5]);
+                var db = new Date(+pb[0], +pb[1] - 1, +pb[2], +pb[3], +pb[4], +pb[5]);
+                var s = Math.round((db - da) / 1000);
+                return isNaN(s) ? -1 : Math.max(0, s);
+            };
+            var fmt = function (s) {
+                if (s < 60) return s + 's';
+                return Math.floor(s / 60) + 'm' + pad(s % 60) + 's';
+            };
+            if (t.status === 'success' || t.status === 'fail') {
+                var d = diff(t.created_at, t.finished_at || t.updated_at);
+                if (d >= 0) return '· 耗时 ' + fmt(d);
+                return '';
+            }
+            var w = diff(t.created_at, t.updated_at || t.created_at);
+            if (w >= 0 && w > 30) return '· 已等待 ' + fmt(w);
+            return '';
+        },
         _bar: function (pct) {
             return '<div style="height:3px;background:rgba(127,127,127,.15);border-radius:2px;margin-top:3px;overflow:hidden;"><div style="height:100%;width:' + Math.max(0, Math.min(100, pct || 0)) + '%;background:linear-gradient(90deg,#3b82f6,#10b981);transition:width .5s;"></div></div>';
         },
@@ -611,8 +642,12 @@
                 var act = tasks.filter(function (t) { return t.status !== 'success' && t.status !== 'fail'; });
                 var okc = tasks.filter(function (t) { return t.status === 'success'; }).length;
                 var fai = tasks.filter(function (t) { return t.status === 'fail'; }).length;
-                var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">进行中 ' + act.length + ' · 成功 ' + okc + ' · 失败 ' + fai +
-                    '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;margin-left:8px;" onclick="App.cardGen.clearAll()" title="清空全部生成记录（成功/失败；正在进行的保留）">🧹 清空生成记录</button></div>';
+                var h = '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">进行中 ' + act.length + ' · 成功 ' + okc + ' · 失败 ' + fai + '</div>' +
+                    '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">' +
+                    '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;"><input type="checkbox" id="cgCheckAll" onchange="App.cardGen.toggleAll(this.checked)" style="accent-color:#6366f1;">全选</label>' +
+                    '<button class="btn btn-xs btn-outline" id="cgBatchDel" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.batchDelete()" disabled title="删除选中的生成记录（进行中任务不可选）">🗑 删除选中(0)</button>' +
+                    '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.clearAll()" title="清空全部生成记录（成功/失败；正在进行的保留）">🧹 清空生成记录</button>' +
+                    '</div>';
                 if (!tasks.length) h += '<div style="color:var(--text-muted);font-size:12px;padding:20px;text-align:center;">暂无任务</div>';
                 tasks.forEach(function (t) {
                     var prev = '';
@@ -624,10 +659,18 @@
                             ? '<video src="/api/thumbnails/video/' + t.result_filename + '" style="width:72px;height:46px;object-fit:cover;border-radius:6px;cursor:pointer;" muted loop preload="metadata" title="点击查看原视频" onclick="' + openFn + '"></video>'
                             : '<img src="/api/thumbnails/file/' + t.result_filename + '" style="width:72px;height:46px;object-fit:cover;border-radius:6px;cursor:pointer;" title="点击查看原图" onclick="' + openFn + '">';
                     }
-                    h += '<div style="display:flex;gap:10px;align-items:center;padding:7px 8px;border:1px solid var(--border-color);border-radius:10px;margin-bottom:6px;">' +
+                    var sel = (t.status === 'success' || t.status === 'fail')
+                        ? '<input type="checkbox" class="cgSel" data-id="' + t.id + '" onchange="App.cardGen.updateSel()" style="accent-color:#6366f1;flex-shrink:0;">'
+                        : '<span style="width:14px;flex-shrink:0;"></span>';
+                    h += '<div style="display:flex;gap:10px;align-items:center;padding:7px 8px;border:1px solid ' + (t.status === 'fail' ? 'rgba(239,68,68,.4)' : 'var(--border-color)') + ';border-radius:10px;margin-bottom:6px;">' +
+                        sel +
                         (prev || '<div style="width:72px;height:46px;display:flex;align-items:center;justify-content:center;font-size:20px;background:rgba(127,127,127,.08);border-radius:6px;">' + (self._icons[t.task_type] || '🎨') + '</div>') +
                         '<div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:600;">' + self._esc(t.card_name || '词卡#' + t.card_id) + ' · ' + (t.task_type_label || t.task_type) + '</div>' +
-                        '<div style="margin-top:3px;">' + self._statusBadge(t.status) + (t.progress && t.status === 'querying' ? ' ' + t.progress + '%' : '') + self._bar(t.status === 'querying' ? t.progress : (t.status === 'success' ? 100 : 0)) +
+                        '<div style="margin-top:3px;">' + self._statusBadge(t.status) +
+                        (t.status === 'querying' && t.progress ? ' <span style="font-size:10px;color:#3b82f6;">' + t.progress + '%</span>' : '') +
+                        (self._durText(t) ? ' <span style="font-size:10px;color:var(--text-muted);">' + self._durText(t) + '</span>' : '') +
+                        (t.status === 'fail' && t.fail_category ? ' <span style="font-size:9px;color:#ef4444;border:1px solid rgba(239,68,68,.4);border-radius:4px;padding:0 4px;">' + self._failLabel(t.fail_category) + '</span>' : '') +
+                        self._bar(t.status === 'querying' ? t.progress : (t.status === 'success' ? 100 : 0)) +
                         (t.error ? '<div style="font-size:10px;color:#ef4444;margin-top:2px;">' + self._esc(t.error) + '</div>' : '') + '</div></div>' +
                         (t.status === 'success' ? (t.is_current ? '<span style="font-size:9px;color:#10b981;">当前显示</span>' : '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#10b981;color:#10b981;" onclick="App.cardGen.activate(' + t.id + ',' + t.card_id + ',null)">设为当前</button>') : '') +
                         (App.vjshi && App.vjshi.submitBtnHtml ? App.vjshi.submitBtnHtml(t) : '') +
@@ -658,9 +701,43 @@
             var d = await App.fetchJSON('/api/card-gen/tasks?clear=1', { method: 'DELETE' });
             if (d && d.ok) {
                 this._toast('🧹 已清空 ' + (d.cleared || 0) + ' 条记录', 'success');
-                this.openPanel();
+                this._pollPanel();
             } else {
                 this._toast((d && d.detail) || '清空未完成', 'error');
+            }
+        },
+        // v5.41.1: 全选/取消（仅终态记录）
+        toggleAll: function (checked) {
+            var cbs = document.querySelectorAll('#cgPanelBody .cgSel');
+            for (var i = 0; i < cbs.length; i++) cbs[i].checked = !!checked;
+            this.updateSel();
+        },
+        updateSel: function () {
+            var n = document.querySelectorAll('#cgPanelBody .cgSel:checked').length;
+            var btn = document.getElementById('cgBatchDel');
+            if (btn) {
+                btn.disabled = n === 0;
+                btn.textContent = '🗑 删除选中(' + n + ')';
+            }
+        },
+        // v5.41.1: 批量删除选中记录（仅终态）
+        batchDelete: async function () {
+            var ids = [];
+            var cbs = document.querySelectorAll('#cgPanelBody .cgSel:checked');
+            for (var i = 0; i < cbs.length; i++) ids.push(parseInt(cbs[i].getAttribute('data-id'), 10));
+            if (!ids.length) { this._toast('请先勾选要删除的记录', 'warning'); return; }
+            if (!confirm('删除选中的 ' + ids.length + ' 条生成记录？（产物文件若被词卡当前预览引用将保留）')) return;
+            var d = await App.fetchJSON('/api/card-gen/tasks/batch-delete', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: ids })
+            });
+            if (d && d.ok) {
+                var msg = '🗑 已删除 ' + d.deleted + ' 条记录';
+                if (d.skipped) msg += '（' + d.skipped + ' 条进行中/不存在已跳过）';
+                this._toast(msg, 'success');
+                this._pollPanel();
+            } else {
+                this._toast((d && d.detail) || '批量删除未完成', 'error');
             }
         },
         locateCard: async function (cardId, groupId) {
