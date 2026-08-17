@@ -374,6 +374,8 @@
                 <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px 10px 0 10px;">
                     <div id="vidStage" style="width:100%;flex:1;display:flex;align-items:center;justify-content:center;background:#000;border-radius:10px 10px 0 0;overflow:hidden;"><video id="vidViewerPlayer" style="width:100%;height:100%;object-fit:contain;display:block;" playsinline></video></div>
                 </div>
+                <!-- v5.41.4: 本词卡生成视频历史条（多条视频快捷切换/设为当前/删除） -->
+                <div id="vidGenHistory" style="display:none;padding:6px 10px;background:#000;overflow-x:auto;align-items:center;white-space:nowrap;"></div>
                 <!-- 时间轴滑块：单独一行，宽度与视频一致 -->
                 <div id="vidSeekRow" style="padding:0 10px;background:#000;">
                     <input type="range" id="vidViewerSeek" min="0" max="1000" value="0" style="width:100%;height:8px;cursor:pointer;accent-color:#6366f1;margin:0;padding:0;display:block;">
@@ -1161,7 +1163,7 @@
     <script defer src="/static/js/app_maintenance.js?v=a1b2c3d4"></script>
 <script defer src="/static/js/app_import_export.js?v=5d30178f"></script>
     <script defer src="/static/js/app_media.js?v=54527403"></script>
-<script defer src="/static/js/app_media_viewer.js?v=53700008"></script>
+<script defer src="/static/js/app_media_viewer.js?v=54100004"></script>
     <script defer src="/static/js/ai_tools.js?v=5380005a"></script>
     <script defer src="/static/js/word_picker.js?v=18cdc0d8"></script>
     <script defer src="/static/js/word_editor.js?v=3a2e2b77"></script>

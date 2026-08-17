@@ -50,6 +50,108 @@ Object.assign(App, {
         }).catch(function () {});
     },
 
+    // ============ v5.41.4: 本词卡生成视频历史条 ============
+    // 同词卡重复生成的多条视频：缩略图横向列表，点击切换播放 / ✓设为当前 / 🗑删除
+    _loadVidGenHistory(cardId, curFilename) {
+        var box = document.getElementById('vidGenHistory');
+        if (!box) return;
+        var self = this;
+        box.style.display = 'none';
+        box.innerHTML = '';
+        if (!cardId) return;
+        App.fetchJSON('/api/card-gen/tasks?card_id=' + cardId + '&limit=50').then(function (d) {
+            var tasks = (d && d.tasks || []).filter(function (t) {
+                return t.status === 'success' && t.media_type === 'video' && t.result_filename;
+            });
+            if (!tasks.length) {
+                // 全部删光 → 停止播放
+                var v = document.getElementById('vidViewerPlayer');
+                if (v) { v.pause(); v.removeAttribute('src'); v.load(); }
+                return;
+            }
+            // 当前播放文件已不存在（被删除）→ 自动切到「当前显示」或最新一条
+            var exists = tasks.some(function (t) { return t.result_filename === curFilename; });
+            var target = curFilename;
+            if (!exists) {
+                var cur = tasks.filter(function (t) { return t.is_current; });
+                target = (cur[0] || tasks[0]).result_filename;
+                self._applyVidFile(target);
+            }
+            var h = '<span style="color:#cbd5e1;font-size:11px;margin-right:6px;white-space:nowrap;">📼 生成视频 ' + tasks.length + '</span>';
+            tasks.forEach(function (t) {
+                var active = t.result_filename === target;
+                var isCur = !!t.is_current;
+                h += '<span class="vid-gen-item" data-file="' + t.result_filename + '" data-id="' + t.id + '" title="' + App._escape((t.created_at || '').slice(0, 16)) + '" style="position:relative;cursor:pointer;display:inline-block;margin-right:5px;border-radius:6px;overflow:hidden;background:#0f172a;' + (active ? 'border:2px solid #6366f1;' : (isCur ? 'border:2px solid #10b981;' : 'border:2px solid transparent;opacity:0.75;')) + '">' +
+                    '<video src="/api/thumbnails/video/' + t.result_filename + '" style="width:72px;height:46px;object-fit:cover;display:block;" muted loop preload="metadata"></video>' +
+                    (isCur ? '<span style="position:absolute;top:0;left:0;font-size:8px;background:rgba(16,185,129,.92);color:#fff;padding:0 3px;border-radius:0 0 3px 0;">当前</span>' : '') +
+                    '<button class="vid-gen-act" data-act="activate" title="设为词卡当前视频" style="position:absolute;top:0;right:0;font-size:8px;background:rgba(99,102,241,.92);color:#fff;border:none;border-radius:0 0 0 3px;padding:1px 4px;cursor:pointer;">' + (isCur ? '✓' : '设当前') + '</button>' +
+                    '<button class="vid-gen-act" data-act="del" title="删除此生成记录" style="position:absolute;bottom:0;right:0;font-size:9px;background:rgba(239,68,68,.92);color:#fff;border:none;border-radius:3px 0 0 0;padding:1px 5px;cursor:pointer;">🗑</button>' +
+                    '</span>';
+            });
+            box.innerHTML = h;
+            box.style.display = 'flex';
+            // 点击缩略图 → 切换播放
+            box.querySelectorAll('.vid-gen-item').forEach(function (el) {
+                el.addEventListener('click', function (e) {
+                    if (e.target.classList.contains('vid-gen-act')) return;
+                    self._applyVidFile(this.dataset.file);
+                    self._loadVidGenHistory(cardId, this.dataset.file);  // 刷新高亮
+                });
+            });
+            // 设为当前 / 删除
+            box.querySelectorAll('.vid-gen-act').forEach(function (btn) {
+                btn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    var item = btn.closest('.vid-gen-item');
+                    if (!item) return;
+                    var id = item.dataset.id;
+                    var file = item.dataset.file;
+                    if (btn.dataset.act === 'activate') self._activateVidGen(id, cardId, file);
+                    else self._delVidGen(id, cardId, file);
+                });
+            });
+        }).catch(function () {});
+    },
+    // 切换播放器到指定视频文件（更新 modal data-filename 供下载/关闭用）
+    _applyVidFile(filename) {
+        var modal = document.getElementById('modalVideoViewer');
+        if (modal) modal.setAttribute('data-filename', filename);
+        var video = document.getElementById('vidViewerPlayer');
+        if (!video) return;
+        video.src = '/api/thumbnails/video/' + filename + '?t=' + Date.now();
+        video.load();
+        video.play();
+        var playBtn = document.getElementById('vidPlayBtn');
+        if (playBtn) playBtn.innerHTML = '⏸';
+    },
+    // 将某条生成视频设为词卡当前预览（词卡预览框/网格联动）
+    _activateVidGen(taskId, cardId, file) {
+        var self = this;
+        App.fetchJSON('/api/card-gen/tasks/' + taskId + '/activate', { method: 'POST' }).then(function (d) {
+            if (d && d.ok) {
+                App.showToast('✅ 已设为词卡当前视频', 'success');
+                self._loadVidGenHistory(cardId, file);
+                if (App.loadPrompts) { try { App.loadPrompts(); } catch (e) {} }
+            } else {
+                App.showToast('设置未完成: ' + (d ? (d.detail || '未知') : '无响应'), 'error');
+            }
+        }).catch(function () {});
+    },
+    // 删除某条生成记录（产物文件被词卡当前预览引用时保留）
+    _delVidGen(taskId, cardId) {
+        if (!confirm('删除此生成记录及其视频文件？\n（若为词卡当前预览，文件将保留；正在进行的任务不受影响）')) return;
+        var self = this;
+        App.fetchJSON('/api/card-gen/tasks/' + taskId, { method: 'DELETE' }).then(function (d) {
+            if (d && d.ok) {
+                App.showToast('🗑 已删除', 'success');
+                self._loadVidGenHistory(cardId, '');  // 传空 → 自动切到剩余最新/当前
+                if (App.loadPrompts) { try { App.loadPrompts(); } catch (e) {} }
+            } else {
+                App.showToast('删除未完成: ' + (d ? (d.detail || '未知') : '无响应'), 'error');
+            }
+        }).catch(function () {});
+    },
+
     // ============ 原图查看器(滚轮缩放 + 拖拽移动) ============
 
     openImageViewer(filename, promptId) {
@@ -390,6 +492,9 @@ Object.assign(App, {
 
         // v5.37.4: 预览模式切换（图片↔视频）
         this._loadViewerSwitch(promptId, 'video');
+
+        // v5.41.4: 本词卡生成视频历史条（多条视频快捷切换/设为当前/删除）
+        this._loadVidGenHistory(promptId, filename);
 
         // 加载右侧提示词详情
         if (promptId && App._renderViewerRight) {
