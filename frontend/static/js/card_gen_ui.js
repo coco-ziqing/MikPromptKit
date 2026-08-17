@@ -830,6 +830,11 @@
         locateCard: async function (cardId, groupId) {
             var self = this;
             try {
+                // v5.41.5: 先关闭任务面板（否则 overlay 遮挡定位结果，用户需手动关面板再点一次才能看到）
+                if (this._panelOv && document.body.contains(this._panelOv)) {
+                    this._panelOv.remove();
+                    this._panelOv = null;
+                }
                 if (App.state && App.state.currentGroupId !== groupId && groupId && typeof App.switchGroup === 'function') {
                     await App.switchGroup(groupId, '');
                 } else if (typeof App.loadPrompts === 'function') {
@@ -844,9 +849,9 @@
                         try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { card.scrollIntoView(); }
                         card.style.boxShadow = '0 0 0 3px #6366f1, 0 0 18px rgba(99,102,241,.6)';
                         card.style.transition = 'box-shadow .8s';
-                        setTimeout(function () { card.style.boxShadow = ''; }, 2600);
+                        setTimeout(function () { card.style.boxShadow = ''; }, 4000);
                         self._toast('📍 已定位到词卡', 'success');
-                    } else if (tries > 30) {
+                    } else if (tries > 40) {
                         clearInterval(timer);
                         self._toast('未找到该词卡（可能不在当前视图）', 'warning');
                     }
