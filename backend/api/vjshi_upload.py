@@ -174,6 +174,26 @@ def _task_update(tid, **kw):
         c.close()
 
 
+# v5.41.0: 失败分类中文化（队列面板直接展示，便于快速判断处理方式）
+_FAIL_LABELS = {
+    "login": "登录失效，请重新登录光厂",
+    "timeout": "任务超时（可重试）",
+    "upload": "上传失败（网络/平台）",
+    "form_changed": "页面结构变化，填表失败",
+    "form_config_missing": "表单配置缺失",
+    "file_missing": "视频文件不存在",
+    "video_invalid": "视频质检不通过",
+    "submit_rejected": "提交被拒",
+    "hourly_limit": "已达单小时上限",
+    "daily_limit": "已达单日上限",
+    "other": "其他异常",
+}
+
+
+def _fail_label(cat: str) -> str:
+    return _FAIL_LABELS.get(cat or "", "")
+
+
 # ==================== 字段自动生成（规则版） ====================
 
 def _build_meta(card_id, gen_task_id, video_file):
@@ -1382,7 +1402,8 @@ def vjshi_batch(data: VjshiBatchRequest, request: Request):
 
 
 @router.get("/api/vjshi/tasks")
-def vjshi_list(request: Request, status: str = Query(None), limit: int = Query(50, ge=1, le=200)):
+def vjshi_list(request: Request, status: str = Query(None), limit: int = Query(200, ge=1, le=500)):
+    """任务列表（v5.41.0：补 fail_label 中文分类 + 状态统计，供前端筛选/徽章/批量审核）"""
     _team_guard(request)
     _ensure_table()
     sql = "SELECT * FROM vjshi_upload_tasks WHERE 1=1"
@@ -1399,8 +1420,95 @@ def vjshi_list(request: Request, status: str = Query(None), limit: int = Query(5
         for r in rows:
             d = dict(r)
             d["video_url"] = f"/api/thumbnails/video/{os.path.basename(d['video_file'])}" if d["video_file"] else ""
+            d["fail_label"] = _fail_label(d.get("fail_category"))
             out.append(d)
-        return {"ok": True, "tasks": out, "state": {k: v for k, v in _STATE.items() if k not in ("last_upload_ts", "hour_start")} | {"daily_limit": DAILY_LIMIT, "hourly_limit": HOURLY_LIMIT}}
+        # v5.41.0: 状态统计（前端顶部汇总 + 待审核计数）
+        stats = {}
+        for row in c.execute(
+            "SELECT status, COUNT(*) n FROM vjshi_upload_tasks GROUP BY status").fetchall():
+            stats[row["status"]] = row["n"]
+        stats["review_pending"] = c.execute(
+            "SELECT COUNT(*) FROM vjshi_upload_tasks WHERE status='submitted' AND (review_status IS NULL OR review_status='')"
+        ).fetchone()[0]
+        return {"ok": True, "tasks": out, "stats": stats,
+                "state": {k: v for k, v in _STATE.items() if k not in ("last_upload_ts", "hour_start")} | {"daily_limit": DAILY_LIMIT, "hourly_limit": HOURLY_LIMIT}}
+    finally:
+        c.close()
+
+
+@router.put("/api/vjshi/tasks/{tid}")
+def vjshi_update(tid: int, request: Request, data: dict = Body(...)):
+    """编辑任务字段（v5.41.0 体验优化）：仅 queued/fail 可编辑；进行中/已提交拒绝
+    body: {title, keywords, description, category, price, is_ai} 任一或全部
+    """
+    _upload_perm_guard(request)
+    c = _db()
+    try:
+        t = c.execute("SELECT * FROM vjshi_upload_tasks WHERE id=?", [tid]).fetchone()
+        if not t:
+            raise HTTPException(404, "任务不存在")
+        if t["status"] in ("uploading", "filling"):
+            raise HTTPException(400, "任务正在执行中，暂不能编辑")
+        if t["status"] == "submitted":
+            raise HTTPException(400, "任务已提交，请通过审核标记更新状态")
+        sets, vals = [], []
+        for k in ("title", "keywords", "description", "category"):
+            if k in data:
+                sets.append(f"{k}=?"); vals.append(str(data.get(k) or "").strip())
+        if "price" in data:
+            try:
+                p = max(1, int(float(data.get("price") or 10)))
+            except Exception:
+                p = DEFAULT_PRICE
+            sets.append("price=?"); vals.append(p)
+        if "is_ai" in data:
+            sets.append("is_ai=?"); vals.append(1 if data.get("is_ai") else 0)
+        if not sets:
+            raise HTTPException(400, "无更新字段")
+        sets.append("updated_at=datetime('now','localtime')")
+        vals.append(tid)
+        c.execute(f"UPDATE vjshi_upload_tasks SET {', '.join(sets)} WHERE id=?", vals)
+        c.commit()
+        return {"ok": True, "task_id": tid}
+    finally:
+        c.close()
+
+
+@router.get("/api/vjshi/candidates")
+def vjshi_candidates(request: Request, keyword: str = Query("")):
+    """可投稿候选视频（v5.41.0 批量投稿）：生成完成(done)的 video 产物、文件存在、且未投过
+    不查询光厂任何数据（纯本地，合规）
+    """
+    _upload_perm_guard(request)
+    c = _db()
+    try:
+        rows = c.execute(
+            """SELECT g.id AS gen_task_id, g.card_id, g.result_filename, g.video_resolution,
+                       g.model_version, g.duration, w.name AS card_name, w.content AS card_content
+                FROM card_gen_tasks g LEFT JOIN word_card w ON w.id = g.card_id
+                WHERE g.status='done' AND g.media_type='video' AND g.result_filename != ''
+                ORDER BY g.id DESC LIMIT 500""").fetchall()
+        out = []
+        for r in rows:
+            vf = r["result_filename"]
+            if not _resolve_video_path(vf):
+                continue
+            used = c.execute("SELECT 1 FROM vjshi_upload_tasks WHERE video_file=? LIMIT 1",
+                             [vf]).fetchone()
+            if used:
+                continue
+            kw = (keyword or "").strip().lower()
+            if kw:
+                hay = " ".join([vf, r["card_name"] or "", r["card_content"] or ""]).lower()
+                if kw not in hay:
+                    continue
+            out.append({
+                "gen_task_id": r["gen_task_id"], "card_id": r["card_id"] or 0,
+                "video_file": vf, "card_name": r["card_name"] or f"词卡#{r['card_id']}",
+                "resolution": r["video_resolution"] or "", "model": r["model_version"] or "",
+                "duration": r["duration"] or 0,
+            })
+        return {"ok": True, "items": out, "total": len(out)}
     finally:
         c.close()
 
