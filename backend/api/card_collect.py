@@ -1010,6 +1010,37 @@ def _ensure_group(name: str) -> int:
         c.close()
 
 
+def _gen_card_thumbnail(card_id: int, src_path: str) -> str:
+    """生成词卡网格缩略图（240x160 → data/thumbnails/{card_id}.png），返回文件名；失败返回空"""
+    try:
+        from PIL import Image
+        img = Image.open(src_path)
+        img = img.convert("RGB")
+        tw, th = 240, 160
+        w, h = img.size
+        if w <= 0 or h <= 0:
+            return ""
+        # 3:2 中心裁剪
+        target_ratio = tw / th
+        cur_ratio = w / h
+        if cur_ratio > target_ratio:
+            nw = int(h * target_ratio)
+            x = max(0, (w - nw) // 2)
+            img = img.crop((x, 0, x + nw, h))
+        elif cur_ratio < target_ratio:
+            nh = int(w / target_ratio)
+            y = max(0, (h - nh) // 2)
+            img = img.crop((0, y, w, y + nh))
+        img = img.resize((tw, th), Image.LANCZOS)
+        dest = os.path.join(_PROJECT_ROOT, "data", "thumbnails", f"{card_id}.png")
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        img.save(dest, "PNG")
+        return f"{card_id}.png"
+    except Exception as e:
+        print(f"[CardCollect] 缩略图生成失败: {e}")
+        return ""
+
+
 # ==================== API：归档建词卡（带来源溯源） ====================
 
 @router.post("/archive")
@@ -1040,10 +1071,12 @@ def archive_items(payload: dict = Body(...)):
                     gid = _ensure_group(gname)
                 # 媒体文件复制到词卡媒体目录（复用 wc_media 机制）
                 media_filename = row["media_url"] or ""
+                src = ""
                 if media_filename:
                     src = os.path.join(VID_DIR if row["media_type"] == "video" else IMG_DIR, media_filename)
                     if not os.path.exists(src):
                         media_filename = ""
+                        src = ""
                 name = f"采集-{row['id']}"
                 meaning = " · ".join(x for x in [
                     "📥 外部采集",
@@ -1058,6 +1091,12 @@ def archive_items(payload: dict = Body(...)):
                      media_filename, row["source_url"] or "", row["id"],
                      row["page_title"] or row["source_url"] or ""])
                 card_id = cur.lastrowid
+                # v5.42.5: 图片词卡生成网格缩略图（240x160 → data/thumbnails/{card_id}.png）
+                thumb_name = ""
+                if row["media_type"] != "video" and src and os.path.exists(src):
+                    thumb_name = _gen_card_thumbnail(card_id, src)
+                if thumb_name:
+                    c.execute("UPDATE word_card SET thumbnail=? WHERE id=?", [thumb_name, card_id])
                 c.execute("UPDATE card_collect_items SET status='archived', word_card_id=?, archived_at=datetime('now','localtime') WHERE id=?",
                           [card_id, iid])
                 archived.append({"id": iid, "card_id": card_id, "group_id": gid})
