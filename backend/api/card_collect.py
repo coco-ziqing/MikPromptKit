@@ -1203,6 +1203,15 @@ def archive_items(payload: dict = Body(...)):
                 if row["status"] == "archived":
                     skipped.append({"id": iid, "reason": "已归档"})
                     continue
+                # v5.42.12: 同源同图去重（同 media_original_url 已有活跃词卡则跳过）
+                if row["media_original_url"]:
+                    dup = c.execute(
+                        "SELECT wc.id FROM word_card wc JOIN card_collect_items ci ON ci.id=wc.source_id "
+                        "WHERE ci.media_original_url=? AND wc.is_deleted=0 LIMIT 1",
+                        [row["media_original_url"]]).fetchone()
+                    if dup:
+                        skipped.append({"id": iid, "reason": f"同图已归档(词卡#{dup['id']})"})
+                        continue
                 gid = group_id
                 if not gid:
                     gname = group_name or row["suggest_group"] or "外部采集"
