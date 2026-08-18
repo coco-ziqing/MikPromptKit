@@ -72,6 +72,7 @@
                 '<button id="ccTabFav" class="btn btn-sm" onclick="App._ccSwitchTab(\'fav\')">📌 收藏夹</button>' +
                 '<button id="ccTabItems" class="btn btn-sm" onclick="App._ccSwitchTab(\'items\')">🗂 预采集库</button>' +
                 '<button id="ccTabTasks" class="btn btn-sm" onclick="App._ccSwitchTab(\'tasks\')">⚙️ 采集任务</button>' +
+                '<button id="ccTabSites" class="btn btn-sm" onclick="App._ccSwitchTab(\'sites\')">🌐 灵感图库</button>' +
                 '</div>' +
                 '<div id="ccBody" style="flex:1;overflow-y:auto;padding:14px 16px;"></div>' +
                 '</div>';
@@ -89,7 +90,7 @@
         },
 
         _render: function () {
-            var btns = { fav: 'ccTabFav', items: 'ccTabItems', tasks: 'ccTabTasks' };
+            var btns = { fav: 'ccTabFav', items: 'ccTabItems', tasks: 'ccTabTasks', sites: 'ccTabSites' };
             for (var k in btns) {
                 var b = document.getElementById(btns[k]);
                 if (b) b.className = 'btn btn-sm ' + (k === this._tab ? 'btn-primary' : 'btn-secondary');
@@ -98,6 +99,7 @@
             if (!body) return;
             if (this._tab === 'fav') this._renderFav(body);
             else if (this._tab === 'items') this._renderItems(body);
+            else if (this._tab === 'sites') this._renderSites(body);
             else this._renderTasks(body);
         },
 
@@ -407,6 +409,141 @@
             }).catch(function () {});
         },
 
+        // ============ Tab4 灵感图库 ============
+        _renderSites: function (body) {
+            var self = this;
+            body.innerHTML =
+                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">' +
+                '<span style="font-size:12px;color:var(--text-muted);">常用灵感图库快捷入口：点击「打开检索」在浏览器中手动查看，找到目标内容后复制地址回采集面板收藏/采集</span>' +
+                '<span style="flex:1;"></span>' +
+                '<button class="btn btn-sm btn-primary" onclick="App._ccAddSite()">➕ 添加图库</button>' +
+                '</div>' +
+                '<div id="ccSiteList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">加载中…</div>';
+            App.fetchJSON('/api/card-collect/sites').then(function (d) {
+                var list = document.getElementById('ccSiteList');
+                if (!list) return;
+                var sites = (d && d.items) || [];
+                if (!sites.length) { list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;grid-column:1/-1;">暂无图库 · 点击「➕ 添加图库」添加常用灵感站点</div>'; return; }
+                list.innerHTML = sites.map(function (s) {
+                    var logoHtml = s.logo
+                        ? '<img src="/api/card-collect/sites/logo/' + self._esc(s.logo) + '" style="width:46px;height:46px;object-fit:cover;border-radius:10px;background:#f1f5f9;" alt="logo">'
+                        : '<div style="width:46px;height:46px;border-radius:10px;background:rgba(127,127,127,.12);display:flex;align-items:center;justify-content:center;font-size:22px;">' + self._esc(s.icon_emoji || '🌐') + '</div>';
+                    return '<div style="border:1px solid rgba(127,127,127,.15);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;">' +
+                        '<div style="display:flex;gap:10px;align-items:center;">' + logoHtml +
+                        '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;">' + self._esc(s.name) + '</div>' +
+                        '<div style="font-size:11px;color:var(--text-muted);word-break:break-all;">' + self._esc(s.url) + '</div></div>' +
+                        '</div>' +
+                        (s.description ? '<div style="font-size:12px;color:var(--text-muted);line-height:1.5;">' + self._esc(s.description) + '</div>' : '') +
+                        '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+                        '<button class="btn btn-sm btn-primary" onclick="App._ccOpenSite(' + s.id + ')">🔍 打开检索</button>' +
+                        '<button class="btn btn-sm btn-secondary" title="替换品牌 logo" onclick="App._ccUploadLogo(' + s.id + ')">🖼 Logo</button>' +
+                        '<button class="btn btn-sm btn-secondary" title="编辑" onclick="App._ccEditSite(' + s.id + ')">✏️</button>' +
+                        '<button class="btn btn-sm btn-secondary" onclick="App._ccDelSite(' + s.id + ')">🗑</button>' +
+                        '</div></div>';
+                }).join('');
+            }).catch(function () { var l = document.getElementById('ccSiteList'); if (l) l.innerHTML = '<div style="color:#ef4444;grid-column:1/-1;">加载失败</div>'; });
+        },
+
+        _openSite: function (id) {
+            var self = this;
+            App.fetchJSON('/api/card-collect/sites').then(function (d) {
+                var sites = (d && d.items) || [];
+                for (var i = 0; i < sites.length; i++) {
+                    if (sites[i].id === id) {
+                        window.open(sites[i].url, '_blank', 'noopener');
+                        self._toast('已打开 ' + sites[i].name + '，找到目标内容后复制地址回采集面板收藏/采集', 'info');
+                        return;
+                    }
+                }
+                self._toast('图库不存在', 'error');
+            }).catch(function () { self._toast('打开失败', 'error'); });
+        },
+
+        _siteForm: function (site) {
+            var self = this;
+            var ov = this._modal('');
+            var s = site || {};
+            ov.querySelector('.modal-content').innerHTML =
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><b>' + (site ? '✏️ 编辑图库' : '➕ 添加图库') + '</b>' +
+                '<button onclick="this.closest(\'.modal-overlay\').remove()" style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;">✕</button></div>' +
+                '<label style="font-size:12px;color:var(--text-muted);">名称 *</label>' +
+                '<input id="ccSiteName" value="' + self._esc(s.name || '') + '" placeholder="如：LibLib 哩布哩布" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' +
+                '<label style="font-size:12px;color:var(--text-muted);">地址 *</label>' +
+                '<input id="ccSiteUrl" value="' + self._esc(s.url || '') + '" placeholder="https://..." style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' +
+                '<label style="font-size:12px;color:var(--text-muted);">简介</label>' +
+                '<textarea id="ccSiteDesc" rows="2" placeholder="简短介绍该图库的定位与内容" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' + self._esc(s.description || '') + '</textarea>' +
+                '<label style="font-size:12px;color:var(--text-muted);">图标（无 logo 时显示的 emoji）</label>' +
+                '<input id="ccSiteEmoji" value="' + self._esc(s.icon_emoji || '🌐') + '" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:12px;">' +
+                '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+                '<button class="btn btn-secondary btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>' +
+                '<button class="btn btn-primary btn-sm" onclick="App._ccSaveSite(' + (s.id || 0) + ')">保存</button></div>';
+        },
+
+        _addSite: function () { this._siteForm(null); },
+
+        _editSite: function (id) {
+            var self = this;
+            App.fetchJSON('/api/card-collect/sites').then(function (d) {
+                var sites = (d && d.items) || [];
+                for (var i = 0; i < sites.length; i++) {
+                    if (sites[i].id === id) { self._siteForm(sites[i]); return; }
+                }
+                self._toast('图库不存在', 'error');
+            }).catch(function () { self._toast('加载失败', 'error'); });
+        },
+
+        _saveSite: function (id) {
+            var self = this;
+            var name = (document.getElementById('ccSiteName') || {}).value || '';
+            var url = (document.getElementById('ccSiteUrl') || {}).value || '';
+            var desc = (document.getElementById('ccSiteDesc') || {}).value || '';
+            var emoji = (document.getElementById('ccSiteEmoji') || {}).value || '🌐';
+            if (!name.trim()) { this._toast('请输入图库名称', 'error'); return; }
+            if (!/^https?:\/\//.test(url.trim())) { this._toast('请输入合法的 http/https 地址', 'error'); return; }
+            var payload = { name: name.trim(), url: url.trim(), description: desc.trim(), icon_emoji: emoji.trim() };
+            var req = id
+                ? App.fetchJSON('/api/card-collect/sites/' + id, { method: 'PUT', body: JSON.stringify(payload) })
+                : App.fetchJSON('/api/card-collect/sites', { method: 'POST', body: JSON.stringify(payload) });
+            req.then(function (d) {
+                if (d && d.ok) {
+                    self._toast('已保存', 'success');
+                    var ov = document.querySelector('.modal-overlay');
+                    if (ov && ov.querySelector('#ccSiteName')) ov.remove();
+                    self._renderSites(document.getElementById('ccBody'));
+                } else self._toast((d && d.error) || '保存失败', 'error');
+            }).catch(function () { self._toast('保存失败', 'error'); });
+        },
+
+        _delSite: function (id) {
+            var self = this;
+            if (!confirm('删除该图库？')) return;
+            App.fetchJSON('/api/card-collect/sites/' + id, { method: 'DELETE' }).then(function (d) {
+                if (d && d.ok) { self._toast('已删除', 'success'); self._renderSites(document.getElementById('ccBody')); }
+            }).catch(function () { self._toast('删除失败', 'error'); });
+        },
+
+        _uploadLogo: function (id) {
+            var self = this;
+            var inp = document.createElement('input');
+            inp.type = 'file';
+            inp.accept = 'image/png,image/jpeg,image/webp,image/gif';
+            inp.onchange = function () {
+                var f = inp.files && inp.files[0];
+                if (!f) return;
+                if (f.size > 2 * 1024 * 1024) { self._toast('图片不能超过 2MB', 'error'); return; }
+                var fd = new FormData();
+                fd.append('file', f);
+                fetch('/api/card-collect/sites/' + id + '/logo', { method: 'POST', body: fd })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (d && d.ok) { self._toast('Logo 已替换', 'success'); self._renderSites(document.getElementById('ccBody')); }
+                        else self._toast((d && d.detail) || '上传失败', 'error');
+                    })
+                    .catch(function () { self._toast('上传失败', 'error'); });
+            };
+            inp.click();
+        },
+
         // ============ 轮询 ============
         _poll: function () {
             var self = this;
@@ -437,5 +574,11 @@
     App._ccDirectCollect = function () { CC._directCollect(); };
     App._ccStopTask = function (id) { CC._stopTask(id); };
     App._ccStopAll = function () { CC._stopAll(); };
+    App._ccAddSite = function () { CC._addSite(); };
+    App._ccEditSite = function (id) { CC._editSite(id); };
+    App._ccSaveSite = function (id) { CC._saveSite(id); };
+    App._ccDelSite = function (id) { CC._delSite(id); };
+    App._ccOpenSite = function (id) { CC._openSite(id); };
+    App._ccUploadLogo = function (id) { CC._uploadLogo(id); };
     App._stopCCPoll = function () { if (CC._timer) { clearInterval(CC._timer); CC._timer = null; } };
 })();

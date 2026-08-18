@@ -19,7 +19,7 @@ import threading
 import time
 import urllib.request
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
 
 from database import get_db, safe_commit
 
@@ -29,9 +29,11 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 DATA_DIR = os.path.join(_PROJECT_ROOT, "data", "card_collect")
 IMG_DIR = os.path.join(DATA_DIR, "images")
 VID_DIR = os.path.join(DATA_DIR, "videos")
+LOGO_DIR = os.path.join(DATA_DIR, "logos")
 PROFILE_DIR = os.path.join(DATA_DIR, "chrome_profile")
 os.makedirs(IMG_DIR, exist_ok=True)
 os.makedirs(VID_DIR, exist_ok=True)
+os.makedirs(LOGO_DIR, exist_ok=True)
 
 # Chrome 可执行文件探测（与 dreamina_web 相同策略）
 CHROME_BIN = None
@@ -163,7 +165,41 @@ def _ensure_tables():
             archived_at TEXT DEFAULT ''
         )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_cci_status ON card_collect_items(status)")
+        c.execute("""CREATE TABLE IF NOT EXISTS card_collect_sites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL DEFAULT '',
+            url TEXT NOT NULL DEFAULT '',
+            description TEXT DEFAULT '',
+            logo TEXT DEFAULT '',
+            icon_emoji TEXT DEFAULT '🌐',
+            sort_order INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            updated_at TEXT DEFAULT (datetime('now','localtime'))
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ccs_sort ON card_collect_sites(sort_order)")
         c.commit()
+        # 种子数据：常用灵感图库（幂等，仅首次插入）
+        cnt = c.execute("SELECT COUNT(*) FROM card_collect_sites").fetchone()[0]
+        if cnt == 0:
+            seeds = [
+                ("LibLib 哩布哩布", "https://www.liblib.art", "国内 AI 绘画模型库，海量模型/作品/提示词", "🖼"),
+                ("即梦 AI", "https://jimeng.jianying.com", "字节旗下 AI 创作平台，图/视频生成灵感", "✨"),
+                ("Midjourney 画廊", "https://www.midjourney.com/explore", "MJ 官方作品探索，高质量 AI 艺术灵感", "🎨"),
+                ("小红书", "https://www.xiaohongshu.com", "生活方式社区，AI 绘画/灵感笔记聚集地", "📕"),
+                ("Pinterest", "https://www.pinterest.com", "全球视觉灵感库，图板检索神器", "📌"),
+                ("ArtStation", "https://www.artstation.com", "专业艺术家作品平台，CG/概念设计灵感", "🎭"),
+                ("可灵 AI", "https://klingai.com", "快手旗下 AI 视频/图像生成平台", "🎬"),
+                ("海螺 AI", "https://hailuoai.com", "MiniMax 旗下 AI 创作平台", "🐚"),
+                ("Civitai", "https://civitai.com", "国际 SD 模型/作品社区（内容分级，注意合规）", "🌍"),
+                ("B 站灵感区", "https://www.bilibili.com", "视频灵感与 AI 创作教程社区", "📺"),
+            ]
+            for i, (nm, u, ds, em) in enumerate(seeds):
+                c.execute(
+                    "INSERT INTO card_collect_sites (name, url, description, logo, icon_emoji, sort_order, created_at) "
+                    "VALUES (?,?,?,'',?,?,datetime('now','localtime'))",
+                    [nm, u, ds, em, i])
+            c.commit()
+            print(f"[CardCollect] 已预置灵感图库 {len(seeds)} 条")
     finally:
         c.close()
 
@@ -1064,4 +1100,149 @@ def serve_file(fname: str):
         if os.path.exists(p):
             from fastapi.responses import FileResponse
             return FileResponse(p)
+    raise HTTPException(404, "文件不存在")
+
+
+# ==================== API：灵感图库（常用站点快捷入口） ====================
+
+@router.get("/sites")
+def list_sites():
+    """灵感图库列表（预置 + 手动添加）"""
+    c = _db()
+    try:
+        rows = c.execute("SELECT * FROM card_collect_sites ORDER BY sort_order, id").fetchall()
+        return {"ok": True, "items": [dict(r) for r in rows]}
+    finally:
+        c.close()
+
+
+@router.post("/sites")
+def add_site(payload: dict = Body(...)):
+    """手动添加灵感图库：name/url 必填，description/icon_emoji 可选"""
+    name = str(payload.get("name") or "").strip()[:100]
+    url = str(payload.get("url") or "").strip()
+    desc = str(payload.get("description") or "").strip()[:300]
+    emoji = str(payload.get("icon_emoji") or "🌐").strip()[:8]
+    if not name:
+        raise HTTPException(400, "请输入图库名称")
+    if not url.startswith("http://") and not url.startswith("https://"):
+        raise HTTPException(400, "请输入合法的 http/https 地址")
+    c = _db()
+    try:
+        # 同名去重
+        exist = c.execute("SELECT id FROM card_collect_sites WHERE name=?", [name]).fetchone()
+        if exist:
+            raise HTTPException(400, "已存在同名图库")
+        mx = c.execute("SELECT COALESCE(MAX(sort_order),0) FROM card_collect_sites").fetchone()[0]
+        cur = c.execute(
+            "INSERT INTO card_collect_sites (name, url, description, logo, icon_emoji, sort_order, created_at) "
+            "VALUES (?,?,?,'',?,?,datetime('now','localtime'))",
+            [name, url, desc, emoji, int(mx) + 1])
+        c.commit()
+        row = c.execute("SELECT * FROM card_collect_sites WHERE id=?", [cur.lastrowid]).fetchone()
+        return {"ok": True, "item": dict(row)}
+    finally:
+        c.close()
+
+
+@router.put("/sites/{sid}")
+def update_site(sid: int, payload: dict = Body(...)):
+    """修改图库信息（名称/地址/简介/emoji）"""
+    c = _db()
+    try:
+        row = c.execute("SELECT * FROM card_collect_sites WHERE id=?", [sid]).fetchone()
+        if not row:
+            raise HTTPException(404, "图库不存在")
+        upd = {}
+        if "name" in payload:
+            upd["name"] = str(payload["name"] or "").strip()[:100]
+        if "url" in payload:
+            u = str(payload["url"] or "").strip()
+            if not u.startswith("http://") and not u.startswith("https://"):
+                raise HTTPException(400, "请输入合法的 http/https 地址")
+            upd["url"] = u
+        if "description" in payload:
+            upd["description"] = str(payload["description"] or "").strip()[:300]
+        if "icon_emoji" in payload:
+            upd["icon_emoji"] = str(payload["icon_emoji"] or "🌐").strip()[:8]
+        if not upd:
+            return {"ok": True, "item": dict(row)}
+        upd["updated_at"] = "datetime('now','localtime')"
+        sets = ", ".join(f"{k}=?" if k != "updated_at" else "updated_at=datetime('now','localtime')" for k in upd)
+        vals = [v for k, v in upd.items() if k != "updated_at"]
+        c.execute(f"UPDATE card_collect_sites SET {sets} WHERE id=?", vals + [sid])
+        c.commit()
+        row = c.execute("SELECT * FROM card_collect_sites WHERE id=?", [sid]).fetchone()
+        return {"ok": True, "item": dict(row)}
+    finally:
+        c.close()
+
+
+@router.delete("/sites/{sid}")
+def delete_site(sid: int):
+    """删除图库（含 logo 文件）"""
+    c = _db()
+    try:
+        row = c.execute("SELECT * FROM card_collect_sites WHERE id=?", [sid]).fetchone()
+        if not row:
+            raise HTTPException(404, "图库不存在")
+        if row["logo"]:
+            for ext in ("png", "jpg", "jpeg", "webp", "gif"):
+                p = os.path.join(LOGO_DIR, f"cc_site_{sid}.{ext}")
+                if os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
+        c.execute("DELETE FROM card_collect_sites WHERE id=?", [sid])
+        c.commit()
+        return {"ok": True}
+    finally:
+        c.close()
+
+
+@router.post("/sites/{sid}/logo")
+async def upload_site_logo(sid: int, file: UploadFile = File(...)):
+    """手动替换品牌 logo（图片 ≤2MB，png/jpg/jpeg/webp/gif）"""
+    c = _db()
+    try:
+        row = c.execute("SELECT * FROM card_collect_sites WHERE id=?", [sid]).fetchone()
+        if not row:
+            raise HTTPException(404, "图库不存在")
+        fname = file.filename or ""
+        ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else "png"
+        if ext not in ("png", "jpg", "jpeg", "webp", "gif"):
+            raise HTTPException(400, "仅支持 png/jpg/jpeg/webp/gif 图片")
+        data = await file.read()
+        if len(data) > 2 * 1024 * 1024:
+            raise HTTPException(400, "图片不能超过 2MB")
+        # 清理旧 logo（不同扩展名）
+        for old_ext in ("png", "jpg", "jpeg", "webp", "gif"):
+            old = os.path.join(LOGO_DIR, f"cc_site_{sid}.{old_ext}")
+            if os.path.exists(old) and old != os.path.join(LOGO_DIR, f"cc_site_{sid}.{ext}"):
+                try:
+                    os.remove(old)
+                except Exception:
+                    pass
+        dest = os.path.join(LOGO_DIR, f"cc_site_{sid}.{ext}")
+        with open(dest, "wb") as f:
+            f.write(data)
+        c.execute("UPDATE card_collect_sites SET logo=?, updated_at=datetime('now','localtime') WHERE id=?",
+                  [f"cc_site_{sid}.{ext}", sid])
+        c.commit()
+        row = c.execute("SELECT * FROM card_collect_sites WHERE id=?", [sid]).fetchone()
+        return {"ok": True, "item": dict(row)}
+    finally:
+        c.close()
+
+
+@router.get("/sites/logo/{fname}")
+def serve_site_logo(fname: str):
+    """图库 logo 访问（仅限 logos 目录，防路径穿越）"""
+    if not re.match(r"^cc_site_\d+\.(png|jpg|jpeg|webp|gif)$", fname):
+        raise HTTPException(400, "非法文件名")
+    p = os.path.join(LOGO_DIR, fname)
+    if os.path.exists(p):
+        from fastapi.responses import FileResponse
+        return FileResponse(p)
     raise HTTPException(404, "文件不存在")
