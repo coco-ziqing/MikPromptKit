@@ -564,6 +564,49 @@
 
     // ============ 挂载到 App ============
     App.openCardCollect = function () { CC.open(); };
+
+    // ============ v5.42.16: 词库卡片溯源按钮注入 ============
+    // 包装 App.renderPrompts：渲染完成后，为采集录入的词卡（module=card_collect）
+    // 在卡片操作区注入「🔗 溯源」按钮，点击调 trace API 打开来源网页
+    (function _ccHookRender() {
+        var boot = function () {
+            if (!App || typeof App.renderPrompts !== 'function') { setTimeout(boot, 300); return; }
+            var _orig = App.renderPrompts;
+            App.renderPrompts = function () {
+                var r = _orig.apply(this, arguments);
+                setTimeout(function () { CC._injectTraceBtns(); }, 80);
+                return r;
+            };
+        };
+        boot();
+    })();
+
+    CC._injectTraceBtns = function () {
+        var cards = document.querySelectorAll('#promptList .prompt-card[data-id]');
+        cards.forEach(function (card) {
+            if (card.querySelector('.cc-trace-btn')) return;
+            var cid = parseInt(card.getAttribute('data-id'), 10);
+            if (!cid) return;
+            App.fetchJSON('/api/card-collect/trace/' + cid).then(function (d) {
+                if (!d || !d.ok) return;
+                var ch = d.chain || {};
+                var cardData = ch.card || {};
+                if (cardData.module !== 'card_collect' || !cardData.source) return;
+                var actions = card.querySelector('.card-actions');
+                if (!actions) return;
+                var btn = document.createElement('button');
+                btn.className = 'btn-copy cc-trace-btn';
+                btn.style.cssText = 'border-color:#8b5cf6;color:#8b5cf6;';
+                btn.innerHTML = '🔗 溯源';
+                btn.onclick = function (e) {
+                    e.stopPropagation();
+                    window.open(cardData.source, '_blank', 'noopener');
+                };
+                actions.insertBefore(btn, actions.firstChild);
+            }).catch(function () {});
+        });
+    };
+
     App._ccSwitchTab = function (t) { CC._switchTab(t); };
     App._ccAddFav = function () { CC._addFav(); };
     App._ccDelFav = function (id) { CC._delFav(id); };

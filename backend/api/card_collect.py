@@ -1244,13 +1244,26 @@ def archive_items(payload: dict = Body(...)):
                     ("视频" if row["media_type"] == "video" else "图片"),
                     row["page_title"][:40] if row["page_title"] else "",
                 ] if x)
+                # v5.42.16: 复制原图到词卡原图目录（wc_media/originals/），词库「查看原图」用 original_ref 读取
+                orig_name = ""
+                if row["media_type"] != "video" and src and os.path.exists(src):
+                    try:
+                        import shutil as _shutil
+                        import uuid as _uuid
+                        orig_ext = os.path.splitext(src)[1] or ".jpg"
+                        orig_name = _uuid.uuid4().hex + orig_ext
+                        wc_orig_dir = os.path.join(_PROJECT_ROOT, "data", "wc_media", "originals")
+                        os.makedirs(wc_orig_dir, exist_ok=True)
+                        _shutil.copy2(src, os.path.join(wc_orig_dir, orig_name))
+                    except Exception as e:
+                        print(f"[CardCollect] 原图归档失败: {e}")
+                        orig_name = ""
                 cur = c.execute(
                     "INSERT INTO word_card (group_id, name, content, meaning, media_type, preview_media, "
                     "is_builtin, heat_weight, module, category, source, source_id, original_ref, created_at, updated_at) "
                     "VALUES (?,?,?,?,?,?,0,0.5,'card_collect','external_collect',?,?,?,datetime('now','localtime'),datetime('now','localtime'))",
                     [gid, name, row["prompt"] or "", meaning, row["media_type"] or "image",
-                     media_filename, row["source_url"] or "", row["id"],
-                     row["page_title"] or row["source_url"] or ""])
+                     "", row["source_url"] or "", row["id"], orig_name])
                 card_id = cur.lastrowid
                 # v5.42.5: 图片词卡生成网格缩略图（240x160 → data/thumbnails/{card_id}.png）
                 thumb_name = ""
