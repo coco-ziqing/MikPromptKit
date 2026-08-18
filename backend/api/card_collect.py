@@ -52,8 +52,8 @@ MAX_ITEMS_PER_TASK = 20      # 单任务最多采集项
 MAX_DOWNLOAD_BYTES = 60 * 1024 * 1024  # 单媒体 60MB 上限（防超大视频拖垮）
 SKIP_MEDIA_KEYWORDS = ("logo", "icon", "avatar", "favicon", "sprite", "emoji", "placeholder",
                        "blank.gif", "1x1", "pixel", "advertisement", "banner", "vipModel", "badge", "qr")
-PROMPT_KEYS = ("prompt", "prompt_text", "prompt_content", "prompt_cn", "prompt_zh", "describe",
-               "description", "text", "positive_prompt", "prompt_en")
+PROMPT_KEYS = ("prompt", "prompt_text", "prompt_content", "prompt_cn", "prompt_zh", "positive_prompt",
+               "prompt_en", "prompt_raw")
 MODEL_KEYS = ("model", "model_name", "model_version", "engine", "generate_model", "model_label")
 PARAM_KEYS = ("params", "parameters", "extra", "config", "setting", "settings", "generate_params")
 MODEL_PATTERN = re.compile(
@@ -361,17 +361,18 @@ def _looks_media_url(u: str) -> bool:
 
 
 def _extract_prompt_from_json(data) -> str:
-    """从 JSON 递归提取提示词文本（取最长非空者）"""
+    """从 JSON 递归提取提示词：仅认明确 prompt 键（v5.42.6：describe/text 歧义太大——
+    LibLib modelCard 模型介绍、导航菜单 text 均被误抓，已完全移除 fallback，抓不到即空）"""
     best = ""
     stack = [data]
     while stack and len(best) < 500:
         node = stack.pop()
         if isinstance(node, dict):
-            p = _pick_field(node, PROMPT_KEYS)
-            if isinstance(p, str) and len(p.strip()) > len(best) and len(p.strip()) >= 8:
-                best = p.strip()
-            for v in node.values():
-                stack.append(v)
+            for k, v in node.items():
+                if k in PROMPT_KEYS and isinstance(v, str) and len(v.strip()) > len(best) and len(v.strip()) >= 8:
+                    best = v.strip()
+                elif isinstance(v, (dict, list)):
+                    stack.append(v)
         elif isinstance(node, list):
             stack.extend(node)
     return best[:4000]
@@ -419,29 +420,37 @@ def _extract_media_from_json(data):
 
 
 def _extract_prompt_from_dom(page) -> str:
-    """DOM 文本启发式：找含 prompt/提示词 标签的相邻文本（详情页常见结构）"""
+    """DOM 文本提取：仅接受「提示词/prompt 标签 + 分隔符 + 内容」行内模式
+    （v5.42.6 收紧：LibLib 页头「查看提示词」按钮命中 LABELS 导致整段导航文本被误抓，
+    已删除长文本兜底；抓不到即空，提示词留待用户补全/登录可见）"""
     try:
         return page.evaluate("""() => {
-            const KEYWORDS = ['提示词','prompt','Prompt','描述词','生成词','描述文本'];
-            let best = '';
+            const labelRe = /(?:提示词|prompt|Prompt|描述词|生成提示词)[^\\n]{0,12}[：:]([\\s\\S]{0,800})/i;
             const walk = (el, depth) => {
-                if (depth > 3 || best.length >= 600) return;
+                if (depth > 6) return '';
                 const txt = (el.textContent || '').trim();
-                if (!txt || txt.length < 8) return;
-                const low = txt.toLowerCase();
-                const hit = KEYWORDS.some(k => low.includes(k.toLowerCase()));
-                if (hit && txt.length > best.length && txt.length < 4000) {
-                    // 优先找标签附近的简短文本（如"提示词：xxx"）
-                    if (txt.length < 800 && low.includes('提示词') && (low.includes(':') || low.includes('：'))) {
-                        const m = txt.match(/[提示词|prompt|Prompt][^\\n]{0,10}[：:]([\\s\\S]{0,700})/);
-                        if (m) { best = m[1].trim(); return; }
-                    }
-                    best = txt;
+                if (!txt || txt.length < 8 || txt.length > 4000) {
+                    for (const ch of el.children) { const r = walk(ch, depth + 1); if (r) return r; }
+                    return '';
                 }
-                for (const ch of el.children) walk(ch, depth + 1);
+                // 行内「提示词：内容」模式（首个命中即返回）
+                const m = txt.match(labelRe);
+                if (m && m[1] && m[1].trim().length >= 8) return m[1].trim();
+                // 标签单独成行 + 兄弟节点内容（「提示词」label 后跟内容容器）
+                const direct = Array.from(el.children || []).filter(c => c.childNodes.length === 1 && c.childNodes[0].nodeType === 3);
+                for (const lab of direct) {
+                    const lt = (lab.textContent || '').trim();
+                    if (/^(提示词|prompt|描述词|生成提示词)$/i.test(lt)) {
+                        let sib = lab.nextElementSibling;
+                        if (sib && sib.textContent && sib.textContent.trim().length >= 8) {
+                            return sib.textContent.trim().slice(0, 800);
+                        }
+                    }
+                }
+                for (const ch of el.children) { const r = walk(ch, depth + 1); if (r) return r; }
+                return '';
             };
-            walk(document.body, 0);
-            return best;
+            return walk(document.body, 0);
         }""")
     except Exception:
         return ""
