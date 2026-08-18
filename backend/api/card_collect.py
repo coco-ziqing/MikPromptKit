@@ -595,10 +595,12 @@ def _ext_url(url: str) -> str:
 
 def _ocr_page_prompt(page) -> str:
     """页面截图 + Ollama 视觉模型 OCR 提取提示词。
-    优先截取「提示词」标签区域，找不到则全页截图。本地推理，无外部依赖。
-    模型未安装/不可用时静默返回空，不阻塞采集。"""
+    优先截取「提示词」标签区域，找不到则全页截图；截图先缩小到 ≤640px 宽（大图会触发 vision encoder 崩溃，实测 1264px 500 / 640px 正常）。
+    本地推理，无外部依赖；模型不可用或识别到页面框架文本时静默返回空。"""
     try:
         import base64 as _b64
+        import io as _io
+        from PIL import Image as _PILImage
         from api.ocr import _get_ollama_cfg, _call_model_sync
     except Exception as e:
         print(f"[CardCollect] OCR 导入失败: {e}")
@@ -628,20 +630,37 @@ def _ocr_page_prompt(page) -> str:
         shot = page.screenshot(clip=clip) if clip else page.screenshot()
         if not shot:
             return ""
-        img_b64 = _b64.b64encode(shot).decode("utf-8")
+        # 2. 缩小截图（≤640px 宽），防 vision encoder 崩溃 + 提速
+        img = _PILImage.open(_io.BytesIO(shot))
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        if img.width > 640:
+            ratio = 640 / img.width
+            img = img.resize((640, max(1, int(img.height * ratio))), _PILImage.LANCZOS)
+        buf = _io.BytesIO()
+        img.save(buf, "PNG")
+        img_b64 = _b64.b64encode(buf.getvalue()).decode("utf-8")
         cfg = _get_ollama_cfg()
         server_url = cfg.get("server_url", "http://127.0.0.1:11434").rstrip("/")
         model = cfg.get("vision_model") or "qwen2.5vl:3b"
         sys_prompt = (
-            "这是AI绘画/生成平台的作品详情页截图。请提取其中【提示词/Prompt】的完整内容。"
-            "如果页面显示『登录后查看』『需登录』或没有提示词内容，返回空字符串。"
-            "只返回提示词文本本身，不要输出任何解释或其他 UI 文本。")
+            "这是AI绘画/生成平台的作品详情页截图。请提取其中【提示词/Prompt】区域的完整内容。"
+            "注意：图片上的水印、作者署名、标语、活动标签（如#话题）、按钮文字、导航文字都不是提示词，不要提取。"
+            "如果页面显示『登录后查看』『需登录』或没有提示词区域，返回空字符串。"
+            "只返回提示词文本本身，不要输出任何解释或其他文字。")
         result = _call_model_sync(server_url, model, img_b64, sys_prompt, timeout_s=120)
         content = (result.get("content") or "").strip()
-        if len(content) < 8:
+        # 水印/短标语过滤：真实提示词一般较长；短文本多为水印/标签
+        if len(content) < 15:
             return ""
-        # 登录墙/非提示词过滤
+        # 3. 登录墙/页面框架文本过滤（导航/标签词命中 ≥3 判为 UI 文本）
         if any(k in content for k in ("登录后查看", "登录查看", "请登录", "需登录", "登录/注册")) and len(content) < 40:
+            return ""
+        ui_noise = ("首页", "创作", "登录", "注册", "教程", "会员", "积分", "搜索", "设置",
+                    "分享", "收藏", "点赞", "评论", "关注", "WebUI", "ComfyUI", "模型库", "训练",
+                    "发布", "资产", "个人中心", "限时", "特惠", "活动")
+        if sum(1 for w in ui_noise if w in content) >= 3:
+            print(f"[CardCollect] OCR 结果命中页面框架文本，不采信: {content[:60]}")
             return ""
         print(f"[CardCollect] OCR 提取提示词 {len(content)} 字 (model={model})")
         return content[:2000]
