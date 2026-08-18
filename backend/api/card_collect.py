@@ -178,6 +178,16 @@ def _ensure_tables():
             updated_at TEXT DEFAULT (datetime('now','localtime'))
         )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_ccs_sort ON card_collect_sites(sort_order)")
+        # v5.42.4: 需登录标注列（幂等 ALTER）
+        site_cols = [r["name"] for r in c.execute("PRAGMA table_info(card_collect_sites)").fetchall()]
+        if "login_required" not in site_cols:
+            c.execute("ALTER TABLE card_collect_sites ADD COLUMN login_required INTEGER DEFAULT 0")
+            print("[CardCollect] card_collect_sites 增加列 login_required")
+        c.commit()
+        # 预置种子标注：需登录的平台（实测/常识确认）
+        login_sites = {"Midjourney 画廊": 1, "即梦 AI": 1, "小红书": 1, "可灵 AI": 1, "海螺 AI": 1}
+        for nm, lr in login_sites.items():
+            c.execute("UPDATE card_collect_sites SET login_required=? WHERE name=?", [lr, nm])
         c.commit()
         # 种子数据：常用灵感图库（幂等，仅首次插入）
         cnt = c.execute("SELECT COUNT(*) FROM card_collect_sites").fetchone()[0]
@@ -1124,6 +1134,7 @@ def add_site(payload: dict = Body(...)):
     url = str(payload.get("url") or "").strip()
     desc = str(payload.get("description") or "").strip()[:300]
     emoji = str(payload.get("icon_emoji") or "🌐").strip()[:8]
+    login_req = 1 if payload.get("login_required") else 0
     if not name:
         raise HTTPException(400, "请输入图库名称")
     if not url.startswith("http://") and not url.startswith("https://"):
@@ -1136,9 +1147,9 @@ def add_site(payload: dict = Body(...)):
             raise HTTPException(400, "已存在同名图库")
         mx = c.execute("SELECT COALESCE(MAX(sort_order),0) FROM card_collect_sites").fetchone()[0]
         cur = c.execute(
-            "INSERT INTO card_collect_sites (name, url, description, logo, icon_emoji, sort_order, created_at) "
-            "VALUES (?,?,?,'',?,?,datetime('now','localtime'))",
-            [name, url, desc, emoji, int(mx) + 1])
+            "INSERT INTO card_collect_sites (name, url, description, logo, icon_emoji, login_required, sort_order, created_at) "
+            "VALUES (?,?,?,'',?,?,?,datetime('now','localtime'))",
+            [name, url, desc, emoji, login_req, int(mx) + 1])
         c.commit()
         row = c.execute("SELECT * FROM card_collect_sites WHERE id=?", [cur.lastrowid]).fetchone()
         return {"ok": True, "item": dict(row)}
@@ -1166,6 +1177,8 @@ def update_site(sid: int, payload: dict = Body(...)):
             upd["description"] = str(payload["description"] or "").strip()[:300]
         if "icon_emoji" in payload:
             upd["icon_emoji"] = str(payload["icon_emoji"] or "🌐").strip()[:8]
+        if "login_required" in payload:
+            upd["login_required"] = 1 if payload["login_required"] else 0
         if not upd:
             return {"ok": True, "item": dict(row)}
         upd["updated_at"] = "datetime('now','localtime')"

@@ -428,12 +428,14 @@
                     var logoHtml = s.logo
                         ? '<img src="/api/card-collect/sites/logo/' + self._esc(s.logo) + '" style="width:46px;height:46px;object-fit:cover;border-radius:10px;background:#f1f5f9;" alt="logo">'
                         : '<div style="width:46px;height:46px;border-radius:10px;background:rgba(127,127,127,.12);display:flex;align-items:center;justify-content:center;font-size:22px;">' + self._esc(s.icon_emoji || '🌐') + '</div>';
+                    var loginBadge = s.login_required ? '<span style="color:#f59e0b;font-size:10px;border:1px solid rgba(245,158,11,.4);border-radius:6px;padding:1px 5px;margin-left:6px;">🔒 需登录</span>' : '';
                     return '<div style="border:1px solid rgba(127,127,127,.15);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;">' +
                         '<div style="display:flex;gap:10px;align-items:center;">' + logoHtml +
-                        '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;">' + self._esc(s.name) + '</div>' +
+                        '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;">' + self._esc(s.name) + loginBadge + '</div>' +
                         '<div style="font-size:11px;color:var(--text-muted);word-break:break-all;">' + self._esc(s.url) + '</div></div>' +
                         '</div>' +
                         (s.description ? '<div style="font-size:12px;color:var(--text-muted);line-height:1.5;">' + self._esc(s.description) + '</div>' : '') +
+                        (s.login_required ? '<div style="font-size:11px;color:#f59e0b;">⚠️ 该站点需登录，未登录状态下可能无法采集内容</div>' : '') +
                         '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
                         '<button class="btn btn-sm btn-primary" onclick="App._ccOpenSite(' + s.id + ')">🔍 打开检索</button>' +
                         '<button class="btn btn-sm btn-secondary" title="替换品牌 logo" onclick="App._ccUploadLogo(' + s.id + ')">🖼 Logo</button>' +
@@ -451,7 +453,8 @@
                 for (var i = 0; i < sites.length; i++) {
                     if (sites[i].id === id) {
                         window.open(sites[i].url, '_blank', 'noopener');
-                        self._toast('已打开 ' + sites[i].name + '，找到目标内容后复制地址回采集面板收藏/采集', 'info');
+                        if (sites[i].login_required) self._toast('已打开 ' + sites[i].name + '（需登录，未登录可能看不到内容，找到目标后复制地址回来采集）', 'info');
+                        else self._toast('已打开 ' + sites[i].name + '，找到目标内容后复制地址回采集面板收藏/采集', 'info');
                         return;
                     }
                 }
@@ -473,7 +476,9 @@
                 '<label style="font-size:12px;color:var(--text-muted);">简介</label>' +
                 '<textarea id="ccSiteDesc" rows="2" placeholder="简短介绍该图库的定位与内容" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' + self._esc(s.description || '') + '</textarea>' +
                 '<label style="font-size:12px;color:var(--text-muted);">图标（无 logo 时显示的 emoji）</label>' +
-                '<input id="ccSiteEmoji" value="' + self._esc(s.icon_emoji || '🌐') + '" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:12px;">' +
+                '<input id="ccSiteEmoji" value="' + self._esc(s.icon_emoji || '🌐') + '" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' +
+                '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);margin-bottom:12px;cursor:pointer;">' +
+                '<input type="checkbox" id="ccSiteLogin" ' + (s.login_required ? 'checked' : '') + '> 🔒 需登录（未登录状态下采集可能失败）</label>' +
                 '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
                 '<button class="btn btn-secondary btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>' +
                 '<button class="btn btn-primary btn-sm" onclick="App._ccSaveSite(' + (s.id || 0) + ')">保存</button></div>';
@@ -498,9 +503,10 @@
             var url = (document.getElementById('ccSiteUrl') || {}).value || '';
             var desc = (document.getElementById('ccSiteDesc') || {}).value || '';
             var emoji = (document.getElementById('ccSiteEmoji') || {}).value || '🌐';
+            var loginReq = !!(document.getElementById('ccSiteLogin') || {}).checked;
             if (!name.trim()) { this._toast('请输入图库名称', 'error'); return; }
             if (!/^https?:\/\//.test(url.trim())) { this._toast('请输入合法的 http/https 地址', 'error'); return; }
-            var payload = { name: name.trim(), url: url.trim(), description: desc.trim(), icon_emoji: emoji.trim() };
+            var payload = { name: name.trim(), url: url.trim(), description: desc.trim(), icon_emoji: emoji.trim(), login_required: loginReq };
             var req = id
                 ? App.fetchJSON('/api/card-collect/sites/' + id, { method: 'PUT', body: JSON.stringify(payload) })
                 : App.fetchJSON('/api/card-collect/sites', { method: 'POST', body: JSON.stringify(payload) });
