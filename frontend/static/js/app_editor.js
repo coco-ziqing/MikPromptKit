@@ -313,7 +313,7 @@ Object.assign(App, {
                                 }
                             </div>
                             ${(p.thumbnail || videoFile) && App.state.editMode ? '<span class="thumb-clear-btn" onclick="event.stopPropagation();App.clearCardThumbnail(' + p.id + ')" title="清除缩略图">✕</span>' : ''}
-                            ${(p.thumbnail || videoFile) ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (videoFile ? 'App.openVideoViewer(\'' + videoFile + '\', \'' + (p.thumbnail || '') + '\', \'' + p.id + '\', \'' + videoFps + '\')' : 'App.openCardImageViewer(\'' + p.id + '\', \'' + origFile + '\')') + '" title="' + (videoFile ? App._t('auto.view_原视频', '查看原视频') : App._t('auto.view_原图', '查看原图')) + '">' + (videoFile ? '▶' : '🔍') + '</span>' : ''}
+                            ${(p.thumbnail || videoFile) ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (videoFile ? 'App.openCardVideoViewer(\'' + p.id + '\', \'' + videoFile + '\', \'' + (p.thumbnail || '') + '\', \'' + videoFps + '\')' : 'App.openCardImageViewer(\'' + p.id + '\', \'' + origFile + '\')') + '" title="' + (videoFile ? App._t('auto.view_原视频', '查看原视频') : App._t('auto.view_原图', '查看原图')) + '">' + (videoFile ? '▶' : '🔍') + '</span>' : ''}
                         </div>
                         <div class="card-add-row">
                             <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>

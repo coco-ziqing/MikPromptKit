@@ -377,6 +377,8 @@
                 </div>
                 <!-- v5.41.4: 本词卡生成视频历史条（多条视频快捷切换/设为当前/删除） -->
                 <div id="vidGenHistory" style="display:none;padding:6px 10px;background:#000;overflow-x:auto;align-items:center;white-space:nowrap;"></div>
+                <!-- v5.42.22: 同卡视频池条（当前预览/生成历史自由切换） -->
+                <div id="vidViewerVersions" style="display:none;padding:6px 10px;background:#000;overflow-x:auto;align-items:center;white-space:nowrap;"></div>
                 <!-- 时间轴滑块：单独一行，宽度与视频一致 -->
                 <div id="vidSeekRow" style="padding:0 10px;background:#000;">
                     <input type="range" id="vidViewerSeek" min="0" max="1000" value="0" style="width:100%;height:8px;cursor:pointer;accent-color:#6366f1;margin:0;padding:0;display:block;">
@@ -1118,7 +1120,7 @@
     <link rel="preload" href="/static/js/app_tools_modal_exec.js?v=9b4b1fe8" as="script">
     <link rel="preload" href="/static/js/app_collections_editor.js?v=6c8bc4a8" as="script">
     <link rel="preload" href="/static/js/app_collections_batch.js?v=e2f5b8d5" as="script">
-    <link rel="preload" href="/static/js/app_collections_collections.js?v=a5b7e066" as="script">
+    <link rel="preload" href="/static/js/app_collections_collections.js?v=a5b7e067" as="script">
     <link rel="preload" href="/static/js/app_collections_cards.js?v=81786143" as="script">
     <link rel="preload" href="/static/js/app_media.js?v=54527403" as="script">
     <link rel="preload" href="/static/js/word_editor.js?v=3a2e2b77" as="script">
@@ -1139,7 +1141,7 @@
     <script defer src="/static/js/presence_client.js?v=ad8634f6"></script>
     <script defer src="/static/js/asset_library_ui.js?v=368d785f"></script>
     <script defer src="/static/js/project_roles_ui.js?v=53604600"></script>
-    <script defer src="/static/js/card_collect_ui.js?v=54200006"></script>
+    <script defer src="/static/js/card_collect_ui.js?v=54200007"></script>
     <script defer src="/static/js/card_gen_ui.js?v=54100006"></script>
     <script defer src="/static/js/vjshi_upload_ui.js?v=54100002"></script>
 <script defer src="/static/js/device_manager_ui.js?v=5a25b28b"></script>
@@ -1154,10 +1156,10 @@
     <script defer src="/static/js/comfy_workflow_lib_runner.js?v=6ad72ed9"></script>
     <script defer src="/static/js/health_check.js?v=f99f6267"></script>
     <script defer src="/static/js/app_sync.js?v=b5cd1aa2"></script>
-    <script defer src="/static/js/app_editor.js?v=54e32659"></script>                
+    <script defer src="/static/js/app_editor.js?v=54e32660"></script>                
     <script defer src="/static/js/app_collections_editor.js?v=6c8bc4a8"></script>
     <script defer src="/static/js/app_collections_batch.js?v=e2f5b8d5"></script>
-    <script defer src="/static/js/app_collections_collections.js?v=a5b7e066"></script>
+    <script defer src="/static/js/app_collections_collections.js?v=a5b7e067"></script>
     <script defer src="/static/js/app_collections_cards.js?v=81786143"></script>
     <script defer src="/static/js/app_tools_core.js?v=2b8615cd"></script>
     <script defer src="/static/js/app_tools_drop_export.js?v=0c43587a"></script>
@@ -1165,7 +1167,7 @@
     <script defer src="/static/js/app_maintenance.js?v=a1b2c3d4"></script>
 <script defer src="/static/js/app_import_export.js?v=5d30178f"></script>
     <script defer src="/static/js/app_media.js?v=54527403"></script>
-<script defer src="/static/js/app_media_viewer.js?v=54100006"></script>
+<script defer src="/static/js/app_media_viewer.js?v=54100007"></script>
     <script defer src="/static/js/ai_tools.js?v=5380005a"></script>
     <script defer src="/static/js/word_picker.js?v=18cdc0d8"></script>
     <script defer src="/static/js/word_editor.js?v=3a2e2b77"></script>

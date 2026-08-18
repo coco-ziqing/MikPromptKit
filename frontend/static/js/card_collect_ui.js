@@ -565,17 +565,31 @@
     // ============ 挂载到 App ============
     App.openCardCollect = function () { CC.open(); };
 
-    // v5.42.19: 词库查看原图 → 先取词卡图片池（采集原图+生成图），支持查看器内自由切换
+    // v5.42.19/22: 词库查看原图 → 取通用词卡媒体池（当前原图+生成历史+采集原图），查看器内自由切换
     App.openCardImageViewer = function (cardId, fallbackFile) {
-        App.fetchJSON('/api/card-collect/' + cardId + '/images').then(function (d) {
-            var items = (d && d.ok && d.items) || [];
-            if (items.length >= 2) {
-                App.openImageViewer(fallbackFile || items[0].url.split('/').pop(), cardId, items);
+        App.fetchJSON('/api/v4/word-cards/' + cardId + '/media-pool').then(function (d) {
+            var imgs = (d && d.ok && d.images) || [];
+            if (imgs.length >= 2) {
+                App.openImageViewer(fallbackFile || imgs[0].url.split('/').pop(), cardId, imgs);
             } else {
                 App.openImageViewer(fallbackFile, cardId);
             }
         }).catch(function () {
             App.openImageViewer(fallbackFile, cardId);
+        });
+    };
+
+    // v5.42.22: 词库查看原视频 → 取通用词卡媒体池（当前预览+生成视频历史），查看器内自由切换
+    App.openCardVideoViewer = function (cardId, fallbackFile, posterFile, fps) {
+        App.fetchJSON('/api/v4/word-cards/' + cardId + '/media-pool').then(function (d) {
+            var vids = (d && d.ok && d.videos) || [];
+            if (vids.length >= 2) {
+                App.openVideoViewer(fallbackFile, posterFile || '', cardId, fps || '', vids);
+            } else {
+                App.openVideoViewer(fallbackFile, posterFile || '', cardId, fps || '');
+            }
+        }).catch(function () {
+            App.openVideoViewer(fallbackFile, cardId, posterFile || '', fps || '');
         });
     };
 

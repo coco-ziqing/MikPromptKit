@@ -722,6 +722,81 @@ def delete_card_thumbnail(card_id: int):
     return {"ok": True}
 
 
+@router.get("/{card_id}/media-pool")
+def card_media_pool(card_id: int):
+    """通用词卡媒体池：该词卡全部图片与视频（当前原图/预览 + 生成历史 + 采集原图），
+    供查看原图/视频弹窗自由切换（v5.42.22 统一全词卡）。"""
+    import os as _os
+    db = get_db()
+    card = db.execute("SELECT id, original_ref, preview_media, thumbnail, media_type, source_id, module FROM word_card WHERE id=? AND is_deleted=0", [card_id]).fetchone()
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    images, videos = [], []
+    seen_img, seen_vid = set(), set()
+
+    def _file_ok(fn, subdirs):
+        if not fn or fn.startswith("http"):
+            return False
+        for d in subdirs:
+            if _os.path.exists(_os.path.join(d, _os.path.basename(fn))):
+                return True
+        return False
+
+    orig_dirs = [_os.path.join(root, "data", "originals"),
+                 _os.path.join(root, "data", "wc_media", "originals"),
+                 _os.path.join(root, "data", "thumbnails"),
+                 _os.path.join(root, "data", "card_collect", "images")]
+    vid_dirs = [_os.path.join(root, "data", "wc_media", "videos"),
+                _os.path.join(root, "data", "card_collect", "videos"),
+                _os.path.join(root, "data", "videos"),
+                _os.path.join(root, "data", "thumbnails", "videos")]
+
+    # 1) 当前原图（original_ref 文件）
+    if card["original_ref"] and not card["original_ref"].startswith("http") and _file_ok(card["original_ref"], orig_dirs):
+        images.append({"url": "/api/media/original/" + card["original_ref"], "label": "当前原图", "kind": "current", "time": ""})
+        seen_img.add(card["original_ref"])
+    # 2) 当前预览视频（preview_media 视频）
+    if card["preview_media"] and _file_ok(card["preview_media"], vid_dirs):
+        videos.append({"url": "/api/v4/word-cards/videos/" + card["preview_media"], "label": "当前视频", "kind": "current", "time": ""})
+        seen_vid.add(card["preview_media"])
+
+    # 3) 生成历史（card_gen_tasks success/done 图片与视频产物）
+    tlabel = {"text2image": "文生图", "image2image": "图生图", "upscale": "高清",
+              "text2video": "文生视频", "image2video": "图生视频", "original": "采集原图"}
+    for t in db.execute(
+            "SELECT task_type, result_original, result_filename, media_type, created_at, status "
+            "FROM card_gen_tasks WHERE card_id=? AND status IN ('success','done') ORDER BY id",
+            [card_id]).fetchall():
+        lbl = (tlabel.get(t["task_type"], t["task_type"] or "") + " · " + (t["created_at"] or "")[5:16]).strip(" ·")
+        if t["media_type"] == "video":
+            fn = t["result_filename"]
+            if fn and fn not in seen_vid and _file_ok(fn, vid_dirs):
+                videos.append({"url": "/api/v4/word-cards/videos/" + fn, "label": lbl or "生成视频", "kind": "gen", "time": t["created_at"] or ""})
+                seen_vid.add(fn)
+        else:
+            fn = t["result_original"] or t["result_filename"]
+            if fn and fn not in seen_img and _file_ok(fn, orig_dirs):
+                images.append({"url": "/api/media/original/" + fn, "label": lbl or "生成图", "kind": "gen", "time": t["created_at"] or ""})
+                seen_img.add(fn)
+
+    # 4) 即梦资产多版本（asset_card_versions）
+    for v in db.execute(
+            "SELECT acv.file_name, acv.media_type, acv.created_at FROM asset_card_versions acv "
+            "WHERE acv.word_card_id=? ORDER BY acv.id", [card_id]).fetchall():
+        fn = v["file_name"]
+        if not fn or fn.startswith("http"):
+            continue
+        if v["media_type"] == "video" and fn not in seen_vid and _file_ok(fn, vid_dirs):
+            videos.append({"url": "/api/v4/word-cards/videos/" + fn, "label": "资产视频 · " + (v["created_at"] or "")[5:16], "kind": "asset", "time": v["created_at"] or ""})
+            seen_vid.add(fn)
+        elif fn not in seen_img and _file_ok(fn, orig_dirs):
+            images.append({"url": "/api/media/original/" + fn, "label": "资产图 · " + (v["created_at"] or "")[5:16], "kind": "asset", "time": v["created_at"] or ""})
+            seen_img.add(fn)
+
+    return {"ok": True, "images": images, "videos": videos}
+
+
 @router.get("/thumbnails/{filename}")
 def serve_card_thumbnail(filename: str):
     """返回词卡缩略图文件。

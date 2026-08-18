@@ -292,6 +292,35 @@ Object.assign(App, {
     },
 
     // v5.36.22: 加载同卡多版本列表（词卡多版本查看/切换/设为主预览）
+    // v5.42.22: 同卡视频池切换条（查看原视频自由切换 当前/生成历史）
+    _renderVidPool(videoList, currentFile) {
+        var box = document.getElementById('vidViewerVersions');
+        if (!box) return;
+        if (!videoList || videoList.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+        var self = this;
+        var h = '<span style="color:#cbd5e1;font-size:11px;margin-right:4px;white-space:nowrap;">🎬 视频池</span>';
+        for (var i = 0; i < videoList.length; i++) {
+            var it = videoList[i];
+            var isCur = currentFile && it.url.indexOf(currentFile) >= 0;
+            var border = isCur ? 'border:2px solid #10b981;' : 'border:2px solid transparent;opacity:0.72;';
+            h += '<span class="vid-pool-item" data-url="' + App._escape(it.url || '') + '" title="' + App._escape(it.label || '') + '" style="position:relative;cursor:pointer;display:inline-block;margin-right:5px;border-radius:6px;overflow:hidden;background:#0f172a;' + border + '">' +
+                 '<span style="display:inline-flex;width:56px;height:40px;align-items:center;justify-content:center;background:#1e293b;color:#fff;font-size:16px;">🎬</span>' +
+                 '<span style="position:absolute;bottom:0;left:0;right:0;font-size:8px;background:rgba(0,0,0,0.6);color:#fff;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App._escape((it.label || '').split('·')[0]) + '</span></span>';
+        }
+        box.innerHTML = h;
+        box.style.display = 'flex';
+        box.querySelectorAll('.vid-pool-item').forEach(function(el) {
+            el.addEventListener('click', function() {
+                var url = this.dataset.url;
+                if (!url) return;
+                var filename = url.split('/').pop().split('?')[0];
+                self._applyVidFile(filename);
+                box.querySelectorAll('.vid-pool-item').forEach(function(x) { x.style.borderColor = 'transparent'; x.style.opacity = '0.72'; });
+                this.style.borderColor = '#10b981'; this.style.opacity = '1';
+            });
+        });
+    },
+
     // v5.42.19: 同卡图片池切换条（查看原图自由切换 采集原图/生成图）
     _renderImgPool(imageList, currentFile) {
         var box = document.getElementById('imgViewerVersions');
@@ -509,7 +538,8 @@ Object.assign(App, {
 
     // ============ 视频查看器(逐帧控制) ============
 
-    openVideoViewer(filename, promptId, maybePromptId, fps) {
+    openVideoViewer(filename, promptId, maybePromptId, fps, videoList) {
+        this._renderVidPool(videoList || null, filename);
         // v5.37.8: 参数兼容 — 卡片调用传 (filename, thumbnail, promptId, fps)；
         // 直接调用传 (filename, promptId)。第二参为非数字字符串（缩略图）时取第三参为 promptId
         if (typeof promptId === 'string' && !/^\d+$/.test(promptId)) {
