@@ -749,6 +749,8 @@ def card_media_pool(card_id: int):
                  _os.path.join(root, "data", "card_collect", "images")]
     vid_dirs = [_os.path.join(root, "data", "wc_media", "videos"),
                 _os.path.join(root, "data", "card_collect", "videos"),
+                _os.path.join(root, "data", "card_gen", "videos"),
+                _os.path.join(root, "data", "dreamina_assets", "videos"),
                 _os.path.join(root, "data", "videos"),
                 _os.path.join(root, "data", "thumbnails", "videos")]
 
