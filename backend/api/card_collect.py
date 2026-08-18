@@ -72,6 +72,7 @@ PLATFORM_GROUPS = {
     "jimeng": "即梦灵感", "jianying.com": "即梦灵感",
     "xiaohongshu": "小红书灵感", "xhslink": "小红书灵感",
     "liblib.art": "LibLib 灵感", "liblibai": "LibLib 灵感",
+    "miaohua": "秒画灵感", "sensetime": "秒画灵感",
     "midjourney": "Midjourney 灵感",
     "bilibili": "B站灵感",
     "douyin": "抖音灵感",
