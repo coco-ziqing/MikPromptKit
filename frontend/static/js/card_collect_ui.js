@@ -227,7 +227,7 @@
                 var it = null;
                 for (var i = 0; i < items.length; i++) { if (items[i].id === id) { it = items[i]; break; } }
                 if (!it) { self._toast('未找到该预采集项', 'error'); return; }
-                var ov = this._modal('');
+                var ov = self._modal('');
                 if (!ov) return;
                 ov.querySelector('.modal-content').innerHTML =
                     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><b>✏️ 修正识别结果 #' + id + '</b>' +
@@ -290,7 +290,7 @@
         _archiveIds: function (ids) {
             var self = this;
             this._loadGroups(function (groups, suggests) {
-                var ov = this._modal('');
+                var ov = self._modal('');
                 if (!ov) return;
                 var opts = groups.map(function (g) { return '<option value="' + g.id + '">' + self._esc(g.name) + '</option>'; }).join('');
                 var sugOpts = suggests.map(function (s) { return '<option value="__' + self._esc(s) + '">（建议）' + self._esc(s) + '</option>'; }).join('');
@@ -336,7 +336,7 @@
                 var card = ch.card || {};
                 var item = ch.item;
                 var fav = ch.favorite;
-                var ov = this._modal('');
+                var ov = self._modal('');
                 if (!ov) return;
                 var rows = [
                     '<div><span style="color:#10b981;">🎴 词卡</span> #' + card.id + ' · ' + self._esc(card.name) + '</div>',
