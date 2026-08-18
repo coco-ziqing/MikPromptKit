@@ -160,8 +160,9 @@ Object.assign(App, {
         var img = document.getElementById('imageViewerImg');
 
         if (!filename) { App.showToast('暂无原图', 'warning'); return; }
-        // v5.42.19: 同卡图片池切换条（采集原图 + 生成历史图）
-        this._renderImgPool(imageList || null, filename);
+        // v5.42.19/22: 同卡图片池切换条（延迟渲染，避开 _loadCardVersions 的立即清空）
+        var self0 = this;
+        setTimeout(function () { self0._renderImgPool(imageList || null, filename); }, 120);
 
         modal.style.display = 'flex';
         modal.setAttribute('data-filename', filename);
@@ -364,6 +365,8 @@ Object.assign(App, {
     _loadCardVersions(promptId) {
         var box = document.getElementById('imgViewerVersions');
         if (!box) return;
+        // v5.42.22: 图片池条优先——已有图片池时不再渲染 seedance 版本条（避免互相覆盖）
+        if (box.querySelector('.img-pool-item')) return;
         var self = this;
         box.style.display = 'none';
         box.innerHTML = '';
