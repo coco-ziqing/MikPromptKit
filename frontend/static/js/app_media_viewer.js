@@ -154,12 +154,14 @@ Object.assign(App, {
 
     // ============ 原图查看器(滚轮缩放 + 拖拽移动) ============
 
-    openImageViewer(filename, promptId) {
+    openImageViewer(filename, promptId, imageList) {
         var modal = document.getElementById('modalImageViewer');
         var container = document.getElementById('imageViewerContainer');
         var img = document.getElementById('imageViewerImg');
 
         if (!filename) { App.showToast('暂无原图', 'warning'); return; }
+        // v5.42.19: 同卡图片池切换条（采集原图 + 生成历史图）
+        this._renderImgPool(imageList || null, filename);
 
         modal.style.display = 'flex';
         modal.setAttribute('data-filename', filename);
@@ -290,6 +292,46 @@ Object.assign(App, {
     },
 
     // v5.36.22: 加载同卡多版本列表（词卡多版本查看/切换/设为主预览）
+    // v5.42.19: 同卡图片池切换条（查看原图自由切换 采集原图/生成图）
+    _renderImgPool(imageList, currentFile) {
+        var box = document.getElementById('imgViewerVersions');
+        if (!box) return;
+        if (!imageList || imageList.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+        var self = this;
+        var h = '<span style="color:#cbd5e1;font-size:11px;margin-right:4px;white-space:nowrap;">🖼 图片池</span>';
+        for (var i = 0; i < imageList.length; i++) {
+            var it = imageList[i];
+            var isCur = it.url.indexOf(currentFile) >= 0;
+            var border = isCur ? 'border:2px solid #10b981;' : 'border:2px solid transparent;opacity:0.72;';
+            h += '<span class="img-pool-item" data-url="' + App._escape(it.url || '') + '" title="' + App._escape(it.label || '') + '" style="position:relative;cursor:pointer;display:inline-block;margin-right:5px;border-radius:6px;overflow:hidden;background:#0f172a;' + border + '">' +
+                 '<img src="' + App._escape(it.url || '') + '" style="width:56px;height:40px;object-fit:cover;display:block;" onerror="this.style.opacity=0.2">' +
+                 '<span style="position:absolute;bottom:0;left:0;right:0;font-size:8px;background:rgba(0,0,0,0.6);color:#fff;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App._escape((it.label || '').split('·')[0]) + '</span></span>';
+        }
+        box.innerHTML = h;
+        box.style.display = 'flex';
+        box.querySelectorAll('.img-pool-item').forEach(function(el) {
+            el.addEventListener('click', function() {
+                var url = this.dataset.url;
+                if (!url) return;
+                var imgEl = document.getElementById('imageViewerImg');
+                var ld = document.getElementById('imgViewerLoading');
+                var seq2 = (self._viewerLoadSeq = (self._viewerLoadSeq || 0) + 1);
+                imgEl.src = url;
+                imgEl.style.transform = 'scale(1)';
+                imgEl._viewScale = 1;
+                if (ld) ld.style.display = 'flex';
+                imgEl.onload = function() {
+                    if (self._viewerLoadSeq !== seq2) return;
+                    if (ld) ld.style.display = 'none';
+                    imgEl._fitReady = true;
+                    imgEl._fitScale = imgEl.clientWidth / (imgEl.naturalWidth || 1);
+                };
+                box.querySelectorAll('.img-pool-item').forEach(function(x) { x.style.borderColor = 'transparent'; x.style.opacity = '0.72'; });
+                this.style.borderColor = '#10b981'; this.style.opacity = '1';
+            });
+        });
+    },
+
     _loadCardVersions(promptId) {
         var box = document.getElementById('imgViewerVersions');
         if (!box) return;

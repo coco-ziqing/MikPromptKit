@@ -565,6 +565,21 @@
     // ============ 挂载到 App ============
     App.openCardCollect = function () { CC.open(); };
 
+    // v5.42.19: 词库查看原图 → 先取词卡图片池（采集原图+生成图），支持查看器内自由切换
+    App.openCardImageViewer = function (cardId, fallbackFile) {
+        App.fetchJSON('/api/card-collect/' + cardId + '/images').then(function (d) {
+            var items = (d && d.ok && d.items) || [];
+            if (items.length >= 2) {
+                App.openImageViewer(fallbackFile || items[0].url.split('/').pop(), cardId, items);
+            } else {
+                App.openImageViewer(fallbackFile, cardId);
+            }
+        }).catch(function () {
+            App.openImageViewer(fallbackFile, cardId);
+        });
+    };
+
+
     // ============ v5.42.16: 词库卡片溯源按钮注入 ============
     // 包装 App.renderPrompts：渲染完成后，为采集录入的词卡（module=card_collect）
     // 在卡片操作区注入「🔗 溯源」按钮，点击调 trace API 打开来源网页
