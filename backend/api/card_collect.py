@@ -476,24 +476,34 @@ def _extract_prompt_from_dom(page):
 
 
 def _extract_media_from_dom(page):
-    """DOM 媒体元素收集：img[src/srcset]、video[src]、source，去重过滤"""
+    """DOM 媒体元素收集：img[src/srcset]、video[src]。
+    v5.42.11：优先收集显示面积 ≥8000px² 的主图（过滤图标/小封面）；
+    若无大图（懒加载未渲染）则降级收集全部 http 图，防 0 项失败。"""
     try:
         urls = page.evaluate("""() => {
-            const out = [];
-            const push = u => { if (u && u.startsWith('http') && out.indexOf(u) < 0) out.push(u); };
-            document.querySelectorAll('img').forEach(im => {
-                push(im.currentSrc || im.src);
+            const MIN_AREA = 8000;  // ~90x90
+            const big = [], small = [];
+            const push = (arr, u) => { if (u && u.startsWith('http') && arr.indexOf(u) < 0) arr.push(u); };
+            const collect = (im, arr) => {
+                push(arr, im.currentSrc || im.src);
                 const srcset = (im.getAttribute('srcset') || '');
-                srcset.split(',').forEach(s => { const p = s.trim().split(/\\s+/)[0]; if (p) push(p); });
+                srcset.split(',').forEach(s => { const p = s.trim().split(/\\s+/)[0]; if (p) push(arr, p); });
+            };
+            document.querySelectorAll('img').forEach(im => {
+                const r = im.getBoundingClientRect();
+                collect(im, (r.width * r.height >= MIN_AREA) ? big : small);
             });
             document.querySelectorAll('video').forEach(v => {
-                push(v.currentSrc || v.src);
-                v.querySelectorAll('source').forEach(s => push(s.src));
+                const r = v.getBoundingClientRect();
+                const arr = (r.width * r.height >= MIN_AREA) ? big : small;
+                push(arr, v.currentSrc || v.src);
+                v.querySelectorAll('source').forEach(s => push(arr, s.src));
             });
-            document.querySelectorAll('source[type^="video"]').forEach(s => push(s.src));
-            return out;
+            document.querySelectorAll('source[type^="video"]').forEach(s => push(small, s.src));
+            // 大图优先；无大图（懒加载未渲染）降级全部
+            return big.length ? big : small;
         }""")
-        # 过滤：跳过 base64、迷你图、icon 类；保留 max 20
+        # 过滤：跳过 base64、静态资源；保留 max 20
         filtered = []
         for u in urls:
             if not _looks_media_url(u):
