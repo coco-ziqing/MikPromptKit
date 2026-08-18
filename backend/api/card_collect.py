@@ -57,9 +57,11 @@ PROMPT_KEYS = ("prompt", "prompt_text", "prompt_content", "prompt_cn", "prompt_z
 MODEL_KEYS = ("model", "model_name", "model_version", "engine", "generate_model", "model_label")
 PARAM_KEYS = ("params", "parameters", "extra", "config", "setting", "settings", "generate_params")
 MODEL_PATTERN = re.compile(
-    r"(seedance[^\s,;\"']*|jimeng[^\s,;\"']*|midjourney|mj v\d|niji|stable[ -]?diffusion|sd\d|flux[^\s,;\"']*|qwen[^\s,;\"']*|通义|"
-    r"kling|k[-\s]?ling|可灵|即梦|dall[ -]?e\s*\d*|gpt[ -]?image|liblib[^\s,;\"']*|哩布|"
-    r"comfyui|fooocus|wan[^\s,;\"']*|hunyuan|混元|hailuo|海螺|pika|luma|runway|veo[^\s,;\"']*|sora)",
+    r"(seedance[^\s,;\"']*|jimeng[^\s,;\"']*|midjourney|mj v\d|niji|stable[ -]?diffusion|sd\d|sdxl|"
+    r"flux[^\s,;\"']*|f\.?1[^\s,;\"']*|illustrious|noobai|pony[^\s,;\"']*|qwen[^\s,;\"']*|通义|"
+    r"kling|k[-\s]?ling|可灵|即梦|dall[ -]?e\s*\d*|gpt[ -]?image|"
+    r"comfyui|fooocus|wan[^\s,;\"']*|hunyuan|混元|hailuo|海螺|pika|luma|runway|veo[^\s,;\"']*|sora|"
+    r"chilloutmix|anything[ -]?v?\d*|counterfeit|majicmix|dreamshaper)",
     re.IGNORECASE)
 PARAM_PATTERN = re.compile(
     r"(\d{2,4}\s*[xX×]\s*\d{2,4}|1:1|16:9|9:16|4:3|3:4|2:3|3:2|21:9|seed\s*[:=]?\s*\d+|"
@@ -516,13 +518,16 @@ def _extract_media_from_dom(page):
 
 
 def _clean_model(m: str) -> str:
-    """清理模型名：截断站点标题后缀（AI绘图/AI绘画/LiblibAI 等）"""
+    """清理模型名：截断站点标题后缀（AI绘图/哩布在线/LiblibAI 等，取最早出现位置截断）"""
     m = (m or "").strip()
-    for tail in ("-AI绘图", "-AI绘画", "-LiblibAI", "-Liblib", "AI绘图", "AI绘画", "模型库", "在线生成"):
+    best = -1
+    for tail in ("-AI绘图", "-AI绘画", "-LiblibAI", "-Liblib", "-哩布", "哩布在线", "在线可运行",
+                 "AI绘图", "AI绘画", "模型库", "在线生成", "基础模型", "-水月"):
         idx = m.lower().find(tail.lower())
-        if idx > 0:
-            m = m[:idx].strip()
-            break
+        if idx > 0 and (best < 0 or idx < best):
+            best = idx
+    if best > 0:
+        m = m[:best].strip()
     return m[:120]
 
 
@@ -542,9 +547,14 @@ def _extract_model_params_from_text(page, page_title=""):
         pass
     text = (text or "") + "\n" + (page_title or "")
     models = set(MODEL_PATTERN.findall(text))
+    # v5.42.14: 排除站点名（LiblibAI/哩布/即梦 等平台名非模型名）
+    site_names = ("liblib", "哩布", "jimeng", "即梦", "midjourney官网")
+    # 前缀匹配：仅删除「以站点名开头」的模型串（LiblibAI/jimeng官网），
+    # 不误杀 "F.1基础算法模型-...-LiblibAI" 这类模型名+站点后缀的整串（_clean_model 会截断后缀）
+    models = {m for m in models if not any(m.lower().startswith(s) for s in site_names)}
     model = ""
-    for m in ("seedance", "midjourney", "stable diffusion", "flux", "qwen", "通义", "kling", "可灵", "即梦",
-              "dall-e", "liblib", "hailuo", "海螺", "wan", "混元", "veo", "sora", "sd"):
+    for m in ("seedance", "midjourney", "stable diffusion", "flux", "f.1", "f1", "qwen", "通义", "kling", "可灵", "即梦",
+              "dall-e", "hailuo", "海螺", "wan", "混元", "veo", "sora", "sd", "sdxl", "illustrious", "noobai", "pony"):
         for mm in list(models):
             if mm and mm.lower().startswith(m):
                 model = _clean_model(mm)
@@ -1211,7 +1221,7 @@ def archive_items(payload: dict = Body(...)):
                 if row["media_original_url"]:
                     dup = c.execute(
                         "SELECT wc.id FROM word_card wc JOIN card_collect_items ci ON ci.id=wc.source_id "
-                        "WHERE ci.media_original_url=? AND wc.is_deleted=0 LIMIT 1",
+                        "WHERE ci.media_original_url=? AND wc.is_deleted=0 AND wc.module='card_collect' LIMIT 1",
                         [row["media_original_url"]]).fetchone()
                     if dup:
                         skipped.append({"id": iid, "reason": f"同图已归档(词卡#{dup['id']})"})
