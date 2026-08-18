@@ -869,11 +869,18 @@ def _collect_worker(tid: int):
                 _task_update(tid, status="success", progress=100, found_count=inserted,
                              message=f"采集完成，入库 {inserted} 项", page_title=page_title, finished_at=_now_str())
                 print(f"[CardCollect] 任务 {tid} 完成：{url} → {inserted} 项")
-            finally:
+                # v5.42.10: 采集完成后用 Chrome 原生方式在同 profile 打开新标签保留页面
+                # （playwright 页面在连接退出时会关闭，原生标签不受影响，避免用户看到"跳转空白页"）
                 try:
-                    browser.close()
-                except Exception:
-                    pass
+                    subprocess.Popen(
+                        [CHROME_BIN, f"--user-data-dir={PROFILE_DIR}", url],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception as e:
+                    print(f"[CardCollect] 保留页面失败: {e}")
+            finally:
+                # v5.42.10: 不关闭浏览器与页面（with sync_playwright 退出自动断开 CDP，
+                # 保留 Chrome 实例与用户可见页面）
+                pass
     except Exception as e:
         print(f"[CardCollect] 任务 {tid} 异常: {e}")
         _task_update(tid, status="fail", progress=100, message=f"采集失败: {str(e)[:200]}", finished_at=_now_str())
