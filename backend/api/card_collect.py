@@ -49,13 +49,13 @@ for _p in (
 MAX_ITEMS_PER_TASK = 20      # 单任务最多采集项
 MAX_DOWNLOAD_BYTES = 60 * 1024 * 1024  # 单媒体 60MB 上限（防超大视频拖垮）
 SKIP_MEDIA_KEYWORDS = ("logo", "icon", "avatar", "favicon", "sprite", "emoji", "placeholder",
-                       "blank.gif", "1x1", "pixel", "advertisement", "banner")
+                       "blank.gif", "1x1", "pixel", "advertisement", "banner", "vipModel", "badge", "qr")
 PROMPT_KEYS = ("prompt", "prompt_text", "prompt_content", "prompt_cn", "prompt_zh", "describe",
                "description", "text", "positive_prompt", "prompt_en")
 MODEL_KEYS = ("model", "model_name", "model_version", "engine", "generate_model", "model_label")
 PARAM_KEYS = ("params", "parameters", "extra", "config", "setting", "settings", "generate_params")
 MODEL_PATTERN = re.compile(
-    r"(seedance[^\s,;\"']*|jimeng[^\s,;\"']*|midjourney|mj v\d|niji|stable[ -]?diffusion|sd\d|flux[^\s,;\"']*|"
+    r"(seedance[^\s,;\"']*|jimeng[^\s,;\"']*|midjourney|mj v\d|niji|stable[ -]?diffusion|sd\d|flux[^\s,;\"']*|qwen[^\s,;\"']*|通义|"
     r"kling|k[-\s]?ling|可灵|即梦|dall[ -]?e\s*\d*|gpt[ -]?image|liblib[^\s,;\"']*|哩布|"
     r"comfyui|fooocus|wan[^\s,;\"']*|hunyuan|混元|hailuo|海螺|pika|luma|runway|veo[^\s,;\"']*|sora)",
     re.IGNORECASE)
@@ -303,6 +303,9 @@ def _looks_media_url(u: str) -> bool:
     low = u.lower()
     if any(s in low for s in SKIP_MEDIA_KEYWORDS):
         return False
+    # 静态资源目录（站点自用图，非作品内容）
+    if "/static/" in low and "liblib" in low:
+        return False
     # 排除明显静态资源
     if low.endswith((".js", ".css", ".json", ".woff", ".woff2", ".html", ".svg")):
         return False
@@ -427,19 +430,39 @@ def _extract_media_from_dom(page):
         return []
 
 
-def _extract_model_params_from_text(page):
-    """页面文本中提取模型名与参数（正则启发式）"""
+def _clean_model(m: str) -> str:
+    """清理模型名：截断站点标题后缀（AI绘图/AI绘画/LiblibAI 等）"""
+    m = (m or "").strip()
+    for tail in ("-AI绘图", "-AI绘画", "-LiblibAI", "-Liblib", "AI绘图", "AI绘画", "模型库", "在线生成"):
+        idx = m.lower().find(tail.lower())
+        if idx > 0:
+            m = m[:idx].strip()
+            break
+    return m[:120]
+
+
+def _extract_model_params_from_text(page, page_title=""):
+    """页面文本中提取模型名与参数（正则启发式）：innerText + title + og meta（title 双保险，evaluate 失败也有兜底）"""
+    text = ""
     try:
-        text = page.evaluate("() => (document.body.innerText || '').slice(0, 60000)")
+        text = page.evaluate("""() => {
+            const parts = [document.body ? document.body.innerText : '', document.title || ''];
+            const og = document.querySelector('meta[property="og:title"]');
+            if (og && og.content) parts.push(og.content);
+            const kw = document.querySelector('meta[name="keywords"]');
+            if (kw && kw.content) parts.push(kw.content);
+            return parts.join('\n').slice(0, 80000);
+        }""")
     except Exception:
-        return "", []
+        pass
+    text = (text or "") + "\n" + (page_title or "")
     models = set(MODEL_PATTERN.findall(text))
     model = ""
-    for m in ("seedance", "midjourney", "stable diffusion", "flux", "kling", "可灵", "即梦",
-              "dall-e", "liblib", "hailuo", "海螺", "wan", "混元", "veo", "sora"):
+    for m in ("seedance", "midjourney", "stable diffusion", "flux", "qwen", "通义", "kling", "可灵", "即梦",
+              "dall-e", "liblib", "hailuo", "海螺", "wan", "混元", "veo", "sora", "sd"):
         for mm in list(models):
             if mm and mm.lower().startswith(m):
-                model = mm.strip()
+                model = _clean_model(mm)
                 break
         if model:
             break
@@ -576,7 +599,14 @@ def _collect_worker(tid: int):
 
                 page.on("response", _on_response)
                 page.goto(url, timeout=45000, wait_until="domcontentloaded")
-                time.sleep(3.0)
+                time.sleep(4.0)
+                # SPA 渲染补偿：参数/提示词区未渲染完时再等一轮
+                try:
+                    body_txt = page.evaluate("() => (document.body.innerText || '').length")
+                    if body_txt < 200:
+                        time.sleep(3.0)
+                except Exception:
+                    pass
 
                 if _stop_flags.get(tid):
                     page.close()
@@ -593,7 +623,7 @@ def _collect_worker(tid: int):
                 # ---- 识别汇总 ----
                 dom_media = _extract_media_from_dom(page)
                 dom_prompt = _extract_prompt_from_dom(page)
-                dom_model, dom_params = _extract_model_params_from_text(page)
+                dom_model, dom_params = _extract_model_params_from_text(page, page_title)
 
                 json_prompt = ""
                 json_model = ""
@@ -640,6 +670,16 @@ def _collect_worker(tid: int):
                         ok = _download_media(mu, dest, referer=url, budget_sec=min(60, max(10, int(dl_deadline - time.time()))))
                         if not ok:
                             continue
+                        # 小文件过滤：<2KB 视为占位/徽章图，跳过并清理
+                        if not is_video:
+                            fsize = os.path.getsize(dest)
+                            if fsize < 2048:
+                                try:
+                                    os.remove(dest)
+                                except Exception:
+                                    pass
+                                print(f"[CardCollect] 跳过小占位图 {mu[:80]} ({fsize}B)")
+                                continue
                         c.execute(
                             "INSERT INTO card_collect_items "
                             "(task_id, fav_id, source_url, page_title, media_type, media_url, media_original_url, "
