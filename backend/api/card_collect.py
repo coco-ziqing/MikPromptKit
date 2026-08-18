@@ -419,41 +419,60 @@ def _extract_media_from_json(data):
     return uniq
 
 
-def _extract_prompt_from_dom(page) -> str:
-    """DOM 文本提取：仅接受「提示词/prompt 标签 + 分隔符 + 内容」行内模式
-    （v5.42.6 收紧：LibLib 页头「查看提示词」按钮命中 LABELS 导致整段导航文本被误抓，
-    已删除长文本兜底；抓不到即空，提示词留待用户补全/登录可见）"""
+def _extract_prompt_from_dom(page):
+    """DOM 文本提取：定位「提示词/负向提示词」标签 → 取最长内容容器（≤2500）
+    → 正则边界切分正向/负向提示词。
+    适配 LibLib（mantine-Spoiler 折叠容器 + 标签独立文本节点，无冒号）。
+    返回 (prompt, negative)。"""
     try:
         return page.evaluate("""() => {
-            const labelRe = /(?:提示词|prompt|Prompt|描述词|生成提示词)[^\\n]{0,12}[：:]([\\s\\S]{0,800})/i;
-            const walk = (el, depth) => {
-                if (depth > 6) return '';
-                const txt = (el.textContent || '').trim();
-                if (!txt || txt.length < 8 || txt.length > 4000) {
-                    for (const ch of el.children) { const r = walk(ch, depth + 1); if (r) return r; }
-                    return '';
-                }
-                // 行内「提示词：内容」模式（首个命中即返回）
-                const m = txt.match(labelRe);
-                if (m && m[1] && m[1].trim().length >= 8) return m[1].trim();
-                // 标签单独成行 + 兄弟节点内容（「提示词」label 后跟内容容器）
-                const direct = Array.from(el.children || []).filter(c => c.childNodes.length === 1 && c.childNodes[0].nodeType === 3);
-                for (const lab of direct) {
-                    const lt = (lab.textContent || '').trim();
-                    if (/^(提示词|prompt|描述词|生成提示词)$/i.test(lt)) {
-                        let sib = lab.nextElementSibling;
-                        if (sib && sib.textContent && sib.textContent.trim().length >= 8) {
-                            return sib.textContent.trim().slice(0, 800);
-                        }
-                    }
-                }
-                for (const ch of el.children) { const r = walk(ch, depth + 1); if (r) return r; }
-                return '';
+            const findLabel = (el, names) => {
+                if (el.nodeType !== 1) return null;
+                const t = (el.textContent || '').trim();
+                if (t.length <= 20 && names.some(n => t === n) && el.children.length === 0) return el;
+                for (const c of el.children) { const r = findLabel(c, names); if (r) return r; }
+                return null;
             };
-            return walk(document.body, 0);
+            const pickLong = (label) => {
+                let cur = label.parentElement, best = '';
+                for (let i = 0; i < 8 && cur; i++) {
+                    const t = (cur.textContent || '').trim();
+                    if (t.length > best.length && t.length <= 2500) best = t;
+                    cur = cur.parentElement;
+                }
+                return best;
+            };
+            const clean = (seg) => seg
+                .replace(/^(提示词|负向提示词|生成提示词|Prompt|Negative prompt)\\s*[:：]?/i, '')
+                .replace(/生成参数|复制参数|展开|收起/g, '')
+                .trim();
+            const labP = findLabel(document.body, ['提示词', 'prompt', 'Prompt', '生成提示词']);
+            const labN = findLabel(document.body, ['负向提示词', 'Negative prompt', 'negative prompt']);
+            let prompt = '', negative = '';
+            if (labP) {
+                const full = pickLong(labP);
+                if (full) {
+                    // 正向：第一个「提示词(排除提示词引导)」后 到 负向/采样/参数 前
+                    const m = full.match(/提示词(?!引导)[\\s\\S]*?(?=负向提示词|采样方法|Sampler|迭代步数|Steps|生成参数复制参数|$)/);
+                    if (m) prompt = clean(m[0]);
+                }
+            }
+            if (labN) {
+                const fullN = pickLong(labN);
+                if (fullN) {
+                    const m = fullN.match(/负向提示词[\\s\\S]*?(?=采样方法|Sampler|迭代步数|Steps|提示词引导系数|CFG|生成参数|复制参数|$)/);
+                    if (m) negative = clean(m[0]);
+                }
+            }
+            // UI 框架文本过滤（命中导航词≥3 判无效）
+            const ui_noise = ['首页','创作','登录','注册','教程','会员','积分','搜索','设置','分享','收藏','点赞','评论','关注','WebUI','ComfyUI','模型库','训练','发布','资产','个人中心'];
+            const isUi = (t) => t && ui_noise.filter(w => t.includes(w)).length >= 3;
+            if (isUi(prompt)) prompt = '';
+            if (isUi(negative)) negative = '';
+            return [prompt, negative];
         }""")
     except Exception:
-        return ""
+        return "", ""
 
 
 def _extract_media_from_dom(page):
@@ -502,7 +521,7 @@ def _extract_model_params_from_text(page, page_title=""):
     text = ""
     try:
         text = page.evaluate("""() => {
-            const parts = [document.body ? document.body.innerText : '', document.title || ''];
+            const parts = [document.body ? document.body.textContent : '', document.title || ''];
             const og = document.querySelector('meta[property="og:title"]');
             if (og && og.content) parts.push(og.content);
             const kw = document.querySelector('meta[name="keywords"]');
@@ -756,7 +775,7 @@ def _collect_worker(tid: int):
 
                 # ---- 识别汇总 ----
                 dom_media = _extract_media_from_dom(page)
-                dom_prompt = _extract_prompt_from_dom(page)
+                dom_prompt, dom_negative = _extract_prompt_from_dom(page)
                 dom_model, dom_params = _extract_model_params_from_text(page, page_title)
 
                 json_prompt = ""
@@ -779,6 +798,9 @@ def _collect_worker(tid: int):
                         prompt = ocr_prompt
                 model = (json_model or dom_model or "").strip()
                 params = "；".join(dict.fromkeys(dom_params))[:500]
+                # v5.42.8: 负向提示词并入参数（LibLib 等平台 DOM 可见）
+                if dom_negative and "负向提示词" not in params:
+                    params = ("负向提示词：" + dom_negative[:400] + ("；" + params if params else "")).strip("；")[:800]
 
                 # 媒体清单：JSON 直链优先（更可能是原图/取流），DOM 兜底；去重
                 media_urls = []
