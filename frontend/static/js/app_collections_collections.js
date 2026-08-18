@@ -180,7 +180,7 @@ Object.assign(App, {
                                 }
                             </div>
                             ${(p.thumbnail || videoFile2) && isEdit ? '<span class="thumb-clear-btn" onclick="event.stopPropagation();App.clearCardThumbnail(' + p.id + ')" title="清除缩略图">✕</span>' : ''}
-                            ${(p.thumbnail || videoFile2) ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (videoFile2 ? 'App.openVideoViewer(\'' + videoFile2 + '\', \'' + (p.thumbnail || '') + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openImageViewer(\'' + (p.original_ref || p.thumbnail) + '\', \'' + p.id + '\')') + '" title="' + (videoFile2 ? '查看原视频' : '查看原图') + '">' + (videoFile2 ? '▶' : '🔍') + '</span>' : ''}
+                            ${(p.thumbnail || videoFile2) ? '<span class="thumb-zoom-btn" onclick="event.stopPropagation();' + (videoFile2 ? 'App.openVideoViewer(\'' + videoFile2 + '\', \'' + (p.thumbnail || '') + '\', \'' + p.id + '\', \'' + (p.video_fps || '') + '\')' : 'App.openCardImageViewer(\'' + p.id + '\', \'' + (p.original_ref || p.thumbnail) + '\')') + '" title="' + (videoFile2 ? '查看原视频' : '查看原图') + '">' + (videoFile2 ? '▶' : '🔍') + '</span>' : ''}
                         </div>
                         <div class="card-add-row">
                             <span class="coll-add-btn" onclick="event.stopPropagation();App.quickCollect(${p.id}, this)" title="添加到收藏分组">+</span>
