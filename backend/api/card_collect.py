@@ -828,9 +828,9 @@ def _collect_worker(tid: int):
                     if u not in media_urls:
                         media_urls.append(u)
                 media_urls = media_urls[:MAX_ITEMS_PER_TASK]
-                # v5.42.13: LibLib web 预览版过滤——已采到 /img/ 原图时跳过 /web/ 预览版
-                # （同一作品预览版与原图并存，用户确认应只保留原图）
-                if any("/img/" in u for u in media_urls):
+                # v5.42.13/15: LibLib web 预览版过滤——已采到任何非 web 作品图
+                # （/img/ 原图或 /community-img/ 社区图）时跳过 /web/ 预览版
+                if any(("/img/" in u or "/community-img/" in u) for u in media_urls):
                     media_urls = [u for u in media_urls if "/web/" not in u]
 
                 page.close()
