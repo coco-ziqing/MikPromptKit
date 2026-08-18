@@ -1,0 +1,1027 @@
+# -*- coding: utf-8 -*-
+"""
+词卡采集模块（v5.42.0）— 外部灵感内容 → 本地词卡 全链路
+链路：收藏(前置) → 浏览器自动化采集 → 预采集库 → 分组归档(自动+手动) → 建词卡(带来源溯源)
+
+核心思路：
+- 复用即梦网页通道的 CDP 方案（独立 Chrome profile + playwright connect_over_cdp），
+  不逆向签名，由页面 JS 自行生成请求，读取真实响应做"自主识别"
+- 通用启发式识别：DOM 媒体元素 + 网络 JSON 响应（prompt/model/params 键）+ 页面文本
+- 合规红线：不登录、不填账号、无验证码绕过、单任务限额、可中断、服务重启不自动续跑
+
+路由：/api/card-collect
+"""
+import json
+import os
+import re
+import subprocess
+import threading
+import time
+import urllib.request
+
+from fastapi import APIRouter, Body, HTTPException, Query
+
+from database import get_db, safe_commit
+
+router = APIRouter(prefix="/api/card-collect", tags=["card-collect"])
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DATA_DIR = os.path.join(_PROJECT_ROOT, "data", "card_collect")
+IMG_DIR = os.path.join(DATA_DIR, "images")
+VID_DIR = os.path.join(DATA_DIR, "videos")
+PROFILE_DIR = os.path.join(DATA_DIR, "chrome_profile")
+os.makedirs(IMG_DIR, exist_ok=True)
+os.makedirs(VID_DIR, exist_ok=True)
+
+# Chrome 可执行文件探测（与 dreamina_web 相同策略）
+CHROME_BIN = None
+for _p in (
+    os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Google", "Chrome", "Application", "chrome.exe"),
+    os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Google", "Chrome", "Application", "chrome.exe"),
+    os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Microsoft", "Edge", "Application", "msedge.exe"),
+    os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Microsoft", "Edge", "Application", "msedge.exe"),
+):
+    if os.path.exists(_p):
+        CHROME_BIN = _p
+        break
+
+# 合规限额
+MAX_ITEMS_PER_TASK = 20      # 单任务最多采集项
+MAX_DOWNLOAD_BYTES = 60 * 1024 * 1024  # 单媒体 60MB 上限（防超大视频拖垮）
+SKIP_MEDIA_KEYWORDS = ("logo", "icon", "avatar", "favicon", "sprite", "emoji", "placeholder",
+                       "blank.gif", "1x1", "pixel", "advertisement", "banner")
+PROMPT_KEYS = ("prompt", "prompt_text", "prompt_content", "prompt_cn", "prompt_zh", "describe",
+               "description", "text", "positive_prompt", "prompt_en")
+MODEL_KEYS = ("model", "model_name", "model_version", "engine", "generate_model", "model_label")
+PARAM_KEYS = ("params", "parameters", "extra", "config", "setting", "settings", "generate_params")
+MODEL_PATTERN = re.compile(
+    r"(seedance[^\s,;\"']*|jimeng[^\s,;\"']*|midjourney|mj v\d|niji|stable[ -]?diffusion|sd\d|flux[^\s,;\"']*|"
+    r"kling|k[-\s]?ling|可灵|即梦|dall[ -]?e\s*\d*|gpt[ -]?image|liblib[^\s,;\"']*|哩布|"
+    r"comfyui|fooocus|wan[^\s,;\"']*|hunyuan|混元|hailuo|海螺|pika|luma|runway|veo[^\s,;\"']*|sora)",
+    re.IGNORECASE)
+PARAM_PATTERN = re.compile(
+    r"(\d{2,4}\s*[xX×]\s*\d{2,4}|1:1|16:9|9:16|4:3|3:4|2:3|3:2|21:9|seed\s*[:=]?\s*\d+|"
+    r"steps?\s*[:=]?\s*\d+|cfg\s*[:=]?\s*[\d.]+|时长\s*[:：]?\s*\d+[s秒]?|duration\s*[:=]?\s*\d+[s]?|"
+    r"分辨率\s*[:：]?\s*[\d\sxX×]+|negative\s*prompt[^\n。;；]*|负面提示词[^\n。;；]*)",
+    re.IGNORECASE)
+
+# 平台域名 → 建议分组名（自主识别分组）
+PLATFORM_GROUPS = {
+    "jimeng": "即梦灵感", "jianying.com": "即梦灵感",
+    "xiaohongshu": "小红书灵感", "xhslink": "小红书灵感",
+    "liblib.art": "LibLib 灵感", "liblibai": "LibLib 灵感",
+    "midjourney": "Midjourney 灵感",
+    "bilibili": "B站灵感",
+    "douyin": "抖音灵感",
+    "klingai": "可灵灵感",
+    "hailuoai": "海螺灵感",
+    "pinterest": "Pinterest 灵感",
+    "artstation": "ArtStation 灵感",
+}
+
+# ==================== 基础工具 ====================
+
+_chrome_proc = None
+_chrome_port = None
+_chrome_lock = threading.Lock()
+_task_lock = threading.Lock()   # 采集任务全局串行锁
+_stop_flags = {}                # task_id -> bool（请求中断）
+
+
+def _now_str():
+    return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _db():
+    c = __import__("sqlite3").connect(os.path.join(_PROJECT_ROOT, "data", "prompts.db"), timeout=5)
+    c.row_factory = __import__("sqlite3").Row
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA busy_timeout=4000")
+    return c
+
+
+def _auth(request, require=True):
+    try:
+        from auth import get_current_user
+        u = get_current_user(request)
+        if require and not (u and u.get("authenticated")):
+            raise HTTPException(401, "请先登录")
+        return u
+    except HTTPException:
+        raise
+    except Exception:
+        if require:
+            raise HTTPException(401, "请先登录")
+        return None
+
+
+# ==================== 表结构（幂等迁移） ====================
+
+def _ensure_tables():
+    c = _db()
+    try:
+        c.execute("""CREATE TABLE IF NOT EXISTS card_collect_favorites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT NOT NULL,
+            title TEXT DEFAULT '',
+            note TEXT DEFAULT '',
+            status TEXT DEFAULT 'pending',
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            collected_at TEXT DEFAULT ''
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ccf_status ON card_collect_favorites(status)")
+        c.execute("""CREATE TABLE IF NOT EXISTS card_collect_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fav_id INTEGER DEFAULT 0,
+            url TEXT NOT NULL,
+            status TEXT DEFAULT 'queued',
+            progress INTEGER DEFAULT 0,
+            message TEXT DEFAULT '',
+            found_count INTEGER DEFAULT 0,
+            page_title TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            finished_at TEXT DEFAULT ''
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_cct_status ON card_collect_tasks(status)")
+        c.execute("""CREATE TABLE IF NOT EXISTS card_collect_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER DEFAULT 0,
+            fav_id INTEGER DEFAULT 0,
+            source_url TEXT DEFAULT '',
+            page_title TEXT DEFAULT '',
+            media_type TEXT DEFAULT 'image',
+            media_url TEXT DEFAULT '',
+            media_original_url TEXT DEFAULT '',
+            prompt TEXT DEFAULT '',
+            model TEXT DEFAULT '',
+            params TEXT DEFAULT '',
+            raw_data TEXT DEFAULT '{}',
+            suggest_group TEXT DEFAULT '',
+            status TEXT DEFAULT 'pending',
+            word_card_id INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            archived_at TEXT DEFAULT ''
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_cci_status ON card_collect_items(status)")
+        c.commit()
+    finally:
+        c.close()
+
+
+_ensure_tables()
+
+
+def _mark_interrupted_on_boot():
+    """合规：服务重启后遗留的 queued/running 任务不自动续跑，标记为中断"""
+    c = _db()
+    try:
+        c.execute("UPDATE card_collect_tasks SET status='fail', message='服务重启，采集已中断（合规：不自动续跑）', "
+                  "finished_at=datetime('now','localtime') WHERE status IN ('queued','running')")
+        c.commit()
+    except Exception:
+        pass
+    finally:
+        c.close()
+
+
+_mark_interrupted_on_boot()
+
+
+# ==================== Chrome 实例管理（独立 profile，复用即梦 CDP 方案） ====================
+
+def _read_devtools_port():
+    pf = os.path.join(PROFILE_DIR, "DevToolsActivePort")
+    if not os.path.exists(pf):
+        return None
+    try:
+        with open(pf) as f:
+            lines = f.read().strip().splitlines()
+        return lines[0].strip() if lines else None
+    except Exception:
+        return None
+
+
+def _port_alive(port) -> bool:
+    if not port:
+        return False
+    try:
+        urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=2)
+        return True
+    except Exception:
+        return False
+
+
+def ensure_chrome_started() -> dict:
+    global _chrome_proc, _chrome_port
+    if CHROME_BIN is None:
+        return {"connected": False, "error": "未找到 Chrome/Edge 浏览器"}
+    with _chrome_lock:
+        exist_port = _read_devtools_port()
+        if _port_alive(exist_port):
+            _chrome_port = exist_port
+            return {"connected": True, "cdp_url": f"http://127.0.0.1:{exist_port}"}
+        os.makedirs(PROFILE_DIR, exist_ok=True)
+        try:
+            _chrome_proc = subprocess.Popen(
+                [CHROME_BIN, f"--user-data-dir={PROFILE_DIR}", "--remote-debugging-port=0",
+                 "--no-first-run", "--disable-default-apps", "--no-default-browser-check",
+                 "--window-size=1280,900", "about:blank"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            return {"connected": False, "error": f"Chrome 启动失败: {e}"}
+        port = None
+        for _ in range(60):
+            port = _read_devtools_port()
+            if _port_alive(port):
+                break
+            time.sleep(0.3)
+        if not port or not _port_alive(port):
+            return {"connected": False, "error": "调试端口未就绪"}
+        _chrome_port = port
+        time.sleep(0.8)
+        return {"connected": True, "cdp_url": f"http://127.0.0.1:{port}"}
+
+
+def stop_chrome() -> None:
+    global _chrome_proc, _chrome_port
+    port = _read_devtools_port()
+    with _chrome_lock:
+        if port:
+            try:
+                out = subprocess.run(["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True, timeout=15).stdout
+                pid = None
+                for line in out.splitlines():
+                    if f"127.0.0.1:{port}" in line and "LISTENING" in line:
+                        parts = line.split()
+                        if parts:
+                            pid = parts[-1]
+                            break
+                if pid:
+                    subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True, text=True, timeout=15)
+            except Exception:
+                pass
+        if _chrome_proc is not None and _chrome_proc.poll() is None:
+            try:
+                _chrome_proc.terminate()
+            except Exception:
+                pass
+        _chrome_proc = None
+        _chrome_port = None
+
+
+# ==================== 自主识别（通用启发式） ====================
+
+def _deep_find(obj, key, depth=0):
+    """递归查找第一个匹配 key 的值"""
+    if depth > 6 or obj is None:
+        return None
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == key:
+                return v
+            r = _deep_find(v, key, depth + 1)
+            if r is not None:
+                return r
+    elif isinstance(obj, list):
+        for it in obj:
+            r = _deep_find(it, key, depth)
+            if r is not None:
+                return r
+    return None
+
+
+def _pick_field(item, keys):
+    for k in keys:
+        if isinstance(item, dict) and k in item and item[k] is not None:
+            return item[k]
+    return None
+
+
+def _looks_media_url(u: str) -> bool:
+    if not u or not u.startswith("http"):
+        return False
+    low = u.lower()
+    if any(s in low for s in SKIP_MEDIA_KEYWORDS):
+        return False
+    # 排除明显静态资源
+    if low.endswith((".js", ".css", ".json", ".woff", ".woff2", ".html", ".svg")):
+        return False
+    # CDN 图片直链（webp/jpeg/png 等结尾）或视频直链
+    return True
+
+
+def _extract_prompt_from_json(data) -> str:
+    """从 JSON 递归提取提示词文本（取最长非空者）"""
+    best = ""
+    stack = [data]
+    while stack and len(best) < 500:
+        node = stack.pop()
+        if isinstance(node, dict):
+            p = _pick_field(node, PROMPT_KEYS)
+            if isinstance(p, str) and len(p.strip()) > len(best) and len(p.strip()) >= 8:
+                best = p.strip()
+            for v in node.values():
+                stack.append(v)
+        elif isinstance(node, list):
+            stack.extend(node)
+    return best[:4000]
+
+
+def _extract_model_from_json(data) -> str:
+    stack = [data]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            m = _pick_field(node, MODEL_KEYS)
+            if isinstance(m, str) and m.strip():
+                return m.strip()[:200]
+            for v in node.values():
+                stack.append(v)
+        elif isinstance(node, list):
+            stack.extend(node)
+    return ""
+
+
+def _extract_media_from_json(data):
+    """从 JSON 递归提取媒体 URL（图片/视频直链，最多 8 个）"""
+    out = []
+    stack = [data]
+    while stack and len(out) < 8:
+        node = stack.pop()
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if isinstance(v, str) and _looks_media_url(v):
+                    kl = k.lower()
+                    if any(x in kl for x in ("url", "media", "image", "video", "cover", "thumb", "play", "download")):
+                        out.append(v)
+                elif isinstance(v, (dict, list)):
+                    stack.append(v)
+        elif isinstance(node, list):
+            stack.extend(node)
+    # 去重保序
+    seen = set()
+    uniq = []
+    for u in out:
+        if u not in seen:
+            seen.add(u)
+            uniq.append(u)
+    return uniq
+
+
+def _extract_prompt_from_dom(page) -> str:
+    """DOM 文本启发式：找含 prompt/提示词 标签的相邻文本（详情页常见结构）"""
+    try:
+        return page.evaluate("""() => {
+            const KEYWORDS = ['提示词','prompt','Prompt','描述词','生成词','描述文本'];
+            let best = '';
+            const walk = (el, depth) => {
+                if (depth > 3 || best.length >= 600) return;
+                const txt = (el.textContent || '').trim();
+                if (!txt || txt.length < 8) return;
+                const low = txt.toLowerCase();
+                const hit = KEYWORDS.some(k => low.includes(k.toLowerCase()));
+                if (hit && txt.length > best.length && txt.length < 4000) {
+                    // 优先找标签附近的简短文本（如"提示词：xxx"）
+                    if (txt.length < 800 && low.includes('提示词') && (low.includes(':') || low.includes('：'))) {
+                        const m = txt.match(/[提示词|prompt|Prompt][^\\n]{0,10}[：:]([\\s\\S]{0,700})/);
+                        if (m) { best = m[1].trim(); return; }
+                    }
+                    best = txt;
+                }
+                for (const ch of el.children) walk(ch, depth + 1);
+            };
+            walk(document.body, 0);
+            return best;
+        }""")
+    except Exception:
+        return ""
+
+
+def _extract_media_from_dom(page):
+    """DOM 媒体元素收集：img[src/srcset]、video[src]、source，去重过滤"""
+    try:
+        urls = page.evaluate("""() => {
+            const out = [];
+            const push = u => { if (u && u.startsWith('http') && out.indexOf(u) < 0) out.push(u); };
+            document.querySelectorAll('img').forEach(im => {
+                push(im.currentSrc || im.src);
+                const srcset = (im.getAttribute('srcset') || '');
+                srcset.split(',').forEach(s => { const p = s.trim().split(/\\s+/)[0]; if (p) push(p); });
+            });
+            document.querySelectorAll('video').forEach(v => {
+                push(v.currentSrc || v.src);
+                v.querySelectorAll('source').forEach(s => push(s.src));
+            });
+            document.querySelectorAll('source[type^="video"]').forEach(s => push(s.src));
+            return out;
+        }""")
+        # 过滤：跳过 base64、迷你图、icon 类；保留 max 20
+        filtered = []
+        for u in urls:
+            if not _looks_media_url(u):
+                continue
+            if u not in filtered:
+                filtered.append(u)
+        return filtered[:MAX_ITEMS_PER_TASK]
+    except Exception:
+        return []
+
+
+def _extract_model_params_from_text(page):
+    """页面文本中提取模型名与参数（正则启发式）"""
+    try:
+        text = page.evaluate("() => (document.body.innerText || '').slice(0, 60000)")
+    except Exception:
+        return "", []
+    models = set(MODEL_PATTERN.findall(text))
+    model = ""
+    for m in ("seedance", "midjourney", "stable diffusion", "flux", "kling", "可灵", "即梦",
+              "dall-e", "liblib", "hailuo", "海螺", "wan", "混元", "veo", "sora"):
+        for mm in list(models):
+            if mm and mm.lower().startswith(m):
+                model = mm.strip()
+                break
+        if model:
+            break
+    params = []
+    for p in PARAM_PATTERN.findall(text):
+        if p not in params and len(params) < 6:
+            params.append(p.strip())
+    return model, params
+
+
+def _suggest_group(url: str, media_type: str, prompt: str) -> str:
+    """自主识别分组：优先平台域名 → 内容类型兜底"""
+    low = (url or "").lower()
+    for key, gname in PLATFORM_GROUPS.items():
+        if key in low:
+            return gname
+    if prompt and any(k in prompt.lower() for k in ("人物", "角色", "portrait", "character", "人像")):
+        return "人物灵感"
+    return "视频灵感" if media_type == "video" else "图片灵感"
+
+
+def _is_media_url(u: str) -> bool:
+    return bool(u) and u.startswith("http")
+
+
+def _download_media(url: str, dest: str, referer: str = "", budget_sec: int = 60) -> bool:
+    """下载媒体（带 UA/Referer，断点：已存在且非空跳过，2 次重试 + 体积/时长双上限）"""
+    if os.path.exists(dest) and os.path.getsize(dest) > 0:
+        return True
+    tmp = dest + ".tmp"
+    deadline = time.time() + budget_sec
+    for attempt in range(2):
+        try:
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+                "Referer": referer or "https://www.google.com/",
+            })
+            with urllib.request.urlopen(req, timeout=30) as r, open(tmp, "wb") as f:
+                total = 0
+                while True:
+                    if time.time() > deadline:
+                        raise RuntimeError("下载超时")
+                    chunk = r.read(65536)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > MAX_DOWNLOAD_BYTES:
+                        raise RuntimeError("媒体超过 60MB 上限，已跳过")
+                    f.write(chunk)
+            if os.path.getsize(tmp) > 0:
+                os.replace(tmp, dest)
+                return True
+        except Exception as e:
+            print(f"[CardCollect] 下载失败({attempt+1}) {url[:80]}: {e}")
+            time.sleep(1)
+    try:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    except Exception:
+        pass
+    return False
+
+
+def _ext_url(url: str) -> str:
+    """从 URL 推断扩展名（兜底 jpg）"""
+    path = url.split("?", 1)[0].split("#", 1)[0].lower()
+    m = re.search(r"\.(jpg|jpeg|png|webp|gif|bmp|avif|mp4|webm|mov|m4v)$", path)
+    if m:
+        return m.group(1)
+    return "jpg"
+
+
+# ==================== 采集主流程（后台线程） ====================
+
+def _task_update(tid: int, **kw):
+    c = _db()
+    try:
+        sets = ", ".join(f"{k}=?" for k in kw)
+        c.execute(f"UPDATE card_collect_tasks SET {sets} WHERE id=?", list(kw.values()) + [tid])
+        c.commit()
+    except Exception:
+        pass
+    finally:
+        c.close()
+
+
+def _collect_worker(tid: int):
+    """采集任务执行体：CDP 打开页面 → 捕获响应 + DOM 识别 → 下载媒体 → 写入预采集库"""
+    _stop_flags[tid] = False
+    _task_update(tid, status="running", progress=5, message="连接浏览器…")
+    try:
+        res = ensure_chrome_started()
+        if not res.get("connected"):
+            _task_update(tid, status="fail", progress=100, message=res.get("error", "Chrome 未连接"), finished_at=_now_str())
+            return
+        try:
+            from playwright.sync_api import sync_playwright
+        except Exception:
+            _task_update(tid, status="fail", progress=100, message="未安装 playwright，请先 pip install playwright", finished_at=_now_str())
+            return
+
+        # 读取任务信息
+        c = _db()
+        task = c.execute("SELECT * FROM card_collect_tasks WHERE id=?", [tid]).fetchone()
+        c.close()
+        if not task:
+            return
+        url = task["url"]
+        fav_id = task["fav_id"] or 0
+        _task_update(tid, progress=15, message="打开页面…")
+
+        with sync_playwright() as p:
+            browser = p.chromium.connect_over_cdp(res["cdp_url"])
+            try:
+                ctx = browser.contexts[0] if browser.contexts else browser.new_context()
+                page = ctx.new_page()
+                captured_json = []
+
+                def _on_response(resp):
+                    try:
+                        ct = resp.headers.get("content-type") or ""
+                        if "json" not in ct.lower() and "text" not in ct.lower():
+                            return
+                        u = resp.url.lower()
+                        if u.endswith((".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".woff", ".woff2")):
+                            return
+                        body = resp.body()
+                        if len(body) > 2 * 1024 * 1024:
+                            return
+                        data = json.loads(body.decode("utf-8", "ignore"))
+                        captured_json.append({"url": resp.url, "data": data})
+                    except Exception:
+                        pass
+
+                page.on("response", _on_response)
+                page.goto(url, timeout=45000, wait_until="domcontentloaded")
+                time.sleep(3.0)
+
+                if _stop_flags.get(tid):
+                    page.close()
+                    _task_update(tid, status="fail", progress=100, message="已手动停止", finished_at=_now_str())
+                    return
+
+                page_title = ""
+                try:
+                    page_title = (page.title() or "")[:200]
+                except Exception:
+                    pass
+                _task_update(tid, progress=40, message="自主识别页面内容…")
+
+                # ---- 识别汇总 ----
+                dom_media = _extract_media_from_dom(page)
+                dom_prompt = _extract_prompt_from_dom(page)
+                dom_model, dom_params = _extract_model_params_from_text(page)
+
+                json_prompt = ""
+                json_model = ""
+                json_media = []
+                for cap in captured_json:
+                    if not json_prompt:
+                        json_prompt = _extract_prompt_from_json(cap["data"])
+                    if not json_model:
+                        json_model = _extract_model_from_json(cap["data"])
+                    if not json_media:
+                        json_media = _extract_media_from_json(cap["data"])
+
+                prompt = (json_prompt or dom_prompt or "").strip()
+                model = (json_model or dom_model or "").strip()
+                params = "；".join(dict.fromkeys(dom_params))[:500]
+
+                # 媒体清单：JSON 直链优先（更可能是原图/取流），DOM 兜底；去重
+                media_urls = []
+                for u in json_media + dom_media:
+                    if u not in media_urls:
+                        media_urls.append(u)
+                media_urls = media_urls[:MAX_ITEMS_PER_TASK]
+
+                page.close()
+
+                # ---- 下载 + 入库 ----
+                if not media_urls:
+                    _task_update(tid, status="fail", progress=100,
+                                 message="未识别到媒体内容（页面可能需登录或结构特殊），请更换 URL", finished_at=_now_str())
+                    return
+
+                _task_update(tid, progress=60, message=f"下载媒体（{len(media_urls)} 项）…")
+                c = _db()
+                try:
+                    inserted = 0
+                    dl_deadline = time.time() + 240   # 单任务总下载预算 4 分钟（防卡死）
+                    for i, mu in enumerate(media_urls):
+                        if _stop_flags.get(tid) or time.time() > dl_deadline:
+                            break
+                        is_video = any(x in mu.lower() for x in (".mp4", ".webm", ".mov", ".m4v", "video"))
+                        sub = VID_DIR if is_video else IMG_DIR
+                        fname = f"cc_{tid}_{int(time.time())}_{i}.{_ext_url(mu)}"
+                        dest = os.path.join(sub, fname)
+                        ok = _download_media(mu, dest, referer=url, budget_sec=min(60, max(10, int(dl_deadline - time.time()))))
+                        if not ok:
+                            continue
+                        c.execute(
+                            "INSERT INTO card_collect_items "
+                            "(task_id, fav_id, source_url, page_title, media_type, media_url, media_original_url, "
+                            "prompt, model, params, raw_data, suggest_group, status, created_at) "
+                            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'pending', datetime('now','localtime'))",
+                            [tid, fav_id, url, page_title, "video" if is_video else "image",
+                             fname, mu, prompt, model, params,
+                             json.dumps({"captured_json_count": len(captured_json), "dom_media_count": len(dom_media)},
+                                        ensure_ascii=False),
+                             _suggest_group(url, "video" if is_video else "image", prompt)])
+                        inserted += 1
+                    c.commit()
+                finally:
+                    c.close()
+
+                # 更新收藏状态
+                if fav_id:
+                    fc = _db()
+                    try:
+                        fc.execute("UPDATE card_collect_favorites SET status='collected', collected_at=datetime('now','localtime') WHERE id=?", [fav_id])
+                        fc.commit()
+                    finally:
+                        fc.close()
+
+                _task_update(tid, status="success", progress=100, found_count=inserted,
+                             message=f"采集完成，入库 {inserted} 项", page_title=page_title, finished_at=_now_str())
+                print(f"[CardCollect] 任务 {tid} 完成：{url} → {inserted} 项")
+            finally:
+                try:
+                    browser.close()
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"[CardCollect] 任务 {tid} 异常: {e}")
+        _task_update(tid, status="fail", progress=100, message=f"采集失败: {str(e)[:200]}", finished_at=_now_str())
+    finally:
+        _stop_flags.pop(tid, None)
+
+
+def _spawn_worker(tid: int):
+    t = threading.Thread(target=_collect_worker, args=(tid,), daemon=True)
+    t.start()
+    return t
+
+
+# ==================== API：收藏（采集前置） ====================
+
+@router.get("/favorites")
+def list_favorites(q: str = Query("", description="搜索过滤"), status: str = Query("", description="状态过滤")):
+    _ensure_tables()
+    c = _db()
+    try:
+        sql = "SELECT * FROM card_collect_favorites WHERE 1=1"
+        args = []
+        if q:
+            sql += " AND (url LIKE ? OR note LIKE ? OR title LIKE ?)"
+            args += [f"%{q}%"] * 3
+        if status:
+            sql += " AND status=?"
+            args.append(status)
+        sql += " ORDER BY id DESC"
+        rows = c.execute(sql, args).fetchall()
+        return {"ok": True, "items": [dict(r) for r in rows]}
+    finally:
+        c.close()
+
+
+@router.post("/favorites")
+def add_favorite(payload: dict = Body(...)):
+    url = str(payload.get("url") or "").strip()
+    if not url.startswith("http://") and not url.startswith("https://"):
+        raise HTTPException(400, "请输入合法的 http/https 地址")
+    note = str(payload.get("note") or "").strip()[:500]
+    title = str(payload.get("title") or "").strip()[:200]
+    c = _db()
+    try:
+        # 同 URL 去重：已存在则更新备注返回原记录
+        exist = c.execute("SELECT id FROM card_collect_favorites WHERE url=?", [url]).fetchone()
+        if exist:
+            c.execute("UPDATE card_collect_favorites SET note=?, title=? WHERE id=?", [note, title, exist["id"]])
+            c.commit()
+            row = c.execute("SELECT * FROM card_collect_favorites WHERE id=?", [exist["id"]]).fetchone()
+            return {"ok": True, "item": dict(row), "duplicated": True}
+        cur = c.execute(
+            "INSERT INTO card_collect_favorites (url, title, note, status, created_at) VALUES (?,?,?, 'pending', datetime('now','localtime'))",
+            [url, title, note])
+        c.commit()
+        row = c.execute("SELECT * FROM card_collect_favorites WHERE id=?", [cur.lastrowid]).fetchone()
+        return {"ok": True, "item": dict(row)}
+    finally:
+        c.close()
+
+
+@router.delete("/favorites/{fid}")
+def delete_favorite(fid: int):
+    c = _db()
+    try:
+        c.execute("DELETE FROM card_collect_favorites WHERE id=?", [fid])
+        c.commit()
+        return {"ok": True}
+    finally:
+        c.close()
+
+
+@router.post("/favorites/{fid}/collect")
+def collect_from_favorite(fid: int):
+    """从收藏发起采集（收藏状态自动流转 pending→collected）"""
+    c = _db()
+    row = c.execute("SELECT * FROM card_collect_favorites WHERE id=?", [fid]).fetchone()
+    c.close()
+    if not row:
+        raise HTTPException(404, "收藏不存在")
+    return _start_collect(row["url"], fav_id=fid)
+
+
+# ==================== API：采集任务 ====================
+
+def _start_collect(url: str, fav_id: int = 0):
+    if not url.startswith("http://") and not url.startswith("https://"):
+        raise HTTPException(400, "请输入合法的 http/https 地址")
+    with _task_lock:
+        # 合规：同一时刻仅允许 1 个采集任务
+        c = _db()
+        try:
+            running = c.execute("SELECT id FROM card_collect_tasks WHERE status IN ('queued','running') LIMIT 1").fetchone()
+            if running:
+                raise HTTPException(409, f"已有采集任务进行中（#{running['id']}），请等待完成或先停止")
+            cur = c.execute(
+                "INSERT INTO card_collect_tasks (fav_id, url, status, progress, message, created_at) "
+                "VALUES (?,?, 'queued', 0, '排队中…', datetime('now','localtime'))",
+                [fav_id, url])
+            c.commit()
+            tid = cur.lastrowid
+        finally:
+            c.close()
+    _spawn_worker(tid)
+    return {"ok": True, "task_id": tid}
+
+
+@router.post("/collect")
+def start_collect(payload: dict = Body(...)):
+    url = str(payload.get("url") or "").strip()
+    return _start_collect(url)
+
+
+@router.get("/tasks")
+def list_tasks(limit: int = Query(30)):
+    c = _db()
+    try:
+        rows = c.execute("SELECT * FROM card_collect_tasks ORDER BY id DESC LIMIT ?", [limit]).fetchall()
+        return {"ok": True, "items": [dict(r) for r in rows]}
+    finally:
+        c.close()
+
+
+@router.post("/tasks/{tid}/stop")
+def stop_task(tid: int):
+    """合规：允许用户随时中断采集"""
+    _stop_flags[tid] = True
+    return {"ok": True, "message": "停止请求已发出"}
+
+
+@router.post("/stop")
+def stop_all():
+    """停止全部进行中采集（合规：人工可中断）"""
+    c = _db()
+    try:
+        rows = c.execute("SELECT id FROM card_collect_tasks WHERE status IN ('queued','running')").fetchall()
+        for r in rows:
+            _stop_flags[r["id"]] = True
+            c.execute("UPDATE card_collect_tasks SET status='fail', message='已手动停止', finished_at=datetime('now','localtime') WHERE id=?", [r["id"]])
+        c.commit()
+        return {"ok": True, "stopped": len(rows)}
+    finally:
+        c.close()
+
+
+# ==================== API：预采集库 ====================
+
+@router.get("/items")
+def list_items(q: str = Query(""), status: str = Query(""), media_type: str = Query("")):
+    c = _db()
+    try:
+        sql = "SELECT * FROM card_collect_items WHERE 1=1"
+        args = []
+        if q:
+            sql += " AND (prompt LIKE ? OR model LIKE ? OR source_url LIKE ?)"
+            args += [f"%{q}%"] * 3
+        if status:
+            sql += " AND status=?"
+            args.append(status)
+        if media_type:
+            sql += " AND media_type=?"
+            args.append(media_type)
+        sql += " ORDER BY id DESC"
+        rows = c.execute(sql, args).fetchall()
+        return {"ok": True, "items": [dict(r) for r in rows]}
+    finally:
+        c.close()
+
+
+@router.put("/items/{iid}")
+def update_item(iid: int, payload: dict = Body(...)):
+    """人工修正识别结果（提示词/模型/参数/分组建议）"""
+    c = _db()
+    try:
+        row = c.execute("SELECT * FROM card_collect_items WHERE id=?", [iid]).fetchone()
+        if not row:
+            raise HTTPException(404, "预采集项不存在")
+        if row["status"] == "archived":
+            raise HTTPException(400, "已归档项不可编辑")
+        upd = {}
+        for k in ("prompt", "model", "params", "suggest_group", "media_type"):
+            if k in payload:
+                upd[k] = str(payload[k] or "").strip()
+        if not upd:
+            return {"ok": True, "item": dict(row)}
+        sets = ", ".join(f"{k}=?" for k in upd)
+        c.execute(f"UPDATE card_collect_items SET {sets} WHERE id=?", list(upd.values()) + [iid])
+        c.commit()
+        row = c.execute("SELECT * FROM card_collect_items WHERE id=?", [iid]).fetchone()
+        return {"ok": True, "item": dict(row)}
+    finally:
+        c.close()
+
+
+@router.delete("/items/{iid}")
+def delete_item(iid: int):
+    c = _db()
+    try:
+        row = c.execute("SELECT * FROM card_collect_items WHERE id=?", [iid]).fetchone()
+        if not row:
+            raise HTTPException(404, "预采集项不存在")
+        # 清理本地媒体文件
+        if row["media_url"]:
+            for d in (IMG_DIR, VID_DIR):
+                p = os.path.join(d, row["media_url"])
+                if os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
+        c.execute("DELETE FROM card_collect_items WHERE id=?", [iid])
+        c.commit()
+        return {"ok": True}
+    finally:
+        c.close()
+
+
+# ==================== API：分组（归档用） ====================
+
+@router.get("/groups")
+def list_groups():
+    """词卡分组列表（供归档选择，含采集建议分组）"""
+    c = _db()
+    try:
+        rows = c.execute(
+            "SELECT id, name FROM word_card_group WHERE is_active=1 ORDER BY sort_order, id").fetchall()
+        groups = [{"id": r["id"], "name": r["name"]} for r in rows]
+        # 采集建议分组（不存在则标记可创建）
+        suggests = set()
+        for it in c.execute("SELECT DISTINCT suggest_group FROM card_collect_items WHERE suggest_group!=''").fetchall():
+            if it["suggest_group"]:
+                suggests.add(it["suggest_group"])
+        return {"ok": True, "groups": groups, "suggest_groups": sorted(suggests)}
+    finally:
+        c.close()
+
+
+def _ensure_group(name: str) -> int:
+    """按名查找或创建词卡分组，返回 group_id"""
+    c = _db()
+    try:
+        row = c.execute("SELECT id FROM word_card_group WHERE name=? AND is_active=1", [name]).fetchone()
+        if row:
+            return row["id"]
+        cur = c.execute("INSERT INTO word_card_group (name, group_key, icon, group_type, sort_order, created_at) VALUES (?, ?, '📥', 'custom', 999, datetime('now','localtime'))", [name, "cc_" + str(int(time.time()))])
+        c.commit()
+        return cur.lastrowid
+    finally:
+        c.close()
+
+
+# ==================== API：归档建词卡（带来源溯源） ====================
+
+@router.post("/archive")
+def archive_items(payload: dict = Body(...)):
+    """预采集项 → 词卡。ids 必填；group_id 指定分组，否则用 suggest_group（自动建组）"""
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "请选择要归档的预采集项")
+    group_id = payload.get("group_id")
+    group_name = str(payload.get("group_name") or "").strip()
+    if len(ids) > MAX_ITEMS_PER_TASK * 2:
+        raise HTTPException(400, f"单次归档最多 {MAX_ITEMS_PER_TASK * 2} 条")
+    c = _db()
+    try:
+        archived, skipped, errors = [], [], []
+        for iid in ids:
+            try:
+                row = c.execute("SELECT * FROM card_collect_items WHERE id=?", [iid]).fetchone()
+                if not row:
+                    skipped.append({"id": iid, "reason": "不存在"})
+                    continue
+                if row["status"] == "archived":
+                    skipped.append({"id": iid, "reason": "已归档"})
+                    continue
+                gid = group_id
+                if not gid:
+                    gname = group_name or row["suggest_group"] or "外部采集"
+                    gid = _ensure_group(gname)
+                # 媒体文件复制到词卡媒体目录（复用 wc_media 机制）
+                media_filename = row["media_url"] or ""
+                if media_filename:
+                    src = os.path.join(VID_DIR if row["media_type"] == "video" else IMG_DIR, media_filename)
+                    if not os.path.exists(src):
+                        media_filename = ""
+                name = f"采集-{row['id']}"
+                meaning = " · ".join(x for x in [
+                    "📥 外部采集",
+                    ("视频" if row["media_type"] == "video" else "图片"),
+                    row["page_title"][:40] if row["page_title"] else "",
+                ] if x)
+                cur = c.execute(
+                    "INSERT INTO word_card (group_id, name, content, meaning, media_type, preview_media, "
+                    "is_builtin, heat_weight, module, category, source, source_id, original_ref, created_at, updated_at) "
+                    "VALUES (?,?,?,?,?,?,0,0.5,'card_collect','external_collect',?,?,?,datetime('now','localtime'),datetime('now','localtime'))",
+                    [gid, name, row["prompt"] or "", meaning, row["media_type"] or "image",
+                     media_filename, row["source_url"] or "", row["id"],
+                     row["page_title"] or row["source_url"] or ""])
+                card_id = cur.lastrowid
+                c.execute("UPDATE card_collect_items SET status='archived', word_card_id=?, archived_at=datetime('now','localtime') WHERE id=?",
+                          [card_id, iid])
+                archived.append({"id": iid, "card_id": card_id, "group_id": gid})
+            except Exception as e:
+                errors.append({"id": iid, "reason": str(e)[:120]})
+        c.commit()
+        # 收藏状态流转 archived
+        fav_ids = [r["fav_id"] for r in c.execute(
+            "SELECT DISTINCT fav_id FROM card_collect_items WHERE status='archived' AND fav_id!=0").fetchall()]
+        for fid in fav_ids:
+            c.execute("UPDATE card_collect_favorites SET status='archived' WHERE id=?", [fid])
+        c.commit()
+        return {"ok": True, "archived": archived, "skipped": skipped, "errors": errors}
+    finally:
+        c.close()
+
+
+# ==================== API：来源溯源回溯 ====================
+
+@router.get("/trace/{card_id}")
+def trace_card(card_id: int):
+    """词卡 → 预采集项 → 收藏 → 原始 URL 完整回溯链"""
+    c = _db()
+    try:
+        card = c.execute("SELECT id, name, source, source_id, original_ref FROM word_card WHERE id=?", [card_id]).fetchone()
+        if not card:
+            raise HTTPException(404, "词卡不存在")
+        chain = {"card": dict(card), "item": None, "favorite": None}
+        if card["source_id"]:
+            item = c.execute("SELECT * FROM card_collect_items WHERE id=?", [card["source_id"]]).fetchone()
+            if item:
+                chain["item"] = dict(item)
+                if item["fav_id"]:
+                    fav = c.execute("SELECT * FROM card_collect_favorites WHERE id=?", [item["fav_id"]]).fetchone()
+                    if fav:
+                        chain["favorite"] = dict(fav)
+        return {"ok": True, "chain": chain}
+    finally:
+        c.close()
+
+
+# ==================== API：媒体访问 ====================
+
+@router.get("/file/{fname}")
+def serve_file(fname: str):
+    """预采集库媒体访问（仅限 card_collect 目录内，防路径穿越）"""
+    if not re.match(r"^[\w.\-]+$", fname):
+        raise HTTPException(400, "非法文件名")
+    for d in (IMG_DIR, VID_DIR):
+        p = os.path.join(d, fname)
+        if os.path.exists(p):
+            from fastapi.responses import FileResponse
+            return FileResponse(p)
+    raise HTTPException(404, "文件不存在")

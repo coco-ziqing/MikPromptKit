@@ -19,6 +19,7 @@ from api.atoms import router as atoms_router
 from api.atoms_import import router as atoms_import_router
 from api.auto_tag import router as auto_tag_router
 from api.cards import router as cards_v4_router
+from api.card_collect import router as card_collect_router  # v5.42.0 词卡采集（收藏→采集→归档→溯源）
 from api.card_gen import router as card_gen_router  # v5.37.0 词卡 AI 生成队列
 from api.character_composer import router as character_composer_router
 from api.characters import router as characters_router
@@ -90,6 +91,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(ocr_router)
     app.include_router(cards_v4_router)
     app.include_router(card_gen_router)  # v5.37.0 词卡 AI 生成队列
+    app.include_router(card_collect_router)  # v5.42.0 词卡采集
     app.include_router(composer_v3_router)
     app.include_router(translate_router)
     app.include_router(media_router)
