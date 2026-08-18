@@ -274,7 +274,9 @@ def ensure_chrome_started() -> dict:
             _chrome_proc = subprocess.Popen(
                 [CHROME_BIN, f"--user-data-dir={PROFILE_DIR}", "--remote-debugging-port=0",
                  "--no-first-run", "--disable-default-apps", "--no-default-browser-check",
-                 "--window-size=1280,900", "about:blank"],
+                 # v5.42.17: 窗口固定屏幕外（不可见零打扰，防任务中忽大忽小）+ 禁用崩溃恢复气泡
+                 "--window-size=1280,900", "--window-position=-32000,-32000",
+                 "--disable-session-crashed-bubble", "--no-restore-session-state", "about:blank"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:
             return {"connected": False, "error": f"Chrome 启动失败: {e}"}
@@ -897,7 +899,8 @@ def _collect_worker(tid: int):
                 # （playwright 页面在连接退出时会关闭，原生标签不受影响，避免用户看到"跳转空白页"）
                 try:
                     subprocess.Popen(
-                        [CHROME_BIN, f"--user-data-dir={PROFILE_DIR}", url],
+                        [CHROME_BIN, f"--user-data-dir={PROFILE_DIR}", url,
+                         "--window-size=1280,900", "--window-position=-32000,-32000"],
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 except Exception as e:
                     print(f"[CardCollect] 保留页面失败: {e}")
