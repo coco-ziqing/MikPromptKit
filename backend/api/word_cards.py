@@ -724,11 +724,20 @@ def delete_card_thumbnail(card_id: int):
 
 @router.get("/thumbnails/{filename}")
 def serve_card_thumbnail(filename: str):
-    """返回词卡缩略图文件"""
-    path = os.path.join(WC_THUMB_DIR, os.path.basename(filename))
-    if not os.path.exists(path):
-        raise HTTPException(404, "缩略图不存在")
-    return FileResponse(path, media_type="image/jpeg")
+    """返回词卡缩略图文件。
+    v5.42.20: 主目录 wc_media/thumbs 未命中时 fallback data/thumbnails/
+    （采集/生成/即梦词卡缩略图位于网格缩略图目录，修复编辑弹窗加载失败）"""
+    safe = os.path.basename(filename)
+    candidates = [
+        os.path.join(WC_THUMB_DIR, safe),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "thumbnails", safe),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            ext = os.path.splitext(safe)[1].lower()
+            mime = "image/png" if ext == ".png" else "image/jpeg"
+            return FileResponse(path, media_type=mime)
+    raise HTTPException(404, "缩略图不存在")
 
 
 @router.post("/{card_id}/video-from-library")
@@ -883,11 +892,23 @@ def delete_card_video(card_id: int):
 
 @router.get("/videos/{filename}")
 def serve_card_video(filename: str):
-    """返回词卡预览视频文件（支持Range请求）"""
-    path = os.path.join(WC_VIDEO_DIR, os.path.basename(filename))
-    if not os.path.exists(path):
+    """返回词卡预览视频文件（支持Range请求）。
+    v5.42.20: fallback data/card_collect/videos/（采集视频）与 data/videos/（通用）"""
+    safe = os.path.basename(filename)
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    candidates = [
+        os.path.join(WC_VIDEO_DIR, safe),
+        os.path.join(root, "data", "card_collect", "videos", safe),
+        os.path.join(root, "data", "videos", safe),
+    ]
+    path = None
+    for p in candidates:
+        if os.path.exists(p):
+            path = p
+            break
+    if not path:
         raise HTTPException(404, "视频不存在")
-    ext = os.path.splitext(filename)[1].lower()
+    ext = os.path.splitext(safe)[1].lower()
     media_map = {".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime"}
     return FileResponse(path, media_type=media_map.get(ext, "video/mp4"))
 
