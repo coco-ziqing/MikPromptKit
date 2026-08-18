@@ -1112,11 +1112,17 @@ def list_groups():
 
 
 def _ensure_group(name: str) -> int:
-    """按名查找或创建词卡分组，返回 group_id"""
+    """按名查找或创建词卡分组，返回 group_id。
+    v5.42.9：同名软删除分组（is_active=0）自动重新激活复用，防止重复建组堆积"""
     c = _db()
     try:
-        row = c.execute("SELECT id FROM word_card_group WHERE name=? AND is_active=1", [name]).fetchone()
+        row = c.execute("SELECT id, is_active FROM word_card_group WHERE name=?", [name]).fetchone()
         if row:
+            if row["is_active"]:
+                return row["id"]
+            # 存在软删除同名分组 → 重新激活复用
+            c.execute("UPDATE word_card_group SET is_active=1, updated_at=datetime('now','localtime') WHERE id=?", [row["id"]])
+            c.commit()
             return row["id"]
         cur = c.execute("INSERT INTO word_card_group (name, group_key, icon, group_type, sort_order, created_at) VALUES (?, ?, '📥', 'custom', 999, datetime('now','localtime'))", [name, "cc_" + str(int(time.time()))])
         c.commit()
