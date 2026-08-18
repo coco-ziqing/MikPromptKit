@@ -591,6 +591,65 @@ def _ext_url(url: str) -> str:
     return "jpg"
 
 
+# ==================== 截图 OCR 提示词提取（v5.42.7） ====================
+
+def _ocr_page_prompt(page) -> str:
+    """页面截图 + Ollama 视觉模型 OCR 提取提示词。
+    优先截取「提示词」标签区域，找不到则全页截图。本地推理，无外部依赖。
+    模型未安装/不可用时静默返回空，不阻塞采集。"""
+    try:
+        import base64 as _b64
+        from api.ocr import _get_ollama_cfg, _call_model_sync
+    except Exception as e:
+        print(f"[CardCollect] OCR 导入失败: {e}")
+        return ""
+    try:
+        # 1. 定位「提示词」标签区域（内容容器优先）
+        clip = None
+        try:
+            clip = page.evaluate("""() => {
+                const findLabel = (el) => {
+                    if (el.nodeType !== 1) return null;
+                    const t = (el.textContent || '').trim();
+                    if (/^(提示词|prompt|Prompt|生成提示词|描述词)$/.test(t) && el.children.length === 0) return el;
+                    for (const c of el.children) { const r = findLabel(c); if (r) return r; }
+                    return null;
+                };
+                const label = findLabel(document.body);
+                if (!label) return null;
+                const container = label.closest('[class*="prompt"],[class*="Prompt"],[class*="info"],[class*="detail"],[class*="content"]') || label.parentElement.parentElement || label.parentElement;
+                const r = container.getBoundingClientRect();
+                if (!r || r.width < 20 || r.height < 20) return null;
+                return {x: Math.max(0, r.x - 10), y: Math.max(0, r.y - 10),
+                        width: Math.min(r.width + 20, 1400), height: Math.min(r.height + 20, 900)};
+            }""")
+        except Exception:
+            clip = None
+        shot = page.screenshot(clip=clip) if clip else page.screenshot()
+        if not shot:
+            return ""
+        img_b64 = _b64.b64encode(shot).decode("utf-8")
+        cfg = _get_ollama_cfg()
+        server_url = cfg.get("server_url", "http://127.0.0.1:11434").rstrip("/")
+        model = cfg.get("vision_model") or "qwen2.5vl:3b"
+        sys_prompt = (
+            "这是AI绘画/生成平台的作品详情页截图。请提取其中【提示词/Prompt】的完整内容。"
+            "如果页面显示『登录后查看』『需登录』或没有提示词内容，返回空字符串。"
+            "只返回提示词文本本身，不要输出任何解释或其他 UI 文本。")
+        result = _call_model_sync(server_url, model, img_b64, sys_prompt, timeout_s=120)
+        content = (result.get("content") or "").strip()
+        if len(content) < 8:
+            return ""
+        # 登录墙/非提示词过滤
+        if any(k in content for k in ("登录后查看", "登录查看", "请登录", "需登录", "登录/注册")) and len(content) < 40:
+            return ""
+        print(f"[CardCollect] OCR 提取提示词 {len(content)} 字 (model={model})")
+        return content[:2000]
+    except Exception as e:
+        print(f"[CardCollect] OCR 提取失败: {e}")
+        return ""
+
+
 # ==================== 采集主流程（后台线程） ====================
 
 def _task_update(tid: int, **kw):
@@ -693,6 +752,12 @@ def _collect_worker(tid: int):
                         json_media = _extract_media_from_json(cap["data"])
 
                 prompt = (json_prompt or dom_prompt or "").strip()
+                # v5.42.7: DOM/JSON 均未提取到提示词时，截图 OCR 兜底（本地 Ollama 视觉模型）
+                if not prompt:
+                    _task_update(tid, progress=45, message="尝试截图 OCR 识别提示词…")
+                    ocr_prompt = _ocr_page_prompt(page)
+                    if ocr_prompt:
+                        prompt = ocr_prompt
                 model = (json_model or dom_model or "").strip()
                 params = "；".join(dict.fromkeys(dom_params))[:500]
 
