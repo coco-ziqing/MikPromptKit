@@ -149,10 +149,48 @@
   }
 
   // ---- 已收藏便携标签条（折叠态胶囊下方） ----
+  // 智能关键词提取：去站点名/通用噪声 → 分隔符切分 → 信息量评分选最优片段
+  var SITE_WORDS = ['liblib', '哩布哩布', 'jimeng', '即梦', 'midjourney', 'mj', '小红书', 'xiaohongshu',
+    'pinterest', 'artstation', '可灵', 'kling', '海螺', 'hailuo', 'civitai', 'b站', 'bilibili', '哔哩哔哩',
+    '微博', 'weibo', '知乎', 'zhihu', '抖音', 'douyin', '快手', 'kuaishou', '花瓣', 'huaban', '站酷', 'zcool',
+    'pixiv', 'behance', 'dribbble', 'instagram', 'youtube', 'google', 'baidu', '百度', '淘宝', 'taobao',
+    '京东', 'jd', 'amazon', '首页', 'home', 'untitled', '无标题', '登录', '注册', '错误', '404',
+    'not found', 'page not found'];
+
+  function isNoise(s) {
+    var low = s.toLowerCase();
+    if (SITE_WORDS.indexOf(low) >= 0) return true;
+    // 片段完全由站点词组成（如 "liblib 哩布哩布" "即梦 AI 官网"）→ 逐词检查
+    var tokens = low.split(/[\s\-]+/).filter(Boolean);
+    if (tokens.length >= 1 && tokens.every(function (tk) {
+      return SITE_WORDS.indexOf(tk) >= 0 ||
+        ['ai', '官网', 'art', 'official', '官方', 'app', 'web'].indexOf(tk) >= 0;
+    })) return true;
+    // 站点词开头 + 极短尾巴（≤4 字符，如 "liblibai" "mj官网"）
+    if (SITE_WORDS.some(function (w) { return w.length >= 3 && low.indexOf(w) === 0 && low.length <= w.length + 4; })) return true;
+    return ['404', 'not found', 'page not found', 'untitled', '无标题', '首页', 'home', 'official'].indexOf(low) >= 0;
+  }
+
+  function scorePart(s) {
+    var len = s.length;
+    if (len >= 4 && len <= 18) return 100 - Math.abs(len - 10);
+    return Math.min(len, 30);
+  }
+
+  function extractKeyword(title) {
+    if (!title) return '';
+    var parts = String(title).split(/[-–—|_·:：,，。()（）【】\[\]\/\\]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!parts.length) parts = [String(title).trim()];
+    var kept = parts.filter(function (p) { return !isNoise(p); });
+    if (!kept.length) return '';
+    kept.sort(function (a, b) { return scorePart(b) - scorePart(a); });
+    return kept[0].slice(0, 14);
+  }
+
   function kwOf(title, url) {
-    var kw = (title || '').trim().replace(/\s+/g, ' ').slice(0, 14);
+    var kw = extractKeyword(title);
     if (!kw) {
-      try { kw = url.replace(/^https?:\/\//, '').split('/')[0].slice(0, 14); } catch (e) { kw = url.slice(0, 14); }
+      try { kw = url.replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '').slice(0, 14); } catch (e) { kw = url.slice(0, 14); }
     }
     return kw;
   }
@@ -164,7 +202,8 @@
     if (!box) return;
     if (!recent.length) { box.innerHTML = ''; return; }
     box.innerHTML = recent.map(function (r) {
-      return '<span class="chip" title="点击打开 · ' + esc(r.url) + '">' +
+      var tip = r.title ? (r.kw + ' · ' + r.title) : r.url;
+      return '<span class="chip" title="' + esc(tip) + '">' +
         '<span class="kw">' + esc(r.kw) + '</span>' +
         '<button class="x" data-url="' + esc(r.url).replace(/"/g, '&quot;') + '" title="从收藏库移除">✕</button></span>';
     }).join('');
@@ -182,7 +221,8 @@
     if (!urls || !urls.length) return;
     var now = Date.now();
     urls.forEach(function (u, i) {
-      var item = { url: u, kw: kwOf(titleMap ? titleMap[u] : '', u), ts: now + i };
+      var t = (titleMap ? titleMap[u] : '') || '';
+      var item = { url: u, kw: kwOf(t, u), title: t, ts: now + i };
       var idx = recent.findIndex(function (r) { return r.url === u; });
       if (idx >= 0) recent[idx] = item; else recent.push(item);
     });
