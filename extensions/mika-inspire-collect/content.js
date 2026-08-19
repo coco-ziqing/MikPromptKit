@@ -49,8 +49,10 @@
     '.tabitem { display: flex; flex-direction: column; padding: 6px 8px; border-bottom: 1px solid #f3f4f6; cursor: pointer; }',
     '.tabitem:last-child { border-bottom: none; }',
     '.tabitem.on { background: #eff6ff; }',
-    '.ti-title { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+    '.ti-line { display: flex; align-items: center; gap: 4px; min-width: 0; }',
+    '.ti-title { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }',
     '.ti-url { font-size: 10px; color: #9ca3af; word-break: break-all; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+    '.saved-badge { flex: none; font-size: 10px; color: #059669; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 0 5px; white-space: nowrap; }',
     '.empty { padding: 14px; text-align: center; color: #9ca3af; font-size: 12px; }',
     '#foot { padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 8px; }',
     '.msg { min-height: 15px; font-size: 12px; }',
@@ -113,6 +115,7 @@
   var panel = shadow.getElementById('panel');
   var tabs = [];
   var checked = {};
+  var savedSet = {};   // 已在收藏库的 URL 集合（展开面板标记）
   var connOk = false;
   var msgTimer = null;
   var recent = [];
@@ -236,8 +239,10 @@
     send({ type: 'deleteByUrl', url: url }, function (r) {
       if (r && r.ok) {
         recent = recent.filter(function (x) { return x.url !== url; });
+        delete savedSet[url];
         saveRecent();
         renderRecent();
+        renderTabs();
         showToast('🗑 已从收藏库移除');
       } else {
         showToast('❌ 移除失败：' + ((r && r.error) || '服务未连接'));
@@ -307,6 +312,9 @@
   // ---- 数据刷新 ----
   function refresh() {
     ping();
+    send({ type: 'getSavedUrls' }, function (r) {
+      if (r && r.ok && r.urls) { savedSet = r.urls; renderTabs(); }
+    });
     send({ type: 'getActiveTab' }, function (r) {
       if (r && r.ok) {
         $('curTitle').textContent = r.title || '（无标题页面）';
@@ -346,9 +354,10 @@
     }
     list.innerHTML = tabs.map(function (t) {
       var on = !!checked[t.url];
+      var saved = savedSet[t.url] ? '<span class="saved-badge">📌 已收藏</span>' : '';
       return '<label class="tabitem' + (on ? ' on' : '') + '">' +
         '<input type="checkbox" data-url="' + esc(t.url).replace(/"/g, '&quot;') + '" ' + (on ? 'checked' : '') + '>' +
-        '<span class="ti-title">' + esc(t.title || t.url) + '</span>' +
+        '<span class="ti-line"><span class="ti-title">' + esc(t.title || t.url) + '</span>' + saved + '</span>' +
         '<span class="ti-url">' + esc(t.url) + '</span></label>';
     }).join('');
   }
@@ -362,6 +371,8 @@
         var map = {};
         (titles || []).forEach(function (t, i) { if (t) map[urls[i]] = t; });
         addRecent(urls, map);
+        urls.forEach(function (u) { savedSet[u] = true; });
+        renderTabs();
         showToast('✅ 已收藏 ' + urls.length + ' 条');
         setMsg(okMsg || ('✅ 已入库 ' + r.count + ' 条 → 待处理池'), true);
         refresh();

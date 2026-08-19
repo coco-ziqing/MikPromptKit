@@ -80,6 +80,19 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     return true;
   }
 
+  // 已收藏 URL 集合（展开面板标签列表标记）
+  if (msg.type === 'getSavedUrls') {
+    fetch(API + '/favorites')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var urls = {};
+        ((d && d.items) || []).forEach(function (i) { urls[i.url] = true; });
+        sendResponse({ ok: true, urls: urls });
+      })
+      .catch(function () { sendResponse({ ok: false, error: '获取收藏列表失败' }); });
+    return true;
+  }
+
   // 按 URL 快捷删除收藏库条目（悬浮标签 ✕）：先查 id 再删
   if (msg.type === 'deleteByUrl') {
     fetch(API + '/favorites')
