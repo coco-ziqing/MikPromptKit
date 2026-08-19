@@ -25,6 +25,8 @@
     '#pill .btn.save:disabled { background: #cbd5e1; cursor: not-allowed; }',
     '#pill .btn.toggle { background: #f3f4f6; color: #374151; }',
     '#pill .btn.toggle:hover { background: #e5e7eb; }',
+    '#pill .btn.hide { background: transparent; color: #9ca3af; padding: 2px 5px; font-size: 11px; }',
+    '#pill .btn.hide:hover { color: #ef4444; }',
     /* ---- 展开面板 ---- */
     '#panel { display: none; position: absolute; left: 0; bottom: 0; width: 360px; max-height: 78vh; background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,.18); overflow: hidden; flex-direction: column; }',
     '#wrap.right #panel { left: auto; right: 0; }',
@@ -105,6 +107,7 @@
     '    <span class="brand">📥 咪卡</span>' +
     '    <button class="btn save" id="pillSave" title="收藏当前页到收藏库">📌 收藏本页</button>' +
     '    <button class="btn toggle" id="pillOpen">⚡</button>' +
+    '    <button class="btn hide" id="pillHide" title="隐藏悬浮胶囊（点扩展图标可恢复）">✕</button>' +
     '  </div>' +
     '  <div id="toast"></div>' +
     '  <div id="recent"></div>' +
@@ -129,6 +132,7 @@
     '      <button class="btn primary" id="btnBatch" disabled>📥 批量收藏选中</button>' +
     '      <div class="msg" id="msg"></div>' +
     '      <div class="set-row"><button class="link" id="btnSetApi">⚙️ 服务地址</button><span class="api-now" id="apiNow"></span></div>' +
+    '      <div class="set-row"><button class="link" id="btnHideCapsule">🙈 隐藏悬浮胶囊</button></div>' +
     '      <div class="set-box" id="setBox" style="display:none">' +
     '        <input id="apiInput" placeholder="http://192.168.0.102:8080">' +
     '        <button class="btn" id="btnSaveApi">保存</button>' +
@@ -512,6 +516,27 @@
         '<span class="ti-url">' + esc(t.url) + '</span></label>';
     }).join('');
   }
+
+  // ---- v5.46.6: 胶囊显示/隐藏全局开关（用户自主控制，跨页面即时生效） ----
+  function applyVisibility() {
+    try {
+      chrome.storage.local.get('mikaCcVisible', function (o) {
+        host.style.display = o.mikaCcVisible === false ? 'none' : '';
+      });
+    } catch (e) {}
+  }
+  applyVisibility();
+  chrome.storage.onChanged.addListener(function (changes, area) {
+    if (area === 'local' && changes.mikaCcVisible) {
+      host.style.display = changes.mikaCcVisible.newValue === false ? 'none' : '';
+    }
+  });
+  $('pillHide').addEventListener('click', function () {
+    try { chrome.storage.local.set({ mikaCcVisible: false }); } catch (e) {}
+  });
+  $('btnHideCapsule').addEventListener('click', function () {
+    try { chrome.storage.local.set({ mikaCcVisible: false }); } catch (e) {}
+  });
 
   // ---- 服务地址设置（多机部署：指向主程序局域网 IP） ----
   function showApiNow() {

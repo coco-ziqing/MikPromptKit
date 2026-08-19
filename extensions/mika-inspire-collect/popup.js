@@ -65,6 +65,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // 服务地址设置（多机部署指向主程序局域网 IP）
   checkConn();
+  // 胶囊显示开关（v5.46.6）：全局生效，跨页面即时
+  chrome.storage.local.get('mikaCcVisible', function (o) {
+    $('chkCapsule').checked = o.mikaCcVisible !== false;
+  });
+  $('chkCapsule').addEventListener('change', function (e) {
+    chrome.storage.local.set({ mikaCcVisible: e.target.checked }, function () {
+      setMsg(e.target.checked ? '✅ 悬浮胶囊已显示' : '✅ 悬浮胶囊已隐藏（可随时重新开启）', true);
+    });
+  });
   $('btnSet').addEventListener('click', function () {
     var box = $('setBox');
     var show = box.style.display === 'none';
