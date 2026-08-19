@@ -66,6 +66,14 @@
     '.msg.ok { color: #059669; }',
     '.msg.err { color: #dc2626; }',
     '.note { font-size: 10px; color: #9ca3af; text-align: center; }',
+    /* ---- 服务地址设置（多机部署） ---- */
+    '.set-row { display: flex; align-items: center; gap: 8px; }',
+    '.link { cursor: pointer; border: none; background: none; color: #6b7280; font-size: 12px; padding: 0; }',
+    '.link:hover { color: #3b82f6; }',
+    '.api-now { font-size: 10px; color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }',
+    '.set-box { display: flex; gap: 6px; align-items: center; }',
+    '.set-box input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 12px; }',
+    '.set-box .btn { width: auto; padding: 6px 12px; font-size: 12px; background: #3b82f6; color: #fff; border-radius: 8px; }',
     /* ---- 折叠态：已收藏便携标签条 + toast ---- */
     '#recent { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; max-width: 340px; }',
     '#wrap.open #recent { display: none; }',
@@ -112,6 +120,11 @@
     '    <div class="foot">' +
     '      <button class="btn primary" id="btnBatch" disabled>📥 批量收藏选中</button>' +
     '      <div class="msg" id="msg"></div>' +
+    '      <div class="set-row"><button class="link" id="btnSetApi">⚙️ 服务地址</button><span class="api-now" id="apiNow"></span></div>' +
+    '      <div class="set-box" id="setBox" style="display:none">' +
+    '        <input id="apiInput" placeholder="http://192.168.0.102:8080">' +
+    '        <button class="btn" id="btnSaveApi">保存</button>' +
+    '      </div>' +
     '      <div class="note">仅读取标签页地址 · 不读取任何隐私数据 · 批量需勾选确认</div>' +
     '    </div>' +
     '  </div>' +
@@ -373,6 +386,30 @@
         '<span class="ti-url">' + esc(t.url) + '</span></label>';
     }).join('');
   }
+
+  // ---- 服务地址设置（多机部署：指向主程序局域网 IP） ----
+  function showApiNow() {
+    send({ type: 'getApi' }, function (r) { if (r && r.ok) $('apiNow').textContent = r.api; });
+  }
+  $('btnSetApi').addEventListener('click', function () {
+    var box = $('setBox');
+    var show = box.style.display === 'none';
+    box.style.display = show ? 'flex' : 'none';
+    if (show) send({ type: 'getApi' }, function (r) { if (r && r.ok) $('apiInput').value = r.api; });
+  });
+  $('btnSaveApi').addEventListener('click', function () {
+    var v = $('apiInput').value.trim();
+    if (!v) { showToast('❌ 请输入服务地址'); return; }
+    send({ type: 'setApi', api: v }, function (r) {
+      if (r && r.ok) {
+        showToast('✅ 服务地址已保存');
+        $('setBox').style.display = 'none';
+        showApiNow();
+        refresh();
+      } else showToast('❌ ' + ((r && r.error) || '保存失败'));
+    });
+  });
+  showApiNow();
 
   // ---- 收藏 ----
   function doSave(urls, btn, okMsg, titles) {

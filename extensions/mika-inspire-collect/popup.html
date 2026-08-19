@@ -29,6 +29,16 @@
   .msg { min-height: 16px; font-size: 12px; margin-top: 8px; }
   .msg.ok { color: #059669; }
   .msg.err { color: #dc2626; }
+  .set { margin-top: 8px; border-top: 1px solid #f3f4f6; padding-top: 8px; }
+  .set-toggle { cursor: pointer; border: none; background: none; color: #6b7280; font-size: 12px; padding: 0; }
+  .set-toggle:hover { color: #3b82f6; }
+  #setBox { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+  #apiInput { flex: 1; min-width: 200px; padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 12px; }
+  #btnSaveApi { padding: 6px 12px; border: none; border-radius: 8px; background: #3b82f6; color: #fff; cursor: pointer; font-size: 12px; }
+  .set-msg { width: 100%; font-size: 11px; min-height: 14px; }
+  .set-msg.ok { color: #059669; }
+  .set-msg.err { color: #dc2626; }
+  .set-note { width: 100%; font-size: 10px; color: #9ca3af; }
   .foot { font-size: 10px; color: #9ca3af; margin-top: 8px; text-align: center; }
 </style>
 </head>
@@ -52,6 +62,15 @@
   <button id="btnBatch" class="btn primary" disabled>📥 批量收藏选中</button>
 
   <div id="msg" class="msg"></div>
+  <div class="set">
+    <button id="btnSet" class="set-toggle">⚙️ 服务地址</button>
+    <div id="setBox" style="display:none">
+      <input id="apiInput" placeholder="http://192.168.0.102:8080">
+      <button id="btnSaveApi">保存</button>
+      <div id="apiMsg" class="set-msg"></div>
+      <div class="set-note">多机部署：填主程序局域网地址（含端口）；本机用默认 127.0.0.1:8080</div>
+    </div>
+  </div>
   <div class="foot">仅读取标签页地址 · 不读取任何隐私数据</div>
 
   <script src="popup.js"></script>

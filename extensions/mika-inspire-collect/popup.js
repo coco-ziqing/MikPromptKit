@@ -44,20 +44,51 @@ function renderTabs() {
 document.addEventListener('DOMContentLoaded', function () {
   var btnSave = $('btnSave');
   var btnBatch = $('btnBatch');
+  var apiMsg = $('apiMsg');
 
-  // 当前页 + 连接检测
-  chrome.runtime.sendMessage({ type: 'getActiveTab' }, function (res) {
-    if (res && res.ok) {
-      $('conn').textContent = '✅ 咪卡服务已连接';
-      $('conn').className = 'conn ok';
-      $('curTitle').textContent = res.title || '（无标题页面）';
-      $('curUrl').textContent = res.url || '当前页面不是 http/https 网页';
-      btnSave.disabled = !res.valid;
-    } else {
-      $('conn').textContent = '❌ 咪卡服务未连接（127.0.0.1:8080）';
-      $('conn').className = 'conn err';
-      $('curTitle').textContent = '—';
+  function checkConn() {
+    // 当前页 + 连接检测
+    chrome.runtime.sendMessage({ type: 'getActiveTab' }, function (res) {
+      if (res && res.ok) {
+        $('conn').textContent = '✅ 咪卡服务已连接';
+        $('conn').className = 'conn ok';
+        $('curTitle').textContent = res.title || '（无标题页面）';
+        $('curUrl').textContent = res.url || '当前页面不是 http/https 网页';
+        btnSave.disabled = !res.valid;
+      } else {
+        $('conn').textContent = '❌ 咪卡服务未连接';
+        $('conn').className = 'conn err';
+        $('curTitle').textContent = '—';
+      }
+    });
+  }
+
+  // 服务地址设置（多机部署指向主程序局域网 IP）
+  checkConn();
+  $('btnSet').addEventListener('click', function () {
+    var box = $('setBox');
+    var show = box.style.display === 'none';
+    box.style.display = show ? 'flex' : 'none';
+    if (show) {
+      chrome.runtime.sendMessage({ type: 'getApi' }, function (r) {
+        if (r && r.ok) $('apiInput').value = r.api;
+      });
     }
+  });
+  $('btnSaveApi').addEventListener('click', function () {
+    var v = $('apiInput').value.trim();
+    if (!v) { apiMsg.textContent = '请输入服务地址'; apiMsg.className = 'set-msg err'; return; }
+    chrome.runtime.sendMessage({ type: 'setApi', api: v }, function (r) {
+      if (r && r.ok) {
+        apiMsg.textContent = '✅ 已保存，正在重新检测连接…';
+        apiMsg.className = 'set-msg ok';
+        $('setBox').style.display = 'none';
+        checkConn();
+      } else {
+        apiMsg.textContent = '❌ ' + ((r && r.error) || '保存失败');
+        apiMsg.className = 'set-msg err';
+      }
+    });
   });
 
   // 全部标签
