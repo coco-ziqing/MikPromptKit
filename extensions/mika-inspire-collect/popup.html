@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { width: 380px; margin: 0; padding: 12px 14px; font-family: "Microsoft YaHei", system-ui, sans-serif; font-size: 13px; color: #1f2937; background: #fff; }
+  .head { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+  .sub { font-size: 11px; color: #6b7280; font-weight: 400; }
+  .conn { font-size: 11px; margin-bottom: 8px; padding: 4px 8px; border-radius: 6px; }
+  .conn.ok { color: #059669; background: #ecfdf5; }
+  .conn.err { color: #dc2626; background: #fef2f2; }
+  .cur { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+  .cur-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cur-url { font-size: 11px; color: #6b7280; word-break: break-all; margin: 4px 0 8px; max-height: 32px; overflow: hidden; }
+  .btn { width: 100%; padding: 8px; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .btn.primary { background: #3b82f6; color: #fff; }
+  .btn.primary:hover:not(:disabled) { background: #2563eb; }
+  .btn.primary:disabled { background: #cbd5e1; cursor: not-allowed; }
+  .divider { border-top: 1px solid #e5e7eb; margin: 10px 0; }
+  .batch-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; margin-bottom: 6px; }
+  .batch-head label { font-weight: 400; font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .tablist { max-height: 220px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 8px; }
+  .tabitem { display: flex; flex-direction: column; padding: 6px 8px; border-bottom: 1px solid #f3f4f6; cursor: pointer; }
+  .tabitem:last-child { border-bottom: none; }
+  .tabitem.on { background: #eff6ff; }
+  .ti-title { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ti-url { font-size: 10px; color: #9ca3af; word-break: break-all; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .empty { padding: 14px; text-align: center; color: #9ca3af; font-size: 12px; }
+  .msg { min-height: 16px; font-size: 12px; margin-top: 8px; }
+  .msg.ok { color: #059669; }
+  .msg.err { color: #dc2626; }
+  .foot { font-size: 10px; color: #9ca3af; margin-top: 8px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="head">📥 咪卡灵感收藏助手 <span class="sub">回传至 URL收藏库</span></div>
+  <div id="conn" class="conn">⏳ 连接检测中…</div>
+
+  <div class="cur">
+    <div class="cur-title" id="curTitle">读取中…</div>
+    <div class="cur-url" id="curUrl"></div>
+    <button id="btnSave" class="btn primary" disabled>📥 收藏当前页</button>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="batch-head">
+    <span>📚 全部标签（<span id="tabCount">0</span> 个有效）</span>
+    <label><input type="checkbox" id="chkAll" checked> 全选</label>
+  </div>
+  <div id="tabList" class="tablist"><div class="empty">读取中…</div></div>
+  <button id="btnBatch" class="btn primary" disabled>📥 批量收藏选中</button>
+
+  <div id="msg" class="msg"></div>
+  <div class="foot">仅读取标签页地址 · 不读取任何隐私数据</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

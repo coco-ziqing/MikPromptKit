@@ -720,7 +720,7 @@
                 '<span style="flex:1;"></span>' +
                 '<button class="btn btn-sm btn-primary" onclick="App._ccAddSite()">➕ 添加图库</button>' +
                 '</div>' +
-                '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">💡 浏览中看到好内容：用浏览器扩展一键抓取页面地址回传收藏库（扩展将在 v5.44 上线），当前可直接复制地址到「📥 URL收藏库」粘贴入库</div>' +
+                '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">💡 已装浏览器扩展？直接一键回传；未装可按 README 加载：Chrome/Edge 开发者模式 → 加载已解压 → 选择项目 <code>extensions/mika-inspire-collect</code> 目录；或直接复制地址到「📥 URL收藏库」粘贴入库</div>' +
                 '</div>' +
                 '<div id="ccSiteGroupBar" style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;"></div>' +
                 '<div id="ccSiteList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">加载中…</div>';
