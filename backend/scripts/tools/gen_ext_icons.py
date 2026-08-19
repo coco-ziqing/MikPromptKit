@@ -3,7 +3,7 @@
 import os
 from PIL import Image, ImageDraw
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "mika-inspire-collect", "icons")
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "extensions", "mika-inspire-collect", "icons")
 os.makedirs(OUT, exist_ok=True)
 
 BG = (59, 130, 246)      # #3b82f6
