@@ -299,6 +299,12 @@
   // ---- 拖拽（胶囊 + 展开面板头部均可拖） ----
   function attachDrag(el, excludeSel) {
     var drag = null;
+    function endDrag() {
+      if (!drag) return;
+      drag = null;
+      clampPos();
+      chrome.storage.local.set({ mikaCcPos: { x: wrap.offsetLeft, y: wrap.offsetTop } });
+    }
     el.addEventListener('pointerdown', function (e) {
       if (excludeSel && e.target.closest(excludeSel)) return;
       drag = { sx: e.clientX, sy: e.clientY, ox: wrap.offsetLeft, oy: wrap.offsetTop };
@@ -309,12 +315,11 @@
       wrap.style.left = Math.max(0, Math.min(window.innerWidth - 60, drag.ox + e.clientX - drag.sx)) + 'px';
       wrap.style.top = Math.max(0, Math.min(window.innerHeight - 40, drag.oy + e.clientY - drag.sy)) + 'px';
     });
-    el.addEventListener('pointerup', function () {
-      if (!drag) return;
-      clampPos();
-      chrome.storage.local.set({ mikaCcPos: { x: wrap.offsetLeft, y: wrap.offsetTop } });
-      drag = null;
-    });
+    el.addEventListener('pointerup', endDrag);
+    el.addEventListener('pointercancel', endDrag);  // 拖拽中断也结束，防粘住
+    // 全局兜底：capture 丢失/松开在元素外时也结束拖拽
+    document.addEventListener('pointerup', function () { if (drag) endDrag(); });
+    document.addEventListener('pointercancel', function () { if (drag) endDrag(); });
   }
   attachDrag(pill, '.btn');
   var pHead = shadow.querySelector('.p-head');
