@@ -45,6 +45,7 @@
     '.cur { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; }',
     '.cur-title { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }',
     '.cur-url { font-size: 11px; color: #6b7280; margin: 4px 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }',
+    '.cur-reason { font-size: 11px; color: #dc2626; margin: -2px 0 8px; line-height: 1.4; }',
     '.btn { cursor: pointer; border: none; border-radius: 8px; padding: 7px 0; font-size: 13px; width: 100%; }',
     '.btn.primary { background: #3b82f6; color: #fff; }',
     '.btn.primary.saved { background: #10b981; }',
@@ -62,6 +63,10 @@
     '.ti-title { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }',
     '.ti-url { font-size: 10px; color: #9ca3af; word-break: break-all; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
     '.saved-badge { flex: none; font-size: 10px; color: #059669; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 0 5px; white-space: nowrap; }',
+    '.no-badge { flex: none; font-size: 10px; color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 0 5px; white-space: nowrap; }',
+    '.tabitem.no { opacity: .55; }',
+    '#pill .btn.save.no { background: #cbd5e1; }',
+    '.btn.primary.no { background: #cbd5e1; }',
     '.empty { padding: 14px; text-align: center; color: #9ca3af; font-size: 12px; }',
     '#foot { padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 8px; }',
     '.msg { min-height: 15px; font-size: 12px; }',
@@ -112,6 +117,7 @@
     '    <div class="cur">' +
     '      <div class="cur-title" id="curTitle">读取中…</div>' +
     '      <div class="cur-url" id="curUrl"></div>' +
+    '      <div class="cur-reason" id="curReason" style="display:none"></div>' +
     '      <button class="btn primary" id="btnSave">📌 收藏当前页</button>' +
     '    </div>' +
     '    <div class="tabs-wrap">' +
@@ -140,6 +146,7 @@
   var savedSet = {};   // 已在收藏库的 URL 集合（展开面板标记）
   var currentUrl = ''; // v5.46.3: 当前页 URL（收藏按钮状态感知）
   var currentTitle = '';
+  var currentCollectable = { ok: true, reason: '' }; // v5.46.4: 当前页可收藏性
   var connOk = false;
   var msgTimer = null;
   var recent = [];
@@ -343,13 +350,62 @@
   $('pillOpen').addEventListener('click', openPanel);
   $('btnFold').addEventListener('click', foldPanel);
 
+  // ---- v5.46.4: 页面可收藏性识别（防呆：主页/列表/搜索页多词卡禁止收藏） ----
+  var LIST_HINTS = ['/search', '/explore', '/tags', '/tag/', '/category', '/discover', '/feed',
+    '/collection', '/gallery', '/browse', '/list', '/index', '/models', '/posts', '/ideas',
+    '/pins', '/artworks', '/works', '/videos', '/page', '/trending', '/popular', '/rank', '/top'];
+
+  function isCollectableUrl(url) {
+    try {
+      var u = new URL(url);
+      var segs = u.pathname.split('/').filter(Boolean);
+      // 站点主页/根路径：包含大量词卡
+      if (segs.length === 0) return { ok: false, reason: '这是站点主页，包含大量词卡，请打开单个作品详情页再收藏' };
+      var low = segs.map(function (s) { return s.toLowerCase(); });
+      for (var i = 0; i < low.length; i++) {
+        // search/tag 段后跟任何内容都是搜索/标签聚合页（如 /search/pins、/tag/xx）
+        if (low[i] === 'search' || low[i] === 'tag') {
+          return { ok: false, reason: '这是搜索/标签聚合页（包含多个词卡），请打开单个作品详情页再收藏' };
+        }
+        if (LIST_HINTS.indexOf('/' + low[i]) >= 0) {
+          // 分页数字段：page/2 仍视为列表
+          if (low[i] === 'page' && low[i + 1] && /^\d+$/.test(low[i + 1])) {
+            return { ok: false, reason: '这是分页/列表页，不适合收藏，请打开单个作品详情页' };
+          }
+          // 命中段后还有内容段 → 详情页（如 /explore/abc123、/models/987654、/works/xyz）
+          if (i < low.length - 1) return { ok: true, reason: '' };
+          return { ok: false, reason: '这是列表/搜索/聚合页（包含多个词卡），请进入单个作品详情页再收藏' };
+        }
+      }
+      // 分页参数且无具体内容路径 → 列表页
+      var q = (u.search || '').toLowerCase();
+      if (low.length <= 1 && (q.indexOf('page=') >= 0 || q.indexOf('p=') >= 0 || q.indexOf('keyword=') >= 0 || q.indexOf('q=') >= 0)) {
+        return { ok: false, reason: '这是分页/搜索列表页，不适合收藏，请打开单个作品详情页' };
+      }
+      return { ok: true, reason: '' };
+    } catch (e) {
+      return { ok: true, reason: '' }; // 解析失败保守放行
+    }
+  }
+
   // ---- v5.46.3: 当前页收藏状态感知按钮 ----
   function updateSaveBtn() {
     var saved = !!(currentUrl && savedSet[currentUrl]);
+    var can = currentUrl && currentCollectable.ok;
     var p = $('pillSave'), b = $('btnSave');
+    var r = $('curReason');
+    if (r) {
+      r.style.display = currentUrl && !currentCollectable.ok ? 'block' : 'none';
+      r.textContent = currentUrl && !currentCollectable.ok ? '⛔ ' + currentCollectable.reason : '';
+    }
     if (!currentUrl) {
       p.textContent = '📌 收藏本页'; p.className = 'btn save'; p.disabled = true;
       b.textContent = '📌 收藏当前页'; b.className = 'btn primary'; b.disabled = true;
+      return;
+    }
+    if (!can) {
+      p.textContent = '⛔ 不适合'; p.className = 'btn save no'; p.disabled = true;
+      b.textContent = '⛔ 不适合收藏'; b.className = 'btn primary no'; b.disabled = true;
       return;
     }
     p.textContent = saved ? '✅ 已收藏' : '📌 收藏本页';
@@ -366,11 +422,13 @@
       if (r && r.ok && r.url) {
         currentUrl = r.url;
         currentTitle = r.title || '';
+        currentCollectable = isCollectableUrl(currentUrl);
         $('curTitle').textContent = currentTitle || '（无标题页面）';
         $('curUrl').textContent = currentUrl;
       } else {
         currentUrl = '';
         currentTitle = '';
+        currentCollectable = { ok: true, reason: '' };
         $('curTitle').textContent = '—';
         $('curUrl').textContent = '当前页面不是 http/https 网页';
       }
@@ -381,6 +439,7 @@
   // 收藏/取消收藏切换（未收藏→收藏；已收藏→取消）
   function toggleSave() {
     if (!currentUrl) { showToast('❌ 当前页面不是可收藏的网页'); return; }
+    if (!currentCollectable.ok) { showToast('⛔ ' + currentCollectable.reason); return; }
     if (savedSet[currentUrl]) {
       send({ type: 'deleteByUrl', url: currentUrl }, function (r) {
         if (r && r.ok) {
@@ -409,7 +468,10 @@
       if (r && r.ok) {
         tabs = r.tabs || [];
         checked = {};
-        tabs.forEach(function (t) { checked[t.url] = true; });
+        tabs.forEach(function (t) {
+          // v5.46.4: 防呆 — 主页/列表/搜索页默认不勾选且不可勾
+          if (isCollectableUrl(t.url).ok) checked[t.url] = true;
+        });
         renderTabs();
         if (r.skipped > 0) setMsg('已跳过 ' + r.skipped + ' 个非网页标签（chrome:// 等）', true);
       } else {
@@ -432,9 +494,12 @@
     list.innerHTML = tabs.map(function (t) {
       var on = !!checked[t.url];
       var saved = savedSet[t.url] ? '<span class="saved-badge">📌 已收藏</span>' : '';
-      return '<label class="tabitem' + (on ? ' on' : '') + '">' +
-        '<input type="checkbox" data-url="' + esc(t.url).replace(/"/g, '&quot;') + '" ' + (on ? 'checked' : '') + '>' +
-        '<span class="ti-line"><span class="ti-title">' + esc(t.title || t.url) + '</span>' + saved + '</span>' +
+      var cl = isCollectableUrl(t.url);
+      var no = !cl.ok ? '<span class="no-badge" title="' + esc(cl.reason) + '">⛔ 列表页</span>' : '';
+      var noCls = cl.ok ? '' : ' no';
+      return '<label class="tabitem' + (on ? ' on' : '') + noCls + '">' +
+        '<input type="checkbox" data-url="' + esc(t.url).replace(/"/g, '&quot;') + '" ' + (on ? 'checked' : '') + (cl.ok ? '' : ' disabled') + '>' +
+        '<span class="ti-line"><span class="ti-title">' + esc(t.title || t.url) + '</span>' + saved + no + '</span>' +
         '<span class="ti-url">' + esc(t.url) + '</span></label>';
     }).join('');
   }
@@ -491,7 +556,7 @@
   $('pillSave').addEventListener('click', toggleSave);
 
   $('chkAll').addEventListener('change', function (e) {
-    if (e.target.checked) tabs.forEach(function (t) { checked[t.url] = true; });
+    if (e.target.checked) tabs.forEach(function (t) { if (isCollectableUrl(t.url).ok) checked[t.url] = true; });
     else checked = {};
     renderTabs();
   });
