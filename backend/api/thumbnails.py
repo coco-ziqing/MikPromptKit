@@ -523,7 +523,7 @@ def get_video_info(filename: str):
 
 @router.get("/video/{filename}")
 def serve_video(filename: str):
-    """提供视频文件 — 主目录 data/thumbnails/ → fallback 词卡目录 data/wc_media/videos/ → v5.37.0 词卡生成产物 data/card_gen/videos/ → v5.46.10 即梦资产视频 data/dreamina_assets/videos/"""
+    """提供视频文件 — 主目录 data/thumbnails/ → fallback 词卡目录 data/wc_media/videos/ → v5.37.0 词卡生成产物 data/card_gen/videos/ → v5.46.10 即梦资产视频 data/dreamina_assets/videos/ → v5.46.11 采集视频 data/card_collect/videos/"""
     safe_name = os.path.basename(filename)
     fpath = os.path.join(VIDEO_DIR, safe_name)
     _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -543,7 +543,12 @@ def serve_video(filename: str):
                 if os.path.exists(da_video_path):
                     fpath = da_video_path
                 else:
-                    raise HTTPException(404, "视频不存在")
+                    # v5.46.11: 采集视频（归档视频卡 preview_media 指向）
+                    cc_video_path = os.path.join(_root, "data", "card_collect", "videos", safe_name)
+                    if os.path.exists(cc_video_path):
+                        fpath = cc_video_path
+                    else:
+                        raise HTTPException(404, "视频不存在")
     # 根据扩展名设置正确 mime
     ext = os.path.splitext(safe_name)[1].lower()
     mime = {

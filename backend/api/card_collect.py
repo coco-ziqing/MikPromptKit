@@ -1735,6 +1735,22 @@ def _gen_card_thumbnail(card_id: int, src_path: str) -> str:
         return ""
 
 
+def _gen_video_poster(card_id: int, src_path: str) -> str:
+    """生成视频卡网格海报（ffmpeg 提取首帧 → data/thumbnails/{card_id}.jpg），返回文件名；失败返回空"""
+    try:
+        import subprocess
+        dest = os.path.join(_PROJECT_ROOT, "data", "thumbnails", f"{card_id}.jpg")
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        r = subprocess.run(
+            ["ffmpeg", "-ss", "0.1", "-i", src_path, "-vframes", "1", "-y", dest],
+            capture_output=True, timeout=30)
+        if r.returncode == 0 and os.path.exists(dest) and os.path.getsize(dest) > 0:
+            return f"{card_id}.jpg"
+    except Exception as e:
+        print(f"[CardCollect] 视频海报生成失败: {e}")
+    return ""
+
+
 # ==================== API：归档建词卡（带来源溯源） ====================
 
 @router.post("/archive")
@@ -1800,17 +1816,25 @@ def archive_items(payload: dict = Body(...)):
                     except Exception as e:
                         print(f"[CardCollect] 原图归档失败: {e}")
                         orig_name = ""
+                # v5.46.11: 视频卡归档补预览与海报（否则网格无图且无法预览）
+                preview_field = ""
+                if row["media_type"] == "video" and src:
+                    preview_field = media_filename
                 cur = c.execute(
                     "INSERT INTO word_card (group_id, name, content, meaning, media_type, preview_media, "
                     "is_builtin, heat_weight, module, category, source, source_id, original_ref, created_at, updated_at) "
                     "VALUES (?,?,?,?,?,?,0,0.5,'card_collect','external_collect',?,?,?,datetime('now','localtime'),datetime('now','localtime'))",
                     [gid, name, row["prompt"] or "", meaning, row["media_type"] or "image",
-                     "", row["source_url"] or "", row["id"], orig_name])
+                     preview_field, row["source_url"] or "", row["id"], orig_name])
                 card_id = cur.lastrowid
-                # v5.42.5: 图片词卡生成网格缩略图（240x160 → data/thumbnails/{card_id}.png）
+                # v5.42.5: 图片词卡生成网格缩略图（240x160 → data/thumbnails/{card_id}.png）；
+                # v5.46.11: 视频词卡生成海报（ffmpeg 首帧 → data/thumbnails/{card_id}.jpg）
                 thumb_name = ""
-                if row["media_type"] != "video" and src and os.path.exists(src):
-                    thumb_name = _gen_card_thumbnail(card_id, src)
+                if src and os.path.exists(src):
+                    if row["media_type"] != "video":
+                        thumb_name = _gen_card_thumbnail(card_id, src)
+                    else:
+                        thumb_name = _gen_video_poster(card_id, src)
                 if thumb_name:
                     c.execute("UPDATE word_card SET thumbnail=? WHERE id=?", [thumb_name, card_id])
                 c.execute("UPDATE card_collect_items SET status='archived', word_card_id=?, archived_at=datetime('now','localtime') WHERE id=?",
