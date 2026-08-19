@@ -24,6 +24,7 @@
     /* ---- 展开面板 ---- */
     '#panel { display: none; position: absolute; left: 0; bottom: 0; width: 360px; max-height: 78vh; background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,.18); overflow: hidden; flex-direction: column; }',
     '#wrap.right #panel { left: auto; right: 0; }',
+    '#wrap.up #panel { top: 0; bottom: auto; }',
     '#wrap.open #panel { display: flex; }',
     '#wrap.open #pill { display: none; }',
     '.p-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #f3f4f6; }',
@@ -172,6 +173,10 @@
   function openPanel() {
     wrap.classList.add('open');
     clampPos();
+    // 方向自适应：胶囊靠顶（上方放不下面板）时改为向下展开，防超出视口被遮挡
+    var estH = Math.min(0.78 * window.innerHeight, 560);
+    if (wrap.offsetTop - estH < 8) wrap.classList.add('up');
+    else wrap.classList.remove('up');
     refresh();
   }
   function foldPanel() { wrap.classList.remove('open'); }
