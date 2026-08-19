@@ -28,7 +28,7 @@
     '#wrap.open #panel { display: flex; }',
     '#wrap.open #pill { display: none; }',
     '.p-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #f3f4f6; }',
-    '.p-head .t { font-weight: 700; flex: 1; }',
+    '.p-head .t { font-weight: 700; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
     '.p-head .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; }',
     '.p-head .dot.ok { background: #10b981; }',
     '.p-head .dot.err { background: #ef4444; }',
