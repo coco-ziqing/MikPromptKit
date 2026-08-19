@@ -64,9 +64,12 @@ Object.assign(App, {
                 return (t.status === 'success' || t.status === 'done') && t.media_type === 'video' && t.result_filename;
             });
             if (!tasks.length) {
-                // 全部删光 → 停止播放
-                var v = document.getElementById('vidViewerPlayer');
-                if (v) { v.pause(); v.removeAttribute('src'); v.load(); }
+                // v5.46.10: 仅当 curFilename 为空（删除全部后回调）才停止播放；
+                // 无生成历史但打开时有当前视频（preview_media/视频池）时应保留 src，否则黑屏
+                if (!curFilename) {
+                    var v = document.getElementById('vidViewerPlayer');
+                    if (v) { v.pause(); v.removeAttribute('src'); v.load(); }
+                }
                 return;
             }
             // 当前播放文件已不存在（被删除）→ 自动切到「当前显示」或最新一条
@@ -118,6 +121,10 @@ Object.assign(App, {
         if (modal) modal.setAttribute('data-filename', filename);
         var video = document.getElementById('vidViewerPlayer');
         if (!video) return;
+        // v5.46.10: 视频加载失败明确提示（此前黑屏无反馈，文件丢失无从知晓）
+        video.onerror = function() {
+            App.showToast('该视频加载失败（文件可能已丢失）', 'error');
+        };
         video.src = '/api/thumbnails/video/' + filename + '?t=' + Date.now();
         video.load();
         video.play();
@@ -326,7 +333,8 @@ Object.assign(App, {
     _renderImgPool(imageList, currentFile) {
         var box = document.getElementById('imgViewerVersions');
         if (!box) return;
-        if (!imageList || imageList.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+        // v5.46.10: images<2 时不清空 box（此前无条件清空会抹掉已渲染的多版本条）
+        if (!imageList || imageList.length < 2) return;
         var self = this;
         var h = '<span style="color:#cbd5e1;font-size:11px;margin-right:4px;white-space:nowrap;">🖼 图片池</span>';
         for (var i = 0; i < imageList.length; i++) {
@@ -410,6 +418,15 @@ Object.assign(App, {
                     if (e.target.classList.contains('img-ver-activate')) return;
                     var url = this.dataset.url;
                     if (!url) return;
+                    var mtype = this.dataset.media || 'image';
+                    // v5.46.10: 视频版本项不塞 <img>（<img> 加载 mp4 无论文件是否存在都触发 onerror
+                    // → 误报「图片可能已丢失」），改为关闭图片查看器并切到视频查看器播放
+                    if (mtype === 'video') {
+                        var vfname = url.split('/').pop().split('?')[0];
+                        App.closeImageViewer();
+                        App.openVideoViewer(vfname, promptId);
+                        return;
+                    }
                     var imgEl = document.getElementById('imageViewerImg');
                     var ld = document.getElementById('imgViewerLoading');
                     var seq2 = (self._viewerLoadSeq = (self._viewerLoadSeq || 0) + 1);
@@ -433,7 +450,7 @@ Object.assign(App, {
                         if (self._viewerLoadSeq !== seq2) return;
                         if (ld) ld.style.display = 'none';
                         imgEl._fitReady = true; imgEl._fitScale = 1;
-                        App.showToast('该图片加载失败（文件可能已丢失）', 'error');
+                        App.showToast('该' + (mtype === 'video' ? '视频' : '图片') + '加载失败（文件可能已丢失）', 'error');
                     };
                     box.querySelectorAll('.img-ver-item').forEach(function(x) { x.style.borderColor = 'transparent'; x.style.opacity = '0.72'; });
                     this.style.borderColor = '#10b981'; this.style.opacity = '1';

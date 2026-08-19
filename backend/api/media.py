@@ -19,6 +19,7 @@ ORIGINAL_DIR = os.path.join(BASE_DIR, "data", "originals")
 WC_ORIGINAL_DIR = os.path.join(BASE_DIR, "data", "wc_media", "originals")
 VIDEO_DIR = os.path.join(BASE_DIR, "data", "videos")
 COMFYUI_OUTPUTS_DIR = os.path.join(BASE_DIR, "data", "comfyui_outputs")
+CARD_COLLECT_IMG_DIR = os.path.join(BASE_DIR, "data", "card_collect", "images")  # 采集临时图（media-pool 认可的池内来源）
 
 # ============ 辅助函数 ============
 
@@ -173,6 +174,11 @@ def serve_original(filename: str):
     fpath = os.path.join(THUMB_DIR, safe)
     if os.path.exists(fpath):
         return FileResponse(fpath, media_type="image/jpeg", headers=_IMG_CACHE_HDR)
+    # v5.46.10: 采集原图 fallback（media-pool 的 _file_ok 认可 data/card_collect/images/，
+    # 但本端点此前不含该目录 → cc_ 采集图进池后点击必 404 → 误报「图片可能已丢失」）
+    cc_fpath = os.path.join(CARD_COLLECT_IMG_DIR, safe)
+    if os.path.exists(cc_fpath):
+        return FileResponse(cc_fpath, media_type=_get_mime_type(safe), headers=_IMG_CACHE_HDR)
     # v5.36.22: 即梦资产原图 fallback（词卡 original_ref 指向 data/dreamina_assets/）
     for _ab in (os.path.join(BASE_DIR, "data", "dreamina_assets", "images"),
                 os.path.join(BASE_DIR, "data", "dreamina_assets", "videos")):
