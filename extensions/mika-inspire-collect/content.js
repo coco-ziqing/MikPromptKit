@@ -10,7 +10,10 @@
     '* { box-sizing: border-box; margin: 0; padding: 0; font-family: "Microsoft YaHei", system-ui, sans-serif; }',
     '#wrap { position: fixed; z-index: 2147483647; font-size: 13px; color: #1f2937; }',
     /* ---- 折叠胶囊 ---- */
-    '#pill { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #e5e7eb; border-radius: 999px; padding: 6px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.14); cursor: move; user-select: none; white-space: nowrap; }',
+    '#pill { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #e5e7eb; border-radius: 999px; padding: 6px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.14); cursor: grab; user-select: none; white-space: nowrap; }',
+    '#pill:hover { border-color: #93c5fd; box-shadow: 0 6px 20px rgba(59,130,246,.25); }',
+    '#pill:active { cursor: grabbing; }',
+    '#pill .btn { cursor: pointer; }',
     '#pill .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; flex: none; }',
     '#pill .dot.ok { background: #10b981; }',
     '#pill .dot.err { background: #ef4444; }',
@@ -27,7 +30,10 @@
     '#wrap.up #panel { top: 0; bottom: auto; }',
     '#wrap.open #panel { display: flex; }',
     '#wrap.open #pill { display: none; }',
-    '.p-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #f3f4f6; }',
+    '.p-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #f3f4f6; cursor: grab; user-select: none; }',
+    '.p-head:hover { background: #f8fafc; }',
+    '.p-head:active { cursor: grabbing; }',
+    '.p-head .btn { cursor: pointer; }',
     '.p-head .t { font-weight: 700; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
     '.p-head .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; }',
     '.p-head .dot.ok { background: #10b981; }',
@@ -88,7 +94,7 @@
     '  <div id="toast"></div>' +
     '  <div id="recent"></div>' +
     '  <div id="panel">' +
-    '    <div class="p-head">' +
+    '    <div class="p-head" title="按住此处拖动面板">' +
     '      <span class="t">📥 咪卡灵感收藏助手</span>' +
     '      <span class="dot" id="headDot"></span>' +
     '      <button class="btn fold" id="btnFold" title="折叠回胶囊">⏷ 折叠</button>' +
