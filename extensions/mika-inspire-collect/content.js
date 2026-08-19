@@ -354,6 +354,9 @@
   var LIST_HINTS = ['/search', '/explore', '/tags', '/tag/', '/category', '/discover', '/feed',
     '/collection', '/gallery', '/browse', '/list', '/index', '/models', '/posts', '/ideas',
     '/pins', '/artworks', '/works', '/videos', '/page', '/trending', '/popular', '/rank', '/top'];
+  // v5.46.5: 详情页白名单段（命中且后跟 ID → 直接放行，防误拦）
+  var DETAIL_HINTS = ['imageinfo', 'model', 'detail', 'post', 'artwork', 'pin', 'video', 'photo',
+    'note', 'work', 'item', 'story', 'article', 'info', 'design', 'template', 'avatar', 'theme'];
 
   function isCollectableUrl(url) {
     try {
@@ -363,6 +366,12 @@
       if (segs.length === 0) return { ok: false, reason: '这是站点主页，包含大量词卡，请打开单个作品详情页再收藏' };
       var low = segs.map(function (s) { return s.toLowerCase(); });
       for (var i = 0; i < low.length; i++) {
+        // 详情段 + 后跟 ID → 详情页，直接放行（如 /imageinfo/a498...、/model/123、/pin/456）
+        if (DETAIL_HINTS.indexOf(low[i]) >= 0 && i < low.length - 1) return { ok: true, reason: '' };
+        // 详情段但无内容 ID（如裸 /imageinfo）→ 视为无效/列表，拦截
+        if (DETAIL_HINTS.indexOf(low[i]) >= 0) {
+          return { ok: false, reason: '详情页缺少内容 ID，请打开单个作品页面再收藏' };
+        }
         // search/tag 段后跟任何内容都是搜索/标签聚合页（如 /search/pins、/tag/xx）
         if (low[i] === 'search' || low[i] === 'tag') {
           return { ok: false, reason: '这是搜索/标签聚合页（包含多个词卡），请打开单个作品详情页再收藏' };
