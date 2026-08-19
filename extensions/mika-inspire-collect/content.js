@@ -297,7 +297,7 @@
       drag = null;
     });
   }
-  attachDrag(pill);
+  attachDrag(pill, '.btn');
   var pHead = shadow.querySelector('.p-head');
   if (pHead) attachDrag(pHead, '.btn');
 
