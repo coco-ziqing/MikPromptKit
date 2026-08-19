@@ -1328,6 +1328,37 @@ def clean_urls(payload: dict = Body(...)):
     return {"ok": True, "processed": len(results), "results": results}
 
 
+@router.post("/urls/batch/preview")
+def preview_urls(payload: dict = Body(...)):
+    """多标签回传预展示（不落库）：校验合法性 + 提取域名/站点名 + 标记已在库
+    配合浏览器扩展「批量抓取全部标签」：先预览勾选，用户确认后再走 /urls 入库（合规人工确认制）
+    """
+    raw = payload.get("urls") or []
+    if isinstance(raw, str):
+        raw = [u.strip() for u in raw.splitlines() if u.strip()]
+    urls = [str(u).strip() for u in raw if str(u).strip()]
+    if not urls:
+        raise HTTPException(400, "无有效标签地址")
+    if len(urls) > 100:
+        raise HTTPException(400, "单次最多 100 条")
+    c = _db()
+    try:
+        existing = {r["url"] for r in c.execute(
+            "SELECT url FROM card_collect_favorites WHERE status != 'discard'").fetchall()}
+    finally:
+        c.close()
+    results = []
+    for u in urls:
+        valid = u.startswith("http://") or u.startswith("https://")
+        dom = _domain_of(u) if valid else ""
+        results.append({
+            "url": u, "valid": valid,
+            "domain": dom, "site_name": _site_name_of(dom) if valid else "",
+            "in_lib": u in existing,
+        })
+    return {"ok": True, "count": len(results), "items": results}
+
+
 @router.post("/urls/{fid}/refetch")
 def refetch_meta(fid: int):
     """手动重抓元数据（抓取失败后可重试）"""

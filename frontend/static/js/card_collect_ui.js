@@ -244,16 +244,58 @@
         },
 
         _ccFavAddUrls: function () {
+            // v5.43.2: 入库前先预展示确认（与浏览器扩展批量回传同一人工确认流程）
             var t = (document.getElementById('ccFavUrls') || {}).value || '';
             var urls = t.split(/[\r\n]+/).map(function (s) { return s.trim(); }).filter(Boolean);
             if (!urls.length) { this._toast('请粘贴至少一个地址', 'error'); return; }
-            var bad = urls.filter(function (u) { return !/^https?:\/\//.test(u); });
-            if (bad.length) { this._toast('含非法地址（仅 http/https）：' + bad[0].slice(0, 50), 'error'); return; }
             var self = this;
-            App.fetchJSON('/api/card-collect/urls', { method: 'POST', body: JSON.stringify({ urls: urls }) })
+            App.fetchJSON('/api/card-collect/urls/batch/preview', { method: 'POST', body: JSON.stringify({ urls: urls }) })
+                .then(function (d) {
+                    if (d && d.ok) self._ccFavConfirmModal(d.items || []);
+                    else self._toast((d && d.detail) || '预览失败', 'error');
+                }).catch(function () { self._toast('预览失败', 'error'); });
+        },
+
+        _ccFavConfirmModal: function (items) {
+            var self = this;
+            var invalid = items.filter(function (i) { return !i.valid; }).length;
+            var inLib = items.filter(function (i) { return i.in_lib; }).length;
+            var html =
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b>📥 入库确认</b>' +
+                '<button onclick="this.closest(\'.modal-overlay\').remove()" style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;">✕</button></div>' +
+                '<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">共 ' + items.length + ' 条：已在库 <b style="color:#f59e0b;">' + inLib + '</b> · 非法 <b style="color:#ef4444;">' + invalid + '</b>（重复允许入库，统一后置清洗去重）</div>' +
+                '<div style="max-height:40vh;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">' +
+                items.map(function (it, idx) {
+                    var tag = '';
+                    if (!it.valid) tag = '<span style="color:#ef4444;font-size:10px;">⛔ 非法地址</span>';
+                    else if (it.in_lib) tag = '<span style="color:#f59e0b;font-size:10px;">📌 已在库</span>';
+                    var site = it.site_name ? '<span style="color:var(--text-muted);font-size:10px;margin-left:4px;">' + self._esc(it.site_name) + '</span>' : '';
+                    return '<label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;cursor:pointer;padding:6px 8px;border:1px solid rgba(127,127,127,.12);border-radius:8px;">' +
+                        '<input type="checkbox" data-u="' + idx + '" ' + (it.valid ? 'checked' : 'disabled') + ' style="margin-top:2px;">' +
+                        '<span style="flex:1;min-width:0;word-break:break-all;">' + self._esc(it.url) + site + '<br>' + tag + '</span></label>';
+                }).join('') + '</div>' +
+                '<div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end;">' +
+                '<button class="btn btn-sm btn-secondary" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>' +
+                '<button class="btn btn-sm btn-primary" onclick="App._ccFavConfirmIn()">确认入库</button></div>';
+            this._favConfirmItems = items;
+            this._favConfirmOv = this._modal(html);
+        },
+
+        _ccFavConfirmIn: function () {
+            var items = this._favConfirmItems || [];
+            var ov = this._favConfirmOv;
+            var sel = [];
+            if (ov) {
+                var checks = ov.querySelectorAll('input[data-u]:checked');
+                for (var i = 0; i < checks.length; i++) sel.push(items[parseInt(checks[i].getAttribute('data-u'), 10)].url);
+            }
+            if (!sel.length) { this._toast('未勾选任何条目', 'error'); return; }
+            var self = this;
+            App.fetchJSON('/api/card-collect/urls', { method: 'POST', body: JSON.stringify({ urls: sel }) })
                 .then(function (d) {
                     if (d && d.ok) {
                         self._toast('已入库 ' + d.count + ' 条 → 待处理池', 'success');
+                        if (ov) ov.remove();
                         var ta = document.getElementById('ccFavUrls'); if (ta) ta.value = '';
                         self._favPool = 'pending';
                         self._favSel = {};
@@ -944,6 +986,7 @@ App._ccFavCopy = function (u) { CC._ccFavCopy(u); };
 App._ccFavBatchClean = function () { CC._ccFavBatchClean(); };
 App._ccFavCleanMark = function (w) { CC._ccFavCleanMark(w); };
 App._ccFavRefetch = function (id) { CC._ccFavRefetch(id); };
+App._ccFavConfirmIn = function () { CC._ccFavConfirmIn(); };
 App._ccSiteGroup = function (g) { CC._ccSiteGroup(g); };
     App._ccSetFilter = function (k, v) { CC._setFilter(k, v); };
     App._ccToggleSel = function (id, on) { CC._toggleSel(id, on); };
