@@ -135,6 +135,22 @@ def _ensure_tables():
             collected_at TEXT DEFAULT ''
         )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_ccf_status ON card_collect_favorites(status)")
+        # v5.43.0: URL 收藏库扩展列（四池状态 + 元数据 + 清洗字段，幂等 ALTER）
+        fav_cols = [r["name"] for r in c.execute("PRAGMA table_info(card_collect_favorites)").fetchall()]
+        for _col, _ddl in {
+            "fetch_status": "TEXT DEFAULT 'pending'",
+            "fetch_title": "TEXT DEFAULT ''",
+            "fetch_desc": "TEXT DEFAULT ''",
+            "fetch_text": "TEXT DEFAULT ''",
+            "thumb": "TEXT DEFAULT ''",
+            "domain": "TEXT DEFAULT ''",
+            "site_name": "TEXT DEFAULT ''",
+            "clean_url": "TEXT DEFAULT ''",
+            "updated_at": "TEXT DEFAULT ''",
+        }.items():
+            if _col not in fav_cols:
+                c.execute(f"ALTER TABLE card_collect_favorites ADD COLUMN {_col} {_ddl}")
+                print(f"[CardCollect] card_collect_favorites 增加列 {_col}")
         c.execute("""CREATE TABLE IF NOT EXISTS card_collect_tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             fav_id INTEGER DEFAULT 0,
@@ -913,6 +929,22 @@ def _collect_worker(tid: int):
         _task_update(tid, status="fail", progress=100, message=f"采集失败: {str(e)[:200]}", finished_at=_now_str())
     finally:
         _stop_flags.pop(tid, None)
+        # v5.43.0: 批量入队串行续跑——本任务终态后自动启动下一个 queued
+        _spawn_next_queued()
+
+
+def _spawn_next_queued():
+    """合规续跑：仅启动队首 queued（服务重启遗留已由 _mark_interrupted_on_boot 标记 fail，不会续跑）"""
+    c = _db()
+    try:
+        nxt = c.execute("SELECT id FROM card_collect_tasks WHERE status='queued' ORDER BY id ASC LIMIT 1").fetchone()
+    finally:
+        c.close()
+    if nxt:
+        try:
+            _spawn_worker(nxt["id"])
+        except Exception:
+            pass
 
 
 def _spawn_worker(tid: int):
@@ -991,7 +1023,157 @@ def collect_from_favorite(fid: int):
     return _start_collect(row["url"], fav_id=fid)
 
 
+# ==================== API：URL 收藏库（v5.43.0 统一入口/批量操作） ====================
+
+_VALID_FAV_STATUS = {"pending", "ready", "hold", "discard"}
+
+
+def _ids_of(payload: dict) -> list:
+    ids = [int(x) for x in (payload.get("ids") or [])]
+    return ids
+
+
+@router.post("/urls")
+def add_urls(payload: dict = Body(...)):
+    """统一入库入口（手动粘贴/扩展回传共用）：
+    - 支持 {url} 单条 / {urls:[...]} 数组 / {url:"多行\n粘贴"}
+    - 原始 URL 原样保留，不做去重（PRD 6.3：去重后置到收藏库清洗环节）
+    - 本地提取 domain/site_name 供列表展示；fetch_status=pending 待 v5.43.1 异步抓取
+    """
+    raw = payload.get("url") if payload.get("url") is not None else payload.get("urls")
+    urls = []
+    if isinstance(raw, str):
+        urls = [u.strip() for u in raw.splitlines() if u.strip()]
+    elif isinstance(raw, list):
+        urls = [str(u).strip() for u in raw if str(u).strip()]
+    if not urls:
+        raise HTTPException(400, "请提供 url 或 urls")
+    invalid = [u for u in urls if not (u.startswith("http://") or u.startswith("https://"))]
+    if invalid:
+        raise HTTPException(400, f"含非法地址（仅 http/https）：{invalid[0][:80]}")
+    if len(urls) > 50:
+        raise HTTPException(400, "单次最多 50 条")
+    c = _db()
+    try:
+        items = []
+        for u in urls:
+            dom = _domain_of(u)
+            cur = c.execute(
+                "INSERT INTO card_collect_favorites (url, title, note, status, fetch_status, domain, site_name, created_at) "
+                "VALUES (?,?,?, 'pending', 'pending', ?, ?, datetime('now','localtime'))",
+                [u, "", "", dom, _site_name_of(dom)])
+            items.append(dict(c.execute("SELECT * FROM card_collect_favorites WHERE id=?", [cur.lastrowid]).fetchone()))
+        c.commit()
+        return {"ok": True, "count": len(items), "items": items}
+    finally:
+        c.close()
+
+
+@router.post("/urls/status")
+def set_urls_status(payload: dict = Body(...)):
+    """批量状态变更（四池：pending 待处理 / ready 待采集 / hold 备用 / discard 废弃）"""
+    ids = _ids_of(payload)
+    status = str(payload.get("status") or "").strip()
+    if not ids:
+        raise HTTPException(400, "请选择条目")
+    if status not in _VALID_FAV_STATUS:
+        raise HTTPException(400, "状态须为 pending/ready/hold/discard")
+    c = _db()
+    try:
+        ph = ",".join("?" * len(ids))
+        cur = c.execute(
+            f"UPDATE card_collect_favorites SET status=?, updated_at=datetime('now','localtime') "
+            f"WHERE id IN ({ph})", [status] + ids)
+        c.commit()
+        return {"ok": True, "updated": cur.rowcount}
+    finally:
+        c.close()
+
+
+@router.post("/urls/delete")
+def delete_urls(payload: dict = Body(...)):
+    """批量物理删除（废弃池为软删 status=discard，本接口用于用户显式清理）"""
+    ids = _ids_of(payload)
+    if not ids:
+        raise HTTPException(400, "请选择条目")
+    c = _db()
+    try:
+        ph = ",".join("?" * len(ids))
+        cur = c.execute(f"DELETE FROM card_collect_favorites WHERE id IN ({ph})", ids)
+        c.commit()
+        return {"ok": True, "deleted": cur.rowcount}
+    finally:
+        c.close()
+
+
+@router.post("/urls/collect")
+def collect_urls(payload: dict = Body(...)):
+    """勾选待采集 → 批量入队采集任务（串行执行，单批 ≤20 合规限额）
+    批量入队后仅启动队首任务，worker 终态自动续跑下一个（_spawn_next_queued）
+    """
+    ids = _ids_of(payload)
+    if not ids:
+        raise HTTPException(400, "请选择条目")
+    if len(ids) > 20:
+        raise HTTPException(400, "单批最多 20 条（合规限额）")
+    c = _db()
+    try:
+        ph = ",".join("?" * len(ids))
+        rows = c.execute(f"SELECT * FROM card_collect_favorites WHERE id IN ({ph})", ids).fetchall()
+        running = c.execute("SELECT id FROM card_collect_tasks WHERE status IN ('queued','running') LIMIT 1").fetchone()
+    finally:
+        c.close()
+    if not rows:
+        raise HTTPException(404, "条目不存在")
+    if running:
+        raise HTTPException(409, f"已有采集任务进行中（#{running['id']}），请等待完成或先停止")
+    with _task_lock:
+        tids = [_insert_task(r["url"], fav_id=r["id"]) for r in rows]
+    if tids:
+        _spawn_worker(tids[0])
+    return {"ok": True, "count": len(tids), "task_ids": tids}
+
+
 # ==================== API：采集任务 ====================
+
+def _domain_of(url: str) -> str:
+    """本地提取域名（纯解析，零网络开销）"""
+    try:
+        from urllib.parse import urlparse
+        return (urlparse(url).netloc or "").lower()
+    except Exception:
+        return ""
+
+
+def _site_name_of(domain: str) -> str:
+    """按域名匹配存量灵感图库站点名，未匹配则回退域名本身"""
+    if not domain:
+        return ""
+    c = _db()
+    try:
+        row = c.execute(
+            "SELECT name FROM card_collect_sites WHERE url LIKE ? ORDER BY sort_order LIMIT 1",
+            [f"%{domain}%"]).fetchone()
+        return row["name"] if row else domain
+    except Exception:
+        return domain
+    finally:
+        c.close()
+
+
+def _insert_task(url: str, fav_id: int = 0) -> int:
+    """插入 queued 任务（调用方须持有 _task_lock 或保证无并发冲突）"""
+    c = _db()
+    try:
+        cur = c.execute(
+            "INSERT INTO card_collect_tasks (fav_id, url, status, progress, message, created_at) "
+            "VALUES (?,?, 'queued', 0, '排队中…', datetime('now','localtime'))",
+            [fav_id, url])
+        c.commit()
+        return cur.lastrowid
+    finally:
+        c.close()
+
 
 def _start_collect(url: str, fav_id: int = 0):
     if not url.startswith("http://") and not url.startswith("https://"):
@@ -1003,14 +1185,9 @@ def _start_collect(url: str, fav_id: int = 0):
             running = c.execute("SELECT id FROM card_collect_tasks WHERE status IN ('queued','running') LIMIT 1").fetchone()
             if running:
                 raise HTTPException(409, f"已有采集任务进行中（#{running['id']}），请等待完成或先停止")
-            cur = c.execute(
-                "INSERT INTO card_collect_tasks (fav_id, url, status, progress, message, created_at) "
-                "VALUES (?,?, 'queued', 0, '排队中…', datetime('now','localtime'))",
-                [fav_id, url])
-            c.commit()
-            tid = cur.lastrowid
         finally:
             c.close()
+        tid = _insert_task(url, fav_id=fav_id)
     _spawn_worker(tid)
     return {"ok": True, "task_id": tid}
 

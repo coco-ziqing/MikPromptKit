@@ -15,6 +15,9 @@
         _sel: {},            // 预采集库勾选 {id:true}
         _filter: { status: '', media: '' },
         _timer: null,
+        _favPool: 'pending', // v5.43.0 URL 收藏库当前池
+        _favSel: {},         // v5.43.0 URL 收藏库勾选 {id:true}
+        _favAll: [],         // v5.43.0 收藏库全量缓存
 
         _esc: function (s) { return App._escape ? App._escape(s || '') : String(s || ''); },
         _toast: function (m, t) { if (App.showToast) App.showToast(m, t || 'info'); },
@@ -41,7 +44,15 @@
             return '<span style="color:' + b[1] + ';font-size:11px;">' + b[0] + '</span>';
         },
         _favBadge: function (s) {
-            var m = { pending: ['📌 待采集', '#f59e0b'], collected: ['🕷 已采集', '#3b82f6'], archived: ['🗂 已归档', '#10b981'] };
+            // v5.43.0 四池：pending 待处理 / ready 待采集 / hold 备用 / discard 废弃（存量 collected/archived 兼容）
+            var m = {
+                pending: ['📌 待处理', '#f59e0b'],
+                ready: ['✅ 待采集', '#10b981'],
+                hold: ['🗄 备用', '#94a3b8'],
+                discard: ['🚮 废弃', '#6b7280'],
+                collected: ['🕷 已采集', '#3b82f6'],
+                archived: ['🗂 已归档', '#10b981']
+            };
             var b = m[s] || [s, '#94a3b8'];
             return '<span style="color:' + b[1] + ';font-size:11px;">' + b[0] + '</span>';
         },
@@ -69,7 +80,7 @@
                 '<button onclick="this.closest(\'.modal-overlay\').remove();App._stopCCPoll&&App._stopCCPoll();" style="border:none;background:none;font-size:18px;color:var(--text-muted);cursor:pointer;" title="关闭">✕</button>' +
                 '</div>' +
                 '<div style="display:flex;gap:6px;padding:10px 16px 0;border-bottom:1px solid rgba(127,127,127,.12);">' +
-                '<button id="ccTabFav" class="btn btn-sm" onclick="App._ccSwitchTab(\'fav\')">📌 收藏夹</button>' +
+                '<button id="ccTabFav" class="btn btn-sm" onclick="App._ccSwitchTab(\'fav\')">📥 URL收藏库</button>' +
                 '<button id="ccTabItems" class="btn btn-sm" onclick="App._ccSwitchTab(\'items\')">🗂 预采集库</button>' +
                 '<button id="ccTabTasks" class="btn btn-sm" onclick="App._ccSwitchTab(\'tasks\')">⚙️ 采集任务</button>' +
                 '<button id="ccTabSites" class="btn btn-sm" onclick="App._ccSwitchTab(\'sites\')">🌐 灵感图库</button>' +
@@ -103,36 +114,203 @@
             else this._renderTasks(body);
         },
 
-        // ============ Tab1 收藏夹 ============
+        // ============ Tab1 URL收藏库（v5.43.0 四池工作台） ============
         _renderFav: function (body) {
             var self = this;
             body.innerHTML =
-                '<div style="display:flex;gap:8px;margin-bottom:12px;">' +
-                '<input id="ccFavUrl" placeholder="粘贴灵感页面地址（AI 平台/公开图库/视频库）" style="flex:1;padding:8px 10px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;">' +
-                '<input id="ccFavNote" placeholder="备注（可选）" style="width:180px;padding:8px 10px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;">' +
-                '<button class="btn btn-primary btn-sm" onclick="App._ccAddFav()">📌 收藏</button>' +
+                '<div style="margin-bottom:10px;">' +
+                '<div style="display:flex;gap:8px;">' +
+                '<textarea id="ccFavUrls" placeholder="粘贴灵感页面地址（支持多行批量，一行一个；仅 http/https）" ' +
+                'style="flex:1;height:54px;padding:8px 10px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;resize:vertical;font-size:12px;"></textarea>' +
+                '<button class="btn btn-primary btn-sm" style="align-self:flex-end;" onclick="App._ccFavAddUrls()">📥 入库</button>' +
                 '</div>' +
+                '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">自动存入「待处理」池 · 原始链接保留，去重/清洗后置到收藏库操作</div>' +
+                '</div>' +
+                '<div id="ccFavPoolBar" style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;"></div>' +
+                '<div id="ccFavBatchBar" style="display:none;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap;padding:6px 8px;border:1px solid rgba(59,130,246,.35);border-radius:8px;background:rgba(59,130,246,.06);"></div>' +
                 '<div id="ccFavList" style="display:flex;flex-direction:column;gap:8px;">加载中…</div>';
             App.fetchJSON('/api/card-collect/favorites').then(function (d) {
-                var list = document.getElementById('ccFavList');
-                if (!list) return;
-                var items = (d && d.items) || [];
-                if (!items.length) { list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">暂无收藏 · 粘贴地址收藏后即可发起采集</div>'; return; }
-                list.innerHTML = items.map(function (f) {
-                    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(127,127,127,.15);border-radius:10px;">' +
-                        '<div style="flex:1;min-width:0;">' +
-                        '<div style="font-size:13px;word-break:break-all;color:var(--text-muted);">🔗 ' + self._esc(f.url) + '</div>' +
-                        (f.note ? '<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📝 ' + self._esc(f.note) + '</div>' : '') +
-                        '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + self._favBadge(f.status) + ' · ' + self._esc(f.created_at) + '</div>' +
-                        '</div>' +
-                        '<button class="btn btn-sm btn-primary" onclick="App._ccCollectFav(' + f.id + ')" ' + (f.status === 'archived' ? 'disabled' : '') + '>🕷 采集</button>' +
-                        '<button class="btn btn-sm btn-secondary" onclick="App._ccDelFav(' + f.id + ')">🗑</button>' +
-                        '</div>';
-                }).join('');
+                self._favAll = (d && d.items) || [];
+                self._renderFavPools(self._favAll);
+                self._renderFavList(self._favAll);
             }).catch(function () { var l = document.getElementById('ccFavList'); if (l) l.innerHTML = '<div style="color:#ef4444;">加载失败</div>'; });
         },
 
+        _renderFavPools: function (items) {
+            var self = this;
+            var bar = document.getElementById('ccFavPoolBar');
+            if (!bar) return;
+            var pools = [
+                ['pending', '📌 待处理'], ['ready', '✅ 待采集'], ['hold', '🗄 备用'],
+                ['discard', '🚮 废弃'], ['all', '🌐 全部']
+            ];
+            var counts = {};
+            items.forEach(function (f) { counts[f.status] = (counts[f.status] || 0) + 1; });
+            bar.innerHTML = pools.map(function (p) {
+                var k = p[0];
+                var cnt = k === 'all' ? items.length : (counts[k] || 0);
+                var act = self._favPool === k;
+                return '<button class="btn btn-sm ' + (act ? 'btn-primary' : 'btn-secondary') + '" onclick="App._ccFavPool(\'' + k + '\')">' + p[1] + ' <span style="opacity:.7;">' + cnt + '</span></button>';
+            }).join('');
+        },
+
+        _renderFavList: function (items) {
+            var self = this;
+            var list = document.getElementById('ccFavList');
+            if (!list) return;
+            var pool = this._favPool;
+            var rows = pool === 'all' ? items : items.filter(function (f) { return f.status === pool; });
+            if (!rows.length) {
+                list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:22px;">该池暂无条目 · 粘贴地址或从浏览器扩展回传入库</div>';
+            } else {
+                var allOn = rows.every(function (f) { return self._favSel[f.id]; });
+                list.innerHTML =
+                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">' +
+                    '<label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" ' + (allOn ? 'checked' : '') + ' onchange="App._ccFavSelAll(this.checked)"> 全选本池</label>' +
+                    '</div>' +
+                    rows.map(function (f) {
+                        var chk = self._favSel[f.id] ? 'checked' : '';
+                        var dom = (f.domain || f.site_name) ?
+                            '<span style="font-size:10px;color:var(--text-muted);background:rgba(127,127,127,.14);padding:1px 7px;border-radius:6px;margin-left:6px;">' + self._esc(f.site_name || f.domain) + '</span>' : '';
+                        var title = (f.fetch_title || f.title || '').trim();
+                        return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid rgba(127,127,127,.15);border-radius:10px;">' +
+                            '<input type="checkbox" ' + chk + ' onchange="App._ccFavSel(' + f.id + ', this.checked)">' +
+                            '<div style="flex:1;min-width:0;">' +
+                            (title ? '<div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + self._esc(title) + dom + '</div>' :
+                                '<div style="font-size:13px;word-break:break-all;color:var(--text-muted);">🔗 ' + self._esc(f.url) + dom + '</div>') +
+                            '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;word-break:break-all;">' + self._esc(f.url) + '</div>' +
+                            '<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">' + self._favBadge(f.status) + ' · ' + self._esc(f.created_at) + '</div>' +
+                            '</div>' +
+                            '<button class="btn btn-sm btn-secondary" title="打开原网页" onclick="App._ccFavOpen(\'' + f.url.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')">↗</button>' +
+                            '<button class="btn btn-sm btn-secondary" title="复制 URL" onclick="App._ccFavCopy(\'' + f.url.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')">⧉</button>' +
+                            '<button class="btn btn-sm btn-primary" onclick="App._ccCollectFav(' + f.id + ')" title="单条发起采集">🕷</button>' +
+                            '<button class="btn btn-sm btn-secondary" onclick="App._ccDelFav(' + f.id + ')" title="删除">🗑</button>' +
+                            '</div>';
+                    }).join('');
+            }
+            this._renderFavBatchBar();
+        },
+
+        _renderFavBatchBar: function () {
+            var bar = document.getElementById('ccFavBatchBar');
+            if (!bar) return;
+            var ids = this._ccFavSelIds();
+            if (!ids.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+            bar.style.display = 'flex';
+            bar.innerHTML =
+                '<span style="font-size:12px;">已选 <b style="color:#3b82f6;">' + ids.length + '</b> 条</span>' +
+                '<button class="btn btn-sm btn-secondary" onclick="App._ccFavBatchStatus(\'ready\')">✅ 设为待采集</button>' +
+                '<button class="btn btn-sm btn-secondary" onclick="App._ccFavBatchStatus(\'hold\')">🗄 设为备用</button>' +
+                '<button class="btn btn-sm btn-secondary" onclick="App._ccFavBatchStatus(\'discard\')">🚮 设为废弃</button>' +
+                '<button class="btn btn-sm btn-secondary" onclick="App._ccFavBatchStatus(\'pending\')">📌 回待处理</button>' +
+                '<button class="btn btn-sm btn-primary" onclick="App._ccFavBatchCollect()">🕷 生成采集任务</button>' +
+                '<button class="btn btn-sm btn-danger" onclick="App._ccFavBatchDel()">🗑 删除选中</button>';
+        },
+
+        _ccFavSelIds: function () { return Object.keys(this._favSel).map(Number); },
+
+        _ccFavPool: function (k) {
+            this._favPool = k;
+            this._renderFavPools(this._favAll);
+            this._renderFavList(this._favAll);
+        },
+
+        _ccFavSel: function (id, on) {
+            if (on) this._favSel[id] = true; else delete this._favSel[id];
+            this._renderFavBatchBar();
+        },
+
+        _ccFavSelAll: function (on) {
+            var pool = this._favPool;
+            (this._favAll || []).forEach(function (f) {
+                if (pool === 'all' || f.status === pool) {
+                    if (on) this._favSel[f.id] = true; else delete this._favSel[f.id];
+                }
+            }, this);
+            this._renderFavList(this._favAll);
+        },
+
+        _ccFavAddUrls: function () {
+            var t = (document.getElementById('ccFavUrls') || {}).value || '';
+            var urls = t.split(/[\r\n]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+            if (!urls.length) { this._toast('请粘贴至少一个地址', 'error'); return; }
+            var bad = urls.filter(function (u) { return !/^https?:\/\//.test(u); });
+            if (bad.length) { this._toast('含非法地址（仅 http/https）：' + bad[0].slice(0, 50), 'error'); return; }
+            var self = this;
+            App.fetchJSON('/api/card-collect/urls', { method: 'POST', body: JSON.stringify({ urls: urls }) })
+                .then(function (d) {
+                    if (d && d.ok) {
+                        self._toast('已入库 ' + d.count + ' 条 → 待处理池', 'success');
+                        var ta = document.getElementById('ccFavUrls'); if (ta) ta.value = '';
+                        self._favPool = 'pending';
+                        self._favSel = {};
+                        self._renderFav(document.getElementById('ccBody'));
+                    } else self._toast((d && d.detail) || '入库失败', 'error');
+                }).catch(function () { self._toast('入库失败', 'error'); });
+        },
+
+        _ccFavBatchStatus: function (status) {
+            var ids = this._ccFavSelIds();
+            if (!ids.length) return;
+            var self = this;
+            App.fetchJSON('/api/card-collect/urls/status', { method: 'POST', body: JSON.stringify({ ids: ids, status: status }) })
+                .then(function (d) {
+                    if (d && d.ok) {
+                        self._toast('已更新 ' + d.updated + ' 条', 'success');
+                        self._favSel = {};
+                        self._renderFav(document.getElementById('ccBody'));
+                    } else self._toast((d && d.detail) || '更新失败', 'error');
+                }).catch(function () { self._toast('更新失败', 'error'); });
+        },
+
+        _ccFavBatchDel: function () {
+            var ids = this._ccFavSelIds();
+            if (!ids.length) return;
+            if (!confirm('确认删除选中的 ' + ids.length + ' 条收藏？该操作不可恢复。')) return;
+            var self = this;
+            App.fetchJSON('/api/card-collect/urls/delete', { method: 'POST', body: JSON.stringify({ ids: ids }) })
+                .then(function (d) {
+                    if (d && d.ok) {
+                        self._toast('已删除 ' + d.deleted + ' 条', 'success');
+                        self._favSel = {};
+                        self._renderFav(document.getElementById('ccBody'));
+                    } else self._toast((d && d.detail) || '删除失败', 'error');
+                }).catch(function () { self._toast('删除失败', 'error'); });
+        },
+
+        _ccFavBatchCollect: function () {
+            var ids = this._ccFavSelIds();
+            if (!ids.length) return;
+            if (ids.length > 20) { this._toast('单批最多 20 条（合规限额），请分批', 'error'); return; }
+            if (!confirm('确认将选中的 ' + ids.length + ' 条生成采集任务？将串行依次采集（人工确认制，可随时停止）。')) return;
+            var self = this;
+            App.fetchJSON('/api/card-collect/urls/collect', { method: 'POST', body: JSON.stringify({ ids: ids }) })
+                .then(function (d) {
+                    if (d && d.ok) {
+                        self._toast('已入队 ' + d.count + ' 个采集任务', 'success');
+                        self._favSel = {};
+                        self._switchTab('tasks');
+                    } else self._toast((d && d.detail) || '启动失败', 'error');
+                }).catch(function () { self._toast('启动失败', 'error'); });
+        },
+
+        _ccFavOpen: function (url) { window.open(url, '_blank'); },
+
+        _ccFavCopy: function (url) {
+            var self = this;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(function () { self._toast('已复制', 'success'); })
+                    .catch(function () { self._toast('复制失败', 'error'); });
+            } else {
+                var ta = document.createElement('textarea');
+                ta.value = url; document.body.appendChild(ta); ta.select();
+                try { document.execCommand('copy'); self._toast('已复制', 'success'); } catch (e) { self._toast('复制失败', 'error'); }
+                document.body.removeChild(ta);
+            }
+        },
+
         _addFav: function () {
+            // 兼容：单条收藏（旧入口保留）
             var url = (document.getElementById('ccFavUrl') || {}).value || '';
             var note = (document.getElementById('ccFavNote') || {}).value || '';
             if (!/^https?:\/\//.test(url.trim())) { this._toast('请输入合法的 http/https 地址', 'error'); return; }
@@ -640,6 +818,15 @@
     App._ccAddFav = function () { CC._addFav(); };
     App._ccDelFav = function (id) { CC._delFav(id); };
     App._ccCollectFav = function (id) { CC._collectFav(id); };
+App._ccFavPool = function (k) { CC._ccFavPool(k); };
+App._ccFavSel = function (id, on) { CC._ccFavSel(id, on); };
+App._ccFavSelAll = function (on) { CC._ccFavSelAll(on); };
+App._ccFavAddUrls = function () { CC._ccFavAddUrls(); };
+App._ccFavBatchStatus = function (s) { CC._ccFavBatchStatus(s); };
+App._ccFavBatchDel = function () { CC._ccFavBatchDel(); };
+App._ccFavBatchCollect = function () { CC._ccFavBatchCollect(); };
+App._ccFavOpen = function (u) { CC._ccFavOpen(u); };
+App._ccFavCopy = function (u) { CC._ccFavCopy(u); };
     App._ccSetFilter = function (k, v) { CC._setFilter(k, v); };
     App._ccToggleSel = function (id, on) { CC._toggleSel(id, on); };
     App._ccEditItem = function (id) { CC._editItem(id); };
