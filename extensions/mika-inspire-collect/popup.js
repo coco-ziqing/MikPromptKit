@@ -3,6 +3,7 @@
 
 var tabs = [];
 var checked = {};
+var savedSet = {};   // v5.46.7: 已收藏 URL 集合（与悬浮面板一致）
 var _msgTimer = null;
 
 function $(id) { return document.getElementById(id); }
@@ -34,9 +35,13 @@ function renderTabs() {
   }
   list.innerHTML = tabs.map(function (t) {
     var on = !!checked[t.url];
-    return '<label class="tabitem' + (on ? ' on' : '') + '">' +
-      '<input type="checkbox" data-url="' + esc(t.url).replace(/"/g, '&quot;') + '" ' + (on ? 'checked' : '') + '>' +
-      '<span class="ti-title">' + esc(t.title || t.url) + '</span>' +
+    var saved = savedSet[t.url] ? '<span class="saved-badge">📌 已收藏</span>' : '';
+    var cl = isCollectableUrl(t.url);
+    var no = !cl.ok ? '<span class="no-badge" title="' + esc(cl.reason) + '">⛔ 列表页</span>' : '';
+    var noCls = cl.ok ? '' : ' no';
+    return '<label class="tabitem' + (on ? ' on' : '') + noCls + '">' +
+      '<input type="checkbox" data-url="' + esc(t.url).replace(/"/g, '&quot;') + '" ' + (on ? 'checked' : '') + (cl.ok ? '' : ' disabled') + '>' +
+      '<span class="ti-line"><span class="ti-title">' + esc(t.title || t.url) + '</span>' + saved + no + '</span>' +
       '<span class="ti-url">' + esc(t.url) + '</span></label>';
   }).join('');
 }
@@ -104,12 +109,17 @@ document.addEventListener('DOMContentLoaded', function () {
   chrome.runtime.sendMessage({ type: 'getAllTabs' }, function (res) {
     if (res && res.ok) {
       tabs = res.tabs || [];
-      tabs.forEach(function (t) { checked[t.url] = true; });
+      checked = {};
+      tabs.forEach(function (t) { if (isCollectableUrl(t.url).ok) checked[t.url] = true; });
       renderTabs();
       if (res.skipped > 0) setMsg('已跳过 ' + res.skipped + ' 个非网页标签（chrome://、扩展页等）', true);
     } else {
       $('tabList').innerHTML = '<div class="empty">读取标签失败</div>';
     }
+  });
+  // 已收藏 URL 集合（列表徽章）
+  chrome.runtime.sendMessage({ type: 'getSavedUrls' }, function (r) {
+    if (r && r.ok && r.urls) savedSet = r.urls;
   });
 
   // 收藏当前页
@@ -127,7 +137,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // 全选
   $('chkAll').addEventListener('change', function (e) {
-    if (e.target.checked) tabs.forEach(function (t) { checked[t.url] = true; });
+    if (e.target.checked) tabs.forEach(function (t) { if (isCollectableUrl(t.url).ok) checked[t.url] = true; });
     else checked = {};
     renderTabs();
   });
