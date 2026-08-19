@@ -20,6 +20,7 @@
     '#pill .brand { font-weight: 700; }',
     '#pill .btn { cursor: pointer; border: none; border-radius: 999px; padding: 5px 12px; font-size: 12px; }',
     '#pill .btn.save { background: #3b82f6; color: #fff; }',
+    '#pill .btn.save.saved { background: #10b981; }',
     '#pill .btn.save:hover:not(:disabled) { background: #2563eb; }',
     '#pill .btn.save:disabled { background: #cbd5e1; cursor: not-allowed; }',
     '#pill .btn.toggle { background: #f3f4f6; color: #374151; }',
@@ -46,6 +47,7 @@
     '.cur-url { font-size: 11px; color: #6b7280; margin: 4px 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }',
     '.btn { cursor: pointer; border: none; border-radius: 8px; padding: 7px 0; font-size: 13px; width: 100%; }',
     '.btn.primary { background: #3b82f6; color: #fff; }',
+    '.btn.primary.saved { background: #10b981; }',
     '.btn.primary:hover:not(:disabled) { background: #2563eb; }',
     '.btn.primary:disabled { background: #cbd5e1; cursor: not-allowed; }',
     '.tabs-wrap { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; flex: 1; min-height: 0; display: flex; flex-direction: column; }',
@@ -136,6 +138,8 @@
   var tabs = [];
   var checked = {};
   var savedSet = {};   // 已在收藏库的 URL 集合（展开面板标记）
+  var currentUrl = ''; // v5.46.3: 当前页 URL（收藏按钮状态感知）
+  var currentTitle = '';
   var connOk = false;
   var msgTimer = null;
   var recent = [];
@@ -339,25 +343,68 @@
   $('pillOpen').addEventListener('click', openPanel);
   $('btnFold').addEventListener('click', foldPanel);
 
+  // ---- v5.46.3: 当前页收藏状态感知按钮 ----
+  function updateSaveBtn() {
+    var saved = !!(currentUrl && savedSet[currentUrl]);
+    var p = $('pillSave'), b = $('btnSave');
+    if (!currentUrl) {
+      p.textContent = '📌 收藏本页'; p.className = 'btn save'; p.disabled = true;
+      b.textContent = '📌 收藏当前页'; b.className = 'btn primary'; b.disabled = true;
+      return;
+    }
+    p.textContent = saved ? '✅ 已收藏' : '📌 收藏本页';
+    p.className = 'btn save' + (saved ? ' saved' : '');
+    p.disabled = false;
+    b.textContent = saved ? '✅ 已收藏 · 点击取消' : '📌 收藏当前页';
+    b.className = 'btn primary' + (saved ? ' saved' : '');
+    b.disabled = false;
+  }
+
+  // 轻量刷新当前页状态（页面切换/导航时，不重拉全部标签）
+  function refreshCurrent() {
+    send({ type: 'getActiveTab' }, function (r) {
+      if (r && r.ok && r.url) {
+        currentUrl = r.url;
+        currentTitle = r.title || '';
+        $('curTitle').textContent = currentTitle || '（无标题页面）';
+        $('curUrl').textContent = currentUrl;
+      } else {
+        currentUrl = '';
+        currentTitle = '';
+        $('curTitle').textContent = '—';
+        $('curUrl').textContent = '当前页面不是 http/https 网页';
+      }
+      updateSaveBtn();
+    });
+  }
+
+  // 收藏/取消收藏切换（未收藏→收藏；已收藏→取消）
+  function toggleSave() {
+    if (!currentUrl) { showToast('❌ 当前页面不是可收藏的网页'); return; }
+    if (savedSet[currentUrl]) {
+      send({ type: 'deleteByUrl', url: currentUrl }, function (r) {
+        if (r && r.ok) {
+          delete savedSet[currentUrl];
+          recent = recent.filter(function (x) { return x.url !== currentUrl; });
+          saveRecent();
+          renderRecent();
+          renderTabs();
+          updateSaveBtn();
+          showToast('🗑 已取消收藏');
+        } else showToast('❌ 取消失败：' + ((r && r.error) || '服务未连接'));
+      });
+    } else {
+      doSave([currentUrl], $('btnSave'), '✅ 已收藏当前页 → 待处理池（自动抓取元数据）', [currentTitle]);
+    }
+  }
+
   // ---- 数据刷新 ----
   function refresh() {
     ping();
     send({ type: 'getSavedUrls' }, function (r) {
-      if (r && r.ok && r.urls) { savedSet = r.urls; renderTabs(); }
+      if (r && r.ok && r.urls) { savedSet = r.urls; renderTabs(); updateSaveBtn(); }
     });
-    send({ type: 'getActiveTab' }, function (r) {
-      if (r && r.ok) {
-        $('curTitle').textContent = r.title || '（无标题页面）';
-        $('curUrl').textContent = r.url || '当前页面不是 http/https 网页';
-        $('btnSave').disabled = !r.valid;
-        $('pillSave').disabled = !r.valid;
-      } else {
-        $('curTitle').textContent = '—';
-        $('curUrl').textContent = '无法读取当前页';
-        $('btnSave').disabled = true;
-        $('pillSave').disabled = true;
-      }
-    });
+    refreshCurrent();
     send({ type: 'getAllTabs' }, function (r) {
       if (r && r.ok) {
         tabs = r.tabs || [];
@@ -427,6 +474,7 @@
         addRecent(urls, map);
         urls.forEach(function (u) { savedSet[u] = true; });
         renderTabs();
+        updateSaveBtn();
         showToast('✅ 已收藏 ' + urls.length + ' 条');
         setMsg(okMsg || ('✅ 已入库 ' + r.count + ' 条 → 待处理池'), true);
         refresh();
@@ -438,14 +486,9 @@
     });
   }
 
-  function saveCurrent() {
-    send({ type: 'getActiveTab' }, function (r) {
-      if (!r || !r.valid) { setMsg('当前页面不是可收藏的网页', false); return; }
-      doSave([r.url], $('btnSave'), '✅ 已收藏当前页 → 待处理池（自动抓取元数据）', [r.title]);
-    });
-  }
-  $('btnSave').addEventListener('click', saveCurrent);
-  $('pillSave').addEventListener('click', saveCurrent);
+  // 单页收藏/取消（状态感知切换）
+  $('btnSave').addEventListener('click', toggleSave);
+  $('pillSave').addEventListener('click', toggleSave);
 
   $('chkAll').addEventListener('change', function (e) {
     if (e.target.checked) tabs.forEach(function (t) { checked[t.url] = true; });
@@ -480,5 +523,17 @@
   });
 
   // 初始连接检测（不打扰用户，仅更新状态点）
-  loadRecent(function () { ping(); });
+  loadRecent(function () { ping(); refreshCurrent(); });
+
+  // v5.46.3: 页面切换/导航完成通知 + SPA 内部路由轮询 → 自动刷新当前页收藏状态
+  chrome.runtime.onMessage.addListener(function (msg) {
+    if (msg && msg.type === 'tabChanged') refreshCurrent();
+  });
+  var lastHref = location.href;
+  setInterval(function () {
+    if (location.href !== lastHref) {
+      lastHref = location.href;
+      refreshCurrent();
+    }
+  }, 1500);
 })();

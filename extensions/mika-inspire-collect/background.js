@@ -3,6 +3,16 @@
 // 合规：多标签批量入库必须经 popup/面板用户勾选确认
 const API_DEFAULT = 'http://127.0.0.1:8080';
 
+// v5.46.3: 页面导航/切换完成 → 通知 content 刷新当前页收藏状态（按钮自动识别）
+chrome.tabs.onUpdated.addListener(function (tabId, info) {
+  if (info.status === 'complete') {
+    try { chrome.tabs.sendMessage(tabId, { type: 'tabChanged' }); } catch (e) {}
+  }
+});
+chrome.tabs.onActivated.addListener(function (info) {
+  try { chrome.tabs.sendMessage(info.tabId, { type: 'tabChanged' }); } catch (e) {}
+});
+
 // v5.46.0: API 地址可配置（默认本机；局域网多机部署时指向主程序 IP，如 http://192.168.0.102:8080）
 function getApi() {
   return new Promise(function (resolve) {
