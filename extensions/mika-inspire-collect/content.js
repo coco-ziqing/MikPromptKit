@@ -51,11 +51,22 @@
     '.ti-title { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
     '.ti-url { font-size: 10px; color: #9ca3af; word-break: break-all; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
     '.empty { padding: 14px; text-align: center; color: #9ca3af; font-size: 12px; }',
-    '.foot { padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 8px; }',
+    '#foot { padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 8px; }',
     '.msg { min-height: 15px; font-size: 12px; }',
     '.msg.ok { color: #059669; }',
     '.msg.err { color: #dc2626; }',
-    '.note { font-size: 10px; color: #9ca3af; text-align: center; }'
+    '.note { font-size: 10px; color: #9ca3af; text-align: center; }',
+    /* ---- 折叠态：已收藏便携标签条 + toast ---- */
+    '#recent { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; max-width: 340px; }',
+    '#wrap.open #recent { display: none; }',
+    '.chip { display: inline-flex; align-items: center; gap: 4px; background: #fff; border: 1px solid #dbeafe; border-radius: 999px; padding: 3px 9px; font-size: 11px; color: #1e40af; box-shadow: 0 2px 6px rgba(0,0,0,.08); max-width: 190px; cursor: pointer; }',
+    '.chip:hover { border-color: #93c5fd; }',
+    '.chip .kw { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+    '.chip .x { cursor: pointer; border: none; background: none; color: #94a3b8; font-size: 12px; line-height: 1; padding: 0 0 0 2px; flex: none; }',
+    '.chip .x:hover { color: #ef4444; }',
+    '#toast { position: absolute; left: 0; bottom: calc(100% + 8px); background: rgba(16,185,129,.95); color: #fff; font-size: 12px; padding: 5px 12px; border-radius: 999px; box-shadow: 0 2px 8px rgba(0,0,0,.18); white-space: nowrap; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 1; }',
+    '#toast.show { opacity: 1; }',
+    '#wrap.open #toast { display: none; }'
   ].join('\n');
 
   var host = document.createElement('div');
@@ -70,6 +81,8 @@
     '    <button class="btn save" id="pillSave" title="收藏当前页到收藏库">📌 收藏本页</button>' +
     '    <button class="btn toggle" id="pillOpen">⚡</button>' +
     '  </div>' +
+    '  <div id="toast"></div>' +
+    '  <div id="recent"></div>' +
     '  <div id="panel">' +
     '    <div class="p-head">' +
     '      <span class="t">📥 咪卡灵感收藏助手</span>' +
@@ -101,6 +114,8 @@
   var checked = {};
   var connOk = false;
   var msgTimer = null;
+  var recent = [];
+  var toastTimer = null;
 
   function $(id) { return shadow.getElementById(id); }
   function esc(s) {
@@ -130,6 +145,71 @@
   }
   function ping() {
     send({ type: 'ping' }, function (r) { setDots(r && r.ok); });
+  }
+
+  // ---- 已收藏便携标签条（折叠态胶囊下方） ----
+  function kwOf(title, url) {
+    var kw = (title || '').trim().replace(/\s+/g, ' ').slice(0, 14);
+    if (!kw) {
+      try { kw = url.replace(/^https?:\/\//, '').split('/')[0].slice(0, 14); } catch (e) { kw = url.slice(0, 14); }
+    }
+    return kw;
+  }
+  function saveRecent() {
+    try { chrome.storage.local.set({ mikaCcRecent: recent }); } catch (e) {}
+  }
+  function renderRecent() {
+    var box = $('recent');
+    if (!box) return;
+    if (!recent.length) { box.innerHTML = ''; return; }
+    box.innerHTML = recent.map(function (r) {
+      return '<span class="chip" title="点击打开 · ' + esc(r.url) + '">' +
+        '<span class="kw">' + esc(r.kw) + '</span>' +
+        '<button class="x" data-url="' + esc(r.url).replace(/"/g, '&quot;') + '" title="从收藏库移除">✕</button></span>';
+    }).join('');
+  }
+  function loadRecent(cb) {
+    try {
+      chrome.storage.local.get('mikaCcRecent', function (o) {
+        recent = (o && o.mikaCcRecent) || [];
+        renderRecent();
+        cb && cb();
+      });
+    } catch (e) { cb && cb(); }
+  }
+  function addRecent(urls, titleMap) {
+    if (!urls || !urls.length) return;
+    var now = Date.now();
+    urls.forEach(function (u, i) {
+      var item = { url: u, kw: kwOf(titleMap ? titleMap[u] : '', u), ts: now + i };
+      var idx = recent.findIndex(function (r) { return r.url === u; });
+      if (idx >= 0) recent[idx] = item; else recent.push(item);
+    });
+    recent.sort(function (a, b) { return b.ts - a.ts; });
+    recent = recent.slice(0, 20);
+    saveRecent();
+    renderRecent();
+  }
+  function removeRecent(url, ev) {
+    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+    send({ type: 'deleteByUrl', url: url }, function (r) {
+      if (r && r.ok) {
+        recent = recent.filter(function (x) { return x.url !== url; });
+        saveRecent();
+        renderRecent();
+        showToast('🗑 已从收藏库移除');
+      } else {
+        showToast('❌ 移除失败：' + ((r && r.error) || '服务未连接'));
+      }
+    });
+  }
+  function showToast(text) {
+    var t = $('toast');
+    if (!t) return;
+    t.textContent = text || '';
+    t.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2200);
   }
 
   // ---- 位置恢复/越界修正 ----
@@ -233,11 +313,21 @@
   }
 
   // ---- 收藏 ----
-  function doSave(urls, btn, okMsg) {
+  function doSave(urls, btn, okMsg, titles) {
     btn.disabled = true;
     send({ type: 'save', urls: urls }, function (r) {
-      if (r && r.ok) { setMsg(okMsg || ('✅ 已入库 ' + r.count + ' 条 → 待处理池'), true); refresh(); }
-      else setMsg('❌ ' + ((r && r.error) || '入库失败'), false);
+      if (r && r.ok) {
+        // 便携标签 + 成功提示
+        var map = {};
+        (titles || []).forEach(function (t, i) { if (t) map[urls[i]] = t; });
+        addRecent(urls, map);
+        showToast('✅ 已收藏 ' + urls.length + ' 条');
+        setMsg(okMsg || ('✅ 已入库 ' + r.count + ' 条 → 待处理池'), true);
+        refresh();
+      } else {
+        setMsg('❌ ' + ((r && r.error) || '入库失败'), false);
+        showToast('❌ 收藏失败');
+      }
       btn.disabled = false;
     });
   }
@@ -245,7 +335,7 @@
   function saveCurrent() {
     send({ type: 'getActiveTab' }, function (r) {
       if (!r || !r.valid) { setMsg('当前页面不是可收藏的网页', false); return; }
-      doSave([r.url], $('btnSave'), '✅ 已收藏当前页 → 待处理池（自动抓取元数据）');
+      doSave([r.url], $('btnSave'), '✅ 已收藏当前页 → 待处理池（自动抓取元数据）', [r.title]);
     });
   }
   $('btnSave').addEventListener('click', saveCurrent);
@@ -266,9 +356,23 @@
     var urls = tabs.filter(function (t) { return checked[t.url]; }).map(function (t) { return t.url; });
     if (!urls.length) { setMsg('请先勾选要收藏的标签', false); return; }
     if (!confirm('将 ' + urls.length + ' 个标签回传至咪卡收藏库（待处理池）？')) return;
-    doSave(urls, $('btnBatch'), '✅ 已入库 ' + urls.length + ' 条 → 待处理池');
+    var titles = {};
+    tabs.forEach(function (t) { if (checked[t.url]) titles[t.url] = t.title; });
+    var titleList = urls.map(function (u) { return titles[u]; });
+    doSave(urls, $('btnBatch'), '✅ 已入库 ' + urls.length + ' 条 → 待处理池', titleList);
+  });
+
+  // 标签条事件（点击打开 / ✕ 删除）
+  $('recent').addEventListener('click', function (e) {
+    var x = e.target.closest('.x');
+    if (x) { removeRecent(x.getAttribute('data-url'), e); return; }
+    var chip = e.target.closest('.chip');
+    if (chip && !e.target.closest('.x')) {
+      var u = chip.querySelector('.x').getAttribute('data-url');
+      if (u) window.open(u, '_blank');
+    }
   });
 
   // 初始连接检测（不打扰用户，仅更新状态点）
-  ping();
+  loadRecent(function () { ping(); });
 })();

@@ -80,5 +80,20 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     return true;
   }
 
+  // 按 URL 快捷删除收藏库条目（悬浮标签 ✕）：先查 id 再删
+  if (msg.type === 'deleteByUrl') {
+    fetch(API + '/favorites')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var items = (d && d.items) || [];
+        var ids = items.filter(function (i) { return i.url === msg.url; }).map(function (i) { return i.id; });
+        if (!ids.length) return { ok: true, deleted: 0 };
+        return apiFetch('/urls/delete', { ids: ids });
+      })
+      .then(sendResponse)
+      .catch(function () { sendResponse({ ok: false, error: '删除失败' }); });
+    return true;
+  }
+
   return false;
 });
