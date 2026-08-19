@@ -33,10 +33,11 @@
     '.p-head .dot.ok { background: #10b981; }',
     '.p-head .dot.err { background: #ef4444; }',
     '.p-head .btn { cursor: pointer; border: none; background: #f3f4f6; color: #374151; border-radius: 8px; padding: 4px 9px; font-size: 12px; }',
-    '.p-head .btn:hover { background: #e5e7eb; }',
+    '.p-head .btn.fold { border: 1px solid #bfdbfe; background: #eff6ff; color: #1d4ed8; font-weight: 600; padding: 4px 11px; }',
+    '.p-head .btn.fold:hover { background: #dbeafe; }',
     '.cur { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; }',
-    '.cur-title { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
-    '.cur-url { font-size: 11px; color: #6b7280; word-break: break-all; margin: 4px 0 8px; max-height: 32px; overflow: hidden; }',
+    '.cur-title { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }',
+    '.cur-url { font-size: 11px; color: #6b7280; margin: 4px 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }',
     '.btn { cursor: pointer; border: none; border-radius: 8px; padding: 7px 0; font-size: 13px; width: 100%; }',
     '.btn.primary { background: #3b82f6; color: #fff; }',
     '.btn.primary:hover:not(:disabled) { background: #2563eb; }',
@@ -87,7 +88,7 @@
     '    <div class="p-head">' +
     '      <span class="t">📥 咪卡灵感收藏助手</span>' +
     '      <span class="dot" id="headDot"></span>' +
-    '      <button class="btn" id="btnFold" title="折叠">—</button>' +
+    '      <button class="btn fold" id="btnFold" title="折叠回胶囊">⏷ 折叠</button>' +
     '    </div>' +
     '    <div class="cur">' +
     '      <div class="cur-title" id="curTitle">读取中…</div>' +
