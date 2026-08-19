@@ -15,6 +15,12 @@ function apiFetch(path, body) {
   });
 }
 
+function apiGet(path) {
+  return fetch(API + path, { method: 'GET' })
+    .then(function (r) { return { ok: r.ok || r.status < 500, status: r.status }; })
+    .catch(function () { return { ok: false, status: 0 }; });
+}
+
 function isValidUrl(u) {
   return typeof u === 'string' && /^https?:\/\//i.test(u);
 }
@@ -32,23 +38,30 @@ function normalizeTabs(tabs) {
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   if (!msg || typeof msg.type !== 'string') return false;
 
-  // 当前激活标签
+  // 服务可达性探测（悬浮面板连接状态点）
+  if (msg.type === 'ping') {
+    apiGet('/favorites').then(sendResponse);
+    return true;
+  }
+
+  // 当前激活标签：content script 场景用 sender.tab（更准确），popup 场景回退 query
   if (msg.type === 'getActiveTab') {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      var t = (tabs || [])[0];
+    var done = function (t) {
       sendResponse({
         ok: true,
         url: (t && isValidUrl(t.url)) ? t.url : '',
         title: (t && t.title) || '',
         valid: !!(t && isValidUrl(t.url))
       });
-    });
+    };
+    if (sender && sender.tab && sender.tab.id) { done(sender.tab); return true; }
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) { done((tabs || [])[0]); });
     return true;
   }
 
-  // 全部标签（过滤非 http/https）
+  // 全部标签（当前窗口，过滤非 http/https）
   if (msg.type === 'getAllTabs') {
-    chrome.tabs.query({}, function (tabs) {
+    chrome.tabs.query({ currentWindow: true }, function (tabs) {
       var norm = normalizeTabs(tabs);
       sendResponse({ ok: true, tabs: norm, total: (tabs || []).length, skipped: (tabs || []).length - norm.length });
     });
