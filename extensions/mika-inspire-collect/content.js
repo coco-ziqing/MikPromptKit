@@ -277,24 +277,29 @@
   });
   window.addEventListener('resize', clampPos);
 
-  // ---- 拖拽（胶囊） ----
-  var drag = null;
-  pill.addEventListener('pointerdown', function (e) {
-    if (e.target.closest('.btn')) return;
-    drag = { sx: e.clientX, sy: e.clientY, ox: wrap.offsetLeft, oy: wrap.offsetTop };
-    try { pill.setPointerCapture(e.pointerId); } catch (err) {}
-  });
-  pill.addEventListener('pointermove', function (e) {
-    if (!drag) return;
-    wrap.style.left = Math.max(0, Math.min(window.innerWidth - 60, drag.ox + e.clientX - drag.sx)) + 'px';
-    wrap.style.top = Math.max(0, Math.min(window.innerHeight - 40, drag.oy + e.clientY - drag.sy)) + 'px';
-  });
-  pill.addEventListener('pointerup', function () {
-    if (!drag) return;
-    clampPos();
-    chrome.storage.local.set({ mikaCcPos: { x: wrap.offsetLeft, y: wrap.offsetTop } });
-    drag = null;
-  });
+  // ---- 拖拽（胶囊 + 展开面板头部均可拖） ----
+  function attachDrag(el, excludeSel) {
+    var drag = null;
+    el.addEventListener('pointerdown', function (e) {
+      if (excludeSel && e.target.closest(excludeSel)) return;
+      drag = { sx: e.clientX, sy: e.clientY, ox: wrap.offsetLeft, oy: wrap.offsetTop };
+      try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    el.addEventListener('pointermove', function (e) {
+      if (!drag) return;
+      wrap.style.left = Math.max(0, Math.min(window.innerWidth - 60, drag.ox + e.clientX - drag.sx)) + 'px';
+      wrap.style.top = Math.max(0, Math.min(window.innerHeight - 40, drag.oy + e.clientY - drag.sy)) + 'px';
+    });
+    el.addEventListener('pointerup', function () {
+      if (!drag) return;
+      clampPos();
+      chrome.storage.local.set({ mikaCcPos: { x: wrap.offsetLeft, y: wrap.offsetTop } });
+      drag = null;
+    });
+  }
+  attachDrag(pill);
+  var pHead = shadow.querySelector('.p-head');
+  if (pHead) attachDrag(pHead, '.btn');
 
   // ---- 折叠/展开 ----
   function openPanel() {
