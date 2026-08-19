@@ -36,6 +36,7 @@ Object.assign(App, {
         this.updateEditThumbDisplay();
         document.getElementById('editPromptTitle').textContent = promptId > 151 ? App._t('common.edit', '编辑提示词') : App._t('auto.view_提示词', '查看提示词');
         document.getElementById('editContent').value = data.content || '';
+        document.getElementById('editContentZh').value = data.content_zh || '';
         document.getElementById('editMeaning').value = data.meaning || '';
         document.getElementById('editScene').value = data.scene || '';
         this._populateModuleOptions(data.module || '');
@@ -59,6 +60,7 @@ Object.assign(App, {
         if (!pid) return;
         var data = {
             content: document.getElementById('editContent').value.trim(),
+            content_zh: document.getElementById('editContentZh').value.trim(),
             meaning: document.getElementById('editMeaning').value.trim(),
             scene: document.getElementById('editScene').value.trim(),
             module: document.getElementById('editModule').value,
@@ -256,6 +258,18 @@ Object.assign(App, {
     renderPrompts() {
         const container = document.getElementById('promptList');
         if (!container) return;
+        // v5.46.9: 缩略图模式状态恢复 + 应用（折叠只显示缩略图）
+        if (this.state._cardCompact === undefined) {
+            try { this.state._cardCompact = localStorage.getItem('wcCardCompact') === '1'; } catch(e) { this.state._cardCompact = false; }
+        }
+        container.classList.toggle('compact', !!this.state._cardCompact);
+        const cbtn = document.getElementById('btnCardCompact');
+        if (cbtn) {
+            cbtn.innerHTML = this.state._cardCompact ? '📄 图文模式' : '🖼 缩略图模式';
+            cbtn.style.borderColor = this.state._cardCompact ? 'var(--primary)' : '';
+            cbtn.style.color = this.state._cardCompact ? 'var(--primary)' : '';
+            cbtn.style.display = this.state.editMode ? 'none' : 'inline-block';
+        }
 
         if (this.state.isLoading) {
             container.innerHTML = '<div class="loading-spinner"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div><p style="margin-top:12px;color:#94a3b8;">加载中...</p></div>';
@@ -365,6 +379,21 @@ Object.assign(App, {
             this._updateFilteredDisplay();
         }
         this.bindCardDragDrop();
+    },
+
+    // v5.46.9: 全体词卡快捷折叠/展开（缩略图模式 ↔ 图文模式）
+    _toggleCardCompact() {
+        this.state._cardCompact = !this.state._cardCompact;
+        try { localStorage.setItem('wcCardCompact', this.state._cardCompact ? '1' : '0'); } catch(e) {}
+        const c = document.getElementById('promptList');
+        if (c) c.classList.toggle('compact', this.state._cardCompact);
+        const btn = document.getElementById('btnCardCompact');
+        if (btn) {
+            btn.innerHTML = this.state._cardCompact ? '📄 图文模式' : '🖼 缩略图模式';
+            btn.style.borderColor = this.state._cardCompact ? 'var(--primary)' : '';
+            btn.style.color = this.state._cardCompact ? 'var(--primary)' : '';
+        }
+        this.showToast(this.state._cardCompact ? '🖼 已切换为缩略图模式（只显示缩略图）' : '📄 已切换为图文模式', 'info');
     },
 
     // ============ Seedance 视频提示词 ============

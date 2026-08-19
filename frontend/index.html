@@ -191,6 +191,7 @@
                         <button id="btnBackToShowcase" onclick="App._wcGoBack()" style="display:none;align-items:center;gap:4px;padding:4px 14px;background:var(--primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;flex-shrink:0;" onmouseenter="this.style.filter='brightness(1.12)'" onmouseleave="this.style.filter='none'"><i class="bi bi-arrow-left"></i> 返回</button>
                         <h3 id="pageTitle" style="white-space:nowrap;">提示词分组列表</h3>
                         <button id="btnCollapseAllGroups" onclick="App._toggleAllShowcaseGroups()" title="一键折叠/展开全部分组" style="display:none;font-size:11px;padding:3px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;white-space:nowrap;">📂 全部折叠</button>
+                        <button id="btnCardCompact" onclick="App._toggleCardCompact()" title="快捷折叠/展开全部词卡 — 折叠时只显示缩略图" style="display:none;font-size:11px;padding:3px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;white-space:nowrap;">🖼 缩略图模式</button>
                         <span class="count-info" id="countInfo" style="white-space:nowrap;">加载中...</span>
                         <!-- 搜索框+切换按钮紧凑同行 -->
                         <form autocomplete="off" onsubmit="return false" style="margin:0;"><div id="inlineSearchBox" style="display:none;flex:0 1 300px;min-width:200px;margin-left:8px;border:1px solid var(--border-color);border-radius:8px;overflow:hidden;"><input type="text" id="inlineSearchInput" placeholder="🔍 搜索词卡..." autocomplete="off" name="search-term" style="flex:1;min-width:0;padding:6px 10px;border:none;border-radius:0;background:var(--bg);color:var(--text);font-size:13px;outline:none;appearance:none;-webkit-appearance:none;" oninput="var h=document.getElementById('searchInput');if(h){h.value=this.value;h.dispatchEvent(new Event('input',{bubbles:true}));}" onfocus="this.parentElement.style.borderColor='var(--primary)';var nb=document.getElementById('inlineSearchModeBtn');if(nb)nb.style.borderColor='var(--primary)'" onblur="this.parentElement.style.borderColor='';var nb=document.getElementById('inlineSearchModeBtn');if(nb)nb.style.borderColor=''"><button id="inlineSearchModeBtn" onclick="(function(){var s=App.state;var m=s._searchMode;s._searchMode=m==='semantic'?'keyword':'semantic';var el=document.getElementById('inlineSearchModeBtn');var el2=document.getElementById('searchModeBtn');var u=function(e){if(!e)return;if(s._searchMode==='semantic'){e.innerHTML='🧠';e.title='语义搜索|点击切换';e.style.color='#818cf8'}else{e.innerHTML='🔤';e.title='关键词搜索|点击切换';e.style.color='#94a3b8'}};u(el);u(el2);if(s.searchQuery){s.page=1;if(s._searchMode==='semantic'){App._semanticSearch(s.searchQuery)}else{App.loadPrompts()}}App.showToast('已切换到 '+(s._searchMode==='semantic'?'🧠 语义搜索':'🔤 关键词搜索'),'info')})()" title="关键词/语义搜索" style="padding:6px 10px;border:none;border-radius:0;background:var(--bg);color:var(--text);font-size:15px;cursor:pointer;flex-shrink:0;line-height:1;appearance:none;-webkit-appearance:none;">🔤</button></div></form>
@@ -653,8 +654,10 @@
                         <button class="btn btn-sm" style="border:1px solid #8b5cf6;color:#8b5cf6;background:transparent;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;" onclick="App.generateComfyThumbnail()" title="用 ComfyUI 生成缩略图"><i class="bi bi-magic"></i> AI 生成</button>
                     </div>
                 </div>
-                <label>内容</label>
-                <textarea id="editContent" class="modal-input" rows="3" placeholder="提示词内容"></textarea>
+                <label>英文提示词</label>
+                <textarea id="editContent" class="modal-input" rows="3" placeholder="英文提示词内容（主内容）"></textarea>
+                <label>中文提示词</label>
+                <textarea id="editContentZh" class="modal-input" rows="2" placeholder="中文提示词（可选，卡片中文显示用）"></textarea>
                 <label>释义</label>
                 <input type="text" id="editMeaning" class="modal-input" placeholder="中文释义">
                 <label>适用场景</label>
@@ -1123,7 +1126,7 @@
     <link rel="preload" href="/static/js/app_collections_collections.js?v=a5b7e067" as="script">
     <link rel="preload" href="/static/js/app_collections_cards.js?v=81786143" as="script">
     <link rel="preload" href="/static/js/app_media.js?v=54527403" as="script">
-    <link rel="preload" href="/static/js/word_editor.js?v=3a2e2b77" as="script">
+    <link rel="preload" href="/static/js/word_editor.js?v=54690000" as="script">
     <!-- Phase15: wc_bridge 必须在 app_core 之前加载，分组导航交互重构 -->
                             <script src="/static/js/wc_bridge_tree.js?v=4e1ec3df"></script>
     <script src="/static/js/wc_bridge_move.js?v=a8fcf396"></script>
@@ -1149,14 +1152,14 @@
 <script defer src="/static/js/notif_center.js?v=46bc22ed"></script>
     <script defer src="/static/js/plugin_host.js?v=1c5d203b"></script>
     <script defer src="/static/js/plugin_license.js?v=8fa4e78f"></script>
-    <script defer src="/static/js/app_card_model.js?v=edf1ff4f"></script>
+    <script defer src="/static/js/app_card_model.js?v=54690000"></script>
     <script defer src="/static/js/monitor_dashboard.js?v=8da252be"></script>
     <script defer src="/static/js/comfy_workflow_lib_core.js?v=b664c0f6"></script>
     <script defer src="/static/js/comfy_workflow_lib_editor.js?v=af275ff8"></script>
     <script defer src="/static/js/comfy_workflow_lib_runner.js?v=6ad72ed9"></script>
     <script defer src="/static/js/health_check.js?v=f99f6267"></script>
     <script defer src="/static/js/app_sync.js?v=b5cd1aa2"></script>
-    <script defer src="/static/js/app_editor.js?v=54e32660"></script>                
+    <script defer src="/static/js/app_editor.js?v=54690000"></script>                
     <script defer src="/static/js/app_collections_editor.js?v=6c8bc4a8"></script>
     <script defer src="/static/js/app_collections_batch.js?v=e2f5b8d5"></script>
     <script defer src="/static/js/app_collections_collections.js?v=a5b7e067"></script>
@@ -1170,7 +1173,7 @@
 <script defer src="/static/js/app_media_viewer.js?v=54680000"></script>
     <script defer src="/static/js/ai_tools.js?v=5380005a"></script>
     <script defer src="/static/js/word_picker.js?v=18cdc0d8"></script>
-    <script defer src="/static/js/word_editor.js?v=3a2e2b77"></script>
+    <script defer src="/static/js/word_editor.js?v=54690000"></script>
 <script defer src="/static/js/word_version_history.js?v=2fe2c161"></script>
 <script defer src="/static/js/word_thumbnail.js?v=f855906f"></script>
     <script defer src="/static/js/word_card_manager.js?v=38975cc3"></script>

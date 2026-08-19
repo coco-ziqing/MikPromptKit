@@ -413,6 +413,14 @@
 
             // 内容层
             content: data.content || '',
+            content_zh: data.content_zh || '',
+            content_en: data.content_en || '',
+            ...(('content_simple' in data) ? { content_simple: data.content_simple || '' } : {}),
+            ...(('content_detailed' in data) ? { content_detailed: data.content_detailed || '' } : {}),
+            ...(('content_simple_en' in data) ? { content_simple_en: data.content_simple_en || '' } : {}),
+            ...(('content_simple_zh' in data) ? { content_simple_zh: data.content_simple_zh || '' } : {}),
+            ...(('content_detailed_en' in data) ? { content_detailed_en: data.content_detailed_en || '' } : {}),
+            ...(('content_detailed_zh' in data) ? { content_detailed_zh: data.content_detailed_zh || '' } : {}),
             meaning: data.meaning || '',
             scene: data.scene || '',
             tags: data.tags || [],

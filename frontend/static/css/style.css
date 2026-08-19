@@ -4071,3 +4071,9 @@ body.dark-theme .header-divider {
 /* v5.36.5: 参考图编辑按钮 */
 .s2-ref-edit { position:absolute; top:-5px; left:-5px; width:16px; height:16px; border-radius:50%; background:#8b5cf6; color:#fff; border:none; font-size:9px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; }
 .s2-ref-edit:hover { background:#7c3aed; }
+
+
+/* ===== v5.46.9: 词卡全局缩略图模式（折叠只显示缩略图） ===== */
+#promptList.compact .prompt-card .card-text { display:none !important; }
+#promptList.compact .prompt-card .card-body { padding-bottom:4px; }
+#promptList.compact .prompt-card { cursor:pointer; }
