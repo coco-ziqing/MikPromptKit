@@ -17,6 +17,7 @@ import re
 import subprocess
 import threading
 import time
+import urllib.error
 import urllib.request
 
 from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
@@ -30,10 +31,12 @@ DATA_DIR = os.path.join(_PROJECT_ROOT, "data", "card_collect")
 IMG_DIR = os.path.join(DATA_DIR, "images")
 VID_DIR = os.path.join(DATA_DIR, "videos")
 LOGO_DIR = os.path.join(DATA_DIR, "logos")
+THUMB_DIR = os.path.join(DATA_DIR, "thumbs")  # v5.43.1 fetch-meta 首图缩略图
 PROFILE_DIR = os.path.join(DATA_DIR, "chrome_profile")
 os.makedirs(IMG_DIR, exist_ok=True)
 os.makedirs(VID_DIR, exist_ok=True)
 os.makedirs(LOGO_DIR, exist_ok=True)
+os.makedirs(THUMB_DIR, exist_ok=True)
 
 # Chrome 可执行文件探测（与 dreamina_web 相同策略）
 CHROME_BIN = None
@@ -201,11 +204,29 @@ def _ensure_tables():
         if "login_required" not in site_cols:
             c.execute("ALTER TABLE card_collect_sites ADD COLUMN login_required INTEGER DEFAULT 0")
             print("[CardCollect] card_collect_sites 增加列 login_required")
+        # v5.43.1: 站点分组 + 预制标记（幂等 ALTER）
+        if "group_name" not in site_cols:
+            c.execute("ALTER TABLE card_collect_sites ADD COLUMN group_name TEXT DEFAULT '灵感图库'")
+            print("[CardCollect] card_collect_sites 增加列 group_name")
+        if "is_builtin" not in site_cols:
+            c.execute("ALTER TABLE card_collect_sites ADD COLUMN is_builtin INTEGER DEFAULT 0")
+            print("[CardCollect] card_collect_sites 增加列 is_builtin")
         c.commit()
         # 预置种子标注：需登录的平台（实测/常识确认）
         login_sites = {"Midjourney 画廊": 1, "即梦 AI": 1, "小红书": 1, "可灵 AI": 1, "海螺 AI": 1}
         for nm, lr in login_sites.items():
             c.execute("UPDATE card_collect_sites SET login_required=? WHERE name=?", [lr, nm])
+        c.commit()
+        # v5.43.1: 预置种子分组标注 + 内置不可删标记（幂等 UPDATE）
+        builtin_groups = {
+            "LibLib 哩布哩布": ("提示词站点", 1), "Civitai": ("提示词站点", 1),
+            "即梦 AI": ("灵感图库", 1), "Midjourney 画廊": ("灵感图库", 1),
+            "小红书": ("灵感图库", 1), "Pinterest": ("灵感图库", 1),
+            "ArtStation": ("设计参考", 1),
+            "可灵 AI": ("素材榜单", 1), "海螺 AI": ("素材榜单", 1), "B 站灵感区": ("素材榜单", 1),
+        }
+        for nm, (grp, bi) in builtin_groups.items():
+            c.execute("UPDATE card_collect_sites SET group_name=?, is_builtin=? WHERE name=?", [grp, bi, nm])
         c.commit()
         # 种子数据：常用灵感图库（幂等，仅首次插入）
         cnt = c.execute("SELECT COUNT(*) FROM card_collect_sites").fetchone()[0]
@@ -1028,6 +1049,311 @@ def collect_from_favorite(fid: int):
 _VALID_FAV_STATUS = {"pending", "ready", "hold", "discard"}
 
 
+# ==================== v5.43.1: URL 元数据轻量抓取（fetch-meta） ====================
+
+_fetch_lock = threading.Lock()
+FETCH_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
+
+
+def _http_get(url: str, timeout: int = 15, max_bytes: int = 2 * 1024 * 1024):
+    """轻量 GET：返回 (status, headers, body_bytes)；超时/异常返回 (0, {}, b'')，绝不抛"""
+    req = urllib.request.Request(url, headers={"User-Agent": FETCH_UA,
+                                               "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, dict(r.headers), r.read(max_bytes + 1)
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, dict(e.headers), e.read(max_bytes + 1)
+        except Exception:
+            return e.code, {}, b""
+    except Exception:
+        return 0, {}, b""
+
+
+def _parse_meta(html: str, base_url: str):
+    """HTML → (title, desc, 正文核心文本, og_image)；标准库解析，不依赖 bs4"""
+    from html.parser import HTMLParser
+    title, desc, og_image = "", "", ""
+    og_title = ""
+
+    class _P(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.in_title = False
+            self.title_buf = []
+            self.skip = 0
+            self.text_parts = []
+            self.meta_desc = ""
+            self.meta_og_title = ""
+            self.meta_og_image = ""
+
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            if tag == "title":
+                self.in_title = True
+                self.title_buf = []
+            if tag in ("script", "style", "noscript", "svg", "head"):
+                self.skip += 1
+            if tag == "meta":
+                k = (a.get("property") or a.get("name") or "").lower()
+                v = a.get("content") or ""
+                if k in ("description", "og:description", "twitter:description") and not self.meta_desc:
+                    self.meta_desc = v
+                elif k in ("og:title", "twitter:title") and not self.meta_og_title:
+                    self.meta_og_title = v
+                elif k in ("og:image", "og:image:url", "twitter:image") and not self.meta_og_image:
+                    self.meta_og_image = v
+
+        def handle_endtag(self, tag):
+            if tag == "title":
+                self.in_title = False
+            if tag in ("script", "style", "noscript", "svg", "head"):
+                self.skip = max(0, self.skip - 1)
+
+        def handle_data(self, data):
+            if self.in_title:
+                self.title_buf.append(data)
+            elif self.skip == 0:
+                t = data.strip()
+                if t:
+                    self.text_parts.append(t)
+
+    p = _P()
+    try:
+        p.feed(html[:2_000_000])
+    except Exception:
+        pass
+    title = "".join(p.title_buf).strip()[:200] or (p.meta_og_title or "")[:200]
+    desc = (p.meta_desc or "")[:300]
+    og_image = p.meta_og_image or ""
+    text = re.sub(r"\s+", " ", " ".join(p.text_parts)).strip()[:1200]
+    if og_image and og_image.startswith("/"):
+        from urllib.parse import urlparse
+        pr = urlparse(base_url)
+        og_image = f"{pr.scheme}://{pr.netloc}{og_image}"
+    return title, desc, text, og_image
+
+
+def _fetch_thumb(fid: int, img_url: str) -> str:
+    """首图缩略图下载（单图 ≤300KB、10s 超时，防卡死）"""
+    try:
+        req = urllib.request.Request(img_url, headers={"User-Agent": FETCH_UA})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = r.read(300 * 1024 + 1)
+        if len(data) > 300 * 1024:
+            return ""
+        ext = os.path.splitext(img_url.split("?")[0])[1].lower()
+        if ext not in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+            ext = ".jpg"
+        os.makedirs(THUMB_DIR, exist_ok=True)
+        fname = f"ccf_{fid}{ext}"
+        with open(os.path.join(THUMB_DIR, fname), "wb") as f:
+            f.write(data)
+        return fname
+    except Exception:
+        return ""
+
+
+def _fetch_meta_one(fid: int):
+    c = _db()
+    try:
+        row = c.execute("SELECT * FROM card_collect_favorites WHERE id=?", [fid]).fetchone()
+    finally:
+        c.close()
+    if not row:
+        return
+    url = row["url"]
+    c = _db()
+    try:
+        c.execute("UPDATE card_collect_favorites SET fetch_status='running', updated_at=datetime('now','localtime') WHERE id=?", [fid])
+        c.commit()
+    finally:
+        c.close()
+    try:
+        st, _h, body = _http_get(url, timeout=15)
+        if st <= 0:
+            raise RuntimeError("网络不可达/超时")
+        if st >= 400:
+            raise RuntimeError(f"HTTP {st}")
+        html = body.decode("utf-8", "ignore")
+        title, desc, text, og_image = _parse_meta(html, url)
+        thumb = _fetch_thumb(fid, og_image) if og_image.startswith("http") else ""
+        dom = _domain_of(url)
+        c = _db()
+        try:
+            c.execute(
+                "UPDATE card_collect_favorites SET fetch_status='success', fetch_title=?, fetch_desc=?, "
+                "fetch_text=?, thumb=?, domain=?, site_name=?, updated_at=datetime('now','localtime') WHERE id=?",
+                [title, desc, text, thumb, dom, _site_name_of(dom), fid])
+            c.commit()
+        finally:
+            c.close()
+        print(f"[CardCollect] fetch-meta {fid} OK: {title[:40]}")
+    except Exception as e:
+        c = _db()
+        try:
+            c.execute("UPDATE card_collect_favorites SET fetch_status='fail', updated_at=datetime('now','localtime') WHERE id=?", [fid])
+            c.commit()
+        finally:
+            c.close()
+        print(f"[CardCollect] fetch-meta {fid} FAIL: {str(e)[:80]}")
+
+
+def _fetch_meta_many(fids):
+    """串行抓取（全局锁，避免并发打爆目标站）"""
+    for fid in fids:
+        with _fetch_lock:
+            _fetch_meta_one(fid)
+
+
+# ==================== v5.43.1: URL 清洗 ====================
+
+_TRACK_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+                 "spm", "from", "source", "ref", "refer", "referer", "share_token",
+                 "xcode", "clicktime", "clickid", "scene", "ivk_sa", "vd_source", "app"}
+
+
+def _clean_url_params(url: str) -> str:
+    """清理追踪参数（保留必要 query）"""
+    try:
+        from urllib.parse import parse_qsl, urlencode, urlparse
+        p = urlparse(url)
+        if not p.query:
+            return url
+        keep = [(k, v) for k, v in parse_qsl(p.query) if k.lower() not in _TRACK_PARAMS]
+        if not keep:
+            return p._replace(query="").geturl()
+        return p._replace(query=urlencode(keep)).geturl()
+    except Exception:
+        return url
+
+
+def _url_fingerprint(url: str) -> str:
+    """域名+路径指纹（忽略 query，用于去重）"""
+    try:
+        from urllib.parse import urlparse
+        p = urlparse(url)
+        return (p.netloc.lower() + p.path).rstrip("/") or p.netloc.lower()
+    except Exception:
+        return url
+
+
+def _unshorten(url: str, timeout: int = 10) -> str:
+    """短链还原：跟随 redirect 最多 3 跳；HEAD 不支持回退 GET"""
+    try:
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": FETCH_UA})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.geturl()
+        except Exception:
+            req2 = urllib.request.Request(url, method="GET", headers={"User-Agent": FETCH_UA})
+            with urllib.request.urlopen(req2, timeout=timeout) as r2:
+                return r2.geturl()
+    except Exception:
+        return url
+
+
+def _probe_alive(url: str, timeout: int = 8) -> bool:
+    """存活探测：HEAD/GET 最终状态 <400 判定存活"""
+    try:
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": FETCH_UA})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return True
+        except urllib.error.HTTPError as e:
+            return e.code < 400
+        except Exception:
+            pass
+        req2 = urllib.request.Request(url, method="GET", headers={"User-Agent": FETCH_UA, "Range": "bytes=0-0"})
+        with urllib.request.urlopen(req2, timeout=timeout) as r2:
+            return True
+    except urllib.error.HTTPError as e:
+        return e.code < 400
+    except Exception:
+        return False
+
+
+@router.post("/urls/clean")
+def clean_urls(payload: dict = Body(...)):
+    """批量 URL 清洗：清追踪参数 → 短链还原 → 存活探测 → 页面指纹去重
+    清洗结果写 clean_url（原始 url 不动）；dead/duplicate 仅标记不自动处理（用户自行决策）
+    """
+    ids = _ids_of(payload)
+    if not ids:
+        raise HTTPException(400, "请选择条目")
+    if len(ids) > 50:
+        raise HTTPException(400, "单次最多 50 条")
+    c = _db()
+    try:
+        ph = ",".join("?" * len(ids))
+        rows = c.execute(f"SELECT * FROM card_collect_favorites WHERE id IN ({ph})", ids).fetchall()
+    finally:
+        c.close()
+    if not rows:
+        raise HTTPException(404, "条目不存在")
+    results = []
+    fingerprints = {}
+    deadline = time.time() + 240  # 总预算 4 分钟（防卡死）
+    for r in rows:
+        if time.time() > deadline:
+            break
+        url = r["url"]
+        cleaned = _clean_url_params(url)
+        cleaned = _unshorten(cleaned, timeout=10)
+        alive = _probe_alive(cleaned, timeout=8)
+        fp = _url_fingerprint(cleaned)
+        dup_of = None
+        if fp in fingerprints:
+            dup_of = fingerprints[fp]
+        else:
+            fingerprints[fp] = r["id"]
+        c = _db()
+        try:
+            c.execute(
+                "UPDATE card_collect_favorites SET clean_url=?, fetch_status=?, updated_at=datetime('now','localtime') WHERE id=?",
+                [cleaned if cleaned != url else "", "fail" if not alive else r["fetch_status"], r["id"]])
+            c.commit()
+        finally:
+            c.close()
+        results.append({
+            "id": r["id"], "url": url,
+            "clean_url": cleaned if cleaned != url else "",
+            "changed": cleaned != url,
+            "dead": not alive,
+            "duplicate": dup_of is not None,
+            "duplicate_of": dup_of,
+        })
+    return {"ok": True, "processed": len(results), "results": results}
+
+
+@router.post("/urls/{fid}/refetch")
+def refetch_meta(fid: int):
+    """手动重抓元数据（抓取失败后可重试）"""
+    c = _db()
+    try:
+        row = c.execute("SELECT id FROM card_collect_favorites WHERE id=?", [fid]).fetchone()
+    finally:
+        c.close()
+    if not row:
+        raise HTTPException(404, "收藏不存在")
+    threading.Thread(target=_fetch_meta_many, args=([fid],), daemon=True).start()
+    return {"ok": True}
+
+
+@router.get("/urls/thumb/{fname}")
+def serve_thumb(fname: str):
+    """fetch-meta 首图缩略图访问（防路径穿越）"""
+    if not re.match(r"^[\w.\-]+$", fname):
+        raise HTTPException(400, "非法文件名")
+    p = os.path.join(THUMB_DIR, fname)
+    if os.path.exists(p):
+        from fastapi.responses import FileResponse
+        return FileResponse(p)
+    raise HTTPException(404, "缩略图不存在")
+
+
 def _ids_of(payload: dict) -> list:
     ids = [int(x) for x in (payload.get("ids") or [])]
     return ids
@@ -1056,17 +1382,22 @@ def add_urls(payload: dict = Body(...)):
     c = _db()
     try:
         items = []
+        new_ids = []
         for u in urls:
             dom = _domain_of(u)
             cur = c.execute(
                 "INSERT INTO card_collect_favorites (url, title, note, status, fetch_status, domain, site_name, created_at) "
                 "VALUES (?,?,?, 'pending', 'pending', ?, ?, datetime('now','localtime'))",
                 [u, "", "", dom, _site_name_of(dom)])
+            new_ids.append(cur.lastrowid)
             items.append(dict(c.execute("SELECT * FROM card_collect_favorites WHERE id=?", [cur.lastrowid]).fetchone()))
         c.commit()
-        return {"ok": True, "count": len(items), "items": items}
     finally:
         c.close()
+    # v5.43.1: 入库后自动异步抓取页面元数据（串行、预算内）
+    if new_ids:
+        threading.Thread(target=_fetch_meta_many, args=(new_ids,), daemon=True).start()
+    return {"ok": True, "count": len(items), "items": items}
 
 
 @router.post("/urls/status")
@@ -1557,12 +1888,17 @@ def card_images(card_id: int):
 
 
 @router.get("/sites")
-def list_sites():
-    """灵感图库列表（预置 + 手动添加）"""
+def list_sites(group: str = Query("", description="按分组过滤")):
+    """灵感图库列表（预置 + 手动添加；支持分组过滤）"""
     c = _db()
     try:
-        rows = c.execute("SELECT * FROM card_collect_sites ORDER BY sort_order, id").fetchall()
-        return {"ok": True, "items": [dict(r) for r in rows]}
+        if group:
+            rows = c.execute("SELECT * FROM card_collect_sites WHERE group_name=? ORDER BY sort_order, id", [group]).fetchall()
+        else:
+            rows = c.execute("SELECT * FROM card_collect_sites ORDER BY sort_order, id").fetchall()
+        groups = [r["group_name"] for r in c.execute(
+            "SELECT DISTINCT group_name FROM card_collect_sites WHERE group_name!='' ORDER BY group_name").fetchall()]
+        return {"ok": True, "items": [dict(r) for r in rows], "groups": groups}
     finally:
         c.close()
 
@@ -1575,6 +1911,7 @@ def add_site(payload: dict = Body(...)):
     desc = str(payload.get("description") or "").strip()[:300]
     emoji = str(payload.get("icon_emoji") or "🌐").strip()[:8]
     login_req = 1 if payload.get("login_required") else 0
+    group_name = str(payload.get("group_name") or "灵感图库").strip()[:50]
     if not name:
         raise HTTPException(400, "请输入图库名称")
     if not url.startswith("http://") and not url.startswith("https://"):
@@ -1587,9 +1924,9 @@ def add_site(payload: dict = Body(...)):
             raise HTTPException(400, "已存在同名图库")
         mx = c.execute("SELECT COALESCE(MAX(sort_order),0) FROM card_collect_sites").fetchone()[0]
         cur = c.execute(
-            "INSERT INTO card_collect_sites (name, url, description, logo, icon_emoji, login_required, sort_order, created_at) "
-            "VALUES (?,?,?,'',?,?,?,datetime('now','localtime'))",
-            [name, url, desc, emoji, login_req, int(mx) + 1])
+            "INSERT INTO card_collect_sites (name, url, description, logo, icon_emoji, login_required, group_name, sort_order, created_at) "
+            "VALUES (?,?,?,'',?,?,?,?,datetime('now','localtime'))",
+            [name, url, desc, emoji, login_req, group_name, int(mx) + 1])
         c.commit()
         row = c.execute("SELECT * FROM card_collect_sites WHERE id=?", [cur.lastrowid]).fetchone()
         return {"ok": True, "item": dict(row)}
@@ -1619,6 +1956,8 @@ def update_site(sid: int, payload: dict = Body(...)):
             upd["icon_emoji"] = str(payload["icon_emoji"] or "🌐").strip()[:8]
         if "login_required" in payload:
             upd["login_required"] = 1 if payload["login_required"] else 0
+        if "group_name" in payload:
+            upd["group_name"] = str(payload["group_name"] or "灵感图库").strip()[:50]
         if not upd:
             return {"ok": True, "item": dict(row)}
         upd["updated_at"] = "datetime('now','localtime')"
@@ -1634,12 +1973,14 @@ def update_site(sid: int, payload: dict = Body(...)):
 
 @router.delete("/sites/{sid}")
 def delete_site(sid: int):
-    """删除图库（含 logo 文件）"""
+    """删除图库（含 logo 文件）；预制站点（is_builtin=1）不可删"""
     c = _db()
     try:
         row = c.execute("SELECT * FROM card_collect_sites WHERE id=?", [sid]).fetchone()
         if not row:
             raise HTTPException(404, "图库不存在")
+        if row["is_builtin"]:
+            raise HTTPException(400, "系统预制站点不可删除，可编辑调整")
         if row["logo"]:
             for ext in ("png", "jpg", "jpeg", "webp", "gif"):
                 p = os.path.join(LOGO_DIR, f"cc_site_{sid}.{ext}")

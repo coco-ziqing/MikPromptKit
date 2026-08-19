@@ -56,6 +56,15 @@
             var b = m[s] || [s, '#94a3b8'];
             return '<span style="color:' + b[1] + ';font-size:11px;">' + b[0] + '</span>';
         },
+
+        // v5.43.1: 元数据抓取状态徽章（失败可点击重试）
+        _fetchBadge: function (f) {
+            var s = f.fetch_status;
+            if (s === 'success') return '<span style="color:#10b981;font-size:10px;">✅ 已抓取</span>';
+            if (s === 'running') return '<span style="color:#3b82f6;font-size:10px;">⏳ 抓取中</span>';
+            if (s === 'fail') return '<span style="color:#ef4444;font-size:10px;cursor:pointer;text-decoration:underline;" onclick="App._ccFavRefetch(' + f.id + ')" title="点击重试">❌ 抓取失败·重试</span>';
+            return '<span style="color:#94a3b8;font-size:10px;">⏳ 待抓取</span>';
+        },
         _bar: function (pct) {
             return '<div style="height:3px;background:rgba(127,127,127,.15);border-radius:2px;margin-top:3px;overflow:hidden;"><div style="height:100%;width:' + Math.max(0, Math.min(100, pct || 0)) + '%;background:linear-gradient(90deg,#3b82f6,#10b981);transition:width .5s;"></div></div>';
         },
@@ -124,7 +133,7 @@
                 'style="flex:1;height:54px;padding:8px 10px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;resize:vertical;font-size:12px;"></textarea>' +
                 '<button class="btn btn-primary btn-sm" style="align-self:flex-end;" onclick="App._ccFavAddUrls()">📥 入库</button>' +
                 '</div>' +
-                '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">自动存入「待处理」池 · 原始链接保留，去重/清洗后置到收藏库操作</div>' +
+                '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">自动存入「待处理」池 · 入库自动抓取标题/摘要/首图 · 原始链接保留，去重/清洗后置到收藏库操作</div>' +
                 '</div>' +
                 '<div id="ccFavPoolBar" style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;"></div>' +
                 '<div id="ccFavBatchBar" style="display:none;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap;padding:6px 8px;border:1px solid rgba(59,130,246,.35);border-radius:8px;background:rgba(59,130,246,.06);"></div>' +
@@ -173,13 +182,16 @@
                         var dom = (f.domain || f.site_name) ?
                             '<span style="font-size:10px;color:var(--text-muted);background:rgba(127,127,127,.14);padding:1px 7px;border-radius:6px;margin-left:6px;">' + self._esc(f.site_name || f.domain) + '</span>' : '';
                         var title = (f.fetch_title || f.title || '').trim();
+                        var thumbHtml = f.thumb ?
+                            '<img src="/api/card-collect/urls/thumb/' + self._esc(f.thumb) + '" style="width:42px;height:42px;object-fit:cover;border-radius:8px;background:rgba(127,127,127,.1);" onerror="this.style.display=\'none\'">' : '';
                         return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid rgba(127,127,127,.15);border-radius:10px;">' +
                             '<input type="checkbox" ' + chk + ' onchange="App._ccFavSel(' + f.id + ', this.checked)">' +
+                            thumbHtml +
                             '<div style="flex:1;min-width:0;">' +
                             (title ? '<div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + self._esc(title) + dom + '</div>' :
                                 '<div style="font-size:13px;word-break:break-all;color:var(--text-muted);">🔗 ' + self._esc(f.url) + dom + '</div>') +
                             '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;word-break:break-all;">' + self._esc(f.url) + '</div>' +
-                            '<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">' + self._favBadge(f.status) + ' · ' + self._esc(f.created_at) + '</div>' +
+                            '<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">' + self._favBadge(f.status) + ' · ' + self._fetchBadge(f) + ' · ' + self._esc(f.created_at) + '</div>' +
                             '</div>' +
                             '<button class="btn btn-sm btn-secondary" title="打开原网页" onclick="App._ccFavOpen(\'' + f.url.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')">↗</button>' +
                             '<button class="btn btn-sm btn-secondary" title="复制 URL" onclick="App._ccFavCopy(\'' + f.url.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')">⧉</button>' +
@@ -203,6 +215,7 @@
                 '<button class="btn btn-sm btn-secondary" onclick="App._ccFavBatchStatus(\'hold\')">🗄 设为备用</button>' +
                 '<button class="btn btn-sm btn-secondary" onclick="App._ccFavBatchStatus(\'discard\')">🚮 设为废弃</button>' +
                 '<button class="btn btn-sm btn-secondary" onclick="App._ccFavBatchStatus(\'pending\')">📌 回待处理</button>' +
+                '<button class="btn btn-sm btn-secondary" onclick="App._ccFavBatchClean()">🧹 清洗选中</button>' +
                 '<button class="btn btn-sm btn-primary" onclick="App._ccFavBatchCollect()">🕷 生成采集任务</button>' +
                 '<button class="btn btn-sm btn-danger" onclick="App._ccFavBatchDel()">🗑 删除选中</button>';
         },
@@ -292,6 +305,74 @@
                         self._switchTab('tasks');
                     } else self._toast((d && d.detail) || '启动失败', 'error');
                 }).catch(function () { self._toast('启动失败', 'error'); });
+        },
+
+        _ccFavBatchClean: function () {
+            var ids = this._ccFavSelIds();
+            if (!ids.length) return;
+            var self = this;
+            this._toast('清洗中…（清追踪参数/短链还原/存活探测/去重）', 'info');
+            App.fetchJSON('/api/card-collect/urls/clean', { method: 'POST', body: JSON.stringify({ ids: ids }) })
+                .then(function (d) {
+                    if (d && d.ok) {
+                        self._favSel = {};
+                        self._renderFav(document.getElementById('ccBody'));
+                        self._ccFavCleanModal(d.results || []);
+                    } else self._toast((d && d.detail) || '清洗失败', 'error');
+                }).catch(function () { self._toast('清洗失败', 'error'); });
+        },
+
+        _ccFavCleanModal: function (results) {
+            var self = this;
+            var changed = results.filter(function (r) { return r.changed; }).length;
+            var dead = results.filter(function (r) { return r.dead; }).length;
+            var dup = results.filter(function (r) { return r.duplicate; }).length;
+            var html =
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b>🧹 清洗结果</b>' +
+                '<button onclick="this.closest(\'.modal-overlay\').remove()" style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;">✕</button></div>' +
+                '<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">共 ' + results.length + ' 条：清洗变更 <b style="color:#3b82f6;">' + changed + '</b> · 失效 <b style="color:#ef4444;">' + dead + '</b> · 重复 <b style="color:#f59e0b;">' + dup + '</b>（原始链接均未改动，仅标记）</div>' +
+                '<div style="max-height:44vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">' +
+                results.map(function (r) {
+                    var tags = '';
+                    if (r.dead) tags += '<span style="color:#ef4444;font-size:10px;border:1px solid rgba(239,68,68,.4);border-radius:6px;padding:0 5px;">💀 失效</span> ';
+                    if (r.duplicate) tags += '<span style="color:#f59e0b;font-size:10px;border:1px solid rgba(245,158,11,.4);border-radius:6px;padding:0 5px;">🔁 重复(同#' + r.duplicate_of + ')</span> ';
+                    if (!r.changed && !r.dead && !r.duplicate) tags = '<span style="color:#10b981;font-size:10px;">✅ 无需处理</span>';
+                    return '<div style="border:1px solid rgba(127,127,127,.15);border-radius:8px;padding:8px 10px;font-size:11px;">' +
+                        '<div style="word-break:break-all;color:var(--text-muted);">原始：' + self._esc(r.url) + '</div>' +
+                        (r.clean_url ? '<div style="word-break:break-all;color:#3b82f6;margin-top:2px;">清洗：' + self._esc(r.clean_url) + '</div>' : '') +
+                        '<div style="margin-top:4px;">' + tags + '</div>' +
+                        '</div>';
+                }).join('') + '</div>' +
+                '<div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">' +
+                '<button class="btn btn-sm btn-secondary" onclick="App._ccFavCleanMark(true)">🚮 失效+重复标废弃</button>' +
+                '<button class="btn btn-sm btn-secondary" onclick="App._ccFavCleanMark(false)">🔁 仅重复标废弃</button>' +
+                '<button class="btn btn-sm btn-primary" onclick="this.closest(\'.modal-overlay\').remove()">知道了</button></div>';
+            this._cleanResults = results;
+            this._cleanOv = this._modal(html);
+        },
+
+        _ccFavCleanMark: function (withDead) {
+            var results = this._cleanResults || [];
+            var ids = results.filter(function (r) { return (withDead && r.dead) || r.duplicate; }).map(function (r) { return r.id; });
+            if (!ids.length) { this._toast('无可标记条目', 'info'); return; }
+            var self = this;
+            App.fetchJSON('/api/card-collect/urls/status', { method: 'POST', body: JSON.stringify({ ids: ids, status: 'discard' }) })
+                .then(function (d) {
+                    if (d && d.ok) {
+                        self._toast('已标记 ' + d.updated + ' 条为废弃（可复盘）', 'success');
+                        if (self._cleanOv) self._cleanOv.remove();
+                        self._renderFav(document.getElementById('ccBody'));
+                    } else self._toast((d && d.detail) || '标记失败', 'error');
+                }).catch(function () { self._toast('标记失败', 'error'); });
+        },
+
+        _ccFavRefetch: function (id) {
+            var self = this;
+            App.fetchJSON('/api/card-collect/urls/' + id + '/refetch', { method: 'POST' })
+                .then(function (d) {
+                    if (d && d.ok) { self._toast('已开始重抓', 'success'); self._renderFavList(self._favAll); }
+                    else self._toast((d && d.detail) || '重抓失败', 'error');
+                }).catch(function () { self._toast('重抓失败', 'error'); });
         },
 
         _ccFavOpen: function (url) { window.open(url, '_blank'); },
@@ -591,38 +672,68 @@
         _renderSites: function (body) {
             var self = this;
             body.innerHTML =
-                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">' +
-                '<span style="font-size:12px;color:var(--text-muted);">常用灵感图库快捷入口：点击「打开检索」在浏览器中手动查看，找到目标内容后复制地址回采集面板收藏/采集</span>' +
+                '<div style="margin-bottom:10px;">' +
+                '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+                '<span style="font-size:12px;color:var(--text-muted);">灵感站点导航：点击「🔍 打开检索」在浏览器中浏览灵感页面</span>' +
                 '<span style="flex:1;"></span>' +
                 '<button class="btn btn-sm btn-primary" onclick="App._ccAddSite()">➕ 添加图库</button>' +
                 '</div>' +
+                '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">💡 浏览中看到好内容：用浏览器扩展一键抓取页面地址回传收藏库（扩展将在 v5.44 上线），当前可直接复制地址到「📥 URL收藏库」粘贴入库</div>' +
+                '</div>' +
+                '<div id="ccSiteGroupBar" style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;"></div>' +
                 '<div id="ccSiteList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">加载中…</div>';
             App.fetchJSON('/api/card-collect/sites').then(function (d) {
                 var list = document.getElementById('ccSiteList');
                 if (!list) return;
                 var sites = (d && d.items) || [];
-                if (!sites.length) { list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;grid-column:1/-1;">暂无图库 · 点击「➕ 添加图库」添加常用灵感站点</div>'; return; }
-                list.innerHTML = sites.map(function (s) {
-                    var logoHtml = s.logo
-                        ? '<img src="/api/card-collect/sites/logo/' + self._esc(s.logo) + '" style="width:46px;height:46px;object-fit:cover;border-radius:10px;background:#f1f5f9;" alt="logo">'
-                        : '<div style="width:46px;height:46px;border-radius:10px;background:rgba(127,127,127,.12);display:flex;align-items:center;justify-content:center;font-size:22px;">' + self._esc(s.icon_emoji || '🌐') + '</div>';
-                    var loginBadge = s.login_required ? '<span style="color:#f59e0b;font-size:10px;border:1px solid rgba(245,158,11,.4);border-radius:6px;padding:1px 5px;margin-left:6px;">🔒 需登录</span>' : '';
-                    return '<div style="border:1px solid rgba(127,127,127,.15);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;">' +
-                        '<div style="display:flex;gap:10px;align-items:center;">' + logoHtml +
-                        '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;">' + self._esc(s.name) + loginBadge + '</div>' +
-                        '<div style="font-size:11px;color:var(--text-muted);word-break:break-all;">' + self._esc(s.url) + '</div></div>' +
-                        '</div>' +
-                        (s.description ? '<div style="font-size:12px;color:var(--text-muted);line-height:1.5;">' + self._esc(s.description) + '</div>' : '') +
-                        (s.login_required ? '<div style="font-size:11px;color:#f59e0b;">⚠️ 该站点需登录，未登录状态下可能无法采集内容</div>' : '') +
-                        '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
-                        '<button class="btn btn-sm btn-primary" onclick="App._ccOpenSite(' + s.id + ')">🔍 打开检索</button>' +
-                        '<button class="btn btn-sm btn-secondary" title="替换品牌 logo" onclick="App._ccUploadLogo(' + s.id + ')">🖼 Logo</button>' +
-                        '<button class="btn btn-sm btn-secondary" title="编辑" onclick="App._ccEditSite(' + s.id + ')">✏️</button>' +
-                        '<button class="btn btn-sm btn-secondary" onclick="App._ccDelSite(' + s.id + ')">🗑</button>' +
-                        '</div></div>';
-                }).join('');
+                self._siteAll = sites;
+                self._siteGroupsCache = d.groups || [];
+                self._renderSiteGroups(self._siteGroupsCache);
+                self._renderSiteList(sites);
             }).catch(function () { var l = document.getElementById('ccSiteList'); if (l) l.innerHTML = '<div style="color:#ef4444;grid-column:1/-1;">加载失败</div>'; });
         },
+
+        _renderSiteGroups: function (groups) {
+            var self = this;
+            var bar = document.getElementById('ccSiteGroupBar');
+            if (!bar) return;
+            var tabs = [['', '🌐 全部']].concat(groups.map(function (g) { return [g, g]; }));
+            bar.innerHTML = tabs.map(function (t) {
+                var act = self._siteGroup === t[0];
+                return '<button class="btn btn-sm ' + (act ? 'btn-primary' : 'btn-secondary') + '" onclick="App._ccSiteGroup(\'' + self._esc(t[0]).replace(/'/g, "\\'") + '\')">' + self._esc(t[1]) + '</button>';
+            }).join('');
+        },
+
+        _renderSiteList: function (sites) {
+            var self = this;
+            var list = document.getElementById('ccSiteList');
+            if (!list) return;
+            var g = this._siteGroup || '';
+            var rows = g ? sites.filter(function (s) { return s.group_name === g; }) : sites;
+            if (!rows.length) { list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;grid-column:1/-1;">该分组暂无站点 · 点击「➕ 添加图库」添加</div>'; return; }
+            list.innerHTML = rows.map(function (s) {
+                var logoHtml = s.logo
+                    ? '<img src="/api/card-collect/sites/logo/' + self._esc(s.logo) + '" style="width:46px;height:46px;object-fit:cover;border-radius:10px;background:#f1f5f9;" alt="logo">'
+                    : '<div style="width:46px;height:46px;border-radius:10px;background:rgba(127,127,127,.12);display:flex;align-items:center;justify-content:center;font-size:22px;">' + self._esc(s.icon_emoji || '🌐') + '</div>';
+                var loginBadge = s.login_required ? '<span style="color:#f59e0b;font-size:10px;border:1px solid rgba(245,158,11,.4);border-radius:6px;padding:1px 5px;margin-left:6px;">🔒 需登录</span>' : '';
+                var builtinBadge = s.is_builtin ? '<span style="color:#10b981;font-size:10px;border:1px solid rgba(16,185,129,.4);border-radius:6px;padding:1px 5px;margin-left:6px;">⭐ 内置</span>' : '';
+                return '<div style="border:1px solid rgba(127,127,127,.15);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;">' +
+                    '<div style="display:flex;gap:10px;align-items:center;">' + logoHtml +
+                    '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;">' + self._esc(s.name) + loginBadge + builtinBadge + '</div>' +
+                    '<div style="font-size:11px;color:var(--text-muted);word-break:break-all;">' + self._esc(s.url) + '</div></div>' +
+                    '</div>' +
+                    (s.description ? '<div style="font-size:12px;color:var(--text-muted);line-height:1.5;">' + self._esc(s.description) + '</div>' : '') +
+                    (s.login_required ? '<div style="font-size:11px;color:#f59e0b;">⚠️ 该站点需登录，未登录状态下可能无法采集内容</div>' : '') +
+                    '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+                    '<button class="btn btn-sm btn-primary" onclick="App._ccOpenSite(' + s.id + ')">🔍 打开检索</button>' +
+                    '<button class="btn btn-sm btn-secondary" title="替换品牌 logo" onclick="App._ccUploadLogo(' + s.id + ')">🖼 Logo</button>' +
+                    '<button class="btn btn-sm btn-secondary" title="编辑" onclick="App._ccEditSite(' + s.id + ')">✏️</button>' +
+                    (s.is_builtin ? '' : '<button class="btn btn-sm btn-secondary" onclick="App._ccDelSite(' + s.id + ')">🗑</button>') +
+                    '</div></div>';
+            }).join('');
+        },
+
+        _ccSiteGroup: function (g) { this._siteGroup = g; this._renderSiteGroups(this._siteGroupsCache || []); this._renderSiteList(this._siteAll || []); },
 
         _openSite: function (id) {
             var self = this;
@@ -655,6 +766,8 @@
                 '<textarea id="ccSiteDesc" rows="2" placeholder="简短介绍该图库的定位与内容" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' + self._esc(s.description || '') + '</textarea>' +
                 '<label style="font-size:12px;color:var(--text-muted);">图标（无 logo 时显示的 emoji）</label>' +
                 '<input id="ccSiteEmoji" value="' + self._esc(s.icon_emoji || '🌐') + '" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' +
+                '<label style="font-size:12px;color:var(--text-muted);">分组</label>' +
+                '<input id="ccSiteGroup" value="' + self._esc(s.group_name || '灵感图库') + '" placeholder="如：提示词站点 / 灵感图库 / 设计参考 / 素材榜单" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' +
                 '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);margin-bottom:12px;cursor:pointer;">' +
                 '<input type="checkbox" id="ccSiteLogin" ' + (s.login_required ? 'checked' : '') + '> 🔒 需登录（未登录状态下采集可能失败）</label>' +
                 '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
@@ -681,10 +794,11 @@
             var url = (document.getElementById('ccSiteUrl') || {}).value || '';
             var desc = (document.getElementById('ccSiteDesc') || {}).value || '';
             var emoji = (document.getElementById('ccSiteEmoji') || {}).value || '🌐';
+            var groupName = (document.getElementById('ccSiteGroup') || {}).value || '灵感图库';
             var loginReq = !!(document.getElementById('ccSiteLogin') || {}).checked;
             if (!name.trim()) { this._toast('请输入图库名称', 'error'); return; }
             if (!/^https?:\/\//.test(url.trim())) { this._toast('请输入合法的 http/https 地址', 'error'); return; }
-            var payload = { name: name.trim(), url: url.trim(), description: desc.trim(), icon_emoji: emoji.trim(), login_required: loginReq };
+            var payload = { name: name.trim(), url: url.trim(), description: desc.trim(), icon_emoji: emoji.trim(), login_required: loginReq, group_name: groupName.trim() };
             var req = id
                 ? App.fetchJSON('/api/card-collect/sites/' + id, { method: 'PUT', body: JSON.stringify(payload) })
                 : App.fetchJSON('/api/card-collect/sites', { method: 'POST', body: JSON.stringify(payload) });
@@ -827,6 +941,10 @@ App._ccFavBatchDel = function () { CC._ccFavBatchDel(); };
 App._ccFavBatchCollect = function () { CC._ccFavBatchCollect(); };
 App._ccFavOpen = function (u) { CC._ccFavOpen(u); };
 App._ccFavCopy = function (u) { CC._ccFavCopy(u); };
+App._ccFavBatchClean = function () { CC._ccFavBatchClean(); };
+App._ccFavCleanMark = function (w) { CC._ccFavCleanMark(w); };
+App._ccFavRefetch = function (id) { CC._ccFavRefetch(id); };
+App._ccSiteGroup = function (g) { CC._ccSiteGroup(g); };
     App._ccSetFilter = function (k, v) { CC._setFilter(k, v); };
     App._ccToggleSel = function (id, on) { CC._toggleSel(id, on); };
     App._ccEditItem = function (id) { CC._editItem(id); };
