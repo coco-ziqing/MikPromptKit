@@ -97,13 +97,13 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
 
   // 预展示（不落库）：带已在库标记，供 popup 勾选确认
   if (msg.type === 'preview') {
-    apiFetch('/urls/batch/preview', { urls: msg.urls || [] }).then(sendResponse);
+    apiFetch('/api/card-collect/urls/batch/preview', { urls: msg.urls || [] }).then(sendResponse);
     return true;
   }
 
   // 入库（仅收用户勾选确认后的 URL）
   if (msg.type === 'save') {
-    apiFetch('/urls', { urls: msg.urls || [] }).then(sendResponse);
+    apiFetch('/api/card-collect/urls', { urls: msg.urls || [] }).then(sendResponse);
     return true;
   }
 
@@ -129,7 +129,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
           var items = (d && d.items) || [];
           var ids = items.filter(function (i) { return i.url === msg.url; }).map(function (i) { return i.id; });
           if (!ids.length) return { ok: true, deleted: 0 };
-          return apiFetch('/urls/delete', { ids: ids });
+          return apiFetch('/api/card-collect/urls/delete', { ids: ids });
         });
     }).then(sendResponse).catch(function () { sendResponse({ ok: false, error: '删除失败' }); });
     return true;
