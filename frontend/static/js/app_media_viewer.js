@@ -346,15 +346,29 @@ Object.assign(App, {
                 var imgEl = document.getElementById('imageViewerImg');
                 var ld = document.getElementById('imgViewerLoading');
                 var seq2 = (self._viewerLoadSeq = (self._viewerLoadSeq || 0) + 1);
+                // v5.46.8: 切换前完整重置视图状态（此前缩放过 maxWidth 已解除，新图会原始尺寸溢出被裁切）
                 imgEl.src = url;
+                imgEl.style.maxWidth = '100%';
+                imgEl.style.maxHeight = '100%';
                 imgEl.style.transform = 'scale(1)';
                 imgEl._viewScale = 1;
+                imgEl._fitReady = false;
+                imgEl._translateX = 0; imgEl._translateY = 0; imgEl._scale = 1;
                 if (ld) ld.style.display = 'flex';
                 imgEl.onload = function() {
                     if (self._viewerLoadSeq !== seq2) return;
                     if (ld) ld.style.display = 'none';
                     imgEl._fitReady = true;
                     imgEl._fitScale = imgEl.clientWidth / (imgEl.naturalWidth || 1);
+                    // v5.46.8: 加载完成后统一应用适配缩放（含此前缩放状态重置后的兜底）
+                    if (imgEl._applyViewScale) imgEl._applyViewScale();
+                };
+                // v5.46.8: onerror 兜底——文件丢失时关闭 loading 并提示，避免永久转圈/裂图误认为未切换
+                imgEl.onerror = function() {
+                    if (self._viewerLoadSeq !== seq2) return;
+                    if (ld) ld.style.display = 'none';
+                    imgEl._fitReady = true; imgEl._fitScale = 1;
+                    App.showToast('该图片加载失败（文件可能已丢失）', 'error');
                 };
                 box.querySelectorAll('.img-pool-item').forEach(function(x) { x.style.borderColor = 'transparent'; x.style.opacity = '0.72'; });
                 this.style.borderColor = '#10b981'; this.style.opacity = '1';
@@ -399,15 +413,27 @@ Object.assign(App, {
                     var imgEl = document.getElementById('imageViewerImg');
                     var ld = document.getElementById('imgViewerLoading');
                     var seq2 = (self._viewerLoadSeq = (self._viewerLoadSeq || 0) + 1);
+                    // v5.46.8: 完整重置视图状态（同图池切换）
                     imgEl.src = url;
+                    imgEl.style.maxWidth = '100%';
+                    imgEl.style.maxHeight = '100%';
                     imgEl.style.transform = 'scale(1)';
                     imgEl._viewScale = 1;
+                    imgEl._fitReady = false;
+                    imgEl._translateX = 0; imgEl._translateY = 0; imgEl._scale = 1;
                     if (ld) ld.style.display = 'flex';
                     imgEl.onload = function() {
                         if (self._viewerLoadSeq !== seq2) return;
                         if (ld) ld.style.display = 'none';
                         imgEl._fitReady = true;
                         imgEl._fitScale = imgEl.clientWidth / (imgEl.naturalWidth || 1);
+                        if (imgEl._applyViewScale) imgEl._applyViewScale();
+                    };
+                    imgEl.onerror = function() {
+                        if (self._viewerLoadSeq !== seq2) return;
+                        if (ld) ld.style.display = 'none';
+                        imgEl._fitReady = true; imgEl._fitScale = 1;
+                        App.showToast('该图片加载失败（文件可能已丢失）', 'error');
                     };
                     box.querySelectorAll('.img-ver-item').forEach(function(x) { x.style.borderColor = 'transparent'; x.style.opacity = '0.72'; });
                     this.style.borderColor = '#10b981'; this.style.opacity = '1';
