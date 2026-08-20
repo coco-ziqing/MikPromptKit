@@ -528,15 +528,32 @@
                 '<span style="font-size:11px;color:var(--text-muted);">💡 归档后溯源已保存至词卡，采集记录可随时清理</span>' +
                 '</div>' +
                 '<div id="ccItemList" style="display:flex;flex-direction:column;gap:8px;">加载中…</div>';
+            this._itemListSig = '';
+            this._fetchItems();
+        },
+
+        // v5.46.35: 采集结果局部刷新 — 内容签名无变化不重写 DOM（采集完成自动出现新结果，防闪烁）
+        _fetchItems: function () {
+            var self = this;
             var qs = '?status=' + encodeURIComponent(this._filter.status || '') + '&media_type=' + encodeURIComponent(this._filter.media || '');
             App.fetchJSON('/api/card-collect/items' + qs).then(function (d) {
                 var list = document.getElementById('ccItemList');
                 if (!list) return;
                 var items = (d && d.items) || [];
                 self._itemAll = items;
+                // 清理已不存在项的勾选残留
+                Object.keys(self._sel).forEach(function (k) {
+                    if (!items.some(function (it) { return it.id === +k; })) delete self._sel[k];
+                });
                 var cntEl = document.getElementById('ccItemSelCnt');
                 if (cntEl) cntEl.textContent = self._ccItemSelIds().length;
-                if (!items.length) { list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">采集结果为空 · 流程：🌐 灵感图库找灵感 → 📥 网页收藏 → ⚙️ 采集任务发起采集 → 回到本页归档</div>'; return; }
+                if (!items.length) {
+                    if (list.innerHTML.indexOf('采集结果为空') < 0) list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">采集结果为空 · 流程：🌐 灵感图库找灵感 → 📥 网页收藏 → ⚙️ 采集任务发起采集 → 回到本页归档</div>';
+                    return;
+                }
+                var sig = items.map(function (it) { return it.id + ':' + it.status + ':' + (it.media_type || '') + ':' + String(it.prompt || '').slice(0, 30); }).join('|');
+                if (self._itemListSig === sig) return;
+                self._itemListSig = sig;
                 list.innerHTML = items.map(function (it) {
                     var chk = self._sel[it.id] ? 'checked' : '';
                     var traceBtn = (it.status === 'archived' && it.word_card_id) ?
@@ -1185,6 +1202,7 @@
                 var ov = document.getElementById('ccOverlay');
                 if (!ov) { clearInterval(self._timer); self._timer = null; return; }
                 if (self._tab === 'tasks') self._fetchTasks();
+                else if (self._tab === 'items') self._fetchItems();
             }, 4000);
         }
     };
