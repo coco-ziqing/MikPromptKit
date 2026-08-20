@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v5.43.0 URL收藏库冒烟测试（测试数据用后即清）"""
+"""v5.43.0 网页收藏库冒烟测试（测试数据用后即清）"""
 import json
 import sqlite3
 import sys

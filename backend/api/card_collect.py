@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 词卡采集模块（v5.42.0）— 外部灵感内容 → 本地词卡 全链路
-链路：收藏(前置) → 浏览器自动化采集 → 预采集库 → 分组归档(自动+手动) → 建词卡(带来源溯源)
+链路：收藏(前置) → 浏览器自动化采集 → 采集结果 → 分组归档(自动+手动) → 建词卡(带来源溯源)
 
 核心思路：
 - 复用即梦网页通道的 CDP 方案（独立 Chrome profile + playwright connect_over_cdp），
@@ -138,7 +138,7 @@ def _ensure_tables():
             collected_at TEXT DEFAULT ''
         )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_ccf_status ON card_collect_favorites(status)")
-        # v5.43.0: URL 收藏库扩展列（四池状态 + 元数据 + 清洗字段，幂等 ALTER）
+        # v5.43.0: 网页收藏库扩展列（四池状态 + 元数据 + 清洗字段，幂等 ALTER）
         fav_cols = [r["name"] for r in c.execute("PRAGMA table_info(card_collect_favorites)").fetchall()]
         for _col, _ddl in {
             "fetch_status": "TEXT DEFAULT 'pending'",
@@ -762,7 +762,7 @@ def _task_update(tid: int, **kw):
 
 
 def _collect_worker(tid: int):
-    """采集任务执行体：CDP 打开页面 → 捕获响应 + DOM 识别 → 下载媒体 → 写入预采集库"""
+    """采集任务执行体：CDP 打开页面 → 捕获响应 + DOM 识别 → 下载媒体 → 写入采集结果"""
     _stop_flags[tid] = False
     _task_update(tid, status="running", progress=5, message="连接浏览器…")
     try:
@@ -1044,7 +1044,7 @@ def collect_from_favorite(fid: int):
     return _start_collect(row["url"], fav_id=fid)
 
 
-# ==================== API：URL 收藏库（v5.43.0 统一入口/批量操作） ====================
+# ==================== API：网页收藏库（v5.43.0 统一入口/批量操作） ====================
 
 _VALID_FAV_STATUS = {"pending", "ready", "hold", "discard"}
 
@@ -1592,7 +1592,7 @@ def stop_all():
         c.close()
 
 
-# ==================== API：预采集库 ====================
+# ==================== API：采集结果 ====================
 
 @router.get("/items")
 def list_items(q: str = Query(""), status: str = Query(""), media_type: str = Query("")):
@@ -1623,7 +1623,7 @@ def update_item(iid: int, payload: dict = Body(...)):
     try:
         row = c.execute("SELECT * FROM card_collect_items WHERE id=?", [iid]).fetchone()
         if not row:
-            raise HTTPException(404, "预采集项不存在")
+            raise HTTPException(404, "采集项不存在")
         if row["status"] == "archived":
             raise HTTPException(400, "已归档项不可编辑")
         upd = {}
@@ -1647,7 +1647,7 @@ def delete_item(iid: int):
     try:
         row = c.execute("SELECT * FROM card_collect_items WHERE id=?", [iid]).fetchone()
         if not row:
-            raise HTTPException(404, "预采集项不存在")
+            raise HTTPException(404, "采集项不存在")
         # 清理本地媒体文件
         if row["media_url"]:
             for d in (IMG_DIR, VID_DIR):
@@ -1755,10 +1755,10 @@ def _gen_video_poster(card_id: int, src_path: str) -> str:
 
 @router.post("/archive")
 def archive_items(payload: dict = Body(...)):
-    """预采集项 → 词卡。ids 必填；group_id 指定分组，否则用 suggest_group（自动建组）"""
+    """采集项 → 词卡。ids 必填；group_id 指定分组，否则用 suggest_group（自动建组）"""
     ids = payload.get("ids") or []
     if not isinstance(ids, list) or not ids:
-        raise HTTPException(400, "请选择要归档的预采集项")
+        raise HTTPException(400, "请选择要归档的采集项")
     group_id = payload.get("group_id")
     group_name = str(payload.get("group_name") or "").strip()
     if len(ids) > MAX_ITEMS_PER_TASK * 2:
@@ -1858,7 +1858,7 @@ def archive_items(payload: dict = Body(...)):
 
 @router.get("/trace/{card_id}")
 def trace_card(card_id: int):
-    """词卡 → 预采集项 → 收藏 → 原始 URL 完整回溯链"""
+    """词卡 → 采集项 → 收藏 → 原始 URL 完整回溯链"""
     c = _db()
     try:
         card = c.execute("SELECT id, name, source, source_id, original_ref FROM word_card WHERE id=?", [card_id]).fetchone()
@@ -1882,7 +1882,7 @@ def trace_card(card_id: int):
 
 @router.get("/file/{fname}")
 def serve_file(fname: str):
-    """预采集库媒体访问（仅限 card_collect 目录内，防路径穿越）"""
+    """采集结果媒体访问（仅限 card_collect 目录内，防路径穿越）"""
     if not re.match(r"^[\w.\-]+$", fname):
         raise HTTPException(400, "非法文件名")
     for d in (IMG_DIR, VID_DIR):

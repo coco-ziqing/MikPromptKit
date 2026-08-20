@@ -1,8 +1,8 @@
 // ================================================================
-// v5.42.0: 词卡采集（收藏 → 浏览器自动化采集 → 预采集库 → 归档建词卡 → 来源溯源）
+// v5.42.0: 词卡采集（收藏 → 浏览器自动化采集 → 采集结果 → 归档建词卡 → 来源溯源）
 // - 词库导航菜单入口：App.openCardCollect()
 // - Tab1 收藏夹：URL+备注 前置收藏，随时发起采集
-// - Tab2 预采集库：识别结果预览/修正/批量归档（自动建议分组 + 手动分组）
+// - Tab2 采集结果：识别结果预览/修正/批量归档（自动建议分组 + 手动分组）
 // - Tab3 采集任务：进度/停止（合规：人工可中断）
 // 依赖：App.fetchJSON / App.showToast / App._escape / App._modal
 // ================================================================
@@ -12,11 +12,11 @@
 
     var CC = {
         _tab: 'fav',
-        _sel: {},            // 预采集库勾选 {id:true}
+        _sel: {},            // 采集结果勾选 {id:true}
         _filter: { status: '', media: '' },
         _timer: null,
-        _favPool: 'pending', // v5.43.0 URL 收藏库当前池
-        _favSel: {},         // v5.43.0 URL 收藏库勾选 {id:true}
+        _favPool: 'pending', // v5.43.0 网页收藏当前池
+        _favSel: {},         // v5.43.0 网页收藏勾选 {id:true}
         _favAll: [],         // v5.43.0 收藏库全量缓存
 
         _esc: function (s) { return App._escape ? App._escape(s || '') : String(s || ''); },
@@ -90,9 +90,9 @@
                 '</div>' +
                 '<div style="display:flex;gap:6px;padding:10px 16px 0;border-bottom:1px solid rgba(127,127,127,.12);">' +
                 '<button id="ccTabSites" class="btn btn-sm" onclick="App._ccSwitchTab(\'sites\')">🌐 灵感图库</button>' +
-                '<button id="ccTabFav" class="btn btn-sm" onclick="App._ccSwitchTab(\'fav\')">📥 URL收藏库</button>' +
+                '<button id="ccTabFav" class="btn btn-sm" onclick="App._ccSwitchTab(\'fav\')">📥 网页收藏</button>' +
                 '<button id="ccTabTasks" class="btn btn-sm" onclick="App._ccSwitchTab(\'tasks\')">⚙️ 采集任务</button>' +
-                '<button id="ccTabItems" class="btn btn-sm" onclick="App._ccSwitchTab(\'items\')">🗂 预采集库</button>' +
+                '<button id="ccTabItems" class="btn btn-sm" onclick="App._ccSwitchTab(\'items\')">🗂 采集结果</button>' +
                 '</div>' +
                 '<div id="ccBody" style="flex:1;overflow-y:auto;padding:14px 16px;"></div>' +
                 '</div>';
@@ -123,7 +123,7 @@
             else this._renderTasks(body);
         },
 
-        // ============ Tab1 URL收藏库（v5.43.0 四池工作台） ============
+        // ============ Tab1 网页收藏（v5.43.0 四池工作台） ============
         _renderFav: function (body) {
             var self = this;
             body.innerHTML =
@@ -463,7 +463,7 @@
             }).catch(function (e) { self._toast('启动失败: ' + (e && e.message ? e.message : ''), 'error'); });
         },
 
-        // ============ Tab2 预采集库 ============
+        // ============ Tab2 采集结果 ============
         _renderItems: function (body) {
             var self = this;
             body.innerHTML =
@@ -483,7 +483,7 @@
                 var list = document.getElementById('ccItemList');
                 if (!list) return;
                 var items = (d && d.items) || [];
-                if (!items.length) { list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">预采集库为空 · 流程：🌐 灵感图库找灵感 → 📥 URL收藏库收藏 → ⚙️ 采集任务发起采集 → 回到本页归档</div>'; return; }
+                if (!items.length) { list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">采集结果为空 · 流程：🌐 灵感图库找灵感 → 📥 网页收藏 → ⚙️ 采集任务发起采集 → 回到本页归档</div>'; return; }
                 list.innerHTML = items.map(function (it) {
                     var chk = self._sel[it.id] ? 'checked' : '';
                     var traceBtn = (it.status === 'archived' && it.word_card_id) ?
@@ -527,7 +527,7 @@
                 var items = (d && d.items) || [];
                 var it = null;
                 for (var i = 0; i < items.length; i++) { if (items[i].id === id) { it = items[i]; break; } }
-                if (!it) { self._toast('未找到该预采集项', 'error'); return; }
+                if (!it) { self._toast('未找到该采集项', 'error'); return; }
                 var ov = self._modal('');
                 if (!ov) return;
                 ov.querySelector('.modal-content').innerHTML =
@@ -567,7 +567,7 @@
 
         _delItem: function (id) {
             var self = this;
-            if (!confirm('删除该预采集项（含本地媒体文件）？')) return;
+            if (!confirm('删除该采集项（含本地媒体文件）？')) return;
             App.fetchJSON('/api/card-collect/items/' + id, { method: 'DELETE' }).then(function (d) {
                 if (d && d.ok) { self._toast('已删除', 'success'); self._renderItems(document.getElementById('ccBody')); }
             }).catch(function () { self._toast('删除失败', 'error'); });
@@ -641,7 +641,7 @@
                 if (!ov) return;
                 var rows = [
                     '<div><span style="color:#10b981;">🎴 词卡</span> #' + card.id + ' · ' + self._esc(card.name) + '</div>',
-                    item ? '<div style="margin-top:6px;"><span style="color:#3b82f6;">🗂 预采集项</span> #' + item.id + ' · ' + self._esc(item.media_type === 'video' ? '视频' : '图片') + (item.prompt ? ' · ' + self._esc(String(item.prompt).slice(0, 60)) : '') + '</div>' : '',
+                    item ? '<div style="margin-top:6px;"><span style="color:#3b82f6;">🗂 采集项</span> #' + item.id + ' · ' + self._esc(item.media_type === 'video' ? '视频' : '图片') + (item.prompt ? ' · ' + self._esc(String(item.prompt).slice(0, 60)) : '') + '</div>' : '',
                     fav ? '<div style="margin-top:6px;"><span style="color:#f59e0b;">📌 收藏记录</span> #' + fav.id + (fav.note ? ' · ' + self._esc(fav.note) : '') + ' · ' + self._esc(fav.created_at) + '</div>' : '',
                     '<div style="margin-top:6px;word-break:break-all;"><span style="color:#8b5cf6;">🔗 原始来源</span> <a href="' + self._esc(card.source || '') + '" target="_blank" rel="noopener">' + self._esc(card.source || '') + '</a></div>'
                 ];
@@ -720,7 +720,7 @@
                 '<span style="flex:1;"></span>' +
                 '<button class="btn btn-sm btn-primary" onclick="App._ccAddSite()">➕ 添加图库</button>' +
                 '</div>' +
-                '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">💡 已装浏览器扩展？直接一键回传；未装可按 README 加载：Chrome/Edge 开发者模式 → 加载已解压 → 选择项目 <code>extensions/mika-inspire-collect</code> 目录；或直接复制地址到「📥 URL收藏库」粘贴入库</div>' +
+                '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">💡 已装浏览器扩展？直接一键回传；未装可按 README 加载：Chrome/Edge 开发者模式 → 加载已解压 → 选择项目 <code>extensions/mika-inspire-collect</code> 目录；或直接复制地址到「📥 网页收藏」粘贴入库</div>' +
                 '</div>' +
                 '<div id="ccSiteGroupBar" style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;"></div>' +
                 '<div id="ccSiteList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">加载中…</div>';
