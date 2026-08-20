@@ -524,6 +524,8 @@
                 '<button class="btn btn-sm btn-secondary" onclick="App._ccItemsSelNone()">⬜ 取消选择</button>' +
                 '<button class="btn btn-sm btn-secondary" onclick="App._ccItemsSelInvert()">🔀 反选</button>' +
                 '<span style="font-size:12px;">已选 <b id="ccItemSelCnt">0</b> 条</span>' +
+                '<span style="flex:1;"></span>' +
+                '<span style="font-size:11px;color:var(--text-muted);">💡 归档后溯源已保存至词卡，采集记录可随时清理</span>' +
                 '</div>' +
                 '<div id="ccItemList" style="display:flex;flex-direction:column;gap:8px;">加载中…</div>';
             var qs = '?status=' + encodeURIComponent(this._filter.status || '') + '&media_type=' + encodeURIComponent(this._filter.media || '');
@@ -652,10 +654,8 @@
         _ccBatchDelItems: function () {
             var ids = this._ccItemSelIds();
             if (!ids.length) { this._toast('请先勾选要删除的采集项', 'error'); return; }
+            if (!confirm('删除选中的 ' + ids.length + ' 个采集项（含本地媒体文件）？已归档词卡与溯源不受影响。')) return;
             var self = this;
-            var hasArch = (this._itemAll || []).some(function (it) { return self._sel[it.id] && it.status === 'archived'; });
-            var msg = '删除选中的 ' + ids.length + ' 个采集项（含本地媒体文件）？' + (hasArch ? '\n其中含已归档项，删除后对应词卡将无法溯源。' : '');
-            if (!confirm(msg)) return;
             App.fetchJSON('/api/card-collect/items/delete', { method: 'POST', body: JSON.stringify({ ids: ids }) })
                 .then(function (d) {
                     if (d && d.ok) {
@@ -679,10 +679,10 @@
                 }).catch(function () { self._toast('清空失败', 'error'); });
         },
 
-        // v5.46.18: 清空已归档（词卡保留，断溯源链）
+        // v5.46.19: 清空已归档（溯源已固化到词卡，记录可自由清理）
         _ccClearArchived: function () {
             var n = (this._itemAll || []).filter(function (it) { return it.status === 'archived'; }).length;
-            if (!confirm('确认清空所有已归档采集项（' + n + ' 条）？已归档词卡本身保留，但删除后将无法溯源到原始页面。')) return;
+            if (!confirm('确认清空所有已归档采集记录（' + n + ' 条）？词卡与溯源不受影响，仅清理采集历史。')) return;
             var self = this;
             App.fetchJSON('/api/card-collect/items/clear', { method: 'POST', body: JSON.stringify({ status: 'archived' }) })
                 .then(function (d) {
