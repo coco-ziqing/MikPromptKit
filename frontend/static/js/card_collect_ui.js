@@ -790,15 +790,37 @@
                 '<button class="btn btn-sm btn-outline-danger" onclick="App._ccTaskClearAll()">🗑 清空全部</button>' +
                 '</div>' +
                 '<div id="ccTaskList" style="display:flex;flex-direction:column;gap:8px;">加载中…</div>';
+            this._taskListSig = '';
+            this._fetchTasks();
+        },
+
+        // v5.46.23: 任务列表局部刷新 — 内容签名无变化不重写 DOM，消除完成态反复闪烁
+        _fetchTasks: function () {
+            var self = this;
             App.fetchJSON('/api/card-collect/tasks?limit=30').then(function (d) {
                 var list = document.getElementById('ccTaskList');
                 if (!list) return;
                 var tasks = (d && d.items) || [];
                 self._taskAll = tasks;
+                // 清理已不存在任务的勾选残留
+                Object.keys(self._taskSel).forEach(function (k) {
+                    if (!tasks.some(function (t) { return t.id === +k; })) delete self._taskSel[k];
+                });
                 var allEl = document.getElementById('ccTaskAll');
                 if (allEl) allEl.checked = tasks.length > 0 && tasks.every(function (t) { return self._taskSel[t.id]; });
-                if (!tasks.length) { list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">暂无采集任务</div>'; return; }
+                var cntEl = document.getElementById('ccTaskSelCnt');
+                if (cntEl) cntEl.textContent = self._ccTaskSelIds().length;
+                if (!tasks.length) {
+                    if (list.innerHTML.indexOf('暂无采集任务') < 0) list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">暂无采集任务</div>';
+                    return;
+                }
+                var sig = tasks.map(function (t) { return t.id + ':' + t.status + ':' + (t.progress || 0) + ':' + (t.message || ''); }).join('|');
+                if (self._taskListSig === sig) return;
+                self._taskListSig = sig;
                 list.innerHTML = tasks.map(function (t) {
+                    var actBtns = '';
+                    if (t.status === 'running' || t.status === 'queued') actBtns += '<button class="btn btn-sm btn-secondary" onclick="App._ccStopTask(' + t.id + ')">⏹ 停止</button>';
+                    if (t.status === 'success' || t.status === 'fail') actBtns += '<button class="btn btn-sm btn-secondary" onclick="App._ccRetryTask(' + t.id + ')" title="对同一地址重新发起采集（创建新任务）">🔄 重新采集</button>';
                     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(127,127,127,.15);border-radius:10px;">' +
                         '<input type="checkbox" ' + (self._taskSel[t.id] ? 'checked' : '') + ' onchange="App._ccTaskSel(' + t.id + ', this.checked)">' +
                         '<div style="flex:1;min-width:0;">' +
@@ -807,10 +829,26 @@
                         (t.status === 'running' || t.status === 'queued' ? self._bar(t.progress) : '') +
                         '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + self._taskTimeLine(t) + (t.found_count ? ' · 入库 ' + t.found_count + ' 项' : '') + '</div>' +
                         '</div>' +
-                        (t.status === 'running' || t.status === 'queued' ? '<button class="btn btn-sm btn-secondary" onclick="App._ccStopTask(' + t.id + ')">⏹ 停止</button>' : '') +
+                        actBtns +
                         '</div>';
                 }).join('');
             }).catch(function () { var l = document.getElementById('ccTaskList'); if (l) l.innerHTML = '<div style="color:#ef4444;">加载失败</div>'; });
+        },
+
+        // v5.46.23: 重新采集（终态任务复用地址发起新任务）
+        _ccRetryTask: function (id) {
+            var self = this;
+            var t = (this._taskAll || []).filter(function (x) { return x.id === id; })[0];
+            if (!t) { this._toast('任务不存在', 'error'); return; }
+            if (!confirm('对以下地址重新发起采集？（将创建新任务，旧的记录可另行清理）\n' + t.url)) return;
+            App.fetchJSON('/api/card-collect/collect', { method: 'POST', body: JSON.stringify({ url: t.url }) })
+                .then(function (d) {
+                    if (d && d.ok) {
+                        self._toast('已创建新采集任务 #' + d.task_id, 'success');
+                        self._taskListSig = '';
+                        self._renderTasks(document.getElementById('ccBody'));
+                    } else self._toast((d && d.error) || '启动失败（可能已有任务进行中）', 'error');
+                }).catch(function (e) { self._toast('启动失败: ' + (e && e.message ? e.message : ''), 'error'); });
         },
 
         // v5.46.21: 任务时间线标记（创建/开始/完成 + 耗时）
@@ -1108,7 +1146,7 @@
             this._timer = setInterval(function () {
                 var ov = document.getElementById('ccOverlay');
                 if (!ov) { clearInterval(self._timer); self._timer = null; return; }
-                if (self._tab === 'tasks') self._renderTasks(document.getElementById('ccBody'));
+                if (self._tab === 'tasks') self._fetchTasks();
             }, 4000);
         }
     };
@@ -1223,6 +1261,7 @@ App._ccSiteGroup = function (g) { CC._ccSiteGroup(g); };
     App._ccTaskSelAll = function (on) { CC._ccTaskSelAll(on); };
     App._ccTaskBatchDel = function () { CC._ccTaskBatchDel(); };
     App._ccTaskClearAll = function () { CC._ccTaskClearAll(); };
+    App._ccRetryTask = function (id) { CC._ccRetryTask(id); };
     App._ccBatchDelItems = function () { CC._ccBatchDelItems(); };
     App._ccClearItems = function () { CC._ccClearItems(); };
     App._ccClearArchived = function () { CC._ccClearArchived(); };
