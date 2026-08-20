@@ -591,6 +591,32 @@
   // 初始连接检测（不打扰用户，仅更新状态点）
   loadRecent(function () { ping(); refreshCurrent(); });
 
+  // ---- v5.46.22: 与应用端收藏库同步（应用内删除/清空后，扩展状态自动跟随） ----
+  // 应用内删除收藏 → 扩展徽章/便携标签条/当前页按钮可能仍是旧状态；定时拉取收藏集比对，
+  // 有变化时更新 savedSet + 清理已消失的便携标签 + 重渲染面板与按钮
+  var _syncing = false;
+  function syncSaved() {
+    if (_syncing) return;
+    _syncing = true;
+    send({ type: 'getSavedUrls' }, function (r) {
+      _syncing = false;
+      if (!r || !r.ok || !r.urls) return;
+      var key = Object.keys(savedSet).sort().join('|');
+      var nkey = Object.keys(r.urls).sort().join('|');
+      if (key === nkey) return; // 无变化不重渲染
+      savedSet = r.urls;
+      var before = recent.length;
+      recent = recent.filter(function (x) { return !!savedSet[x.url]; });
+      if (recent.length !== before) { saveRecent(); renderRecent(); }
+      renderTabs();
+      updateSaveBtn();
+    });
+  }
+  setInterval(syncSaved, 60000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) syncSaved();
+  });
+
   // v5.46.3: 页面切换/导航完成通知 + SPA 内部路由轮询 → 自动刷新当前页收藏状态
   chrome.runtime.onMessage.addListener(function (msg) {
     if (msg && msg.type === 'tabChanged') refreshCurrent();
