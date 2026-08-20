@@ -132,7 +132,7 @@
                 '<div style="margin-bottom:10px;">' +
                 '<div style="display:flex;gap:8px;">' +
                 '<textarea id="ccFavUrls" placeholder="粘贴灵感页面地址（支持多行批量，一行一个；仅 http/https）" ' +
-                'style="flex:1;height:54px;padding:8px 10px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;resize:vertical;font-size:12px;"></textarea>' +
+                'style="flex:1;height:54px;padding:8px 10px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:var(--bg-card);color:inherit;resize:vertical;font-size:12px;"></textarea>' +
                 '<button class="btn btn-primary btn-sm" style="align-self:flex-end;" onclick="App._ccFavAddUrls()">📥 入库</button>' +
                 '</div>' +
                 '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">自动存入「待处理」池 · 入库自动抓取标题/摘要/首图 · 原始链接保留，去重/清洗后置到收藏库操作</div>' +
@@ -611,13 +611,13 @@
                     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><b>✏️ 修正识别结果 #' + id + '</b>' +
                     '<button onclick="this.closest(\'.modal-overlay\').remove()" style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;">✕</button></div>' +
                     '<label style="font-size:12px;color:var(--text-muted);">提示词</label>' +
-                    '<textarea id="ccEditPrompt" rows="4" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' + self._esc(it.prompt) + '</textarea>' +
+                    '<textarea id="ccEditPrompt" rows="4" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:var(--bg-card);color:inherit;margin-bottom:8px;">' + self._esc(it.prompt) + '</textarea>' +
                     '<label style="font-size:12px;color:var(--text-muted);">生成模型</label>' +
-                    '<input id="ccEditModel" value="' + self._esc(it.model) + '" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' +
+                    '<input id="ccEditModel" value="' + self._esc(it.model) + '" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:var(--bg-card);color:inherit;margin-bottom:8px;">' +
                     '<label style="font-size:12px;color:var(--text-muted);">参数</label>' +
-                    '<input id="ccEditParams" value="' + self._esc(it.params) + '" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' +
+                    '<input id="ccEditParams" value="' + self._esc(it.params) + '" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:var(--bg-card);color:inherit;margin-bottom:8px;">' +
                     '<label style="font-size:12px;color:var(--text-muted);">归档分组（建议）</label>' +
-                    '<input id="ccEditGroup" value="' + self._esc(it.suggest_group) + '" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:12px;">' +
+                    '<input id="ccEditGroup" value="' + self._esc(it.suggest_group) + '" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:var(--bg-card);color:inherit;margin-bottom:12px;">' +
                     '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
                     '<button class="btn btn-secondary btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>' +
                     '<button class="btn btn-primary btn-sm" onclick="App._ccSaveEdit(' + id + ')">保存</button></div>';
@@ -720,7 +720,7 @@
                     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><b>📥 归档建词卡（' + ids.length + ' 项）</b>' +
                     '<button onclick="this.closest(\'.modal-overlay\').remove()" style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;">✕</button></div>' +
                     '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">选择归档分组：未选择时使用各项的自动识别建议分组（不存在则自动创建）</div>' +
-                    '<select id="ccArcGroup" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:12px;">' +
+                    '<select id="ccArcGroup" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:var(--bg-card);color:inherit;margin-bottom:12px;">' +
                     '<option value="">（按各项自动建议分组）</option>' + sugOpts + opts + '</select>' +
                     '<div style="font-size:12px;color:#f59e0b;margin-bottom:12px;">归档后词卡将写入来源 URL，可随时「🔗 溯源」回溯到原始页面</div>' +
                     '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
@@ -778,7 +778,7 @@
             var self = this;
             body.innerHTML =
                 '<div style="display:flex;align-items:center;margin-bottom:8px;gap:8px;">' +
-                '<input id="ccDirectUrl" placeholder="直接输入地址发起采集（不走收藏）" style="flex:1;padding:8px 10px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;">' +
+                '<input id="ccDirectUrl" placeholder="直接输入地址发起采集（不走收藏）" style="flex:1;padding:8px 10px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:var(--bg-card);color:inherit;">' +
                 '<button class="btn btn-sm btn-primary" onclick="App._ccDirectCollect()">🕷 采集</button>' +
                 '<button class="btn btn-sm btn-secondary" onclick="App._ccStopAll()">⏹ 停止全部</button>' +
                 '</div>' +
@@ -1056,15 +1056,15 @@
                 '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><b>' + (site ? '✏️ 编辑图库' : '➕ 添加图库') + '</b>' +
                 '<button onclick="this.closest(\'.modal-overlay\').remove()" style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;">✕</button></div>' +
                 '<label style="font-size:12px;color:var(--text-muted);">名称 *</label>' +
-                '<input id="ccSiteName" value="' + self._esc(s.name || '') + '" placeholder="如：LibLib 哩布哩布" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' +
+                '<input id="ccSiteName" value="' + self._esc(s.name || '') + '" placeholder="如：LibLib 哩布哩布" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:var(--bg-card);color:inherit;margin-bottom:8px;">' +
                 '<label style="font-size:12px;color:var(--text-muted);">地址 *</label>' +
-                '<input id="ccSiteUrl" value="' + self._esc(s.url || '') + '" placeholder="https://..." style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' +
+                '<input id="ccSiteUrl" value="' + self._esc(s.url || '') + '" placeholder="https://..." style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:var(--bg-card);color:inherit;margin-bottom:8px;">' +
                 '<label style="font-size:12px;color:var(--text-muted);">简介</label>' +
-                '<textarea id="ccSiteDesc" rows="2" placeholder="简短介绍该图库的定位与内容" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' + self._esc(s.description || '') + '</textarea>' +
+                '<textarea id="ccSiteDesc" rows="2" placeholder="简短介绍该图库的定位与内容" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:var(--bg-card);color:inherit;margin-bottom:8px;">' + self._esc(s.description || '') + '</textarea>' +
                 '<label style="font-size:12px;color:var(--text-muted);">图标（无 logo 时显示的 emoji）</label>' +
-                '<input id="ccSiteEmoji" value="' + self._esc(s.icon_emoji || '🌐') + '" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' +
+                '<input id="ccSiteEmoji" value="' + self._esc(s.icon_emoji || '🌐') + '" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:var(--bg-card);color:inherit;margin-bottom:8px;">' +
                 '<label style="font-size:12px;color:var(--text-muted);">分组</label>' +
-                '<input id="ccSiteGroup" value="' + self._esc(s.group_name || '灵感图库') + '" placeholder="如：提示词站点 / 灵感图库 / 设计参考 / 素材榜单" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:transparent;color:inherit;margin-bottom:8px;">' +
+                '<input id="ccSiteGroup" value="' + self._esc(s.group_name || '灵感图库') + '" placeholder="如：提示词站点 / 灵感图库 / 设计参考 / 素材榜单" style="width:100%;padding:8px;border:1px solid rgba(127,127,127,.3);border-radius:8px;background:var(--bg-card);color:inherit;margin-bottom:8px;">' +
                 '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);margin-bottom:12px;cursor:pointer;">' +
                 '<input type="checkbox" id="ccSiteLogin" ' + (s.login_required ? 'checked' : '') + '> 🔒 需登录（未登录状态下采集可能失败）</label>' +
                 '<div style="display:flex;gap:8px;justify-content:flex-end;">' +

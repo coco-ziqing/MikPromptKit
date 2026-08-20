@@ -58,6 +58,8 @@ body.dark-theme .pagination-bar .page-btn:hover { border-color: var(--primary-li
 body.dark-theme .rec-item { background: var(--bg-card); border-color: #334155; }
 body.dark-theme .modal-content { background: #1e293b; color: #e2e8f0; }
 body.dark-theme .modal-input { background: #334155; border-color: #475569; color: #e2e8f0; }
+body.dark-theme .modal-content select, body.dark-theme .modal-content select option { background: #1e293b; color: #e2e8f0; }
+body.dark-theme .modal-content select option { background: #1e293b; }
 body.dark-theme .collection-card { background: var(--bg-card); border-color: #334155; }
 body.dark-theme .collection-card { border-color: #334155; }
 body.dark-theme .batch-bar { background: #1e293b; border-color: #334155; }
