@@ -545,6 +545,8 @@
                         '<button class="btn btn-sm btn-secondary" title="在词库中定位到该词卡" onclick="App._ccLocateCard(' + it.id + ',' + it.word_card_id + ')">🎯 定位词卡</button>' : '';
                     var actBtn = it.status === 'pending' ?
                         '<button class="btn btn-sm btn-primary" onclick="App._ccArchiveOne(' + it.id + ')">📥 归档</button>' : '';
+                    var refreshBtn = (it.status === 'pending' && it.source_url) ?
+                        '<button class="btn btn-sm btn-secondary" onclick="App._ccRefreshArchive(' + it.id + ')" title="用此结果刷新替换同源已归档的词卡（修复损坏/丢内容的词卡）">🔄 刷新归档</button>' : '';
                     return '<div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid rgba(127,127,127,.15);border-radius:10px;">' +
                         '<input type="checkbox" ' + chk + ' onchange="App._ccToggleSel(' + it.id + ',this.checked)">' +
                         self._thumb(it) +
@@ -558,7 +560,7 @@
                         '</div>' +
                         '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;word-break:break-all;">🔗 ' + self._esc(it.source_url) + '</div>' +
                         '</div>' +
-                        (actBtn) + (traceBtn) + (locateBtn) +
+                        (actBtn) + (refreshBtn) + (traceBtn) + (locateBtn) +
                         '<button class="btn btn-sm btn-secondary" title="编辑识别结果" onclick="App._ccEditItem(' + it.id + ')">✏️</button>' +
                         '<button class="btn btn-sm btn-secondary" onclick="App._ccDelItem(' + it.id + ')">🗑</button>' +
                         '</div>';
@@ -653,6 +655,19 @@
         },
 
         // v5.46.17: 采集结果批量删除 / 清空未归档
+        // v5.46.34: 刷新归档——新采集结果替换同源已归档词卡（修复损坏词卡）
+        _ccRefreshArchive: function (id) {
+            var self = this;
+            if (!confirm('用这条采集结果刷新替换同源的已归档词卡？\n词卡的内容/缩略图/原图将被新结果覆盖（词卡 id 保留，收藏夹/关联不受影响）。')) return;
+            App.fetchJSON('/api/card-collect/items/' + id + '/refresh-archive', { method: 'POST' })
+                .then(function (d) {
+                    if (d && d.ok) {
+                        self._toast('✅ 已刷新词卡 #' + d.card_id, 'success');
+                        self._renderItems(document.getElementById('ccBody'));
+                    } else self._toast((d && d.detail) || '刷新失败', 'error');
+                }).catch(function () { self._toast('刷新失败', 'error'); });
+        },
+
         _ccBatchDelItems: function () {
             var ids = this._ccItemSelIds();
             if (!ids.length) { this._toast('请先勾选要删除的采集项', 'error'); return; }
@@ -1289,6 +1304,7 @@ App._ccSiteGroup = function (g) { CC._ccSiteGroup(g); };
     App._ccBatchDelItems = function () { CC._ccBatchDelItems(); };
     App._ccClearItems = function () { CC._ccClearItems(); };
     App._ccClearArchived = function () { CC._ccClearArchived(); };
+    App._ccRefreshArchive = function (id) { CC._ccRefreshArchive(id); };
     App._ccItemsSelAll = function () { CC._ccItemsSelAll(); };
     App._ccItemsSelNone = function () { CC._ccItemsSelNone(); };
     App._ccItemsSelInvert = function () { CC._ccItemsSelInvert(); };

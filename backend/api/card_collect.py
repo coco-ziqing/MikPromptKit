@@ -1938,6 +1938,92 @@ def _gen_video_poster(card_id: int, src_path: str) -> str:
 
 # ==================== API：归档建词卡（带来源溯源） ====================
 
+@router.post("/items/{iid}/refresh-archive")
+def refresh_archive_item(iid: int):
+    """v5.46.34: 刷新归档——用重新采集的结果替换同源已归档词卡（词卡损坏/内容丢失时修复）
+    按 source_url 找到已归档采集项及其词卡，用新采集项内容更新该词卡（不新建），新项转 archived"""
+    c = _db()
+    try:
+        item = c.execute("SELECT * FROM card_collect_items WHERE id=?", [iid]).fetchone()
+        if not item:
+            raise HTTPException(404, "采集项不存在")
+        if item["status"] != "pending":
+            raise HTTPException(400, "仅未归档的采集结果可刷新归档")
+        # 找同源已归档词卡（同 source_url 最近归档）
+        old = c.execute(
+            "SELECT * FROM card_collect_items WHERE source_url=? AND status='archived' AND word_card_id IS NOT NULL "
+            "ORDER BY id DESC LIMIT 1", [item["source_url"]]).fetchone()
+        if not old:
+            raise HTTPException(404, "未找到同源的已归档词卡（请确认该地址之前已归档过）")
+        card_id = old["word_card_id"]
+        card = c.execute("SELECT * FROM word_card WHERE id=? AND is_deleted=0", [card_id]).fetchone()
+        if not card:
+            raise HTTPException(404, f"原词卡 #{card_id} 不存在或已删除")
+        # ---- 媒体处理（复用归档逻辑） ----
+        media_filename = item["media_url"] or ""
+        src = ""
+        if media_filename:
+            src = os.path.join(VID_DIR if item["media_type"] == "video" else IMG_DIR, media_filename)
+            if not os.path.exists(src):
+                media_filename = ""
+                src = ""
+        if not src:
+            raise HTTPException(400, "新采集结果的媒体文件缺失，无法刷新归档")
+        # 清理旧词卡媒体文件（缩略图/原图，删除失败仅记录）
+        for _f in (card["thumbnail"] or "", card["original_ref"] or ""):
+            if not _f:
+                continue
+            for _d in (os.path.join(_PROJECT_ROOT, "data", "thumbnails"),
+                       os.path.join(_PROJECT_ROOT, "data", "wc_media", "thumbs"),
+                       os.path.join(_PROJECT_ROOT, "data", "wc_media", "originals")):
+                try:
+                    _p = os.path.join(_d, os.path.basename(_f))
+                    if os.path.exists(_p):
+                        os.remove(_p)
+                except Exception:
+                    pass
+        # 复制原图 → wc_media/originals/（图片卡）
+        orig_name = ""
+        if item["media_type"] != "video":
+            try:
+                import shutil as _shutil
+                import uuid as _uuid
+                orig_ext = os.path.splitext(src)[1] or ".jpg"
+                orig_name = _uuid.uuid4().hex + orig_ext
+                wc_orig_dir = os.path.join(_PROJECT_ROOT, "data", "wc_media", "originals")
+                os.makedirs(wc_orig_dir, exist_ok=True)
+                _shutil.copy2(src, os.path.join(wc_orig_dir, orig_name))
+            except Exception as e:
+                print(f"[CardCollect] 刷新归档原图失败: {e}")
+                orig_name = ""
+        # 缩略图 / 视频海报
+        thumb_name = ""
+        if item["media_type"] != "video":
+            thumb_name = _gen_card_thumbnail(card_id, src)
+        else:
+            thumb_name = _gen_video_poster(card_id, src)
+        preview_field = media_filename if item["media_type"] == "video" else ""
+        meaning = " · ".join(x for x in [
+            "📥 外部采集",
+            ("视频" if item["media_type"] == "video" else "图片"),
+            item["page_title"][:40] if item["page_title"] else "",
+        ] if x)
+        # ---- 更新词卡（内容/媒体/来源，保留词卡 id 与关联） ----
+        c.execute(
+            "UPDATE word_card SET content=?, meaning=?, media_type=?, thumbnail=?, preview_media=?, "
+            "original_ref=?, source=?, source_id=?, updated_at=datetime('now','localtime') WHERE id=?",
+            [item["prompt"] or "", meaning, item["media_type"] or "image", thumb_name,
+             preview_field, orig_name, item["source_url"] or "", iid, card_id])
+        # 新采集项转已归档，关联词卡
+        c.execute(
+            "UPDATE card_collect_items SET status='archived', word_card_id=?, archived_at=datetime('now','localtime') "
+            "WHERE id=?", [card_id, iid])
+        c.commit()
+        return {"ok": True, "card_id": card_id, "thumbnail": thumb_name, "message": f"已刷新词卡 #{card_id}"}
+    finally:
+        c.close()
+
+
 @router.post("/archive")
 def archive_items(payload: dict = Body(...)):
     """采集项 → 词卡。ids 必填；group_id 指定分组，否则用 suggest_group（自动建组）"""
