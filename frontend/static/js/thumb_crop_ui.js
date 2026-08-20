@@ -73,9 +73,10 @@
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     if (d && d.ok) {
+                        var cid = S.cardId;          // 先取再关（closeThumbCrop 会置空 S）
                         App.closeThumbCrop();
                         App.showToast('✅ 缩略图已更新', 'success');
-                        _refreshView(S.cardId);
+                        _refreshView(cid);
                     } else {
                         if (btn) { btn.disabled = false; btn.textContent = '✅ 生成新缩略图'; }
                         App.showToast((d && d.detail) || '更新失败', 'error');
@@ -89,13 +90,14 @@
     };
 
     function _refreshView(cardId) {
-        // 词库列表重渲染
-        try { if (typeof App.loadPrompts === 'function') App.loadPrompts(); } catch (e) {}
-        // 收藏夹列表重渲染
-        try {
-            if (App.collections && typeof App.collections.loadCollectionItems === 'function') App.collections.loadCollectionItems();
-        } catch (e) {}
-        // 查看器当前图也换新缩略图（词卡网格用 thumbnail，查看器保持原图不变，无需处理）
+        // 延迟执行：等后端落盘后再重拉列表，避免读到旧缩略图
+        setTimeout(function () {
+            try { if (typeof App.loadPrompts === 'function') App.loadPrompts(); } catch (e) {}
+            try {
+                if (App.collections && typeof App.collections.loadCollectionItems === 'function') App.collections.loadCollectionItems();
+            } catch (e) {}
+            try { if (typeof App.refreshPrompts === 'function') App.refreshPrompts(); } catch (e) {}
+        }, 300);
     }
 
     function _open(cardId, srcUrl) {
