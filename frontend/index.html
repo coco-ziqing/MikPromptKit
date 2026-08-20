@@ -483,6 +483,7 @@
                     <button class="viewer-btn" onclick="App.zoomImageViewer('100')" title="原始尺寸" style="font-size:12px;padding:4px 10px;border:none;background:rgba(255,255,255,0.15);color:#fff;border-radius:6px;cursor:pointer;">1:1 原始</button>
                     <button class="viewer-btn" onclick="App.zoomImageViewer('in')" title="放大" style="font-size:12px;padding:4px 10px;border:none;background:rgba(255,255,255,0.15);color:#fff;border-radius:6px;cursor:pointer;">🔍+</button>
                     <button class="viewer-btn" onclick="App.zoomImageViewer('out')" title="缩小" style="font-size:12px;padding:4px 10px;border:none;background:rgba(255,255,255,0.15);color:#fff;border-radius:6px;cursor:pointer;">🔍-</button>
+                    <button class="viewer-btn" onclick="App.openThumbCrop()" title="手动裁切缩略图（聚焦关键部分）" style="font-size:12px;padding:4px 10px;border:none;background:rgba(139,92,246,0.4);color:#fff;border-radius:6px;cursor:pointer;">🖼 缩略图</button>
                 </div>
                 <!-- v5.36.22: 同卡多版本条 -->
                 <div id="imgViewerVersions" style="position:absolute;bottom:56px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:4px;background:rgba(0,0,0,0.72);border-radius:8px;padding:5px 8px;z-index:10;max-width:82%;overflow-x:auto;white-space:nowrap;"></div>
@@ -1125,7 +1126,7 @@
     <link rel="preload" href="/static/js/app_collections_batch.js?v=e2f5b8d5" as="script">
     <link rel="preload" href="/static/js/app_collections_collections.js?v=a5b7e067" as="script">
     <link rel="preload" href="/static/js/app_collections_cards.js?v=81786143" as="script">
-    <link rel="preload" href="/static/js/app_media.js?v=54527403" as="script">
+    <link rel="preload" href="/static/js/app_media.js?v=54630000" as="script">
     <link rel="preload" href="/static/js/word_editor.js?v=54690000" as="script">
     <!-- Phase15: wc_bridge 必须在 app_core 之前加载，分组导航交互重构 -->
                             <script src="/static/js/wc_bridge_tree.js?v=4e1ec3df"></script>
@@ -1145,6 +1146,7 @@
     <script defer src="/static/js/asset_library_ui.js?v=368d785f"></script>
     <script defer src="/static/js/project_roles_ui.js?v=53604600"></script>
     <script defer src="/static/js/card_collect_ui.js?v=54627000"></script>
+    <script defer src="/static/js/thumb_crop_ui.js?v=54630000"></script>
     <script defer src="/static/js/card_gen_ui.js?v=54100006"></script>
     <script defer src="/static/js/vjshi_upload_ui.js?v=54100002"></script>
 <script defer src="/static/js/device_manager_ui.js?v=5a25b28b"></script>
@@ -1169,7 +1171,7 @@
     <script defer src="/static/js/app_tools_modal_exec.js?v=9b4b1fe8"></script>
     <script defer src="/static/js/app_maintenance.js?v=a1b2c3d4"></script>
 <script defer src="/static/js/app_import_export.js?v=5d30178f"></script>
-    <script defer src="/static/js/app_media.js?v=54527403"></script>
+    <script defer src="/static/js/app_media.js?v=54630000"></script>
 <script defer src="/static/js/app_media_viewer.js?v=54681000"></script>
     <script defer src="/static/js/ai_tools.js?v=5380005a"></script>
     <script defer src="/static/js/word_picker.js?v=18cdc0d8"></script>

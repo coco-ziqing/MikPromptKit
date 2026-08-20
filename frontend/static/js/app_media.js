@@ -952,6 +952,8 @@ Object.assign(App, {
         var img = document.getElementById('imageViewerImg');
 
         if (!filename) { App.showToast('暂无原图', 'warning'); return; }
+        // v5.46.30: 记录当前词卡（缩略图重设用）
+        App._viewerCardId = promptId || 0;
 
         // Phase 1: CSS 原生居中 — 零时序依赖, 任何尺寸图片都完美居中
         modal.style.display = 'flex';
