@@ -57,7 +57,7 @@ SKIP_MEDIA_KEYWORDS = ("logo", "icon", "avatar", "favicon", "sprite", "emoji", "
                        "blank.gif", "1x1", "pixel", "advertisement", "banner", "vipModel", "badge", "qr")
 PROMPT_KEYS = ("prompt", "prompt_text", "prompt_content", "prompt_cn", "prompt_zh", "positive_prompt",
                "prompt_en", "prompt_raw")
-MODEL_KEYS = ("model", "model_name", "model_version", "engine", "generate_model", "model_label")
+MODEL_KEYS = ("model", "model_name", "modelName", "model_version", "engine", "generate_model", "model_label")
 PARAM_KEYS = ("params", "parameters", "extra", "config", "setting", "settings", "generate_params")
 MODEL_PATTERN = re.compile(
     r"(seedance[^\s,;\"']*|jimeng[^\s,;\"']*|midjourney|mj v\d|niji|stable[ -]?diffusion|sd\d|sdxl|"
@@ -450,6 +450,8 @@ def _extract_media_from_json(data):
             for k, v in node.items():
                 if isinstance(v, str) and _looks_media_url(v):
                     kl = k.lower()
+                    if any(x in kl for x in ("avatar", "icon", "logo", "emoji")):
+                        continue
                     if any(x in kl for x in ("url", "media", "image", "video", "cover", "thumb", "play", "download")):
                         out.append(v)
                 elif isinstance(v, (dict, list)):
@@ -464,6 +466,57 @@ def _extract_media_from_json(data):
             seen.add(u)
             uniq.append(u)
     return uniq
+
+
+def _extract_ssr_work(page, url):
+    """v5.46.24: 从页面内嵌 SSR 数据（React Router _ROUTER_DATA / _SSR_DATA）提取作品详情对象。
+    即梦等详情页的作品数据由 SSR 内嵌在 script 中（非网络 JSON 响应），
+    且页面会加载大量配置/文案/推荐接口——直接遍历响应极易串味误抓。
+    优先定位含 URL 作品 ID 且路径命中 workDetail/detail 的对象，prompt/model/media 同源提取。"""
+    try:
+        html = page.content()
+    except Exception:
+        return None
+    target_id = ""
+    m = re.search(r"/(?:work-detail|work|detail|item|post|imageinfo|model|pin)/([A-Za-z0-9_\-]+)", url)
+    if m:
+        target_id = m.group(1)
+    for var in ("_ROUTER_DATA", "_SSR_DATA"):
+        mm = re.search(r"window\.%s\s*=\s*(\{.*?\})\s*</script>" % var, html, re.S)
+        if not mm:
+            continue
+        try:
+            data = json.loads(mm.group(1))
+        except Exception:
+            continue
+        best = None
+        stack = [(data, "")]
+        while stack:
+            node, path = stack.pop()
+            if isinstance(node, dict):
+                txt = ""
+                try:
+                    txt = json.dumps(node, ensure_ascii=False)
+                except Exception:
+                    pass
+                score = 0
+                if target_id and target_id in txt:
+                    score += 10
+                if any(k in path.lower() for k in ("workdetail", "detail", "info", "data")):
+                    score += 5
+                if score > 0 and (best is None or score > best[0]):
+                    if any(k in txt for k in ("prompt", "model", "coverUrl", "itemUrls", "image")):
+                        best = (score, node)
+                for k, v in node.items():
+                    if isinstance(v, (dict, list)):
+                        stack.append((v, path + "/" + k))
+            elif isinstance(node, list):
+                for v in node:
+                    if isinstance(v, (dict, list)):
+                        stack.append((v, path))
+        if best:
+            return best[1]
+    return None
 
 
 def _extract_prompt_from_dom(page):
@@ -846,7 +899,17 @@ def _collect_worker(tid: int):
                 json_prompt = ""
                 json_model = ""
                 json_media = []
+                # v5.46.24: SSR 内嵌作品数据优先（同源提取 prompt/model/media，防跨响应串味）
+                ssr_work = _extract_ssr_work(page, url)
+                if ssr_work:
+                    json_prompt = _extract_prompt_from_json(ssr_work)
+                    json_model = _extract_model_from_json(ssr_work)
+                    json_media = _extract_media_from_json(ssr_work)
+                # 兜底：网络 JSON 响应（排除静态文案包/配置类，防 bee 文案串味）
                 for cap in captured_json:
+                    low_url = cap["url"].lower()
+                    if any(x in low_url for x in ("beecdn", "/bee_prod/", "ies-fe-bee", "lf3-beecdn", "lf-beecdn")):
+                        continue
                     if not json_prompt:
                         json_prompt = _extract_prompt_from_json(cap["data"])
                     if not json_model:
