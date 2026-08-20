@@ -1745,7 +1745,17 @@ def list_items(q: str = Query(""), status: str = Query(""), media_type: str = Qu
             args.append(media_type)
         sql += " ORDER BY id DESC"
         rows = c.execute(sql, args).fetchall()
-        return {"ok": True, "items": [dict(r) for r in rows]}
+        items = [dict(r) for r in rows]
+        # v5.46.36: 自动识别同源已归档词卡（刷新归档目标）——pending 项标注 refresh_card_id
+        for it in items:
+            it["refresh_card_id"] = 0
+            if it["status"] == "pending" and it["source_url"]:
+                m = c.execute(
+                    "SELECT word_card_id FROM card_collect_items WHERE source_url=? AND status='archived' "
+                    "AND word_card_id IS NOT NULL ORDER BY id DESC LIMIT 1", [it["source_url"]]).fetchone()
+                if m:
+                    it["refresh_card_id"] = m["word_card_id"]
+        return {"ok": True, "items": items}
     finally:
         c.close()
 
@@ -2054,6 +2064,15 @@ def archive_items(payload: dict = Body(...)):
                         [row["media_original_url"]]).fetchone()
                     if dup:
                         skipped.append({"id": iid, "reason": f"同图已归档(词卡#{dup['id']})"})
+                        continue
+                # v5.46.36: 同 source_url 已有活跃词卡 → 提示用「刷新归档」替换（防同一地址重复建卡）
+                if row["source_url"]:
+                    dup_src = c.execute(
+                        "SELECT wc.id FROM word_card wc JOIN card_collect_items ci ON ci.id=wc.source_id "
+                        "WHERE ci.source_url=? AND wc.is_deleted=0 AND wc.module='card_collect' LIMIT 1",
+                        [row["source_url"]]).fetchone()
+                    if dup_src:
+                        skipped.append({"id": iid, "reason": f"同源已归档(词卡#{dup_src['id']})，请用「刷新归档」替换"})
                         continue
                 gid = group_id
                 if not gid:

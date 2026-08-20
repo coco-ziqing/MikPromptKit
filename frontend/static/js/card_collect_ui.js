@@ -562,8 +562,8 @@
                         '<button class="btn btn-sm btn-secondary" title="在词库中定位到该词卡" onclick="App._ccLocateCard(' + it.id + ',' + it.word_card_id + ')">🎯 定位词卡</button>' : '';
                     var actBtn = it.status === 'pending' ?
                         '<button class="btn btn-sm btn-primary" onclick="App._ccArchiveOne(' + it.id + ')">📥 归档</button>' : '';
-                    var refreshBtn = (it.status === 'pending' && it.source_url) ?
-                        '<button class="btn btn-sm btn-secondary" onclick="App._ccRefreshArchive(' + it.id + ')" title="用此结果刷新替换同源已归档的词卡（修复损坏/丢内容的词卡）">🔄 刷新归档</button>' : '';
+                    var refreshBtn = (it.status === 'pending' && it.refresh_card_id) ?
+                        '<button class="btn btn-sm btn-secondary" onclick="App._ccRefreshArchive(' + it.id + ')" title="用此结果刷新替换同源已归档的词卡（修复损坏/丢内容的词卡）">🔄 刷新归档 → 词卡#' + it.refresh_card_id + '</button>' : '';
                     return '<div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid rgba(127,127,127,.15);border-radius:10px;">' +
                         '<input type="checkbox" ' + chk + ' onchange="App._ccToggleSel(' + it.id + ',this.checked)">' +
                         self._thumb(it) +
