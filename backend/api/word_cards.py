@@ -10,7 +10,7 @@ import os
 import re
 import uuid
 
-from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 
 from database import get_db, safe_commit, safe_count, safe_count_dict, safe_execute, safe_fetch_one
@@ -641,8 +641,9 @@ def copy_thumbnail_from_library(card_id: int, data: dict):
 
 
 @router.post("/{card_id}/thumbnail")
-async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
-    """为词卡上传缩略图（自适应多列展示: 320x213 基准 + 原图归档媒体库）"""
+async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...), keep_original: int = Form(0)):
+    """为词卡上传缩略图（自适应多列展示: 320x213 基准 + 原图归档媒体库）
+    keep_original=1: 仅替换缩略图，保留 original_ref/预览媒体（缩略图重设场景，原图不动）"""
     # Phase17: 先读文件再开DB — 避免 async await 断点持锁冲突
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"):
@@ -658,11 +659,14 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
         img = Image.open(io.BytesIO(raw_data))
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
-        # 1. 保存原图到归档目录
-        orig_name = f"{uuid.uuid4().hex}{ext if ext else '.jpg'}"
-        orig_path = os.path.join(WC_ORIG_DIR, orig_name)
-        with open(orig_path, "wb") as f:
-            f.write(raw_data)
+        keep_orig = bool(keep_original)
+        # 1. 保存原图到归档目录（仅完整上传场景；缩略图重设 keep_original 时跳过，原图不动）
+        orig_name = ""
+        if not keep_orig:
+            orig_name = f"{uuid.uuid4().hex}{ext if ext else '.jpg'}"
+            orig_path = os.path.join(WC_ORIG_DIR, orig_name)
+            with open(orig_path, "wb") as f:
+                f.write(raw_data)
         # 2. 生成 320x213 缩略图 (1-2列清晰 / 3-6列缩小无锯齿)
         TW, TH = 320, 213
         sw, sh = img.size
@@ -695,8 +699,19 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...)):
         if os.path.exists(dest): os.remove(dest)
         if os.path.exists(orig_path): os.remove(orig_path)
         raise HTTPException(404, "词卡不存在")
-    _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
-    db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, original_ref=?, updated_at=datetime('now','localtime') WHERE id=?", [filename, TW, TH, orig_name, card_id])
+    if keep_orig:
+        # v5.46.33: 缩略图重设——仅替换缩略图，保留原 original_ref/preview_media（查看原图仍显示原始高清图）
+        # 只清理旧缩略图文件，不动预览媒体
+        if card and card["thumbnail"]:
+            try:
+                os.remove(os.path.join(WC_THUMB_DIR, os.path.basename(card["thumbnail"])))
+            except Exception:
+                pass
+        db.execute("UPDATE word_card SET thumbnail=?, thumb_width=?, thumb_height=?, updated_at=datetime('now','localtime') WHERE id=?",
+                   [filename, TW, TH, card_id])
+    else:
+        _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
+        db.execute("UPDATE word_card SET thumbnail=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, original_ref=?, updated_at=datetime('now','localtime') WHERE id=?", [filename, TW, TH, orig_name, card_id])
     safe_commit()
     return {"ok": True, "filename": filename, "original": orig_name}
 

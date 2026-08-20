@@ -69,6 +69,7 @@
             }
             var fd = new FormData();
             fd.append('file', blob, 'crop.jpg');
+            fd.append('keep_original', '1');  // v5.46.33: 仅替换缩略图，保留原始原图（查看原图不受影响）
             fetch('/api/v4/word-cards/' + S.cardId + '/thumbnail', { method: 'POST', body: fd })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
