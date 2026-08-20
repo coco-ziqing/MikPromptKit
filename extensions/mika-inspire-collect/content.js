@@ -303,11 +303,19 @@
     // 面板向右溢出时贴右
     wrap.classList.toggle('right', x + 370 > window.innerWidth);
   }
-  chrome.storage.local.get('mikaCcPos', function (o) {
+  // v5.46.11: 先同步预置默认位置（右下角），避免页面加载时面板先落在文档流位置再跳变
+  wrap.style.left = (window.innerWidth - 190) + 'px';
+  wrap.style.top = (window.innerHeight - 80) + 'px';
+  clampPos();
+  chrome.storage.local.get(['mikaCcPos', 'mikaCcOpen'], function (o) {
     var p = o && o.mikaCcPos;
-    wrap.style.left = (p ? p.x : window.innerWidth - 190) + 'px';
-    wrap.style.top = (p ? p.y : window.innerHeight - 80) + 'px';
-    clampPos();
+    if (p) {
+      wrap.style.left = p.x + 'px';
+      wrap.style.top = p.y + 'px';
+      clampPos();
+    }
+    // v5.46.11: 展开状态跨页面保持 —— 上次是展开态则新页面自动恢复展开，不再退回小胶囊
+    if (o && o.mikaCcOpen) openPanel();
   });
   window.addEventListener('resize', clampPos);
 
@@ -341,6 +349,9 @@
   if (pHead) attachDrag(pHead, '.btn');
 
   // ---- 折叠/展开 ----
+  function saveOpenState(v) {
+    try { chrome.storage.local.set({ mikaCcOpen: !!v }); } catch (e) {}
+  }
   function openPanel() {
     wrap.classList.add('open');
     clampPos();
@@ -348,9 +359,10 @@
     var estH = Math.min(0.78 * window.innerHeight, 560);
     if (wrap.offsetTop - estH < 8) wrap.classList.add('up');
     else wrap.classList.remove('up');
+    saveOpenState(true);
     refresh();
   }
-  function foldPanel() { wrap.classList.remove('open'); }
+  function foldPanel() { wrap.classList.remove('open'); saveOpenState(false); }
   $('pillOpen').addEventListener('click', openPanel);
   $('btnFold').addEventListener('click', foldPanel);
 

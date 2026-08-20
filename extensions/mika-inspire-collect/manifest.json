@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "咪卡灵感收藏助手",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "把浏览器中浏览的灵感页面一键回传至咪卡词库（MikPromptKit）URL收藏库。仅读取标签页地址，不读取 Cookie、密码、表单等任何隐私数据。",
   "permissions": ["tabs", "storage"],
   "host_permissions": ["http://*/*", "https://*/*"],
