@@ -541,6 +541,8 @@
                     var chk = self._sel[it.id] ? 'checked' : '';
                     var traceBtn = (it.status === 'archived' && it.word_card_id) ?
                         '<button class="btn btn-sm btn-secondary" title="来源溯源" onclick="App._ccTrace(' + it.word_card_id + ')">🔗 溯源</button>' : '';
+                    var locateBtn = (it.status === 'archived' && it.word_card_id) ?
+                        '<button class="btn btn-sm btn-secondary" title="在词库中定位到该词卡" onclick="App._ccLocateCard(' + it.id + ',' + it.word_card_id + ')">🎯 定位词卡</button>' : '';
                     var actBtn = it.status === 'pending' ?
                         '<button class="btn btn-sm btn-primary" onclick="App._ccArchiveOne(' + it.id + ')">📥 归档</button>' : '';
                     return '<div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid rgba(127,127,127,.15);border-radius:10px;">' +
@@ -556,7 +558,7 @@
                         '</div>' +
                         '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;word-break:break-all;">🔗 ' + self._esc(it.source_url) + '</div>' +
                         '</div>' +
-                        (actBtn) + (traceBtn) +
+                        (actBtn) + (traceBtn) + (locateBtn) +
                         '<button class="btn btn-sm btn-secondary" title="编辑识别结果" onclick="App._ccEditItem(' + it.id + ')">✏️</button>' +
                         '<button class="btn btn-sm btn-secondary" onclick="App._ccDelItem(' + it.id + ')">🗑</button>' +
                         '</div>';
@@ -771,6 +773,27 @@
                     '<button onclick="this.closest(\'.modal-overlay\').remove()" style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;">✕</button></div>' +
                     '<div style="font-size:13px;line-height:1.8;padding:10px;border:1px solid rgba(127,127,127,.15);border-radius:10px;">' + rows.join('') + '</div>';
             }).catch(function () { self._toast('溯源失败', 'error'); });
+        },
+
+        // v5.46.27: 定位到词卡（已归档采集项 → 词库中高亮对应词卡）
+        _ccLocateCard: function (iid, cardId) {
+            var self = this;
+            // 先关闭采集面板（否则 overlay 遮挡定位结果）
+            var ov = document.getElementById('ccOverlay');
+            if (ov) ov.remove();
+            if (App._stopCCPoll) App._stopCCPoll();
+            // 通过 trace 接口拿词卡分组，再调用词卡定位
+            App.fetchJSON('/api/card-collect/trace/' + cardId).then(function (d) {
+                var gid = (d && d.chain && d.chain.card) ? (d.chain.card.group_id || 0) : 0;
+                if (App.cardGen && App.cardGen.locateCard) {
+                    App.cardGen.locateCard(cardId, gid);
+                } else {
+                    App.showToast('定位功能不可用', 'error');
+                }
+            }).catch(function () {
+                if (App.cardGen && App.cardGen.locateCard) App.cardGen.locateCard(cardId, 0);
+                else App.showToast('定位功能不可用', 'error');
+            });
         },
 
         // ============ Tab3 采集任务 ============
@@ -1252,6 +1275,7 @@ App._ccSiteGroup = function (g) { CC._ccSiteGroup(g); };
     App._ccBatchArchive = function () { CC._batchArchive(); };
     App._ccDoArchive = function (ids) { CC._doArchive(ids); };
     App._ccTrace = function (cardId) { CC._trace(cardId); };
+    App._ccLocateCard = function (iid, cardId) { CC._ccLocateCard(iid, cardId); };
     App._ccDirectCollect = function () { CC._directCollect(); };
     App._ccStopTask = function (id) { CC._stopTask(id); };
     App._ccStopAll = function () { CC._stopAll(); };

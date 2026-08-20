@@ -2046,7 +2046,7 @@ def trace_card(card_id: int):
     """词卡 → 采集项 → 收藏 → 原始 URL 完整回溯链"""
     c = _db()
     try:
-        card = c.execute("SELECT id, name, source, source_id, original_ref FROM word_card WHERE id=?", [card_id]).fetchone()
+        card = c.execute("SELECT id, name, source, source_id, original_ref, group_id FROM word_card WHERE id=?", [card_id]).fetchone()
         if not card:
             raise HTTPException(404, "词卡不存在")
         chain = {"card": dict(card), "item": None, "favorite": None}
