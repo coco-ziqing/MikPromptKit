@@ -83,7 +83,7 @@
             ov.id = 'ccOverlay';
             ov.style.zIndex = 900;
             ov.innerHTML =
-                '<div class="modal-content" style="max-width:920px;width:92vw;max-height:86vh;display:flex;flex-direction:column;border-radius:14px;">' +
+                '<div class="modal-content" style="max-width:920px;width:92vw;height:min(86vh,720px);max-height:86vh;display:flex;flex-direction:column;border-radius:14px;">' +
                 '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(127,127,127,.15);">' +
                 '<div style="font-size:15px;font-weight:600;">🕷 词卡采集 <span style="font-size:11px;color:var(--text-muted);font-weight:400;">公开内容采集 · 不登录 · 可中断 · 来源可溯源</span></div>' +
                 '<button onclick="this.closest(\'.modal-overlay\').remove();App._stopCCPoll&&App._stopCCPoll();" style="border:none;background:none;font-size:18px;color:var(--text-muted);cursor:pointer;" title="关闭">✕</button>' +
