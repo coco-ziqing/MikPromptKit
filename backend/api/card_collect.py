@@ -1468,6 +1468,24 @@ def delete_urls(payload: dict = Body(...)):
         c.close()
 
 
+@router.post("/urls/clear")
+def clear_urls(payload: dict = Body(...)):
+    """清空网页收藏（默认全部池；pool 参数可只清空指定池）"""
+    pool = str(payload.get("pool") or "").strip()
+    c = _db()
+    try:
+        if pool:
+            if pool not in _VALID_FAV_STATUS:
+                raise HTTPException(400, "无效的状态池")
+            cur = c.execute("DELETE FROM card_collect_favorites WHERE status=?", [pool])
+        else:
+            cur = c.execute("DELETE FROM card_collect_favorites")
+        c.commit()
+        return {"ok": True, "deleted": cur.rowcount}
+    finally:
+        c.close()
+
+
 @router.post("/urls/collect")
 def collect_urls(payload: dict = Body(...)):
     """勾选待采集 → 批量入队采集任务（串行执行，单批 ≤20 合规限额）
@@ -1592,6 +1610,43 @@ def stop_all():
         c.close()
 
 
+@router.post("/tasks/delete")
+def delete_tasks(payload: dict = Body(...)):
+    """批量删除任务记录（进行中/排队中先停止再删除）"""
+    ids = _ids_of(payload)
+    if not ids:
+        raise HTTPException(400, "请选择任务")
+    c = _db()
+    try:
+        ph = ",".join("?" * len(ids))
+        rows = c.execute(f"SELECT id, status FROM card_collect_tasks WHERE id IN ({ph})", ids).fetchall()
+        for r in rows:
+            if r["status"] in ("queued", "running"):
+                _stop_flags[r["id"]] = True
+        cur = c.execute(f"DELETE FROM card_collect_tasks WHERE id IN ({ph})", ids)
+        c.commit()
+    finally:
+        c.close()
+    _spawn_next_queued()  # 删除后恢复队列续跑
+    return {"ok": True, "deleted": cur.rowcount}
+
+
+@router.post("/tasks/clear")
+def clear_tasks(payload: dict = Body(...)):
+    """清空全部任务记录（进行中/排队中先停止）"""
+    c = _db()
+    try:
+        rows = c.execute("SELECT id, status FROM card_collect_tasks").fetchall()
+        for r in rows:
+            if r["status"] in ("queued", "running"):
+                _stop_flags[r["id"]] = True
+        cur = c.execute("DELETE FROM card_collect_tasks")
+        c.commit()
+    finally:
+        c.close()
+    return {"ok": True, "deleted": cur.rowcount}
+
+
 # ==================== API：采集结果 ====================
 
 @router.get("/items")
@@ -1660,6 +1715,54 @@ def delete_item(iid: int):
         c.execute("DELETE FROM card_collect_items WHERE id=?", [iid])
         c.commit()
         return {"ok": True}
+    finally:
+        c.close()
+
+
+@router.post("/items/delete")
+def delete_items(payload: dict = Body(...)):
+    """批量删除采集项（含本地媒体文件）"""
+    ids = _ids_of(payload)
+    if not ids:
+        raise HTTPException(400, "请选择采集项")
+    c = _db()
+    try:
+        ph = ",".join("?" * len(ids))
+        rows = c.execute(f"SELECT id, media_url FROM card_collect_items WHERE id IN ({ph})", ids).fetchall()
+        for r in rows:
+            if r["media_url"]:
+                for d in (IMG_DIR, VID_DIR):
+                    p = os.path.join(d, r["media_url"])
+                    if os.path.exists(p):
+                        try:
+                            os.remove(p)
+                        except Exception:
+                            pass
+        cur = c.execute(f"DELETE FROM card_collect_items WHERE id IN ({ph})", ids)
+        c.commit()
+        return {"ok": True, "deleted": cur.rowcount}
+    finally:
+        c.close()
+
+
+@router.post("/items/clear")
+def clear_items(payload: dict = Body(...)):
+    """清空全部未归档采集项（含本地媒体文件；已归档词卡不受影响）"""
+    c = _db()
+    try:
+        rows = c.execute("SELECT id, media_url FROM card_collect_items WHERE status='pending'").fetchall()
+        for r in rows:
+            if r["media_url"]:
+                for d in (IMG_DIR, VID_DIR):
+                    p = os.path.join(d, r["media_url"])
+                    if os.path.exists(p):
+                        try:
+                            os.remove(p)
+                        except Exception:
+                            pass
+        cur = c.execute("DELETE FROM card_collect_items WHERE status='pending'")
+        c.commit()
+        return {"ok": True, "deleted": cur.rowcount}
     finally:
         c.close()
 
