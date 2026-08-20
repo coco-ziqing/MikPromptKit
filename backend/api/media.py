@@ -33,8 +33,8 @@ def _get_image_dimensions(filepath: str) -> tuple:
         return (0, 0)
 
 
-def _get_mime_type(filename: str) -> str:
-    """根据扩展名获取 MIME 类型"""
+def _get_mime_type(filename: str, filepath: str = "") -> str:
+    """根据扩展名获取 MIME 类型；无扩展名/未知扩展名时嗅探文件头（兼容采集归档的无扩展名原图）"""
     ext = os.path.splitext(filename)[1].lower()
     mime_map = {
         ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
@@ -43,7 +43,21 @@ def _get_mime_type(filename: str) -> str:
         ".mp4": "video/mp4", ".mov": "video/quicktime",
         ".avi": "video/x-msvideo", ".mkv": "video/x-matroska",
     }
-    return mime_map.get(ext, "application/octet-stream")
+    mime = mime_map.get(ext)
+    if mime:
+        return mime
+    # 无扩展名/未知扩展名 → 文件头嗅探
+    if filepath and os.path.exists(filepath):
+        try:
+            from PIL import Image
+            fmt = (Image.open(filepath).format or "").upper()
+            sniff = {"PNG": "image/png", "JPEG": "image/jpeg", "GIF": "image/gif",
+                     "WEBP": "image/webp", "BMP": "image/bmp", "TIFF": "image/tiff"}
+            if fmt in sniff:
+                return sniff[fmt]
+        except Exception:
+            pass
+    return "application/octet-stream"
 
 
 def _record_asset(filename: str, original_filename: str = "",
@@ -156,15 +170,15 @@ def serve_original(filename: str):
         # 尝试 originals/
         fpath = os.path.join(ORIGINAL_DIR, orig_name)
         if os.path.exists(fpath):
-            return FileResponse(fpath, media_type=_get_mime_type(orig_name), headers=_IMG_CACHE_HDR)
+            return FileResponse(fpath, media_type=_get_mime_type(orig_name, fpath), headers=_IMG_CACHE_HDR)
         # 尝试 wc_media/originals/
         wc_fpath = os.path.join(WC_ORIGINAL_DIR, orig_name)
         if os.path.exists(wc_fpath):
-            return FileResponse(wc_fpath, media_type=_get_mime_type(orig_name), headers=_IMG_CACHE_HDR)
+            return FileResponse(wc_fpath, media_type=_get_mime_type(orig_name, wc_fpath), headers=_IMG_CACHE_HDR)
         # 尝试 ComfyUI 生成存档 comfyui_outputs/（AI 生成词卡原图所在）
         co_fpath = os.path.join(COMFYUI_OUTPUTS_DIR, orig_name)
         if os.path.exists(co_fpath):
-            return FileResponse(co_fpath, media_type=_get_mime_type(orig_name), headers=_IMG_CACHE_HDR)
+            return FileResponse(co_fpath, media_type=_get_mime_type(orig_name, co_fpath), headers=_IMG_CACHE_HDR)
         # 尝试 videos/
         if asset["media_type"] == "video":
             fpath = os.path.join(VIDEO_DIR, orig_name)
@@ -178,21 +192,21 @@ def serve_original(filename: str):
     # 但本端点此前不含该目录 → cc_ 采集图进池后点击必 404 → 误报「图片可能已丢失」）
     cc_fpath = os.path.join(CARD_COLLECT_IMG_DIR, safe)
     if os.path.exists(cc_fpath):
-        return FileResponse(cc_fpath, media_type=_get_mime_type(safe), headers=_IMG_CACHE_HDR)
+        return FileResponse(cc_fpath, media_type=_get_mime_type(safe, cc_fpath), headers=_IMG_CACHE_HDR)
     # v5.36.22: 即梦资产原图 fallback（词卡 original_ref 指向 data/dreamina_assets/）
     for _ab in (os.path.join(BASE_DIR, "data", "dreamina_assets", "images"),
                 os.path.join(BASE_DIR, "data", "dreamina_assets", "videos")):
         _af = os.path.join(_ab, safe)
         if os.path.exists(_af):
-            return FileResponse(_af, media_type=_get_mime_type(safe), headers=_IMG_CACHE_HDR)
+            return FileResponse(_af, media_type=_get_mime_type(safe, _af), headers=_IMG_CACHE_HDR)
     # 回退 wc_media/originals/
     wc_fpath = os.path.join(WC_ORIGINAL_DIR, safe)
     if os.path.exists(wc_fpath):
-        return FileResponse(wc_fpath, media_type=_get_mime_type(safe), headers=_IMG_CACHE_HDR)
+        return FileResponse(wc_fpath, media_type=_get_mime_type(safe, wc_fpath), headers=_IMG_CACHE_HDR)
     # 回退 ComfyUI 生成存档
     co_fpath = os.path.join(COMFYUI_OUTPUTS_DIR, safe)
     if os.path.exists(co_fpath):
-        return FileResponse(co_fpath, media_type=_get_mime_type(safe), headers=_IMG_CACHE_HDR)
+        return FileResponse(co_fpath, media_type=_get_mime_type(safe, co_fpath), headers=_IMG_CACHE_HDR)
     return JSONResponse({"error": "文件不存在"}, status_code=404)
 
 
