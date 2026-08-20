@@ -167,6 +167,8 @@ Object.assign(App, {
         var img = document.getElementById('imageViewerImg');
 
         if (!filename) { App.showToast('暂无原图', 'warning'); return; }
+        // v5.46.30: 记录当前词卡（缩略图重设用）——本文件版本为实际生效实现，app_media.js 同名前缀会被覆盖
+        App._viewerCardId = promptId || 0;
         // v5.42.19/22: 同卡图片池切换条（延迟渲染，避开 _loadCardVersions 的立即清空）
         var self0 = this;
         setTimeout(function () { self0._renderImgPool(imageList || null, filename); }, 120);
