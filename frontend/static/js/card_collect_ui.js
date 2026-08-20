@@ -517,6 +517,13 @@
                 '<button class="btn btn-sm btn-danger" onclick="App._ccBatchDelItems()">🗑 删除选中</button>' +
                 '<button class="btn btn-sm btn-success" onclick="App._ccBatchArchive()">📥 批量归档选中</button>' +
                 '<button class="btn btn-sm btn-outline-danger" onclick="App._ccClearItems()">🗑 清空未归档</button>' +
+                '<button class="btn btn-sm btn-outline-danger" onclick="App._ccClearArchived()">🗑 清空已归档</button>' +
+                '</div>' +
+                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">' +
+                '<button class="btn btn-sm btn-secondary" onclick="App._ccItemsSelAll()">✅ 全选</button>' +
+                '<button class="btn btn-sm btn-secondary" onclick="App._ccItemsSelNone()">⬜ 取消选择</button>' +
+                '<button class="btn btn-sm btn-secondary" onclick="App._ccItemsSelInvert()">🔀 反选</button>' +
+                '<span style="font-size:12px;">已选 <b id="ccItemSelCnt">0</b> 条</span>' +
                 '</div>' +
                 '<div id="ccItemList" style="display:flex;flex-direction:column;gap:8px;">加载中…</div>';
             var qs = '?status=' + encodeURIComponent(this._filter.status || '') + '&media_type=' + encodeURIComponent(this._filter.media || '');
@@ -524,6 +531,9 @@
                 var list = document.getElementById('ccItemList');
                 if (!list) return;
                 var items = (d && d.items) || [];
+                self._itemAll = items;
+                var cntEl = document.getElementById('ccItemSelCnt');
+                if (cntEl) cntEl.textContent = self._ccItemSelIds().length;
                 if (!items.length) { list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">采集结果为空 · 流程：🌐 灵感图库找灵感 → 📥 网页收藏 → ⚙️ 采集任务发起采集 → 回到本页归档</div>'; return; }
                 list.innerHTML = items.map(function (it) {
                     var chk = self._sel[it.id] ? 'checked' : '';
@@ -532,7 +542,7 @@
                     var actBtn = it.status === 'pending' ?
                         '<button class="btn btn-sm btn-primary" onclick="App._ccArchiveOne(' + it.id + ')">📥 归档</button>' : '';
                     return '<div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid rgba(127,127,127,.15);border-radius:10px;">' +
-                        '<input type="checkbox" ' + chk + ' onchange="App._ccToggleSel(' + it.id + ',this.checked)" ' + (it.status === 'archived' ? 'disabled' : '') + '>' +
+                        '<input type="checkbox" ' + chk + ' onchange="App._ccToggleSel(' + it.id + ',this.checked)">' +
                         self._thumb(it) +
                         '<div style="flex:1;min-width:0;">' +
                         '<div style="font-size:13px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">' + (it.prompt ? self._esc(it.prompt) : '<span style="color:var(--text-muted);">（未识别到提示词，可点击编辑补全）</span>') + '</div>' +
@@ -560,6 +570,30 @@
 
         _toggleSel: function (id, on) {
             if (on) this._sel[id] = true; else delete this._sel[id];
+            var c = document.getElementById('ccItemSelCnt');
+            if (c) c.textContent = this._ccItemSelIds().length;
+        },
+
+        // v5.46.18: 全选/取消选择/反选（作用于当前筛选视图）
+        _ccItemSelIds: function () { return Object.keys(this._sel).map(Number); },
+
+        _ccItemsSelAll: function () {
+            var self = this;
+            (this._itemAll || []).forEach(function (it) { self._sel[it.id] = true; });
+            this._renderItems(document.getElementById('ccBody'));
+        },
+
+        _ccItemsSelNone: function () {
+            this._sel = {};
+            this._renderItems(document.getElementById('ccBody'));
+        },
+
+        _ccItemsSelInvert: function () {
+            var self = this;
+            (this._itemAll || []).forEach(function (it) {
+                if (self._sel[it.id]) delete self._sel[it.id]; else self._sel[it.id] = true;
+            });
+            this._renderItems(document.getElementById('ccBody'));
         },
 
         _editItem: function (id) {
@@ -616,10 +650,12 @@
 
         // v5.46.17: 采集结果批量删除 / 清空未归档
         _ccBatchDelItems: function () {
-            var ids = Object.keys(this._sel).map(Number);
+            var ids = this._ccItemSelIds();
             if (!ids.length) { this._toast('请先勾选要删除的采集项', 'error'); return; }
-            if (!confirm('删除选中的 ' + ids.length + ' 个采集项（含本地媒体文件）？')) return;
             var self = this;
+            var hasArch = (this._itemAll || []).some(function (it) { return self._sel[it.id] && it.status === 'archived'; });
+            var msg = '删除选中的 ' + ids.length + ' 个采集项（含本地媒体文件）？' + (hasArch ? '\n其中含已归档项，删除后对应词卡将无法溯源。' : '');
+            if (!confirm(msg)) return;
             App.fetchJSON('/api/card-collect/items/delete', { method: 'POST', body: JSON.stringify({ ids: ids }) })
                 .then(function (d) {
                     if (d && d.ok) {
@@ -633,10 +669,25 @@
         _ccClearItems: function () {
             if (!confirm('确认清空所有未归档的采集结果（含本地媒体文件）？已归档词卡不受影响。')) return;
             var self = this;
-            App.fetchJSON('/api/card-collect/items/clear', { method: 'POST' })
+            App.fetchJSON('/api/card-collect/items/clear', { method: 'POST', body: JSON.stringify({ status: 'pending' }) })
                 .then(function (d) {
                     if (d && d.ok) {
                         self._toast('已清空 ' + d.deleted + ' 项未归档', 'success');
+                        self._sel = {};
+                        self._renderItems(document.getElementById('ccBody'));
+                    } else self._toast((d && d.detail) || '清空失败', 'error');
+                }).catch(function () { self._toast('清空失败', 'error'); });
+        },
+
+        // v5.46.18: 清空已归档（词卡保留，断溯源链）
+        _ccClearArchived: function () {
+            var n = (this._itemAll || []).filter(function (it) { return it.status === 'archived'; }).length;
+            if (!confirm('确认清空所有已归档采集项（' + n + ' 条）？已归档词卡本身保留，但删除后将无法溯源到原始页面。')) return;
+            var self = this;
+            App.fetchJSON('/api/card-collect/items/clear', { method: 'POST', body: JSON.stringify({ status: 'archived' }) })
+                .then(function (d) {
+                    if (d && d.ok) {
+                        self._toast('已清空 ' + d.deleted + ' 项已归档', 'success');
                         self._sel = {};
                         self._renderItems(document.getElementById('ccBody'));
                     } else self._toast((d && d.detail) || '清空失败', 'error');
@@ -1134,6 +1185,10 @@ App._ccSiteGroup = function (g) { CC._ccSiteGroup(g); };
     App._ccTaskClearAll = function () { CC._ccTaskClearAll(); };
     App._ccBatchDelItems = function () { CC._ccBatchDelItems(); };
     App._ccClearItems = function () { CC._ccClearItems(); };
+    App._ccClearArchived = function () { CC._ccClearArchived(); };
+    App._ccItemsSelAll = function () { CC._ccItemsSelAll(); };
+    App._ccItemsSelNone = function () { CC._ccItemsSelNone(); };
+    App._ccItemsSelInvert = function () { CC._ccItemsSelInvert(); };
     App._ccAddSite = function () { CC._addSite(); };
     App._ccEditSite = function (id) { CC._editSite(id); };
     App._ccSaveSite = function (id) { CC._saveSite(id); };

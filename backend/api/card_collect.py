@@ -1747,10 +1747,13 @@ def delete_items(payload: dict = Body(...)):
 
 @router.post("/items/clear")
 def clear_items(payload: dict = Body(...)):
-    """清空全部未归档采集项（含本地媒体文件；已归档词卡不受影响）"""
+    """清空采集项（status: pending 未归档默认 / archived 已归档；含本地媒体文件）"""
+    status = str(payload.get("status") or "pending").strip()
+    if status not in ("pending", "archived"):
+        raise HTTPException(400, "status 须为 pending/archived")
     c = _db()
     try:
-        rows = c.execute("SELECT id, media_url FROM card_collect_items WHERE status='pending'").fetchall()
+        rows = c.execute("SELECT id, media_url FROM card_collect_items WHERE status=?", [status]).fetchall()
         for r in rows:
             if r["media_url"]:
                 for d in (IMG_DIR, VID_DIR):
@@ -1760,7 +1763,7 @@ def clear_items(payload: dict = Body(...)):
                             os.remove(p)
                         except Exception:
                             pass
-        cur = c.execute("DELETE FROM card_collect_items WHERE status='pending'")
+        cur = c.execute("DELETE FROM card_collect_items WHERE status=?", [status])
         c.commit()
         return {"ok": True, "deleted": cur.rowcount}
     finally:
