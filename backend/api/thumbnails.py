@@ -278,6 +278,28 @@ def serve_original(filename: str):
 
     fpath = os.path.join(ORIGINAL_DIR, orig_name)
     if not os.path.exists(fpath):
+        # v5.46.29: 词卡原图目录优先（采集归档原图在 wc_media/originals/）
+        wc_orig_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "data", "wc_media", "originals", safe_name
+        )
+        if os.path.exists(wc_orig_path):
+            return FileResponse(wc_orig_path)
+        # v5.46.29: 缩略图文件名 → 词卡原图映射（查看原图传缩略图名时仍加载原图）
+        try:
+            db = get_db()
+            card = db.execute(
+                "SELECT original_ref FROM word_card WHERE thumbnail=? LIMIT 1", [safe_name]
+            ).fetchone()
+            if card and card["original_ref"]:
+                wc_map = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                    "data", "wc_media", "originals", card["original_ref"]
+                )
+                if os.path.exists(wc_map):
+                    return FileResponse(wc_map)
+        except Exception:
+            pass
         # 回退到缩略图
         fpath = os.path.join(THUMB_DIR, safe_name)
         if not os.path.exists(fpath):
@@ -286,12 +308,12 @@ def serve_original(filename: str):
                 os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                 "data", "wc_media", "thumbs", safe_name
             )
-            wc_orig_path = os.path.join(
+            wc_orig_path2 = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                 "data", "wc_media", "originals", safe_name
             )
-            if os.path.exists(wc_orig_path):
-                return FileResponse(wc_orig_path)
+            if os.path.exists(wc_orig_path2):
+                return FileResponse(wc_orig_path2)
             if os.path.exists(wc_thumb_path):
                 return FileResponse(wc_thumb_path)
             # ComfyUI 生成存档（AI 生成词卡原图）

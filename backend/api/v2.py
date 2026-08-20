@@ -180,7 +180,7 @@ def list_collection_items(cid: int, page: int = Query(1, ge=1), page_size: int =
             COALESCE(wc.tags, p.tags, '[]') as tags,
             COALESCE(wc.usage_count, p.usage_count, 0) as usage_count,
             COALESCE(wc.thumbnail, pt.filename, '') as thumbnail,
-            COALESCE(wc.thumbnail, pv.poster, '') as original_ref,
+            COALESCE(wc.original_ref, '') as original_ref,
             wc.preview_media as video_filename,
             COALESCE(wc.icon, '') as icon,
             COALESCE(wc.name, SUBSTR(wc.content, 1, 60), '') as name,
