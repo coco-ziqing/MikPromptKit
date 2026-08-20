@@ -164,9 +164,15 @@ def _ensure_tables():
             found_count INTEGER DEFAULT 0,
             page_title TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now','localtime')),
+            started_at TEXT DEFAULT '',
             finished_at TEXT DEFAULT ''
         )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_cct_status ON card_collect_tasks(status)")
+        # v5.46.21: 任务开始时间标记（幂等 ALTER，兼容旧表）
+        task_cols = [r["name"] for r in c.execute("PRAGMA table_info(card_collect_tasks)").fetchall()]
+        if "started_at" not in task_cols:
+            c.execute("ALTER TABLE card_collect_tasks ADD COLUMN started_at TEXT DEFAULT ''")
+            print("[CardCollect] card_collect_tasks 增加列 started_at")
         c.execute("""CREATE TABLE IF NOT EXISTS card_collect_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             task_id INTEGER DEFAULT 0,
@@ -764,7 +770,7 @@ def _task_update(tid: int, **kw):
 def _collect_worker(tid: int):
     """采集任务执行体：CDP 打开页面 → 捕获响应 + DOM 识别 → 下载媒体 → 写入采集结果"""
     _stop_flags[tid] = False
-    _task_update(tid, status="running", progress=5, message="连接浏览器…")
+    _task_update(tid, status="running", progress=5, message="连接浏览器…", started_at=_now_str())
     try:
         res = ensure_chrome_started()
         if not res.get("connected"):

@@ -805,12 +805,52 @@
                         '<div style="font-size:12px;color:var(--text-muted);word-break:break-all;">#' + t.id + ' · 🔗 ' + self._esc(t.url) + '</div>' +
                         '<div style="font-size:12px;margin-top:3px;">' + self._statusBadge(t.status) + ' · ' + self._esc(t.message || '') + (t.page_title ? ' · ' + self._esc(t.page_title) : '') + '</div>' +
                         (t.status === 'running' || t.status === 'queued' ? self._bar(t.progress) : '') +
-                        '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + self._esc(t.created_at) + (t.finished_at ? ' → ' + self._esc(t.finished_at) : '') + (t.found_count ? ' · 入库 ' + t.found_count + ' 项' : '') + '</div>' +
+                        '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + self._taskTimeLine(t) + (t.found_count ? ' · 入库 ' + t.found_count + ' 项' : '') + '</div>' +
                         '</div>' +
                         (t.status === 'running' || t.status === 'queued' ? '<button class="btn btn-sm btn-secondary" onclick="App._ccStopTask(' + t.id + ')">⏹ 停止</button>' : '') +
                         '</div>';
                 }).join('');
             }).catch(function () { var l = document.getElementById('ccTaskList'); if (l) l.innerHTML = '<div style="color:#ef4444;">加载失败</div>'; });
+        },
+
+        // v5.46.21: 任务时间线标记（创建/开始/完成 + 耗时）
+        _taskTimeLine: function (t) {
+            var parts = [];
+            if (t.created_at) parts.push('📥 创建 ' + this._fmtTime(t.created_at));
+            if (t.started_at) parts.push('▶️ 开始 ' + this._fmtTime(t.started_at));
+            if (t.finished_at) parts.push('🏁 完成 ' + this._fmtTime(t.finished_at));
+            var dur = this._taskDuration(t);
+            if (dur) parts.push('⏱ 耗时 ' + dur);
+            return parts.join(' · ');
+        },
+
+        _fmtTime: function (s) {
+            if (!s) return '';
+            var m = String(s).match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
+            if (!m) return s;
+            var now = new Date();
+            var sameDay = now.getFullYear() === +m[1] && now.getMonth() + 1 === +m[2] && now.getDate() === +m[3];
+            var sameYear = now.getFullYear() === +m[1];
+            var day = sameDay ? '' : (sameYear ? (m[2] + '-' + m[3] + ' ') : (m[1] + '-' + m[2] + '-' + m[3] + ' '));
+            return day + m[4] + ':' + m[5];
+        },
+
+        _parseDT: function (s) {
+            var m = String(s).match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+            if (!m) return null;
+            return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+        },
+
+        _taskDuration: function (t) {
+            var start = t.started_at || '';
+            var s = this._parseDT(start);
+            if (!s) return '';
+            var e = t.finished_at ? this._parseDT(t.finished_at) : (t.status === 'running' ? new Date() : null);
+            if (!e) return '';
+            var sec = Math.max(0, Math.round((e - s) / 1000));
+            if (sec < 60) return sec + '秒';
+            if (sec < 3600) return Math.floor(sec / 60) + '分' + (sec % 60 ? (sec % 60) + '秒' : '');
+            return Math.floor(sec / 3600) + '小时' + Math.floor((sec % 3600) / 60) + '分';
         },
 
         // v5.46.17: 采集任务批量删除 / 清空全部
