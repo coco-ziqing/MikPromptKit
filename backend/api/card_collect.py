@@ -1632,7 +1632,7 @@ def delete_tasks(payload: dict = Body(...)):
 
 
 @router.post("/tasks/clear")
-def clear_tasks(payload: dict = Body(...)):
+def clear_tasks(payload: dict = Body(default={})):
     """清空全部任务记录（进行中/排队中先停止）"""
     c = _db()
     try:

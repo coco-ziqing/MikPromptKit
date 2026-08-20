@@ -848,7 +848,7 @@
         _ccTaskClearAll: function () {
             if (!confirm('确认清空全部任务记录？进行中的任务将停止，该操作不可恢复！')) return;
             var self = this;
-            App.fetchJSON('/api/card-collect/tasks/clear', { method: 'POST' })
+            App.fetchJSON('/api/card-collect/tasks/clear', { method: 'POST', body: JSON.stringify({}) })
                 .then(function (d) {
                     if (d && d.ok) {
                         self._toast('已清空 ' + d.deleted + ' 条', 'success');
