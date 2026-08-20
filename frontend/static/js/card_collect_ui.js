@@ -89,10 +89,10 @@
                 '<button onclick="this.closest(\'.modal-overlay\').remove();App._stopCCPoll&&App._stopCCPoll();" style="border:none;background:none;font-size:18px;color:var(--text-muted);cursor:pointer;" title="关闭">✕</button>' +
                 '</div>' +
                 '<div style="display:flex;gap:6px;padding:10px 16px 0;border-bottom:1px solid rgba(127,127,127,.12);">' +
-                '<button id="ccTabFav" class="btn btn-sm" onclick="App._ccSwitchTab(\'fav\')">📥 URL收藏库</button>' +
-                '<button id="ccTabItems" class="btn btn-sm" onclick="App._ccSwitchTab(\'items\')">🗂 预采集库</button>' +
-                '<button id="ccTabTasks" class="btn btn-sm" onclick="App._ccSwitchTab(\'tasks\')">⚙️ 采集任务</button>' +
                 '<button id="ccTabSites" class="btn btn-sm" onclick="App._ccSwitchTab(\'sites\')">🌐 灵感图库</button>' +
+                '<button id="ccTabFav" class="btn btn-sm" onclick="App._ccSwitchTab(\'fav\')">📥 URL收藏库</button>' +
+                '<button id="ccTabTasks" class="btn btn-sm" onclick="App._ccSwitchTab(\'tasks\')">⚙️ 采集任务</button>' +
+                '<button id="ccTabItems" class="btn btn-sm" onclick="App._ccSwitchTab(\'items\')">🗂 预采集库</button>' +
                 '</div>' +
                 '<div id="ccBody" style="flex:1;overflow-y:auto;padding:14px 16px;"></div>' +
                 '</div>';
@@ -110,7 +110,7 @@
         },
 
         _render: function () {
-            var btns = { fav: 'ccTabFav', items: 'ccTabItems', tasks: 'ccTabTasks', sites: 'ccTabSites' };
+            var btns = { sites: 'ccTabSites', fav: 'ccTabFav', tasks: 'ccTabTasks', items: 'ccTabItems' };
             for (var k in btns) {
                 var b = document.getElementById(btns[k]);
                 if (b) b.className = 'btn btn-sm ' + (k === this._tab ? 'btn-primary' : 'btn-secondary');
@@ -483,7 +483,7 @@
                 var list = document.getElementById('ccItemList');
                 if (!list) return;
                 var items = (d && d.items) || [];
-                if (!items.length) { list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">预采集库为空 · 先去收藏夹发起采集</div>'; return; }
+                if (!items.length) { list.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">预采集库为空 · 流程：🌐 灵感图库找灵感 → 📥 URL收藏库收藏 → ⚙️ 采集任务发起采集 → 回到本页归档</div>'; return; }
                 list.innerHTML = items.map(function (it) {
                     var chk = self._sel[it.id] ? 'checked' : '';
                     var traceBtn = (it.status === 'archived' && it.word_card_id) ?
