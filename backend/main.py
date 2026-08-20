@@ -237,13 +237,27 @@ async def lifespan(app: FastAPI):
         from semantic import _ML_OK
         if _ML_OK:
             import threading
+            import time as _time
 
             from semantic import rebuild_all_embeddings, rebuild_wc_embeddings
-            t = threading.Thread(target=rebuild_all_embeddings, daemon=True)
+
+            # 2026-08-20 加固: 启动重建降载
+            #   之前: 双线程并行全速重建 → 启动瞬间 CPU 满载，与不稳定硬件叠加会触发蓝屏 (0x1E/0xF7/0x3B)
+            #   现在: 延迟 30s 等服务就绪 + 单线程串行 + 每批休眠限速，削平启动峰值
+            def _rebuild_throttled():
+                _time.sleep(30)
+                try:
+                    rebuild_all_embeddings(throttle=True)
+                except Exception as e:
+                    print("[语义搜索] 旧表重建失败:", e)
+                try:
+                    rebuild_wc_embeddings(throttle=True)
+                except Exception as e:
+                    print("[语义搜索] 词卡重建失败:", e)
+
+            t = threading.Thread(target=_rebuild_throttled, daemon=True)
             t.start()
-            t2 = threading.Thread(target=rebuild_wc_embeddings, daemon=True)
-            t2.start()
-            print("[语义搜索] 索引重建已启动（旧表 + 词卡双通道）")
+            print("[语义搜索] 索引重建已排队（延迟30s + 串行限速，避免启动高峰）")
         else:
             print("[语义搜索] ML 依赖不可用，跳过")
     except Exception as e:
@@ -937,6 +951,12 @@ def _get_local_ip() -> str:
 
 if __name__ == "__main__":
     import sys as _sys
+    # 2026-08-20 加固: stdout/stderr 行缓冲，保证重定向日志实时落盘（否则语义重建等 print 卡在块缓冲区）
+    try:
+        _sys.stdout.reconfigure(line_buffering=True, errors='replace')
+        _sys.stderr.reconfigure(line_buffering=True, errors='replace')
+    except Exception:
+        pass
     base_port = int(os.environ.get("PORT", 8080))
     # 预探测可用端口（自兜底 0..19）
     port = base_port

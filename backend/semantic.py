@@ -148,8 +148,12 @@ def update_embedding(prompt_id: int, content: str = None):
         print("[语义搜索] 更新嵌入失败 (id=%d): %s" % (prompt_id, e))
 
 
-def rebuild_all_embeddings(progress_callback=None):
-    """重建所有提示词的向量索引，ML不可用时跳过"""
+def rebuild_all_embeddings(progress_callback=None, throttle=False):
+    """重建所有提示词的向量索引，ML不可用时跳过
+
+    throttle=True 时每批 commit 后短暂休眠，降低 CPU 峰值
+    （2026-08-20 加固：启动重建与不稳定硬件叠加会触发蓝屏，启动场景必须限速）
+    """
     global _is_indexing
     if not _ML_OK or not _NUMPY_OK:
         print("[语义搜索] ML 依赖不可用，跳过索引重建")
@@ -161,7 +165,7 @@ def rebuild_all_embeddings(progress_callback=None):
     db = get_db()
     rows = db.execute("SELECT id, content FROM prompts WHERE deleted_at IS NULL ORDER BY id").fetchall()
     total = len(rows)
-    print("[语义搜索] 开始重建索引: %d 条" % total)
+    print("[语义搜索] 开始重建索引: %d 条%s" % (total, "（限速模式）" if throttle else ""))
     t0 = time.time()
     success = 0
     for i, row in enumerate(rows):
@@ -178,6 +182,9 @@ def rebuild_all_embeddings(progress_callback=None):
             # 2026-08-02 修复: 分批 commit，避免单一大事务长期持有写锁导致全库 database is locked
             if success % 50 == 0:
                 db.commit()
+                # 2026-08-20 加固: 限速休眠，削平 CPU 峰值（防蓝屏）
+                if throttle:
+                    time.sleep(0.2)
             if progress_callback and i % 10 == 0:
                 progress_callback(i, total)
         except Exception as e:
@@ -397,8 +404,12 @@ def search_word_cards(query: str, top_k: int = 20, group_id: int = None) -> list
     return results[:top_k]
 
 
-def rebuild_wc_embeddings(progress_callback=None):
-    """重建所有词卡的语义向量索引"""
+def rebuild_wc_embeddings(progress_callback=None, throttle=False):
+    """重建所有词卡的语义向量索引
+
+    throttle=True 时每批 commit 后短暂休眠，降低 CPU 峰值
+    （2026-08-20 加固：启动重建与不稳定硬件叠加会触发蓝屏，启动场景必须限速）
+    """
     global _is_indexing
     if not _ML_OK or not _NUMPY_OK:
         print("[语义搜索] ML 依赖不可用，跳过词卡索引重建")
@@ -411,7 +422,7 @@ def rebuild_wc_embeddings(progress_callback=None):
         "SELECT id, name, content, meaning, tags, scene, content_en, content_zh FROM word_card WHERE is_deleted=0 ORDER BY id"
     ).fetchall()
     total = len(rows)
-    print("[语义搜索] 开始重建词卡索引: %d 条 (7字段全量)" % total)
+    print("[语义搜索] 开始重建词卡索引: %d 条 (7字段全量)%s" % (total, "（限速模式）" if throttle else ""))
     t0 = time.time()
     success = 0
     for i, row in enumerate(rows):
@@ -441,6 +452,9 @@ def rebuild_wc_embeddings(progress_callback=None):
             # 2026-08-02 修复: 分批 commit，避免单一大事务长期持有写锁导致全库 database is locked
             if success % 50 == 0:
                 db.commit()
+                # 2026-08-20 加固: 限速休眠，削平 CPU 峰值（防蓝屏）
+                if throttle:
+                    time.sleep(0.2)
             if progress_callback and i % 50 == 0:
                 progress_callback(i, total)
         except Exception as e:

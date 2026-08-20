@@ -22,6 +22,19 @@ $DB         = Join-Path $ROOT "data\prompts.db"
 $STDOUT_LOG = Join-Path $ROOT "data\start_dev_stdout.log"
 $STDERR_LOG = Join-Path $ROOT "data\start_dev_stderr.log"
 
+# 2026-08-20 加固: 启动日志轮转（防长期运行日志膨胀；超大日志会让 Get-Content -Tail 变慢）
+foreach ($lf in @($STDOUT_LOG, $STDERR_LOG)) {
+    if (Test-Path $lf) {
+        try {
+            $sz = (Get-Item $lf).Length
+            if ($sz -gt 10MB) {
+                Rename-Item $lf "$lf.old" -Force -ErrorAction Stop
+                Write-Warn "日志 $(Split-Path $lf -Leaf) 超过 10MB，已轮转为 .old"
+            }
+        } catch {}
+    }
+}
+
 function Write-Step($msg)  { Write-Host "`n>>> $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "    [OK] $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "    [!]  $msg" -ForegroundColor Yellow }
@@ -51,6 +64,28 @@ function Get-FirstLine($str) {
     if ($str -is [array]) { $str = $str[0] }
     if ($null -eq $str) { return "" }
     return ($str.ToString().Trim())
+}
+
+# 2026-08-20 加固: 检测上次是否异常关机/蓝屏（Event 41/6008），是则提示先做硬件排查
+function Test-UnexpectedShutdown {
+    try {
+        $ev = Get-WinEvent -FilterHashtable @{LogName='System'; Id=41,6008} -MaxEvents 1 -ErrorAction Stop
+        if ($ev) {
+            $t = $ev.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')
+            Write-Warn "检测到上次异常关机（$t, EventID $($ev.Id)），可能为蓝屏/断电"
+            Write-Host "      建议: ① 运行 Windows 内存诊断(mdsched) ② 更新或回滚显卡驱动 ③ 退出/卸载向日葵等远程软件" -ForegroundColor Yellow
+        }
+    } catch {}
+}
+
+# 2026-08-20 加固: 可用内存过低时警告（防启动重建叠加内存压力）
+function Test-SystemMemory {
+    try {
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+        $freeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
+        if ($freeGB -lt 3) { Write-Warn "可用内存仅 $freeGB GB，启动重建可能吃紧，建议先关闭占用内存的程序" }
+        else { Write-Ok "可用内存 $freeGB GB" }
+    } catch {}
 }
 
 Write-Host ""
@@ -114,6 +149,10 @@ if ($branch) {
 
 # ---------- 2/5 环境健康自检 ----------
 Write-Step "2/5 环境健康自检"
+
+# 2026-08-20 加固: 异常关机检测 + 可用内存检查（蓝屏事故后首启必检）
+Test-UnexpectedShutdown
+Test-SystemMemory
 
 # 磁盘空间（SQLite 写库失败的前置杀手）
 $driveName = (Split-Path $ROOT -Qualifier).TrimEnd(':')
@@ -232,8 +271,11 @@ if (-not $alreadyRunning) {
     Write-Host "    启动服务（后台运行，日志: data/start_dev_*.log）..." -ForegroundColor Gray
     $env:PORT = "$PORT"
     $env:PK_ENFORCE_AUTH = "1"
-    $p = Start-Process -FilePath $py -ArgumentList "backend/main.py" -WorkingDirectory $ROOT -WindowStyle Hidden `
+    # 2026-08-20 加固: 低优先级启动，避免服务启动瞬间抢占全部 CPU（配合服务端重建限速，削平启动峰值）
+    # 注: PS 5.1 的 Start-Process 无 -Priority 参数，需 -PassThru 后设置 PriorityClass
+    $p = Start-Process -FilePath $py -ArgumentList "-u", "backend/main.py" -WorkingDirectory $ROOT -WindowStyle Hidden `
          -RedirectStandardOutput $STDOUT_LOG -RedirectStandardError $STDERR_LOG -PassThru
+    try { $p.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
     Start-Sleep -Seconds 3
     if ($p.HasExited) {
         Write-Fail "服务进程启动即退出 (code $($p.ExitCode))"
@@ -280,8 +322,9 @@ if (-not (netstat -ano | Select-String ":$PORT\s" | Select-String "LISTENING")) 
 Start-Sleep -Seconds 8
 if (-not (netstat -ano | Select-String ":$PORT\s" | Select-String "LISTENING")) {
     Write-Warn "检测到服务崩溃，自动重启一次..."
-    Start-Process -FilePath $py -ArgumentList "backend/main.py" -WorkingDirectory $ROOT -WindowStyle Hidden `
-         -RedirectStandardOutput $STDOUT_LOG -RedirectStandardError $STDERR_LOG | Out-Null
+    $rp = Start-Process -FilePath $py -ArgumentList "-u", "backend/main.py" -WorkingDirectory $ROOT -WindowStyle Hidden `
+         -RedirectStandardOutput $STDOUT_LOG -RedirectStandardError $STDERR_LOG -PassThru
+    try { $rp.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
     Start-Sleep -Seconds 12
     if (netstat -ano | Select-String ":$PORT\s" | Select-String "LISTENING") { Write-Ok "自动重启成功" }
     else {
@@ -347,6 +390,8 @@ if ($lanIPs.Count) {
 } else {
     Write-Warn "未检测到 IPv4 地址，仅本机可访问"
 }
+# 2026-08-20 加固: 浏览器延迟 3 秒打开，避免服务刚就绪+重建启动叠加瞬间负载
+Start-Sleep -Seconds 3
 try { Start-Process $URL } catch { Write-Warn "自动打开浏览器失败，请手动访问 $URL" }
 
 Write-Host ""
