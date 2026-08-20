@@ -974,6 +974,16 @@ def _collect_worker(tid: int):
                                     pass
                                 print(f"[CardCollect] 跳过小占位图 {mu[:80]} ({fsize}B)")
                                 continue
+                        # v5.46.25: 一个网页 = 一条采集结果 —— 同任务已有采集项则跳过冗余媒体
+                        # （同一作品多尺寸图/封面/原图只保留第一条，prompt/model 页面级一致，多余词条无价值）
+                        exist = c.execute("SELECT id FROM card_collect_items WHERE task_id=? LIMIT 1", [tid]).fetchone()
+                        if exist:
+                            try:
+                                os.remove(dest)
+                            except Exception:
+                                pass
+                            print(f"[CardCollect] 任务 {tid} 已入库(#{exist['id']})，跳过冗余媒体 {mu[:70]}")
+                            continue
                         c.execute(
                             "INSERT INTO card_collect_items "
                             "(task_id, fav_id, source_url, page_title, media_type, media_url, media_original_url, "
