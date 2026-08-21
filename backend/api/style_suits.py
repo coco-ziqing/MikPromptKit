@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-角色风格包 API — v5.47.0 链路验证版
+角色设定集 API — v5.47.0 链路验证版
 能力：CRUD / 配置读写 / 版本快照与回滚 / 复制 / 收藏 / 回收站 / .style 导入导出
 设计：五 Tab 配置统一存 config_json（单列 JSON 化，字段扩展不加表）
 """
@@ -19,7 +19,7 @@ except Exception:
 
 from jwt_auth import get_current_user
 
-router = APIRouter(tags=["角色风格包"])
+router = APIRouter(tags=["角色设定集"])
 
 # ==================== 工具 ====================
 

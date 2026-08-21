@@ -1,4 +1,4 @@
-# 角色风格包系统 v5.47.0 · 手动验证手册
+# 角色设定集系统 v5.47.0 · 手动验证手册
 
 > 版本：v5.47.0（链路验证版）｜commit 67025c9｜tag v5.47.0
 > 范围：后端链路（数据模型 / 套装 CRUD / 配置 / 版本 / .style 导入导出 / 装配草稿 / 预检 / 批量渲染编排）
@@ -28,7 +28,7 @@ Invoke-WebRequest -Uri "http://127.0.0.1:8080/health" -UseBasicParsing
 ### 0.3 确认迁移生效
 启动日志（data/start_dev_stdout.log 或启动窗口）应出现：
 ```
-[Phase19] 角色风格包系统迁移开始...
+[Phase19] 角色设定集系统迁移开始...
 [OK] 建表 style_suit
 [OK] 建表 style_suit_version
 [OK] 建表 assemble_draft

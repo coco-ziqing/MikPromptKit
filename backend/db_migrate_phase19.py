@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Phase19 角色风格包系统数据库迁移（幂等）
+Phase19 角色设定集系统数据库迁移（幂等）
 表：
   style_suit          套装主表（名称/标签/封面/备注/收藏/回收站/版本）
   style_suit_version  套装编辑版本池（每次保存自动快照）
@@ -115,7 +115,7 @@ def run_migration(db=None):
     tables_created = 0
     indexes_created = 0
 
-    print("[Phase19] 角色风格包系统迁移开始...")
+    print("[Phase19] 角色设定集系统迁移开始...")
     for name, sql in TABLES.items():
         exists = db.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", [name]
@@ -148,7 +148,7 @@ def run_migration(db=None):
 
 
 if __name__ == "__main__":
-    print("MikPromptKit Phase19 角色风格包系统数据库迁移")
+    print("MikPromptKit Phase19 角色设定集系统数据库迁移")
     print("=" * 50)
     result = run_migration()
     print("\n迁移摘要:")

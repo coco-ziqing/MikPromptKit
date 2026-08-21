@@ -1,4 +1,4 @@
-// v5.48.1: 角色风格包系统前端 — 角色风格包库 + 5-Tab 编辑器弹窗 + 角色组装工作台 + 生成结果面板（简化交互版，无拖拽）
+// v5.48.1: 角色设定集系统前端 — 角色设定集库 + 5-Tab 编辑器弹窗 + 角色组装工作台 + 生成结果面板（简化交互版，无拖拽）
 // 依赖: App.fetchJSON / App._escape / PK_AUTH_CLIENT._token
 (function() {
 'use strict';
@@ -121,7 +121,7 @@ window.STYLE_SUIT = {
     openResult: function(batchId) { _openResult(batchId); }
 };
 
-// ==================== ① 角色风格包库 ====================
+// ==================== ① 角色设定集库 ====================
 async function _openBag() {
     _activatePanel('viewStyleSuit');
     var el = document.getElementById('viewStyleSuit');
@@ -137,9 +137,9 @@ function _bagShell() {
     return '' +
     '<div class="suit-bag">' +
       '<div class="suit-bag-header">' +
-        '<div class="suit-bag-title"><i class="bi bi-magic"></i> 角色风格包</div>' +
+        '<div class="suit-bag-title"><i class="bi bi-magic"></i> 角色设定集</div>' +
         '<div class="suit-bag-actions">' +
-          '<button class="suit-btn suit-btn-primary" id="suitBtnNew"><i class="bi bi-plus-lg"></i> 新建角色风格包</button>' +
+          '<button class="suit-btn suit-btn-primary" id="suitBtnNew"><i class="bi bi-plus-lg"></i> 新建角色设定集</button>' +
           '<button class="suit-btn" id="suitBtnImport" title="导入 .style 文件"><i class="bi bi-box-arrow-in-down"></i> 导入</button>' +
           '<button class="suit-btn" id="suitBtnWorkbench" title="打开角色组装工作台"><i class="bi bi-tools"></i> 组装工作台</button>' +
         '</div>' +
@@ -197,7 +197,7 @@ function _renderGrid(el, items) {
     var grid = el.querySelector('#suitGrid');
     if (!items.length) {
         grid.innerHTML = '<div class="suit-empty"><div class="suit-empty-icon">🧰</div><p>' +
-            (state.tab === 'trash' ? '回收站空空如也' : '还没有风格模板，点击右上角「新建角色风格包」创建第一套风格模板！') + '</p></div>';
+            (state.tab === 'trash' ? '回收站空空如也' : '还没有风格模板，点击右上角「新建角色设定集」创建第一套风格模板！') + '</p></div>';
         return;
     }
     var html = '';
@@ -544,7 +544,7 @@ function _renderEditor() {
     var html = '' +
     '<div class="suit-modal-mask" id="suitEditorMask" onclick="if(event.target===this)window.STYLE_SUIT._closeEditor()">' +
       '<div class="suit-modal suit-modal-lg">' +
-        '<div class="suit-modal-head"><span>' + (state.editorIsNew ? '🎨 新建角色风格包' : '🎨 编辑角色风格包：' + _esc(e.name)) + '</span>' +
+        '<div class="suit-modal-head"><span>' + (state.editorIsNew ? '🎨 新建角色设定集' : '🎨 编辑角色设定集：' + _esc(e.name)) + '</span>' +
           '<button class="suit-modal-close" onclick="window.STYLE_SUIT._closeEditor()">×</button></div>' +
         '<div class="suit-editor-tabs">' +
           '<button class="suit-editor-tab active" data-tab="words">① 风格词条</button>' +
@@ -557,7 +557,7 @@ function _renderEditor() {
         '<div class="suit-modal-foot">' +
           '<button class="suit-btn" id="edBtnCancel">取消</button>' +
           '<button class="suit-btn" id="edBtnSaveAs">另存为新模板</button>' +
-          '<button class="suit-btn suit-btn-primary" id="edBtnSave">' + (state.editorIsNew ? '创建角色风格包' : '保存') + '</button>' +
+          '<button class="suit-btn suit-btn-primary" id="edBtnSave">' + (state.editorIsNew ? '创建角色设定集' : '保存') + '</button>' +
         '</div>' +
       '</div>' +
     '</div>';
