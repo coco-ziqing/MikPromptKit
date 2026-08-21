@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-装备装配 API — v5.47.0 链路验证版
-能力：装配草稿 CRUD / 渲染前校验 / 批量渲染编排（复用 card_gen 任务链路）/ 批次查询
+角色组装 API — v5.47.0 链路验证版
+能力：装配记录 CRUD / 生成前校验 / 批量生成编排（复用 card_gen 任务链路）/ 批次查询
 设计：套装 config_json 五 Tab → 组装提示词 + 渲染参数 → render_batch → card_gen_tasks 入队
       worker 由 card_gen 既有串行链路执行，本模块只做编排层（不新造生成引擎）
 """
@@ -23,7 +23,7 @@ from jwt_auth import get_current_user
 from .style_suits import _db as _suit_db
 from .card_gen import _create_tasks, _team_guard
 
-router = APIRouter(tags=["装备装配"])
+router = APIRouter(tags=["角色组装"])
 
 
 def _auth(request, require=True):
@@ -129,7 +129,7 @@ def _build_prompt(cfg: dict, rune_cards: list, base_ref: dict) -> str:
 
 
 def _resolve_output_parts(cfg: dict, accessory_list: list) -> list:
-    """产出配件 = 套装配置默认产出 + 配件选配区临时增减"""
+    """视图资产 = 模板配置默认产出 + 视图资产选配临时增减"""
     parts = list(cfg.get("output_parts") or ["main"])
     for acc in accessory_list:
         p = acc.get("part") if isinstance(acc, dict) else acc

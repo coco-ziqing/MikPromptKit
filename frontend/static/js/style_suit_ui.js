@@ -1,4 +1,4 @@
-// v5.48.0: 风格套装系统前端 — 背包页 + 5-Tab 编辑器弹窗 + 操作台 + 结果面板（简化交互版，无拖拽）
+// v5.48.1: 风格套装系统前端 — 风格套装库 + 5-Tab 编辑器弹窗 + 角色组装工作台 + 生成结果面板（简化交互版，无拖拽）
 // 依赖: App.fetchJSON / App._escape / PK_AUTH_CLIENT._token
 (function() {
 'use strict';
@@ -37,7 +37,7 @@ var state = {
     current: null,          // 当前选中套装（详情面板）
     editor: null,           // 编辑器弹窗数据
     editorIsNew: false,
-    workbench: {            // 操作台装配状态（会话级）
+    workbench: {            // 组装工作台装配状态（会话级）
         name: '默认装配',
         base_asset_ref: {},
         rune_card_ids: [],
@@ -121,7 +121,7 @@ window.STYLE_SUIT = {
     openResult: function(batchId) { _openResult(batchId); }
 };
 
-// ==================== ① 背包页 ====================
+// ==================== ① 风格套装库 ====================
 async function _openBag() {
     _activatePanel('viewStyleSuit');
     var el = document.getElementById('viewStyleSuit');
@@ -139,9 +139,9 @@ function _bagShell() {
       '<div class="suit-bag-header">' +
         '<div class="suit-bag-title"><i class="bi bi-magic"></i> 风格套装</div>' +
         '<div class="suit-bag-actions">' +
-          '<button class="suit-btn suit-btn-primary" id="suitBtnNew"><i class="bi bi-plus-lg"></i> 新建套装</button>' +
+          '<button class="suit-btn suit-btn-primary" id="suitBtnNew"><i class="bi bi-plus-lg"></i> 新建风格套装</button>' +
           '<button class="suit-btn" id="suitBtnImport" title="导入 .style 文件"><i class="bi bi-box-arrow-in-down"></i> 导入</button>' +
-          '<button class="suit-btn" id="suitBtnWorkbench" title="打开装备装配操作台"><i class="bi bi-tools"></i> 操作台</button>' +
+          '<button class="suit-btn" id="suitBtnWorkbench" title="打开角色组装工作台"><i class="bi bi-tools"></i> 组装工作台</button>' +
         '</div>' +
       '</div>' +
       '<div class="suit-bag-tabs">' + tabsHtml + '</div>' +
@@ -197,7 +197,7 @@ function _renderGrid(el, items) {
     var grid = el.querySelector('#suitGrid');
     if (!items.length) {
         grid.innerHTML = '<div class="suit-empty"><div class="suit-empty-icon">🧰</div><p>' +
-            (state.tab === 'trash' ? '回收站空空如也' : '还没有套装，点击右上角「新建套装」创建第一套风格！') + '</p></div>';
+            (state.tab === 'trash' ? '回收站空空如也' : '还没有风格模板，点击右上角「新建风格套装」创建第一套风格模板！') + '</p></div>';
         return;
     }
     var html = '';
@@ -253,9 +253,9 @@ async function _handleCardAction(id, act) {
     try {
         if (act === 'edit') { _openEditor(id); return; }
         if (act === 'dup') {
-            if (!_confirm('复制该套装为新套装？')) return;
+            if (!_confirm('复制该风格模板为新模板？')) return;
             await _api('/api/style-suits/' + id + '/duplicate', { method: 'POST' });
-            _showToast('已复制为新套装');
+            _showToast('已复制为新模板');
         } else if (act === 'export') {
             var d = await _api('/api/style-suits/' + id + '/export');
             _downloadStyle(d.doc, d.filename);
@@ -269,7 +269,7 @@ async function _handleCardAction(id, act) {
         } else if (act === 'restore') {
             await _api('/api/style-suits/' + id + '/restore', { method: 'POST' });
         } else if (act === 'purge') {
-            if (!_confirm('永久删除该套装？不可恢复！')) return;
+            if (!_confirm('永久删除该风格模板？不可恢复！')) return;
             await _api('/api/style-suits/' + id + '?force=true', { method: 'DELETE' });
         }
         await _loadSuits();
@@ -300,15 +300,15 @@ function _showDetail(it) {
       '<div class="suit-detail-section"><div class="suit-detail-label">🎨 风格词条</div>' +
         '<div class="suit-detail-line"><b>正向：</b>' + _esc(words.positive || '（空）') + '</div>' +
         '<div class="suit-detail-line"><b>负面：</b>' + _esc(words.negative || '（空）') + '</div></div>' +
-      '<div class="suit-detail-section"><div class="suit-detail-label">⚙️ 渲染参数</div>' +
+      '<div class="suit-detail-section"><div class="suit-detail-label">⚙️ 生成参数</div>' +
         '<div class="suit-detail-line">模型 ' + _esc(rp.model_version || '5.0') + ' · ' + _esc(rp.ratio || '1:1') + ' · ' + _esc(rp.resolution_type || '2k') +
         ' · CFG ' + _esc(rp.cfg) + ' · 步数 ' + _esc(rp.steps) + '</div></div>' +
-      '<div class="suit-detail-section"><div class="suit-detail-label">📦 产出配件</div><div>' + (parts || '<span class="suit-tag">主角色定图</span>') + '</div></div>' +
+      '<div class="suit-detail-section"><div class="suit-detail-label">📦 视图资产</div><div>' + (parts || '<span class="suit-tag">主角色定图</span>') + '</div></div>' +
       '<div class="suit-detail-section"><div class="suit-detail-label">🖼️ 整合排版</div>' +
         '<div class="suit-detail-line">模板 ' + _esc(layout.template || 'default') + ' · 色卡 ' + (layout.color_card ? '开' : '关') + ' · 标题 ' + _esc(layout.title_text || '（无）') + '</div></div>' +
       '<div class="suit-detail-actions">' +
         '<button class="suit-btn suit-btn-primary" id="suitDetailEdit">✏️ 编辑</button>' +
-        '<button class="suit-btn" id="suitDetailAssemble">🧩 装配到操作台</button>' +
+        '<button class="suit-btn" id="suitDetailAssemble">🧩 载入组装工作台</button>' +
         '<button class="suit-btn" id="suitDetailExport">⬇️ 导出</button>' +
         '<button class="suit-btn" id="suitDetailVersions">📜 版本</button>' +
       '</div>';
@@ -316,7 +316,7 @@ function _showDetail(it) {
     detail.querySelector('#suitDetailAssemble').addEventListener('click', function() {
         state.workbench.suit_id = it.id;
         state.workbench.suit_config = it.config || {};
-        _showToast('套装已装配到操作台');
+        _showToast('套装已载入组装工作台');
         _openWorkbench();
     });
     detail.querySelector('#suitDetailExport').addEventListener('click', async function() {
@@ -428,9 +428,9 @@ function _editorTab(tabKey) {
     var parts = cfg.output_parts || [];
     if (tabKey === 'words') {
         return '<div class="suit-form">' +
-          '<label class="suit-form-label">套装固定正向画风词（加载自动追加）</label>' +
+          '<label class="suit-form-label">模板固定正向画风词（加载自动追加）</label>' +
           '<textarea class="suit-input suit-textarea" id="edWordsPos" rows="4" placeholder="例：电影级写实，35mm镜头，浅景深，皮肤细节真实...">' + _esc(words.positive || '') + '</textarea>' +
-          '<label class="suit-form-label">套装独立负面词（区别于全局负面）</label>' +
+          '<label class="suit-form-label">模板独立负面词（区别于全局负面）</label>' +
           '<textarea class="suit-input suit-textarea" id="edWordsNeg" rows="3" placeholder="例：卡通，变形，低质量...">' + _esc(words.negative || '') + '</textarea>' +
         '</div>';
     }
@@ -471,9 +471,9 @@ function _editorTab(tabKey) {
     // base
     var tagsStr = (e.tags || []).join(',');
     return '<div class="suit-form">' +
-      '<label class="suit-form-label">套装名称<input class="suit-input" id="edName" value="' + _esc(e.name || '') + '" placeholder="必填"></label>' +
+      '<label class="suit-form-label">模板名称<input class="suit-input" id="edName" value="' + _esc(e.name || '') + '" placeholder="必填"></label>' +
       '<label class="suit-form-label">自定义标签（逗号分隔）<input class="suit-input" id="edTags" value="' + _esc(tagsStr) + '" placeholder="影视写实,二次元,国风"></label>' +
-      '<label class="suit-form-label">备注<textarea class="suit-input suit-textarea" id="edRemark" rows="3" placeholder="套装说明...">' + _esc(e.remark || '') + '</textarea></label>' +
+      '<label class="suit-form-label">备注<textarea class="suit-input suit-textarea" id="edRemark" rows="3" placeholder="模板说明...">' + _esc(e.remark || '') + '</textarea></label>' +
       '<label class="suit-form-label">封面图 URL<input class="suit-input" id="edCover" value="' + _esc(e.cover_image || '') + '" placeholder="可选"></label>' +
     '</div>';
 }
@@ -484,20 +484,20 @@ function _renderEditor() {
     var html = '' +
     '<div class="suit-modal-mask" id="suitEditorMask" onclick="if(event.target===this)window.STYLE_SUIT._closeEditor()">' +
       '<div class="suit-modal suit-modal-lg">' +
-        '<div class="suit-modal-head"><span>' + (state.editorIsNew ? '🎨 新建风格套装' : '🎨 编辑套装：' + _esc(e.name)) + '</span>' +
+        '<div class="suit-modal-head"><span>' + (state.editorIsNew ? '🎨 新建风格套装' : '🎨 编辑风格套装：' + _esc(e.name)) + '</span>' +
           '<button class="suit-modal-close" onclick="window.STYLE_SUIT._closeEditor()">×</button></div>' +
         '<div class="suit-editor-tabs">' +
           '<button class="suit-editor-tab active" data-tab="words">① 风格词条</button>' +
-          '<button class="suit-editor-tab" data-tab="render">② 渲染参数</button>' +
-          '<button class="suit-editor-tab" data-tab="output">③ 产出配件</button>' +
+          '<button class="suit-editor-tab" data-tab="render">② 生成参数</button>' +
+          '<button class="suit-editor-tab" data-tab="output">③ 视图资产</button>' +
           '<button class="suit-editor-tab" data-tab="layout">④ 整合排版</button>' +
           '<button class="suit-editor-tab" data-tab="base">⑤ 基础信息</button>' +
         '</div>' +
         '<div class="suit-editor-body" id="suitEditorBody">' + _editorTab('words') + '</div>' +
         '<div class="suit-modal-foot">' +
           '<button class="suit-btn" id="edBtnCancel">取消</button>' +
-          '<button class="suit-btn" id="edBtnSaveAs">另存为新套装</button>' +
-          '<button class="suit-btn suit-btn-primary" id="edBtnSave">' + (state.editorIsNew ? '创建套装' : '保存') + '</button>' +
+          '<button class="suit-btn" id="edBtnSaveAs">另存为新模板</button>' +
+          '<button class="suit-btn suit-btn-primary" id="edBtnSave">' + (state.editorIsNew ? '创建风格套装' : '保存') + '</button>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -563,17 +563,17 @@ function _collectEditorBase() {
 
 async function _saveEditor(asNew) {
     var base = _collectEditorBase();
-    if (!base.name) { _showToast('套装名称必填', true); return; }
+    if (!base.name) { _showToast('模板名称必填', true); return; }
     var cfg = _collectEditorConfig();
     cfg.meta = { name: base.name, tags: base.tags, remark: base.remark, cover: base.cover_image };
     try {
         if (state.editorIsNew || asNew || !state.editor.id) {
             var body = Object.assign({}, base, { config: cfg });
             await _api('/api/style-suits', { method: 'POST', body: JSON.stringify(body) });
-            _showToast(asNew ? '已另存为新套装' : '套装创建成功');
+            _showToast(asNew ? '已另存为新模板' : '风格模板创建成功');
         } else {
             await _api('/api/style-suits/' + state.editor.id, { method: 'PUT', body: JSON.stringify({ config: cfg, name: base.name, tags: base.tags, remark: base.remark, cover_image: base.cover_image }) });
-            _showToast('套装已保存（新版本已快照）');
+            _showToast('风格模板已保存（新版本已快照）');
         }
         _closeEditor();
         _loadSuits();
@@ -590,12 +590,12 @@ function _closeEditor() {
 
 window.STYLE_SUIT._closeEditor = _closeEditor;
 
-// ==================== ③ 操作台（简化交互版：点击装配） ====================
+// ==================== ③ 组装工作台（简化交互版：点击装配） ====================
 async function _openWorkbench() {
     _activatePanel('viewAssembleWorkbench');
     var el = document.getElementById('viewAssembleWorkbench');
     await _renderWorkbench(el);
-    // 尝试加载历史草稿
+    // 尝试加载历史装配记录
     _loadDrafts();
 }
 
@@ -606,16 +606,16 @@ async function _renderWorkbench(el) {
     el.innerHTML = '' +
     '<div class="suit-workbench">' +
       '<div class="suit-wb-header">' +
-        '<div class="suit-bag-title"><i class="bi bi-tools"></i> 装备装配操作台</div>' +
+        '<div class="suit-bag-title"><i class="bi bi-tools"></i> 角色组装工作台</div>' +
         '<div class="suit-wb-header-actions">' +
-          '<button class="suit-btn" id="wbBtnDrafts" title="历史草稿">📋 草稿</button>' +
-          '<button class="suit-btn suit-btn-primary" id="wbBtnRender">🚀 提交批量渲染</button>' +
+          '<button class="suit-btn" id="wbBtnDrafts" title="历史装配记录">📋 草稿</button>' +
+          '<button class="suit-btn suit-btn-primary" id="wbBtnRender">🚀 提交批量生成</button>' +
         '</div>' +
       '</div>' +
       '<div class="suit-wb-body">' +
-        // 左：资源背包（简化点击添加）
+        // 左：资源库（简化点击添加）
         '<div class="suit-wb-left">' +
-          '<div class="suit-wb-panel-title">🧰 资源背包（点击添加）</div>' +
+          '<div class="suit-wb-panel-title">🧰 资源库（点击添加）</div>' +
           '<div class="suit-wb-res-tabs">' +
             '<button class="suit-wb-res-tab active" data-res="base">素材</button>' +
             '<button class="suit-wb-res-tab" data-res="cards">词卡</button>' +
@@ -623,22 +623,22 @@ async function _renderWorkbench(el) {
           '</div>' +
           '<div class="suit-wb-res-list" id="wbResList"><div class="suit-empty">加载中...</div></div>' +
         '</div>' +
-        // 中：四层卡槽
+        // 中：四层组装结构
         '<div class="suit-wb-mid">' +
           '<div class="suit-slot suit-slot-base" id="slotBase">' +
-            '<div class="suit-slot-label">① 基底卡槽 <span class="suit-slot-req">必填</span></div>' +
-            '<div class="suit-slot-body" id="slotBaseBody"><div class="suit-slot-empty">点击左侧素材添加真人参考</div></div>' +
+            '<div class="suit-slot-label">① 角色基底层 <span class="suit-slot-req">必填</span></div>' +
+            '<div class="suit-slot-body" id="slotBaseBody"><div class="suit-slot-empty">点击左侧素材添加角色基底参考</div></div>' +
           '</div>' +
           '<div class="suit-slot" id="slotRunes">' +
-            '<div class="suit-slot-label">② 符文词卡槽 <span class="suit-slot-multi">可叠加 · 排序 · 删除</span></div>' +
-            '<div class="suit-slot-body" id="slotRunesBody"><div class="suit-slot-empty">点击左侧词卡添加（可多张）</div></div>' +
+            '<div class="suit-slot-label">② 风格词条层 <span class="suit-slot-multi">可叠加 · 排序 · 删除</span></div>' +
+            '<div class="suit-slot-body" id="slotRunesBody"><div class="suit-slot-empty">点击左侧词条添加（可叠加）</div></div>' +
           '</div>' +
           '<div class="suit-slot suit-slot-suit" id="slotSuit">' +
-            '<div class="suit-slot-label">③ 套装外壳卡槽 <span class="suit-slot-req">唯一</span></div>' +
-            '<div class="suit-slot-body" id="slotSuitBody"><div class="suit-slot-empty">点击左侧套装一键加载全套配置</div></div>' +
+            '<div class="suit-slot-label">③ 风格模板层 <span class="suit-slot-req">唯一</span></div>' +
+            '<div class="suit-slot-body" id="slotSuitBody"><div class="suit-slot-empty">点击左侧模板一键加载全套配置</div></div>' +
           '</div>' +
           '<div class="suit-slot" id="slotAccessory">' +
-            '<div class="suit-slot-label">④ 配件选配区 <span class="suit-slot-multi">临时增减视图资产</span></div>' +
+            '<div class="suit-slot-label">④ 视图资产选配 <span class="suit-slot-multi">临时增减视图资产</span></div>' +
             '<div class="suit-slot-body" id="slotAccessoryBody"></div>' +
           '</div>' +
         '</div>' +
@@ -646,9 +646,9 @@ async function _renderWorkbench(el) {
         '<div class="suit-wb-right">' +
           '<div class="suit-wb-panel-title">👁️ 实时预览</div>' +
           '<div class="suit-preview" id="wbPreview">' +
-            '<div class="suit-preview-empty">装配完成后此处显示完整提示词与渲染参数</div>' +
+            '<div class="suit-preview-empty">组装完成后此处显示完整提示词与生成参数</div>' +
           '</div>' +
-          '<div class="suit-wb-panel-title" style="margin-top:12px;">🧩 产出配件</div>' +
+          '<div class="suit-wb-panel-title" style="margin-top:12px;">🧩 视图资产</div>' +
           '<div class="suit-parts-picker" id="wbParts">' +
             OUTPUT_PARTS.map(function(p) {
               return '<label class="suit-check-item"><input type="checkbox" class="wbPartCk" value="' + p.key + '"> ' + p.label + '</label>';
@@ -657,13 +657,13 @@ async function _renderWorkbench(el) {
           '<div class="suit-wb-channel">' +
             '<span class="suit-wb-panel-title" style="margin:0;">🛡️ 风控通道</span>' +
             '<select class="suit-input" id="wbChannel">' +
-              '<option value="virtual"' + (w.channel === 'virtual' ? ' selected' : '') + '>脱敏虚拟</option>' +
-              '<option value="real"' + (w.channel === 'real' ? ' selected' : '') + '>写实商用（需授权）</option>' +
+              '<option value="virtual"' + (w.channel === 'virtual' ? ' selected' : '') + '>脱敏虚拟通道</option>' +
+              '<option value="real"' + (w.channel === 'real' ? ' selected' : '') + '>写实商用通道通道（需授权）</option>' +
             '</select>' +
           '</div>' +
           '<div class="suit-wb-tools">' +
-            '<button class="suit-btn" id="wbBtnSaveDraft">💾 保存草稿</button>' +
-            '<button class="suit-btn" id="wbBtnClear">🗑️ 清空装配</button>' +
+            '<button class="suit-btn" id="wbBtnSaveDraft">💾 保存装配记录</button>' +
+            '<button class="suit-btn" id="wbBtnClear">🗑️ 清空组装</button>' +
           '</div>' +
         '</div>' +
       '</div>' +
@@ -686,7 +686,7 @@ function _bindWorkbench(el) {
     el.querySelector('#wbBtnRender').addEventListener('click', _submitRender);
     el.querySelector('#wbBtnSaveDraft').addEventListener('click', _saveDraft);
     el.querySelector('#wbBtnClear').addEventListener('click', function() {
-        if (!_confirm('清空当前装配？')) return;
+        if (!_confirm('清空当前组装？')) return;
         state.workbench = {
             name: '默认装配', base_asset_ref: {}, rune_card_ids: [], suit_id: 0,
             suit_config: null, accessory_list: [], channel: 'virtual',
@@ -717,7 +717,7 @@ async function _loadRes(type) {
                 return '<div class="suit-res-item suit-res-suit" data-id="' + it.id + '">' +
                   '<div class="suit-res-name">🎨 ' + _esc(it.name) + '</div>' +
                   '<div class="suit-res-sub">' + (it.tags || []).slice(0, 2).map(function(t) { return '<span class="suit-tag">' + _esc(t) + '</span>'; }).join('') + '</div>' +
-                  '<button class="suit-btn suit-btn-sm suit-res-add">装配</button>' +
+                  '<button class="suit-btn suit-btn-sm suit-res-add">载入</button>' +
                 '</div>';
             }).join('') : '<div class="suit-empty">暂无套装</div>';
             list.querySelectorAll('.suit-res-suit').forEach(function(item) {
@@ -773,7 +773,7 @@ async function _assembleSuit(suitId) {
         state.workbench.suit_config = it.config || {};
         var el = document.getElementById('viewAssembleWorkbench');
         _renderSlots(el); _renderPreview(el); _renderParts(el);
-        _showToast('套装已装配：' + it.name);
+        _showToast('风格模板已载入：' + it.name);
     } catch(e) {
         _showToast(e.message, true);
     }
@@ -781,11 +781,11 @@ async function _assembleSuit(suitId) {
 
 function _addRuneCard(cardId) {
     var w = state.workbench;
-    if (w.rune_card_ids.indexOf(cardId) >= 0) { _showToast('该词卡已在槽中'); return; }
+    if (w.rune_card_ids.indexOf(cardId) >= 0) { _showToast('该词条已在层中'); return; }
     w.rune_card_ids.push(cardId);
     var el = document.getElementById('viewAssembleWorkbench');
     _renderSlots(el); _renderPreview(el);
-    _showToast('词卡已添加（可继续叠加）');
+    _showToast('词条已添加（可继续叠加）');
 }
 
 function _renderSlots(el) {
@@ -803,14 +803,14 @@ function _renderSlots(el) {
                 w.base_asset_ref = {}; _renderSlots(el); _renderPreview(el);
             });
         } else {
-            baseBody.innerHTML = '<div class="suit-slot-empty">点击左侧素材添加真人参考</div>';
+            baseBody.innerHTML = '<div class="suit-slot-empty">点击左侧素材添加角色基底参考</div>';
         }
     }
-    // 符文词卡
+    // 风格词条
     var runesBody = el.querySelector('#slotRunesBody');
     if (runesBody) {
         if (!w.rune_card_ids.length) {
-            runesBody.innerHTML = '<div class="suit-slot-empty">点击左侧词卡添加（可多张）</div>';
+            runesBody.innerHTML = '<div class="suit-slot-empty">点击左侧词条添加（可叠加）</div>';
         } else {
             runesBody.innerHTML = w.rune_card_ids.map(function(cid, idx) {
                 return '<div class="suit-rune-chip" data-id="' + cid + '">' +
@@ -827,7 +827,7 @@ function _renderSlots(el) {
             });
         }
     }
-    // 套装外壳
+    // 风格模板
     var suitBody = el.querySelector('#slotSuitBody');
     if (suitBody) {
         if (w.suit_id && w.suit_config) {
@@ -841,17 +841,17 @@ function _renderSlots(el) {
                 _renderSlots(el); _renderPreview(el); _renderParts(el);
             });
         } else {
-            suitBody.innerHTML = '<div class="suit-slot-empty">点击左侧套装一键加载全套配置</div>';
+            suitBody.innerHTML = '<div class="suit-slot-empty">点击左侧模板一键加载全套配置</div>';
         }
     }
-    // 配件
+    // 视图资产
     var accBody = el.querySelector('#slotAccessoryBody');
     if (accBody) {
         var parts = _effectiveParts(w);
         accBody.innerHTML = parts.map(function(p) {
             var m = OUTPUT_PARTS.find(function(x) { return x.key === p; });
             return '<span class="suit-tag suit-tag-lg">' + _esc(m ? m.label : p) + '</span>';
-        }).join('') || '<div class="suit-slot-empty">勾选右侧产出配件</div>';
+        }).join('') || '<div class="suit-slot-empty">勾选右侧视图资产</div>';
     }
 }
 
@@ -887,7 +887,7 @@ function _renderPreview(el) {
     if (!w.base_asset_ref || (!w.base_asset_ref.desc && !w.base_asset_ref.url)) {
         html = '<div class="suit-preview-empty">① 缺少基底素材</div>';
     } else if (!w.suit_id) {
-        html = '<div class="suit-preview-empty">③ 缺少套装外壳</div>';
+        html = '<div class="suit-preview-empty">③ 缺少风格模板层</div>';
     } else {
         html += '<div class="suit-preview-line"><b>🎨 套装：</b>' + _esc(suitName) + '</div>';
         html += '<div class="suit-preview-line"><b>🧑 基底：</b>' + _esc(w.base_asset_ref.desc || w.base_asset_ref.url || '') + '</div>';
@@ -900,8 +900,8 @@ function _renderPreview(el) {
         if (neg) html += '<div class="suit-preview-section"><b>负面词：</b>' + _esc(neg) + '</div>';
         html += '<div class="suit-preview-section"><b>参数：</b>模型 ' + _esc(rp.model_version || '5.0') + ' · ' + _esc(rp.ratio || '1:1') + ' · ' + _esc(rp.resolution_type || '2k') +
           ' · CFG ' + _esc(rp.cfg) + ' · 步数 ' + _esc(rp.steps) + '</div>';
-        html += '<div class="suit-preview-section"><b>🛡️ 通道：</b>' + (w.channel === 'real' ? '写实商用' : '脱敏虚拟') + '</div>';
-        html += '<div class="suit-preview-warn">⚠️ 渲染将真实消耗生成额度，提交前请确认</div>';
+        html += '<div class="suit-preview-section"><b>🛡️ 通道：</b>' + (w.channel === 'real' ? '写实商用通道' : '脱敏虚拟通道') + '</div>';
+        html += '<div class="suit-preview-warn">⚠️ 生成将真实消耗生成额度，提交前请确认</div>';
     }
     pv.innerHTML = html;
 }
@@ -911,7 +911,7 @@ async function _saveDraft() {
     if (!w.base_asset_ref || (!w.base_asset_ref.desc && !w.base_asset_ref.url)) { _showToast('请先设置基底素材', true); return; }
     try {
         var body = {
-            name: '操作台草稿 ' + _now(),
+            name: '组装工作台草稿 ' + _now(),
             base_asset_ref: w.base_asset_ref,
             rune_card_ids: w.rune_card_ids,
             suit_id: w.suit_id,
@@ -921,7 +921,7 @@ async function _saveDraft() {
         };
         var d = await _api('/api/assemble/draft', { method: 'POST', body: JSON.stringify(body) });
         state.workbench.draftId = d.item.id;
-        _showToast('草稿已保存 #' + d.item.id);
+        _showToast('装配记录已保存 #' + d.item.id);
     } catch(e) {
         _showToast('保存失败：' + e.message, true);
     }
@@ -932,7 +932,7 @@ async function _showDraftList() {
         var d = await _api('/api/assemble/draft');
         var items = d.items || [];
         var html = '<div class="suit-modal-mask" onclick="if(event.target===this)this.remove()"><div class="suit-modal suit-modal-md">' +
-          '<div class="suit-modal-head"><span>📋 历史草稿</span><button class="suit-modal-close" onclick="this.closest(\'.suit-modal-mask\').remove()">×</button></div>' +
+          '<div class="suit-modal-head"><span>📋 历史装配记录</span><button class="suit-modal-close" onclick="this.closest(\'.suit-modal-mask\').remove()">×</button></div>' +
           '<div class="suit-modal-body">';
         if (!items.length) html += '<div class="suit-empty">暂无草稿</div>';
         items.forEach(function(dr) {
@@ -966,7 +966,7 @@ async function _showDraftList() {
                     mask.firstChild.remove();
                     var el = document.getElementById('viewAssembleWorkbench');
                     _renderSlots(el); _renderPreview(el); _renderParts(el);
-                    _showToast('草稿已加载');
+                    _showToast('装配记录已加载');
                 } catch(e) { _showToast(e.message, true); }
             });
         });
@@ -978,15 +978,15 @@ async function _showDraftList() {
 async function _submitRender() {
     var w = state.workbench;
     if (!w.base_asset_ref || (!w.base_asset_ref.desc && !w.base_asset_ref.url)) { _showToast('请先设置基底素材（①必填）', true); return; }
-    if (!w.suit_id) { _showToast('请先装配套装外壳（③必填）', true); return; }
-    if (w.channel === 'real' && !_confirm('写实商用通道需要授权备案，确认继续？')) return;
-    if (!_confirm('将真实提交批量渲染任务并消耗生成额度，确认继续？')) return;
+    if (!w.suit_id) { _showToast('请先载入风格模板（③必填）', true); return; }
+    if (w.channel === 'real' && !_confirm('写实商用通道通道需要授权备案，确认继续？')) return;
+    if (!_confirm('将真实提交批量生成任务并消耗生成额度，确认继续？')) return;
     try {
-        // 先保存草稿拿 draftId
+        // 先保存装配记录拿 draftId
         var draft = state.workbench.draftId;
         if (!draft) {
             var db = await _api('/api/assemble/draft', { method: 'POST', body: JSON.stringify({
-                name: '操作台草稿 ' + _now(),
+                name: '组装工作台草稿 ' + _now(),
                 base_asset_ref: w.base_asset_ref,
                 rune_card_ids: w.rune_card_ids,
                 suit_id: w.suit_id,
@@ -999,7 +999,7 @@ async function _submitRender() {
         }
         var body = { draft_id: draft, license_info: { authorized: w.channel !== 'real' } };
         var d = await _api('/api/assemble/render', { method: 'POST', body: JSON.stringify(body) });
-        _showToast('渲染已提交，批次 #' + d.batch.id + '（' + d.batch.total + ' 个产出项）');
+        _showToast('生成已提交，批次 #' + d.batch.id + '（' + d.batch.total + ' 个产出项）');
         _openResult(d.batch.id);
     } catch(e) {
         _showToast('提交失败：' + e.message, true);
@@ -1033,10 +1033,10 @@ function _renderResult(el, batch) {
     var html = '' +
     '<div class="suit-result">' +
       '<div class="suit-wb-header">' +
-        '<div class="suit-bag-title"><i class="bi bi-images"></i> 渲染结果 · 批次 #' + batch.id + '</div>' +
+        '<div class="suit-bag-title"><i class="bi bi-images"></i> 生成结果 · 批次 #' + batch.id + '</div>' +
         '<div class="suit-wb-header-actions">' +
           '<button class="suit-btn" id="resBtnRefresh">🔄 刷新</button>' +
-          '<button class="suit-btn" id="resBtnBack">⬅️ 返回操作台</button>' +
+          '<button class="suit-btn" id="resBtnBack">⬅️ 返回组装工作台</button>' +
         '</div>' +
       '</div>' +
       '<div class="suit-result-summary">' +
