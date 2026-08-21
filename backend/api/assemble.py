@@ -438,6 +438,11 @@ def submit_render(data: RenderSubmit, request: Request):
             adapt_hints = []
         params["prompt"] = prompt
         params["channel_hints"] = adapt_hints
+        # v5.50.28: 基底图作为参考图传入任务（source_image → _create_tasks → 提交时 --image）
+        if base.get("file_path"):
+            params["source_image"] = base["file_path"]
+        elif base.get("original_file_path"):
+            params["source_image"] = base["original_file_path"]
         # v5.50.22: 负面词独立传递
         neg = _build_negative_prompt(cfg)
         if neg:

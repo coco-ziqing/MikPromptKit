@@ -703,6 +703,10 @@ def _submit_task(task) -> dict:
         return dreamina_submit_image2image([src], prompt=prompt, model_version=task["model_version"] or "5.0",
                                            ratio=task["ratio"] or "1:1", resolution_type=task["resolution_type"] or "2k")
     if ttype == "text2image":
+        # v5.50.28: 带参考图（组装工作台基底图）→ 图生图参考模式（--image + @图像1 声明）
+        if src and os.path.isfile(src):
+            return dreamina_submit_image2image([src], prompt=prompt, model_version=task["model_version"] or "5.0",
+                                               ratio=task["ratio"] or "1:1", resolution_type=task["resolution_type"] or "2k")
         return dreamina_submit_text2image(prompt=prompt, model_version=task["model_version"] or "5.0",
                                           ratio=task["ratio"] or "1:1", resolution_type=task["resolution_type"] or "2k")
     if ttype == "text2video":
@@ -897,11 +901,13 @@ def _create_tasks(card_ids, ttype, params, u) -> list:
             prompt = (params.get("prompt") or "").strip() or (card["content"] or "")
             if not prompt and ttype in ("text2image", "text2video"):
                 continue
+            # v5.50.28: source_image 优先取 params（组装工作台基底图），否则用词卡 original_ref
+            src_img = (params.get("source_image") or "").strip() or (card["original_ref"] or "")
             cur = c.execute(
                 """INSERT INTO card_gen_tasks (card_id, task_type, prompt, source_image, model_version,
                    ratio, resolution_type, duration, video_resolution, session, creator_id, version, engine)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                [cid, ttype, prompt, card["original_ref"] or "",
+                [cid, ttype, prompt, src_img,
                  params.get("model_version", ""), params.get("ratio", ""),
                  params.get("resolution_type", ""), params.get("duration", 5),
                  params.get("video_resolution", ""), params.get("session", 0), u.get("id"),
