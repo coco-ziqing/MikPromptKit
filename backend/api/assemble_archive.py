@@ -346,8 +346,9 @@ MAX_BASE_SIZE = 1536  # 预处理后最大边长（对齐生成平台输入限�
 class BaseProcessReq(BaseModel):
     url: str = ""          # 原图 URL（/api/seedance/v2/refs/file/xxx 或 /api/thumbnails/original/xxx）
     file_path: str = ""    # 或本地文件路径
-    ratio: str = "1:1"     # 目标比例（1:1/3:4/4:3/9:16/16:9）
+    ratio: str = "1:1"     # 目标比例（1:1/3:4/4:3/9:16/16:9/original）
     crop: dict = {}        # 手动裁剪 {x, y, w, h}（可选，0-1 相对值）
+    align64: bool = False  # v5.50.16: 输出尺寸 64 倍数对齐（2的幂次生成规范，比例优先）
 
 
 @router.post("/api/assemble/base-process")
@@ -403,6 +404,9 @@ def process_base_image(data: BaseProcessReq, request: Request):
         img = _center_crop(img, tw, th)
     # 5. 限制尺寸（等比缩放）
     img = _limit_size(img, MAX_BASE_SIZE)
+    # v5.50.16: 64 倍数对齐（2的幂次生成规范，比例优先搜索，保持面积接近）
+    if data.align64:
+        img = _align64_size(img)
     # 6. 保存处理结果 + 预览
     import uuid as _uuid
     token = _uuid.uuid4().hex[:10]
@@ -457,6 +461,32 @@ def _limit_size(img, max_side):
         return img
     scale = max_side / max(w, h)
     return img.resize((int(w * scale), int(h * scale)), 2)  # LANCZOS
+
+
+def _align64_size(img):
+    """64 倍数对齐（2的幂次生成规范）：比例优先，在 64 网格上找最接近当前比例的尺寸，面积尽量接近"""
+    w, h = img.size
+    ratio = w / h
+    best = None
+    best_ratio_err = float("inf")
+    best_area_err = float("inf")
+    for k in range(1, w // 64 + 3):
+        m = max(1, round(k * 64 / ratio / 64))
+        w2, h2 = k * 64, m * 64
+        ratio_err = abs((w2 / h2) - ratio) / ratio
+        if ratio_err < best_ratio_err - 0.005:  # 比例优先
+            best_ratio_err = ratio_err
+            best_area_err = abs(w2 * h2 - w * h) / (w * h)
+            best = (w2, h2)
+        elif abs(ratio_err - best_ratio_err) <= 0.005:
+            # 比例相近时取面积更接近
+            ae = abs(w2 * h2 - w * h) / (w * h)
+            if ae < best_area_err:
+                best_area_err = ae
+                best = (w2, h2)
+    if best:
+        return img.resize(best, 2)  # LANCZOS
+    return img
 
 
 # ==================== 生成平台能力清单（v5.50.7） ====================

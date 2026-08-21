@@ -1108,13 +1108,13 @@ function _finishBaseSet() {
 }
 
 // ============ 基底预处理：比例裁剪 + 尺寸限制 + 预览（v5.50.7） ============
-async function _processBase(url, filePath, ratio, crop) {
+async function _processBase(url, filePath, ratio, crop, align64) {
     try {
         // v5.50.8: 始终基于原始上传图处理（避免叠加裁切）
         var src = state._baseOriginal || {};
         var useUrl = src.url || url || '';
         var usePath = src.file_path || filePath || '';
-        var body = { url: useUrl, file_path: usePath, ratio: ratio || '1:1', crop: crop || {} };
+        var body = { url: useUrl, file_path: usePath, ratio: ratio || '1:1', crop: crop || {}, align64: !!align64 };
         var d = await _api('/api/assemble/base-process', { method: 'POST', body: JSON.stringify(body) });
         if (!d.ok) throw new Error(d.detail || '预处理失败');
         // 保存处理结果到工作台（临时，等用户确认比例）
@@ -1362,7 +1362,8 @@ function _bindFreeCrop() {
     }
     document.getElementById('freeCropApply').addEventListener('click', async function() {
         if (!state._freeCrop) { _showToast('请先在图上拖拽框选区域', true); return; }
-        var d2 = await _processBase('', '', 'original', state._freeCrop);
+        // v5.50.16: 应用裁剪时 64 对齐（生成规范）
+        var d2 = await _processBase('', '', 'original', state._freeCrop, true);
         if (d2) {
             _closeFreeCrop();
             var img2 = document.getElementById('basePrevImg');
@@ -1374,38 +1375,33 @@ function _bindFreeCrop() {
     });
 }
 
-// v5.50.14/15: 框选比例规范化 — 收拢接近用户划定尺寸（保持面积）+ 64 倍数对齐（2的幂次生成规范）+ 中心锚定不超画布
+// v5.50.16: 框选比例规范化 — 纯比例公式，精确对应目标比例，不依赖原始图尺寸参与搜索
+// 显示比例 = (w*nw)/(h*nh) = target → w/h = target*nh/nw；保持框选面积，中心锚定
 function _normalizeCrop(crop, ratioKey) {
     var RATIOS = { '1:1': 1, '3:4': 3/4, '4:3': 4/3, '9:16': 9/16, '16:9': 16/9 };
     if (ratioKey === 'original' || !RATIOS[ratioKey]) return crop;
     var target = RATIOS[ratioKey];
     var img = document.getElementById('freeCropImg');
-    var nw = (img && img.naturalWidth) || 1000;
-    var nh = (img && img.naturalHeight) || 1000;
-    // 用户框选像素尺寸
-    var uw = crop.w * nw, uh = crop.h * nh;
-    var area = uw * uh;
-    // 在 64 倍数网格上搜索：保持面积接近用户框 + 比例误差最小（2的幂次生成规范）
-    var best = null, bestScore = Infinity;
-    for (var w = 64; w <= nw; w += 64) {
-        var h = Math.round(w / target / 64) * 64;
-        if (h < 64 || h > nh) continue;
-        var ratioErr = Math.abs((w / h) - target) / target;
-        var areaErr = Math.abs(w * h - area) / area;
-        var score = ratioErr * 10 + areaErr;  // 比例优先，面积次之
-        if (score < bestScore) { bestScore = score; best = { w: w, h: h }; }
+    var nw = (img && img.naturalWidth) || 1;
+    var nh = (img && img.naturalHeight) || 1;
+    // 选框显示宽高比 = (w_rel*nw)/(h_rel*nh) = target → w_rel/h_rel = target*nh/nw
+    var relTarget = target * nh / nw;
+    // 保持框选面积（相对空间）
+    var area = crop.w * crop.h;
+    var w = Math.sqrt(area * relTarget);
+    var h = w / relTarget;
+    // 中心锚定 + clamp 画布（0-1）
+    var cx = crop.x + crop.w / 2;
+    var cy = crop.y + crop.h / 2;
+    var x = cx - w / 2, y = cy - h / 2;
+    if (w > 1 || h > 1) {
+        var s = Math.min(1 / w, 1 / h);
+        w *= s; h *= s;
+        x = cx - w / 2; y = cy - h / 2;
     }
-    if (!best) {  // 兜底：取画布内最大 64 对齐
-        var wmax = Math.floor(nw / 64) * 64, hmax = Math.floor(nh / 64) * 64;
-        best = { w: wmax, h: hmax };
-    }
-    var w = best.w, h = best.h;
-    // 中心锚定 + clamp 画布
-    var cx = (crop.x + crop.w / 2) * nw;
-    var cy = (crop.y + crop.h / 2) * nh;
-    var x = Math.max(0, Math.min(nw - w, cx - w / 2));
-    var y = Math.max(0, Math.min(nh - h, cy - h / 2));
-    return { x: x / nw, y: y / nh, w: w / nw, h: h / nh };
+    x = Math.max(0, Math.min(1 - w, x));
+    y = Math.max(0, Math.min(1 - h, y));
+    return { x: x, y: y, w: w, h: h };
 }
 
 function _closeFreeCrop() {
