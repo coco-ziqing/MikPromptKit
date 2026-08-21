@@ -1,4 +1,4 @@
-// v5.48.1: 风格套装系统前端 — 风格套装库 + 5-Tab 编辑器弹窗 + 角色组装工作台 + 生成结果面板（简化交互版，无拖拽）
+// v5.48.1: 角色风格包系统前端 — 角色风格包库 + 5-Tab 编辑器弹窗 + 角色组装工作台 + 生成结果面板（简化交互版，无拖拽）
 // 依赖: App.fetchJSON / App._escape / PK_AUTH_CLIENT._token
 (function() {
 'use strict';
@@ -121,7 +121,7 @@ window.STYLE_SUIT = {
     openResult: function(batchId) { _openResult(batchId); }
 };
 
-// ==================== ① 风格套装库 ====================
+// ==================== ① 角色风格包库 ====================
 async function _openBag() {
     _activatePanel('viewStyleSuit');
     var el = document.getElementById('viewStyleSuit');
@@ -137,9 +137,9 @@ function _bagShell() {
     return '' +
     '<div class="suit-bag">' +
       '<div class="suit-bag-header">' +
-        '<div class="suit-bag-title"><i class="bi bi-magic"></i> 风格套装</div>' +
+        '<div class="suit-bag-title"><i class="bi bi-magic"></i> 角色风格包</div>' +
         '<div class="suit-bag-actions">' +
-          '<button class="suit-btn suit-btn-primary" id="suitBtnNew"><i class="bi bi-plus-lg"></i> 新建风格套装</button>' +
+          '<button class="suit-btn suit-btn-primary" id="suitBtnNew"><i class="bi bi-plus-lg"></i> 新建角色风格包</button>' +
           '<button class="suit-btn" id="suitBtnImport" title="导入 .style 文件"><i class="bi bi-box-arrow-in-down"></i> 导入</button>' +
           '<button class="suit-btn" id="suitBtnWorkbench" title="打开角色组装工作台"><i class="bi bi-tools"></i> 组装工作台</button>' +
         '</div>' +
@@ -184,7 +184,7 @@ async function _loadSuits() {
     try {
         var params = 'tab=' + encodeURIComponent(state.tab);
         if (state.q) params += '&q=' + encodeURIComponent(state.q);
-        var d = await _api('/api/style-suits?' + params);
+        var d = await _api('/api/style-packs?' + params);
         state.items = d.items || [];
         count.textContent = state.tab === 'trash' ? '回收站 ' + state.items.length + ' 项' : '共 ' + state.items.length + ' 套';
         _renderGrid(el, state.items);
@@ -197,7 +197,7 @@ function _renderGrid(el, items) {
     var grid = el.querySelector('#suitGrid');
     if (!items.length) {
         grid.innerHTML = '<div class="suit-empty"><div class="suit-empty-icon">🧰</div><p>' +
-            (state.tab === 'trash' ? '回收站空空如也' : '还没有风格模板，点击右上角「新建风格套装」创建第一套风格模板！') + '</p></div>';
+            (state.tab === 'trash' ? '回收站空空如也' : '还没有风格模板，点击右上角「新建角色风格包」创建第一套风格模板！') + '</p></div>';
         return;
     }
     var html = '';
@@ -263,27 +263,27 @@ async function _handleCardAction(id, act) {
             var it = state.items.find(function(x) { return x.id === id; });
             var nn = prompt('重命名套装：', it ? it.name : '');
             if (!nn || !nn.trim()) return;
-            await _api('/api/style-suits/' + id, { method: 'PUT', body: JSON.stringify({ name: nn.trim() }) });
+            await _api('/api/style-packs/' + id, { method: 'PUT', body: JSON.stringify({ name: nn.trim() }) });
             _showToast('已重命名');
         } else if (act === 'dup') {
             if (!_confirm('复制该风格模板为新模板？')) return;
-            await _api('/api/style-suits/' + id + '/duplicate', { method: 'POST' });
+            await _api('/api/style-packs/' + id + '/duplicate', { method: 'POST' });
             _showToast('已复制为新模板');
         } else if (act === 'export') {
-            var d = await _api('/api/style-suits/' + id + '/export');
+            var d = await _api('/api/style-packs/' + id + '/export');
             _downloadStyle(d.doc, d.filename);
         } else if (act === 'fav') {
-            await _api('/api/style-suits/' + id + '/favorite', { method: 'PUT', body: JSON.stringify({ fav: true }) });
+            await _api('/api/style-packs/' + id + '/favorite', { method: 'PUT', body: JSON.stringify({ fav: true }) });
         } else if (act === 'unfav') {
-            await _api('/api/style-suits/' + id + '/favorite', { method: 'PUT', body: JSON.stringify({ fav: false }) });
+            await _api('/api/style-packs/' + id + '/favorite', { method: 'PUT', body: JSON.stringify({ fav: false }) });
         } else if (act === 'del') {
             if (!_confirm('移入回收站？')) return;
-            await _api('/api/style-suits/' + id, { method: 'DELETE' });
+            await _api('/api/style-packs/' + id, { method: 'DELETE' });
         } else if (act === 'restore') {
-            await _api('/api/style-suits/' + id + '/restore', { method: 'POST' });
+            await _api('/api/style-packs/' + id + '/restore', { method: 'POST' });
         } else if (act === 'purge') {
             if (!_confirm('永久删除该风格模板？不可恢复！')) return;
-            await _api('/api/style-suits/' + id + '?force=true', { method: 'DELETE' });
+            await _api('/api/style-packs/' + id + '?force=true', { method: 'DELETE' });
         }
         await _loadSuits();
     } catch(e) {
@@ -381,7 +381,7 @@ function _showDetail(it) {
     });
     detail.querySelector('#suitDetailExport').addEventListener('click', async function() {
         try {
-            var d = await _api('/api/style-suits/' + it.id + '/export');
+            var d = await _api('/api/style-packs/' + it.id + '/export');
             _downloadStyle(d.doc, d.filename);
         } catch(e) { _showToast(e.message, true); }
     });
@@ -408,8 +408,8 @@ function _importSuit() {
         try {
             var text = await file.text();
             var doc = JSON.parse(text);
-            if (doc.format !== 'mikpromptkit.style-suit') throw new Error('不是有效的 .style 套装文件');
-            var d = await _api('/api/style-suits/import', { method: 'POST', body: JSON.stringify(doc) });
+            if (doc.format !== 'mikpromptkit.style-pack') throw new Error('不是有效的 .style 套装文件');
+            var d = await _api('/api/style-packs/import', { method: 'POST', body: JSON.stringify(doc) });
             _showToast('导入成功：' + (d.item ? d.item.name : ''));
             _loadSuits();
         } catch(e) {
@@ -421,7 +421,7 @@ function _importSuit() {
 
 async function _showVersions(suitId) {
     try {
-        var d = await _api('/api/style-suits/' + suitId + '/versions');
+        var d = await _api('/api/style-packs/' + suitId + '/versions');
         var items = d.items || [];
         var html = '<div class="suit-modal-mask" onclick="if(event.target===this)this.remove()"><div class="suit-modal suit-modal-md">' +
           '<div class="suit-modal-head"><span>📜 版本历史（' + items.length + '）</span><button class="suit-modal-close" onclick="this.closest(\'.suit-modal-mask\').remove()">×</button></div>' +
@@ -444,7 +444,7 @@ async function _showVersions(suitId) {
             btn.addEventListener('click', async function() {
                 if (!_confirm('回滚到该版本？当前配置将生成新快照。')) return;
                 try {
-                    await _api('/api/style-suits/' + suitId + '/rollback', { method: 'POST', body: JSON.stringify({ version_id: parseInt(btn.getAttribute('data-vid'), 10) }) });
+                    await _api('/api/style-packs/' + suitId + '/rollback', { method: 'POST', body: JSON.stringify({ version_id: parseInt(btn.getAttribute('data-vid'), 10) }) });
                     _showToast('已回滚');
                     modal.remove();
                     _loadSuits();
@@ -461,7 +461,7 @@ async function _openEditor(id) {
     state.editorIsNew = !id;
     if (id) {
         try {
-            var d = await _api('/api/style-suits/' + id);
+            var d = await _api('/api/style-packs/' + id);
             state.editor = d.item;
         } catch(e) { _showToast(e.message, true); return; }
     } else {
@@ -544,7 +544,7 @@ function _renderEditor() {
     var html = '' +
     '<div class="suit-modal-mask" id="suitEditorMask" onclick="if(event.target===this)window.STYLE_SUIT._closeEditor()">' +
       '<div class="suit-modal suit-modal-lg">' +
-        '<div class="suit-modal-head"><span>' + (state.editorIsNew ? '🎨 新建风格套装' : '🎨 编辑风格套装：' + _esc(e.name)) + '</span>' +
+        '<div class="suit-modal-head"><span>' + (state.editorIsNew ? '🎨 新建角色风格包' : '🎨 编辑角色风格包：' + _esc(e.name)) + '</span>' +
           '<button class="suit-modal-close" onclick="window.STYLE_SUIT._closeEditor()">×</button></div>' +
         '<div class="suit-editor-tabs">' +
           '<button class="suit-editor-tab active" data-tab="words">① 风格词条</button>' +
@@ -557,7 +557,7 @@ function _renderEditor() {
         '<div class="suit-modal-foot">' +
           '<button class="suit-btn" id="edBtnCancel">取消</button>' +
           '<button class="suit-btn" id="edBtnSaveAs">另存为新模板</button>' +
-          '<button class="suit-btn suit-btn-primary" id="edBtnSave">' + (state.editorIsNew ? '创建风格套装' : '保存') + '</button>' +
+          '<button class="suit-btn suit-btn-primary" id="edBtnSave">' + (state.editorIsNew ? '创建角色风格包' : '保存') + '</button>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -629,10 +629,10 @@ async function _saveEditor(asNew) {
     try {
         if (state.editorIsNew || asNew || !state.editor.id) {
             var body = Object.assign({}, base, { config: cfg });
-            await _api('/api/style-suits', { method: 'POST', body: JSON.stringify(body) });
+            await _api('/api/style-packs', { method: 'POST', body: JSON.stringify(body) });
             _showToast(asNew ? '已另存为新模板' : '风格模板创建成功');
         } else {
-            await _api('/api/style-suits/' + state.editor.id, { method: 'PUT', body: JSON.stringify({ config: cfg, name: base.name, tags: base.tags, remark: base.remark, cover_image: base.cover_image }) });
+            await _api('/api/style-packs/' + state.editor.id, { method: 'PUT', body: JSON.stringify({ config: cfg, name: base.name, tags: base.tags, remark: base.remark, cover_image: base.cover_image }) });
             _showToast('风格模板已保存（新版本已快照）');
         }
         _closeEditor();
@@ -771,7 +771,7 @@ async function _loadRes(type) {
     list.innerHTML = '<div class="suit-empty">加载中...</div>';
     try {
         if (type === 'suits') {
-            var d = await _api('/api/style-suits?tab=all');
+            var d = await _api('/api/style-packs?tab=all');
             var items = (d.items || []).filter(function(x) { return !x.is_deleted; });
             list.innerHTML = items.length ? items.map(function(it) {
                 return '<div class="suit-res-item suit-res-suit" data-id="' + it.id + '">' +
@@ -829,7 +829,7 @@ async function _loadRes(type) {
 
 async function _assembleSuit(suitId) {
     try {
-        var d = await _api('/api/style-suits/' + suitId);
+        var d = await _api('/api/style-packs/' + suitId);
         var it = d.item;
         state.workbench.suit_id = suitId;
         state.workbench.suit_config = it.config || {};
@@ -1029,7 +1029,7 @@ async function _showDraftList() {
                     };
                     if (state.workbench.suit_id) {
                         try {
-                            var sd = await _api('/api/style-suits/' + state.workbench.suit_id);
+                            var sd = await _api('/api/style-packs/' + state.workbench.suit_id);
                             state.workbench.suit_config = sd.item.config || {};
                         } catch(e2) {}
                     }

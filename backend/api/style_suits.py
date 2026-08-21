@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-风格套装 API — v5.47.0 链路验证版
+角色风格包 API — v5.47.0 链路验证版
 能力：CRUD / 配置读写 / 版本快照与回滚 / 复制 / 收藏 / 回收站 / .style 导入导出
 设计：五 Tab 配置统一存 config_json（单列 JSON 化，字段扩展不加表）
 """
@@ -19,7 +19,7 @@ except Exception:
 
 from jwt_auth import get_current_user
 
-router = APIRouter(tags=["风格套装"])
+router = APIRouter(tags=["角色风格包"])
 
 # ==================== 工具 ====================
 
@@ -115,7 +115,7 @@ class StyleSuitUpdate(BaseModel):
 
 # ==================== API ====================
 
-@router.get("/api/style-suits")
+@router.get("/api/style-packs")
 def list_style_suits(request: Request,
                      tab: str = Query("all", description="all/user/system/favorite/trash"),
                      tag: str = Query(""),
@@ -151,7 +151,7 @@ def list_style_suits(request: Request,
         c.close()
 
 
-@router.post("/api/style-suits")
+@router.post("/api/style-packs")
 def create_style_suit(data: StyleSuitCreate, request: Request):
     """新建套装（含默认五 Tab 配置）"""
     u = _auth(request)
@@ -182,7 +182,7 @@ def create_style_suit(data: StyleSuitCreate, request: Request):
         c.close()
 
 
-@router.get("/api/style-suits/{suit_id}")
+@router.get("/api/style-packs/{suit_id}")
 def get_style_suit(suit_id: int, request: Request):
     _auth(request)
     c = _db()
@@ -195,7 +195,7 @@ def get_style_suit(suit_id: int, request: Request):
         c.close()
 
 
-@router.put("/api/style-suits/{suit_id}")
+@router.put("/api/style-packs/{suit_id}")
 def update_style_suit(suit_id: int, data: StyleSuitUpdate, request: Request):
     """更新套装：保存覆盖 + 自动版本快照"""
     u = _auth(request)
@@ -229,7 +229,7 @@ def update_style_suit(suit_id: int, data: StyleSuitUpdate, request: Request):
         c.close()
 
 
-@router.delete("/api/style-suits/{suit_id}")
+@router.delete("/api/style-packs/{suit_id}")
 def delete_style_suit(suit_id: int, request: Request, force: bool = Query(False)):
     """删除：软删除进回收站；force=true 永久删除"""
     _auth(request)
@@ -249,7 +249,7 @@ def delete_style_suit(suit_id: int, request: Request, force: bool = Query(False)
         c.close()
 
 
-@router.post("/api/style-suits/{suit_id}/restore")
+@router.post("/api/style-packs/{suit_id}/restore")
 def restore_style_suit(suit_id: int, request: Request):
     """从回收站恢复"""
     _auth(request)
@@ -262,7 +262,7 @@ def restore_style_suit(suit_id: int, request: Request):
         c.close()
 
 
-@router.post("/api/style-suits/{suit_id}/duplicate")
+@router.post("/api/style-packs/{suit_id}/duplicate")
 def duplicate_style_suit(suit_id: int, request: Request):
     """一键复制衍生新套装"""
     u = _auth(request)
@@ -291,7 +291,7 @@ def duplicate_style_suit(suit_id: int, request: Request):
         c.close()
 
 
-@router.put("/api/style-suits/{suit_id}/favorite")
+@router.put("/api/style-packs/{suit_id}/favorite")
 def favorite_style_suit(suit_id: int, request: Request, fav: bool = Body(True, embed=True)):
     _auth(request)
     c = _db()
@@ -303,7 +303,7 @@ def favorite_style_suit(suit_id: int, request: Request, fav: bool = Body(True, e
         c.close()
 
 
-@router.get("/api/style-suits/{suit_id}/versions")
+@router.get("/api/style-packs/{suit_id}/versions")
 def list_suit_versions(suit_id: int, request: Request):
     _auth(request)
     c = _db()
@@ -317,7 +317,7 @@ def list_suit_versions(suit_id: int, request: Request):
         c.close()
 
 
-@router.post("/api/style-suits/{suit_id}/rollback")
+@router.post("/api/style-packs/{suit_id}/rollback")
 def rollback_suit(suit_id: int, request: Request, version_id: int = Body(..., embed=True)):
     """回滚到指定版本（回滚本身也生成新快照）"""
     u = _auth(request)
@@ -350,7 +350,7 @@ def rollback_suit(suit_id: int, request: Request, version_id: int = Body(..., em
 STYLE_SCHEMA_VERSION = 1
 
 
-@router.get("/api/style-suits/{suit_id}/export")
+@router.get("/api/style-packs/{suit_id}/export")
 def export_style_suit(suit_id: int, request: Request):
     """导出 .style 文件（JSON，含 schema 版本）"""
     _auth(request)
@@ -361,7 +361,7 @@ def export_style_suit(suit_id: int, request: Request):
             raise HTTPException(404, "套装不存在")
         cfg = json.loads(r["config_json"] or "{}")
         doc = {
-            "format": "mikpromptkit.style-suit",
+            "format": "mikpromptkit.style-pack",
             "schema_version": STYLE_SCHEMA_VERSION,
             "name": r["name"],
             "tags": json.loads(r["tags"] or "[]"),
@@ -375,11 +375,11 @@ def export_style_suit(suit_id: int, request: Request):
         c.close()
 
 
-@router.post("/api/style-suits/import")
+@router.post("/api/style-packs/import")
 def import_style_suit(request: Request, doc: dict = Body(...)):
     """导入 .style 文件（schema 版本校验）"""
     u = _auth(request)
-    if doc.get("format") != "mikpromptkit.style-suit":
+    if doc.get("format") != "mikpromptkit.style-pack":
         raise HTTPException(400, "非法的 .style 文件格式")
     ver = int(doc.get("schema_version") or 1)
     if ver > STYLE_SCHEMA_VERSION:
