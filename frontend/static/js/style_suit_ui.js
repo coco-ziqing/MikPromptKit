@@ -1056,7 +1056,13 @@ function _renderResult(el, batch) {
         }).join('') +
       '</div>' +
       '<div class="suit-result-foot">' +
-        '<div class="suit-hint">💡 排版拼合 / 色卡 / rolecard 存档在 v5.49.0 迭代交付</div>' +
+        '<div class="suit-result-actions">' +
+          '<button class="suit-btn" id="resBtnCompose" title="Pillow 合成整合人设拼贴图 + 角色色卡">🖼️ 整合拼贴</button>' +
+          '<button class="suit-btn" id="resBtnArchive" title="归档为角色档案（rolecard）">📁 角色归档</button>' +
+          '<button class="suit-btn" id="resBtnExport" title="下载全套资产 zip">📦 导出资产包</button>' +
+        '</div>' +
+        '<div class="suit-hint" id="resHint" style="margin-top:8px;">💡 拼贴图 / 色卡 / 归档 / 导出需批次有已完成资产</div>' +
+        '<div id="resComposeResult" style="margin-top:10px;"></div>' +
       '</div>' +
     '</div>';
     el.innerHTML = html;
@@ -1067,6 +1073,9 @@ function _renderResult(el, batch) {
         } catch(e) { _showToast(e.message, true); }
     });
     el.querySelector('#resBtnBack').addEventListener('click', function() { _openWorkbench(); });
+    el.querySelector('#resBtnCompose').addEventListener('click', function() { _composeSheet(batch.id, el); });
+    el.querySelector('#resBtnArchive').addEventListener('click', function() { _archiveRole(batch.id, el); });
+    el.querySelector('#resBtnExport').addEventListener('click', function() { _exportBatch(batch.id); });
     // 自动轮询（批次未终态）
     if (batch.status === 'queued' || batch.status === 'running') {
         setTimeout(function() {
@@ -1075,6 +1084,102 @@ function _renderResult(el, batch) {
                 el.querySelector('#resBtnRefresh') && el.querySelector('#resBtnRefresh').click();
             }
         }, 8000);
+    }
+}
+
+// ==================== ④-2 结果页动作：拼贴/归档/导出 ====================
+async function _composeSheet(batchId, el) {
+    var template = 'default', title = '', bg = '#1a1a2e';
+    // 简易弹窗让用户选模板
+    var html = '<div class="suit-modal-mask" onclick="if(event.target===this)this.remove()"><div class="suit-modal suit-modal-md">' +
+      '<div class="suit-modal-head"><span>🖼️ 整合人设拼贴</span><button class="suit-modal-close" onclick="this.closest(\'.suit-modal-mask\').remove()">×</button></div>' +
+      '<div class="suit-modal-body suit-form">' +
+        '<label>布局模板<select class="suit-input" id="cmTpl">' +
+          '<option value="default">默认</option><option value="portrait">竖版</option>' +
+          '<option value="grid4">四宫格</option><option value="wide">横排宽幅</option>' +
+        '</select></label>' +
+        '<label>标题文字<input class="suit-input" id="cmTitle" placeholder="角色设定"></label>' +
+        '<label>画布底色<input type="color" class="suit-input suit-color" id="cmBg" value="#1a1a2e"></label>' +
+      '</div>' +
+      '<div class="suit-modal-foot">' +
+        '<button class="suit-btn" onclick="this.closest(\'.suit-modal-mask\').remove()">取消</button>' +
+        '<button class="suit-btn suit-btn-primary" id="cmGo">生成拼贴</button>' +
+      '</div></div></div>';
+    var mask = document.createElement('div');
+    mask.innerHTML = html;
+    document.body.appendChild(mask.firstChild);
+    mask.firstChild.querySelector('#cmGo').addEventListener('click', async function() {
+        try {
+            var body = {
+                template: document.getElementById('cmTpl').value,
+                title_text: document.getElementById('cmTitle').value.trim(),
+                bg_color: document.getElementById('cmBg').value
+            };
+            mask.firstChild.remove();
+            var d = await _api('/api/assemble/render/' + batchId + '/compose', { method: 'POST', body: JSON.stringify(body) });
+            var colorsHtml = (d.colors || []).map(function(c) {
+                return '<span style="display:inline-block;width:22px;height:22px;border-radius:50%;background:' + c.hex + ';border:1px solid #64748b;" title="' + c.hex + ' (' + Math.round(c.ratio * 100) + '%)"></span>';
+            }).join('');
+            var box = document.getElementById('resComposeResult');
+            if (box) box.innerHTML = '<div class="suit-compose-box">' +
+              '<img src="' + _esc(d.image) + '" class="suit-compose-img" alt="整合人设拼贴">' +
+              '<div class="suit-compose-colors">🎨 角色色卡 ' + colorsHtml + '</div>' +
+              '<div class="suit-compose-meta">' + d.asset_count + ' 张资产合成</div>' +
+            '</div>';
+            _showToast('拼贴图已生成');
+        } catch(e) { _showToast('拼贴失败：' + e.message, true); }
+    });
+}
+
+async function _archiveRole(batchId, el) {
+    var html = '<div class="suit-modal-mask" onclick="if(event.target===this)this.remove()"><div class="suit-modal suit-modal-md">' +
+      '<div class="suit-modal-head"><span>📁 rolecard 角色归档</span><button class="suit-modal-close" onclick="this.closest(\'.suit-modal-mask\').remove()">×</button></div>' +
+      '<div class="suit-modal-body suit-form">' +
+        '<label>总项目 ID（master_project_id）<input class="suit-input" id="arMid" type="number" value="1"></label>' +
+        '<label>角色名称<input class="suit-input" id="arName" placeholder="角色档案名称"></label>' +
+        '<div class="suit-hint">归档后将出现在「项目角色档案」中，资产复制到 role_assets/ 目录</div>' +
+      '</div>' +
+      '<div class="suit-modal-foot">' +
+        '<button class="suit-btn" onclick="this.closest(\'.suit-modal-mask\').remove()">取消</button>' +
+        '<button class="suit-btn suit-btn-primary" id="arGo">确认归档</button>' +
+      '</div></div></div>';
+    var mask = document.createElement('div');
+    mask.innerHTML = html;
+    document.body.appendChild(mask.firstChild);
+    mask.firstChild.querySelector('#arGo').addEventListener('click', async function() {
+        try {
+            var body = {
+                master_project_id: parseInt(document.getElementById('arMid').value || '0', 10),
+                name: document.getElementById('arName').value.trim()
+            };
+            if (!body.master_project_id) { _showToast('请填写总项目 ID', true); return; }
+            if (!body.name) { _showToast('请填写角色名称', true); return; }
+            mask.firstChild.remove();
+            var d = await _api('/api/assemble/render/' + batchId + '/archive', { method: 'POST', body: JSON.stringify(body) });
+            _showToast('归档成功：' + d.name + '（' + d.archived + ' 项资产）');
+        } catch(e) { _showToast('归档失败：' + e.message, true); }
+    });
+}
+
+async function _exportBatch(batchId) {
+    try {
+        var blob = await App.fetchJSON('/api/assemble/render/' + batchId + '/export', {});
+        if (!blob) { _showToast('导出失败（无已完成资产）', true); return; }
+        // fetchJSON 会尝试解析 JSON；改用原生 fetch 拿 blob
+        var t = _token();
+        var resp = await fetch('/api/assemble/render/' + batchId + '/export', {
+            headers: t ? { 'Authorization': 'Bearer ' + t } : {}
+        });
+        if (!resp.ok) { _showToast('导出失败：' + resp.status, true); return; }
+        var b = await resp.blob();
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = 'rolecard_batch' + batchId + '.zip';
+        document.body.appendChild(a); a.click();
+        setTimeout(function() { URL.revokeObjectURL(a.href); a.remove(); }, 200);
+        _showToast('资产包已下载');
+    } catch(e) {
+        _showToast('导出失败：' + e.message, true);
     }
 }
 

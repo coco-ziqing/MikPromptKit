@@ -382,7 +382,8 @@ def submit_render(data: RenderSubmit, request: Request):
                 c.commit()
                 raise e
             if out:
-                task_ids.append(out[0]["task_id"])
+                # v5.49.0: task_ids 存对象数组 [{task_id, part}]，归档可还原配件名
+                task_ids.append({"task_id": out[0]["task_id"], "part": part})
         if not task_ids:
             c.execute("UPDATE render_batch SET status='fail', finished_at=? WHERE id=?", [now, batch_id])
             c.commit()

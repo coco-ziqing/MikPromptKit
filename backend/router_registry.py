@@ -51,6 +51,7 @@ from api.seedance import router as seedance_router
 from api.seedance_v2 import router as seedance_v2_router
 from api.style_suits import router as style_suits_router  # v5.47.0 风格套装
 from api.assemble import router as assemble_router  # v5.47.0 装备装配
+from api.assemble_archive import router as assemble_archive_router  # v5.49.0 产出归档
 from api.stats import router as stats_router
 from api.tags import router as tags_router
 from api.templates import router as templates_router
@@ -122,6 +123,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(project_roles_router)
     app.include_router(style_suits_router)  # v5.47.0 风格套装
     app.include_router(assemble_router)  # v5.47.0 装备装配
+    app.include_router(assemble_archive_router)  # v5.49.0 产出归档
     app.include_router(agent_router)
     app.include_router(mgmt_router)
     app.include_router(cover_router)
