@@ -1212,8 +1212,15 @@ function _openFreeCropModal() {
             '<div class="suit-crop-mask" id="freeCropMaskLayer"></div>' +
             '<div class="suit-crop-box" id="freeCropBox"></div>' +
           '</div>' +
-          '<div class="suit-crop-tip">🖱️ 拖拽框选保留区域 · 双击取消 · 显示当前选中尺寸</div>' +
+          '<div class="suit-crop-tip">🖱️ 拖拽框选保留区域 · 双击取消 · 框选后可选择固定比例规范化</div>' +
           '<div class="suit-freecrop-size" id="freeCropSize">未框选</div>' +
+          // v5.50.14: 固定比例规范化选项（框选后显示）
+          '<div class="suit-freecrop-ratios" id="freeCropRatios" style="display:none;">' +
+            '<span class="suit-base-ratio-label">规范化比例：</span>' +
+            ['原始', '1:1', '3:4', '4:3', '9:16', '16:9'].map(function(r) {
+              return '<button class="suit-ratio-btn" data-fr="' + (r === '原始' ? 'original' : r) + '">' + r + '</button>';
+            }).join('') +
+          '</div>' +
         '</div>' +
         '<div class="suit-modal-foot">' +
           '<button class="suit-btn" onclick="window.STYLE_SUIT._closeFreeCrop()">取消</button>' +
@@ -1259,6 +1266,8 @@ function _bindFreeCrop() {
         box.style.display = 'none';
         layer.style.display = 'none';
         if (sizeEl) sizeEl.textContent = '未框选';
+        var ratiosEl = document.getElementById('freeCropRatios');
+        if (ratiosEl) ratiosEl.style.display = 'none';
         state._freeCrop = null;
     }
     wrap.addEventListener('mousedown', function(e) {
@@ -1285,8 +1294,35 @@ function _bindFreeCrop() {
         var w = parseFloat(box.style.width) || 0, h = parseFloat(box.style.height) || 0;
         if (w < 0.03 || h < 0.03) { hideBox(); return; }
         state._freeCrop = { x: left / 100, y: top / 100, w: w / 100, h: h / 100 };
+        // v5.50.14: 框选后显示固定比例规范化选项
+        var ratiosEl = document.getElementById('freeCropRatios');
+        if (ratiosEl) ratiosEl.style.display = 'flex';
     });
     wrap.addEventListener('dblclick', function() { hideBox(); });
+    // v5.50.14: 固定比例规范化（以选框中心为锚，不超画布）
+    var ratiosEl = document.getElementById('freeCropRatios');
+    if (ratiosEl) {
+        ratiosEl.querySelectorAll('[data-fr]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                if (!state._freeCrop) { _showToast('请先拖拽框选区域', true); return; }
+                var key = btn.getAttribute('data-fr');
+                ratiosEl.querySelectorAll('[data-fr]').forEach(function(b) { b.removeAttribute('data-active'); });
+                btn.setAttribute('data-active', '1');
+                var c = _normalizeCrop(state._freeCrop, key);
+                state._freeCrop = c;
+                // 更新选框显示
+                box.style.left = (c.x * 100) + '%';
+                box.style.top = (c.y * 100) + '%';
+                box.style.width = (c.w * 100) + '%';
+                box.style.height = (c.h * 100) + '%';
+                box.style.display = 'block';
+                layer.style.display = 'block';
+                // 更新尺寸显示
+                var nw = img.naturalWidth || 0, nh = img.naturalHeight || 0;
+                if (sizeEl) sizeEl.textContent = '选中区域：' + Math.round(c.w * nw) + '×' + Math.round(c.h * nh) + 'px';
+            });
+        });
+    }
     document.getElementById('freeCropApply').addEventListener('click', async function() {
         if (!state._freeCrop) { _showToast('请先在图上拖拽框选区域', true); return; }
         var d2 = await _processBase('', '', 'original', state._freeCrop);
@@ -1299,6 +1335,29 @@ function _bindFreeCrop() {
             document.querySelectorAll('.suit-ratio-btn').forEach(function(b) { b.removeAttribute('data-active'); });
         }
     });
+}
+
+// v5.50.14: 框选比例规范化（以中心为锚，目标宽高比，不超画布）
+// 注意：必须用像素坐标计算比例（相对坐标受画布宽高比影响）
+function _normalizeCrop(crop, ratioKey) {
+    var RATIOS = { '1:1': 1, '3:4': 3/4, '4:3': 4/3, '9:16': 9/16, '16:9': 16/9 };
+    if (ratioKey === 'original' || !RATIOS[ratioKey]) return crop;
+    var target = RATIOS[ratioKey];
+    var img = document.getElementById('freeCropImg');
+    var nw = (img && img.naturalWidth) || 1000;
+    var nh = (img && img.naturalHeight) || 1000;
+    // 转为像素坐标
+    var cx = (crop.x + crop.w / 2) * nw;
+    var cy = (crop.y + crop.h / 2) * nh;
+    var maxW = Math.min(cx * 2, (nw - cx) * 2);
+    var maxH = Math.min(cy * 2, (nh - cy) * 2);
+    // 像素比例目标：保持接近原框面积（不超画布）
+    var w = Math.min(maxW, maxH * target);
+    var h = w / target;
+    if (h > maxH) { h = maxH; w = h * target; }
+    if (w > maxW) { w = maxW; h = w / target; }
+    // 转回相对坐标
+    return { x: (cx - w / 2) / nw, y: (cy - h / 2) / nh, w: w / nw, h: h / nh };
 }
 
 function _closeFreeCrop() {

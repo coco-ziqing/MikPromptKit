@@ -4359,3 +4359,7 @@ body.dark-theme .header-divider {
 .suit-freecrop-size { font-size: 12px; color: #818cf8; margin-top: 8px; text-align: center; font-weight: 600; }
 .suit-crop-wrap-static { position: relative; width: 100%; }
 .suit-crop-wrap-static img { display: block; width: 100%; }
+
+/* ===== v5.50.14: 自由裁切固定比例规范化 ===== */
+.suit-freecrop-ratios { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.suit-freecrop-ratios .suit-ratio-btn[data-active] { background: rgba(99,102,241,.2); border-color: #6366f1; color: #818cf8; }
