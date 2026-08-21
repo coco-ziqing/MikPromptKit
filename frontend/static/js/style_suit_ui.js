@@ -224,6 +224,13 @@ function _renderGrid(el, items) {
             var it = state.items.find(function(x) { return x.id === id; });
             if (it) _showDetail(it);
         });
+        // v5.50.0: 右键菜单
+        card.addEventListener('contextmenu', function(ev) {
+            ev.preventDefault();
+            var id = parseInt(card.getAttribute('data-id'), 10);
+            var it = state.items.find(function(x) { return x.id === id; });
+            _showContextMenu(ev.clientX, ev.clientY, it);
+        });
     });
     grid.querySelectorAll('.suit-card-action').forEach(function(btn) {
         btn.addEventListener('click', function(ev) {
@@ -252,7 +259,13 @@ function _cardActions(it) {
 async function _handleCardAction(id, act) {
     try {
         if (act === 'edit') { _openEditor(id); return; }
-        if (act === 'dup') {
+        if (act === 'rename') {
+            var it = state.items.find(function(x) { return x.id === id; });
+            var nn = prompt('重命名套装：', it ? it.name : '');
+            if (!nn || !nn.trim()) return;
+            await _api('/api/style-suits/' + id, { method: 'PUT', body: JSON.stringify({ name: nn.trim() }) });
+            _showToast('已重命名');
+        } else if (act === 'dup') {
             if (!_confirm('复制该风格模板为新模板？')) return;
             await _api('/api/style-suits/' + id + '/duplicate', { method: 'POST' });
             _showToast('已复制为新模板');
@@ -276,6 +289,53 @@ async function _handleCardAction(id, act) {
     } catch(e) {
         _showToast(e.message, true);
     }
+}
+
+function _showContextMenu(x, y, it) {
+    // 移除旧菜单
+    var old = document.getElementById('suitCtxMenu');
+    if (old) old.remove();
+    if (!it) return;
+    var isTrash = state.tab === 'trash';
+    var items = isTrash ? [
+        { act: 'restore', icon: '♻️', label: '恢复' },
+        { act: 'purge', icon: '🗑️', label: '永久删除' }
+    ] : [
+        { act: 'edit', icon: '✏️', label: '编辑' },
+        { act: 'rename', icon: '🏷️', label: '重命名' },
+        { act: 'dup', icon: '📋', label: '复制衍生' },
+        { act: 'export', icon: '⬇️', label: '导出 .style' },
+        it.is_favorite
+            ? { act: 'unfav', icon: '⭐', label: '取消收藏' }
+            : { act: 'fav', icon: '☆', label: '收藏' },
+        { act: 'del', icon: '🗑️', label: '移入回收站' }
+    ];
+    var menu = document.createElement('div');
+    menu.id = 'suitCtxMenu';
+    menu.className = 'suit-ctx-menu';
+    menu.style.left = Math.min(x, window.innerWidth - 160) + 'px';
+    menu.style.top = Math.min(y, window.innerHeight - items.length * 34 - 10) + 'px';
+    menu.innerHTML = '<div class="suit-ctx-title">' + _esc(it.name) + '</div>' +
+        items.map(function(m) {
+            return '<div class="suit-ctx-item" data-act="' + m.act + '" data-id="' + it.id + '">' + m.icon + ' ' + m.label + '</div>';
+        }).join('');
+    document.body.appendChild(menu);
+    menu.querySelectorAll('.suit-ctx-item').forEach(function(item) {
+        item.addEventListener('click', function() {
+            var act = item.getAttribute('data-act');
+            var id = parseInt(item.getAttribute('data-id'), 10);
+            menu.remove();
+            _handleCardAction(id, act);
+        });
+    });
+    // 点击别处关闭
+    setTimeout(function() {
+        document.addEventListener('click', function _close() {
+            var m = document.getElementById('suitCtxMenu');
+            if (m) m.remove();
+            document.removeEventListener('click', _close);
+        }, { once: true });
+    }, 10);
 }
 
 function _showDetail(it) {
@@ -726,9 +786,11 @@ async function _loadRes(type) {
                 });
             });
         } else if (type === 'cards') {
-            // 词卡：从词库取（风格/服饰/光影类优先展示前 50）
-            var d = await App.fetchJSON('/api/v4/word-cards?limit=50');
-            var cards = (d && (d.items || d.cards || [])) || [];
+            // 词卡：从词库 picker 取（真实接口返回 groups 结构）
+            var d = await App.fetchJSON('/api/v4/word-cards/picker?limit=30');
+            var groups = (d && d.groups) || [];
+            var cards = [];
+            groups.forEach(function(g) { (g.cards || []).forEach(function(c) { cards.push(c); }); });
             list.innerHTML = cards.length ? cards.map(function(c, i) {
                 var cid = c.id;
                 return '<div class="suit-res-item suit-res-card" data-id="' + cid + '">' +
@@ -901,6 +963,14 @@ function _renderPreview(el) {
         html += '<div class="suit-preview-section"><b>参数：</b>模型 ' + _esc(rp.model_version || '5.0') + ' · ' + _esc(rp.ratio || '1:1') + ' · ' + _esc(rp.resolution_type || '2k') +
           ' · CFG ' + _esc(rp.cfg) + ' · 步数 ' + _esc(rp.steps) + '</div>';
         html += '<div class="suit-preview-section"><b>🛡️ 通道：</b>' + (w.channel === 'real' ? '写实商用通道' : '脱敏虚拟通道') + '</div>';
+        if (w.channel === 'real') {
+            var ratio2 = rp.ratio || '1:1';
+            var sizeMap = {'21:9':'1344x576','16:9':'1216x832','3:2':'1216x832','4:3':'896x1152','1:1':'1024x1024','3:4':'896x1152','2:3':'832x1216','9:16':'832x1216'};
+            var resMap = {'1k':'1024','2k':'2048','4k':'4096'};
+            html += '<div class="suit-preview-warn">🛡️ 写实通道参数映射：比例 ' + _esc(ratio2) + ' → 尺寸 ' + (sizeMap[ratio2] || '1024x1024') +
+              ' · 分辨率 ' + _esc(rp.resolution_type || '2k') + ' → 基础边长 ' + (resMap[rp.resolution_type || '2k'] || '2048') + 'px</div>';
+            html += '<div class="suit-preview-warn">📌 模型由 ComfyUI 工作流节点决定，套装模型标记仅供参考</div>';
+        }
         html += '<div class="suit-preview-warn">⚠️ 生成将真实消耗生成额度，提交前请确认</div>';
     }
     pv.innerHTML = html;
@@ -1030,6 +1100,13 @@ function _renderResult(el, batch) {
         'canceled': '<span class="suit-status suit-status-canceled">已取消</span>'
     };
     var progress = batch.total ? Math.round((batch.done + batch.fail) / batch.total * 100) : 0;
+    // v5.50.0: 任务级进度（terminal 状态 100% / running 用 progress 字段）
+    var doneCnt = 0, failCnt = 0, runCnt = 0;
+    tasks.forEach(function(t) {
+        if (t.status === 'done' || t.status === 'success') doneCnt++;
+        else if (t.status === 'fail') failCnt++;
+        else if (t.status === 'queued' || t.status === 'running') runCnt++;
+    });
     var html = '' +
     '<div class="suit-result">' +
       '<div class="suit-wb-header">' +
@@ -1042,13 +1119,25 @@ function _renderResult(el, batch) {
       '<div class="suit-result-summary">' +
         '<div class="suit-result-bar"><div class="suit-result-bar-inner" style="width:' + progress + '%"></div></div>' +
         '<div class="suit-result-stats">共 ' + batch.total + ' · 完成 ' + batch.done + ' · 失败 ' + batch.fail + ' · ' + progress + '%</div>' +
+        '<div class="suit-result-agg">' +
+          '<span class="suit-agg-chip">✅ 完成 <b>' + doneCnt + '</b></span>' +
+          '<span class="suit-agg-chip">⏳ 进行中 <b>' + runCnt + '</b></span>' +
+          '<span class="suit-agg-chip">❌ 失败 <b>' + failCnt + '</b></span>' +
+          '<span class="suit-agg-chip">🎯 总进度 <b>' + progress + '%</b></span>' +
+        '</div>' +
       '</div>' +
       '<div class="suit-result-grid">' +
         tasks.map(function(t) {
             var label = (OUTPUT_PARTS.find(function(p) { return p.key === t.task_type; }) || {}).label || t.task_type;
+            var pct = 0;
+            if (t.status === 'done' || t.status === 'success') pct = 100;
+            else if (t.status === 'fail' || t.status === 'canceled') pct = 100;
+            else pct = Math.min(parseInt(t.progress || 0, 10), 99);
+            var pcls = (t.status === 'done' || t.status === 'success') ? 'done' : (t.status === 'fail' ? 'fail' : '');
             return '<div class="suit-task-card">' +
               '<div class="suit-task-name">' + _esc(label) + '</div>' +
               '<div class="suit-task-status">' + (statusMap[t.status] || _esc(t.status)) + '</div>' +
+              '<div class="suit-task-progress"><div class="suit-task-progress-inner ' + pcls + '" style="width:' + pct + '%"></div></div>' +
               (t.fail_category ? '<div class="suit-task-err">' + _esc(t.fail_category) + '</div>' : '') +
               (t.error ? '<div class="suit-task-err">' + _esc(String(t.error).slice(0, 80)) + '</div>' : '') +
               (t.result_filename ? '<div class="suit-task-file">📄 ' + _esc(t.result_filename) + '</div>' : '') +

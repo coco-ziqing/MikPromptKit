@@ -269,14 +269,21 @@ def assemble_precheck(request: Request, draft_id: int = Body(..., embed=True)):
         license_info = {}
         if draft["channel"] == "real" and not license_info.get("authorized"):
             issues.append({"level": "error", "code": "no_license", "msg": "写实商用通道必须完成授权备案"})
-        # 4. 渲染参数合法性（复用 card_gen 的 _validate_params 校验首个产出项）
+        # 4. 生成参数合法性（按通道适配校验）
         try:
             ttype = OUTPUT_PARTS.get(parts[0], {}).get("task_type", "text2image")
             params = dict(cfg.get("render_params") or {})
             params.update(draft["config_override"].get("render_params") or {})
-            _validate_params_light(ttype, params)
+            _validate_params_light(ttype, params, draft["channel"])
         except HTTPException as e:
             issues.append({"level": "error", "code": "bad_param", "msg": str(e.detail)})
+        # 5. 通道参数映射提示（非阻塞）
+        try:
+            adapted, hints = _channel_adapt_params(draft["channel"], ttype, params)
+            for h in hints:
+                issues.append({"level": "warn", "code": "channel_adapt", "msg": h})
+        except Exception:
+            pass
         ok = not any(i["level"] == "error" for i in issues)
         return {"ok": True, "passed": ok, "issues": issues, "summary": {
             "base": bool(base.get("id") or base.get("url")),
@@ -289,18 +296,68 @@ def assemble_precheck(request: Request, draft_id: int = Body(..., embed=True)):
         c.close()
 
 
-def _validate_params_light(ttype: str, params: dict):
-    """轻量参数校验：仅检查必填字段与取值范围（避免完整引擎校验的强依赖）"""
+def _validate_params_light(ttype: str, params: dict, channel: str = "virtual"):
+    """轻量参数校验：仅检查必填字段与取值范围（避免完整引擎校验的强依赖）
+    channel: virtual(即梦) 用即梦约束；real(ComfyUI) 放宽模型版本约束（工作流自定义）
+    """
     if ttype in ("text2image", "image2image"):
-        model = str(params.get("model_version") or "5.0")
-        if model not in ("3.0", "3.1", "4.0", "4.1", "4.5", "4.6", "4.7", "5.0", "5.0Pro"):
-            raise HTTPException(400, f"无效模型版本 {model}")
+        if channel != "real":
+            model = str(params.get("model_version") or "5.0")
+            if model not in ("3.0", "3.1", "4.0", "4.1", "4.5", "4.6", "4.7", "5.0", "5.0Pro"):
+                raise HTTPException(400, f"无效模型版本 {model}")
         ratio = str(params.get("ratio") or "1:1")
         if ratio not in ("21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"):
             raise HTTPException(400, f"无效比例 {ratio}")
         res = str(params.get("resolution_type") or "2k")
         if res not in ("1k", "2k", "4k"):
             raise HTTPException(400, f"无效分辨率 {res}")
+
+
+# ==================== 双通道参数映射（v5.50.0） ====================
+
+# 写实商用通道（ComfyUI）参数映射表：将套装通用参数映射为 ComfyUI 工作流参数
+_REAL_CHANNEL_RATIO_MAP = {
+    "21:9": "1344x576", "16:9": "1216x832", "3:2": "1216x832",
+    "4:3": "896x1152", "1:1": "1024x1024", "3:4": "896x1152",
+    "2:3": "832x1216", "9:16": "832x1216",
+}
+
+_REAL_CHANNEL_RES_MAP = {
+    "1k": "1024", "2k": "2048", "4k": "4096",
+}
+
+
+def _channel_adapt_params(channel: str, ttype: str, params: dict):
+    """按通道适配参数，返回 (适配后参数, 提示列表)
+    virtual(即梦): 直接使用，无需适配
+    real(ComfyUI): 分辨率/比例映射为工作流尺寸，采样器/步数对齐
+    """
+    hints = []
+    if channel != "real":
+        return params, hints
+    adapted = dict(params)
+    # 比例 → 工作流尺寸
+    ratio = str(params.get("ratio") or "1:1")
+    size = _REAL_CHANNEL_RATIO_MAP.get(ratio)
+    if size:
+        adapted["real_size"] = size
+        hints.append(f"写实通道：比例 {ratio} → 工作流尺寸 {size}")
+    # 分辨率 → 基础边长
+    res = str(params.get("resolution_type") or "2k")
+    base = _REAL_CHANNEL_RES_MAP.get(res)
+    if base:
+        adapted["real_base"] = base
+        hints.append(f"写实通道：分辨率 {res} → 基础边长 {base}px")
+    # 采样器对齐（ComfyUI 常用名）
+    sampler = str(params.get("sampler") or "").strip()
+    if sampler and sampler not in ("euler", "euler_ancestral", "dpmpp_2m", "dpmpp_2m_sde", "uni_pc"):
+        adapted["sampler"] = "dpmpp_2m"
+        hints.append(f"写实通道：采样器 {sampler} → dpmpp_2m（ComfyUI 兼容）")
+    # 模型版本说明
+    model = str(params.get("model_version") or "5.0")
+    adapted["real_model_note"] = f"ComfyUI 工作流模型由节点配置决定（套装标记 {model} 仅供参考）"
+    hints.append("写实通道：模型由 ComfyUI 工作流节点决定，套装模型标记不生效")
+    return adapted, hints
 
 
 # ==================== 批量渲染编排 ====================
@@ -342,7 +399,13 @@ def submit_render(data: RenderSubmit, request: Request):
             params["ratio"] = "1:1"
         if not params.get("resolution_type"):
             params["resolution_type"] = "2k"
+        # v5.50.0: 双通道参数适配（real→ComfyUI 工作流参数映射）
+        try:
+            params, adapt_hints = _channel_adapt_params(draft["channel"], "text2image", params)
+        except Exception:
+            adapt_hints = []
         params["prompt"] = prompt
+        params["channel_hints"] = adapt_hints
         # 建批次
         now = _now()
         cur = c.execute(
