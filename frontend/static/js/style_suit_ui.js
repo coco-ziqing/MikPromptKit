@@ -932,7 +932,7 @@ function _renderBasePane(mode) {
           '</div>' +
           '<input type="file" id="baseFileInput" accept="image/*" style="display:none;">' +
           '<input class="suit-input" id="wbBaseDesc2" placeholder="描述（例：青年男性，正脸）" style="margin-top:8px;">' +
-          '<button class="suit-btn suit-btn-primary" id="wbBaseUploadBtn" style="margin-top:6px;width:100%;">⬆️ 上传并设为基底</button>';
+          '<button class="suit-btn suit-btn-primary" id="wbBaseUploadBtn" style="margin-top:6px;width:100%;">⬆️ 上传并设为参考</button>';
     } else if (mode === 'paste') {
         html = '' +
           '<div class="suit-dropzone" id="basePasteZone">' +
@@ -942,7 +942,7 @@ function _renderBasePane(mode) {
           '</div>' +
           '<img id="basePastePreview" class="suit-base-preview" style="display:none;">' +
           '<input class="suit-input" id="wbBaseDesc3" placeholder="描述（可选）" style="margin-top:8px;">' +
-          '<button class="suit-btn suit-btn-primary" id="wbBasePasteBtn" style="margin-top:6px;width:100%;" disabled>⬆️ 粘贴并设为基底</button>';
+          '<button class="suit-btn suit-btn-primary" id="wbBasePasteBtn" style="margin-top:6px;width:100%;" disabled>⬆️ 粘贴并设为参考</button>';
     } else if (mode === 'lib') {
         html = '<div class="suit-empty" id="baseLibLoading">加载媒体库...</div><div id="baseLibGrid" class="suit-base-lib"></div>' +
           '<input class="suit-input" id="wbBaseDesc4" placeholder="描述（可选）" style="margin-top:8px;">';
@@ -951,7 +951,7 @@ function _renderBasePane(mode) {
           '<div class="suit-form" style="padding:4px;">' +
             '<label>图片 URL<input class="suit-input" id="wbBaseUrl" placeholder="https://..."></label>' +
             '<label>描述<input class="suit-input" id="wbBaseDesc5" placeholder="例：青年男性，正脸"></label>' +
-            '<button class="suit-btn suit-btn-primary" id="wbBaseUrlBtn" style="width:100%;">+ 设为基底</button>' +
+            '<button class="suit-btn suit-btn-primary" id="wbBaseUrlBtn" style="width:100%;">+ 设为参考</button>' +
           '</div>';
     }
     pane.innerHTML = html;
@@ -1045,8 +1045,8 @@ async function _uploadBaseFile(file) {
               '<img src="' + _esc(d.url) + '" class="suit-base-preview" style="display:block;">';
             dz.classList.remove('uploading');
         }
-        // v5.50.7: 上传后自动预处理（比例裁剪 + 尺寸限制），显示预览与比例选择
-        await _processBase(d.url, d.file_path);
+        // v5.50.7: 上传后自动预处理（默认原始比例，不裁切仅缩放）
+        await _processBase(d.url, d.file_path, 'original');
         // v5.50.11: 不弹 toast，预览面板即反馈
     } catch(e) {
         if (dz) { dz.classList.remove('uploading'); dz.innerHTML = '<div class="suit-dropzone-icon">⚠️</div><div class="suit-dropzone-text">上传失败：' + _esc(e.message) + '</div>'; }
@@ -1119,7 +1119,11 @@ async function _processBase(url, filePath, ratio, crop, align64) {
         if (!d.ok) throw new Error(d.detail || '预处理失败');
         // 保存处理结果到工作台（临时，等用户确认比例）
         state._baseProcessed = d;
-        if (!ratio && !crop) _renderBasePreviewPanel(d);
+        // v5.50.19: 上传后首次处理渲染预览面板（无 crop 且无显式比例选择时）
+        if (!crop && !state._basePanelRendered) {
+            state._basePanelRendered = true;
+            _renderBasePreviewPanel(d);
+        }
         return d;
     } catch(e) {
         _showToast('预处理失败：' + e.message, true);
@@ -1141,14 +1145,14 @@ function _renderBasePreviewPanel(d) {
         '<div class="suit-base-ratio-row">' +
           '<span class="suit-base-ratio-label">画幅比例：</span>' +
           ratios.map(function(r) {
-            var isActive = (r === '1:1' ? ' data-active="1"' : '');
+            var isActive = (r === '原始' ? ' data-active="1"' : '');
             return '<button class="suit-ratio-btn" data-ratio="' + (r === '原始' ? 'original' : r) + '"' + isActive + '>' + r + '</button>';
           }).join('') +
         '</div>' +
         '<button class="suit-btn suit-btn-primary" id="wbBaseFreeCrop" style="width:100%;margin-bottom:10px;">✂️ 自由裁切（大图框选）</button>' +
         '<input class="suit-input" id="wbBaseDesc6" placeholder="描述（例：青年男性，正脸）" value="' + _esc(state.workbench.base_asset_ref.desc || '') + '">' +
         '<div class="suit-base-actions">' +
-          '<button class="suit-btn suit-btn-primary" id="wbBaseConfirm" style="flex:1;">✅ 确认设为基底</button>' +
+          '<button class="suit-btn suit-btn-primary" id="wbBaseConfirm" style="flex:1;">✅ 确认参考</button>' +
           '<button class="suit-btn" id="wbBaseCancel" style="flex:1;">↩️ 重新选择</button>' +
         '</div>' +
         '<div class="suit-base-hint">💡 选比例快速裁切，或「自由裁切」在大图弹窗拖拽框选区域</div>' +
@@ -1189,9 +1193,10 @@ function _renderBasePreviewPanel(d) {
         };
         _finishBaseSet();
         // v5.50.12: 确认后保留预览面板，可继续调整比例/还原原始
-        _showToast('已设为基底，可继续调整或点「原始」还原');
+        _showToast('已设为参考，可继续调整或点「原始」还原');
     });
     pane.querySelector('#wbBaseCancel').addEventListener('click', function() {
+        state._basePanelRendered = false;
         _renderBasePane('upload');
     });
 }
