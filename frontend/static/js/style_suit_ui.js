@@ -901,9 +901,12 @@ async function _loadRes(type) {
                 '<button class="suit-base-tab" data-btab="url">🔗 URL</button>' +
               '</div>' +
               '<div class="suit-base-pane" id="basePane"></div>';
-            // v5.50.12: 已有基底且保留原始引用时，恢复预览面板（可继续调整/还原原始）
+            // v5.50.24: 恢复预览面板（优先用已处理数据，不依赖是否已确认基底）
             var b = state.workbench.base_asset_ref || {};
-            if (b.url && b.original_url && !state._baseProcessed) {
+            if (state._baseProcessed && state._baseProcessed.preview_url) {
+                // 已处理过（上传/比例/裁切后未确认）→ 直接恢复预览面板
+                state._renderPreviewPanelFromState && state._renderPreviewPanelFromState();
+            } else if (b.url && b.original_url && !state._baseProcessed) {
                 state._baseOriginal = { url: b.original_url, file_path: b.original_file_path };
                 _processBase('', '', 'original');
             } else if (b.url && b.original_url) {
@@ -1140,6 +1143,15 @@ async function _processBase(url, filePath, ratio, crop, align64) {
         return null;
     }
 }
+
+// v5.50.24: 从已处理状态恢复预览面板（上传/裁切后切走再回，不丢失自由裁切/比例选项）
+function _renderPreviewPanelFromState() {
+    var d = state._baseProcessed;
+    if (!d || !d.preview_url) return false;
+    _renderBasePreviewPanel(d);
+    return true;
+}
+state._renderPreviewPanelFromState = _renderPreviewPanelFromState;
 
 function _renderBasePreviewPanel(d) {
     var pane = document.getElementById('basePane');
