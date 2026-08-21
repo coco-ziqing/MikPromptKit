@@ -1242,6 +1242,19 @@ function _bindFreeCrop() {
     if (!wrap || !img || !box || !layer) return;
     var dragging = false, moving = false, sx = 0, sy = 0;
     var moveStart = null;
+    var resizing = false, resizeHandle = '', resizeStart = null;  // v5.50.18: 手柄调整
+    // 挂到 window 供 _applyResizeHandle 访问（该函数在闭包外）
+    window.__freeCropResize = null;
+    // v5.50.18: 注入 8 个调整手柄（角=等比，边=单边）
+    if (!box.querySelector('.suit-crop-handle')) {
+        var handles = ['nw','n','ne','e','se','s','sw','w'];
+        handles.forEach(function(hp) {
+            var hd = document.createElement('div');
+            hd.className = 'suit-crop-handle ' + hp;
+            hd.setAttribute('data-handle', hp);
+            box.appendChild(hd);
+        });
+    }
     // v5.50.15: 命名函数，避免重复绑定（每次打开弹窗先清理旧监听）
     if (window.__freeCropBound) {
         var w2 = window.__freeCropBound;
@@ -1285,11 +1298,72 @@ function _bindFreeCrop() {
         if (!c) return false;
         return px >= c.x && px <= c.x + c.w && py >= c.y && py <= c.y + c.h;
     }
+    // v5.50.18: 裁切框手柄调整（角=等比缩放，边=单边拉伸）— 闭包内访问 setBoxFromCrop
+    function applyResizeHandle(cx, cy) {
+        var rs = window.__freeCropResize;
+        if (!rs || !rs.start) return;
+        var c = rs.start;
+        var ratio = c.w / c.h;
+        var minW = 0.04, minH = 0.04;
+        var h = rs.handle;
+        var nx = c.x, ny = c.y, nw = c.w, nh = c.h;
+        if (h === 'e') {
+            nw = Math.max(minW, Math.min(1 - c.x, cx - c.x));
+        } else if (h === 'w') {
+            nw = Math.max(minW, Math.min(c.x + c.w - minW, c.x + c.w - cx));
+            nx = c.x + c.w - nw;
+        } else if (h === 's') {
+            nh = Math.max(minH, Math.min(1 - c.y, cy - c.y));
+        } else if (h === 'n') {
+            nh = Math.max(minH, Math.min(c.y + c.h - minH, c.y + c.h - cy));
+            ny = c.y + c.h - nh;
+        } else if (h === 'se') {  // 锚点=左上，等比
+            nw = Math.max(minW, Math.min(1 - c.x, cx - c.x));
+            nh = nw / ratio;
+            if (nh > 1 - c.y) { nh = 1 - c.y; nw = nh * ratio; }
+            if (nh < minH) { nh = minH; nw = nh * ratio; }
+        } else if (h === 'sw') {  // 锚点=右上，等比
+            nw = Math.max(minW, Math.min(c.x + c.w - minW, c.x + c.w - cx));
+            nh = nw / ratio;
+            nx = c.x + c.w - nw;
+            if (nh > 1 - c.y) { nh = 1 - c.y; nw = nh * ratio; nx = c.x + c.w - nw; }
+            if (nh < minH) { nh = minH; nw = nh * ratio; nx = c.x + c.w - nw; }
+        } else if (h === 'ne') {  // 锚点=左下，等比
+            nw = Math.max(minW, Math.min(1 - c.x, cx - c.x));
+            nh = nw / ratio;
+            ny = c.y + c.h - nh;
+            if (ny < 0) { ny = 0; nh = c.y + c.h; nw = nh * ratio; }
+            if (nh < minH) { nh = minH; nw = nh * ratio; ny = c.y + c.h - nh; }
+        } else if (h === 'nw') {  // 锚点=右下，等比
+            nw = Math.max(minW, Math.min(c.x + c.w - minW, c.x + c.w - cx));
+            nh = nw / ratio;
+            nx = c.x + c.w - nw;
+            ny = c.y + c.h - nh;
+            if (ny < 0) { ny = 0; nh = c.y + c.h; nw = nh * ratio; nx = c.x + c.w - nw; }
+            if (nh < minH) { nh = minH; nw = nh * ratio; nx = c.x + c.w - nw; ny = c.y + c.h - nh; }
+        }
+        // 最终 clamp
+        nx = Math.max(0, Math.min(1 - nw, nx));
+        ny = Math.max(0, Math.min(1 - nh, ny));
+        var c2 = { x: nx, y: ny, w: nw, h: nh };
+        state._freeCrop = c2;
+        setBoxFromCrop(c2);
+    }
     function onDown(e) {
         var rect = wrap.getBoundingClientRect();
         sx = (e.clientX - rect.left) / rect.width;
         sy = (e.clientY - rect.top) / rect.height;
-        // v5.50.15: 框内按下 → 移动裁剪框；框外 → 新画框
+        // v5.50.18: 手柄按下 → 等比/单边调整尺寸；框内 → 移动；框外 → 新画框
+        var handleEl = e.target && e.target.closest ? e.target.closest('[data-handle]') : null;
+        if (handleEl && state._freeCrop) {
+            resizing = true;
+            resizeHandle = handleEl.getAttribute('data-handle');
+            resizeStart = { x: state._freeCrop.x, y: state._freeCrop.y, w: state._freeCrop.w, h: state._freeCrop.h };
+            window.__freeCropResize = { handle: resizeHandle, start: resizeStart };
+            box.style.cursor = handleEl.style.cursor || 'crosshair';
+            e.preventDefault();
+            return;
+        }
         if (isInsideCrop(sx, sy)) {
             moving = true;
             moveStart = { x: sx - state._freeCrop.x, y: sy - state._freeCrop.y };
@@ -1307,6 +1381,10 @@ function _bindFreeCrop() {
         var cy = (e.clientY - rect.top) / rect.height;
         cx = Math.max(0, Math.min(1, cx));
         cy = Math.max(0, Math.min(1, cy));
+        if (resizing && state._freeCrop) {
+            applyResizeHandle(cx, cy);
+            return;
+        }
         if (moving && state._freeCrop) {
             // 移动裁剪框（clamp 画布内）
             var nx = cx - moveStart.x;
@@ -1324,6 +1402,11 @@ function _bindFreeCrop() {
         setBoxPx(lx, ty, w, h);
     }
     function onUp() {
+        if (resizing) {
+            resizing = false;
+            box.style.cursor = 'crosshair';
+            return;
+        }
         if (moving) {
             moving = false;
             box.style.cursor = 'crosshair';

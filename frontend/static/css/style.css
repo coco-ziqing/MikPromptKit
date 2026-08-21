@@ -4366,3 +4366,14 @@ body.dark-theme .header-divider {
 
 /* ===== v5.50.17: 自由裁切容器贴合图片（修复竖图框选错位） ===== */
 #freeCropMask .suit-modal-body { text-align: center; }
+
+/* ===== v5.50.18: 裁切框调整手柄 ===== */
+.suit-crop-handle { position: absolute; width: 12px; height: 12px; background: #6366f1; border: 2px solid #fff; border-radius: 3px; box-shadow: 0 1px 4px rgba(0,0,0,.5); z-index: 5; }
+.suit-crop-handle.nw { left: -6px; top: -6px; cursor: nwse-resize; }
+.suit-crop-handle.n  { left: 50%; top: -6px; margin-left: -6px; cursor: ns-resize; }
+.suit-crop-handle.ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.suit-crop-handle.e  { right: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
+.suit-crop-handle.se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.suit-crop-handle.s  { left: 50%; bottom: -6px; margin-left: -6px; cursor: ns-resize; }
+.suit-crop-handle.sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.suit-crop-handle.w  { left: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
