@@ -1009,6 +1009,8 @@ async function _uploadBaseFile(file) {
         });
         var d = await resp.json();
         if (!resp.ok || !d.ok) { throw new Error((d.detail || '上传失败')); }
+        // v5.50.8: 保存原始上传图（比例切换始终基于原始图，避免叠加裁切）
+        state._baseOriginal = { url: d.url, file_path: d.file_path };
         state.workbench.base_asset_ref = { source: 'upload', id: 0, url: d.url, file_path: d.file_path, desc: '' };
         if (dz) {
             dz.innerHTML = '<div class="suit-dropzone-icon">✅</div>' +
@@ -1081,7 +1083,11 @@ function _finishBaseSet() {
 // ============ 基底预处理：比例裁剪 + 尺寸限制 + 预览（v5.50.7） ============
 async function _processBase(url, filePath, ratio) {
     try {
-        var body = { url: url || '', file_path: filePath || '', ratio: ratio || '1:1' };
+        // v5.50.8: 始终基于原始上传图处理（避免叠加裁切）
+        var src = state._baseOriginal || {};
+        var useUrl = src.url || url || '';
+        var usePath = src.file_path || filePath || '';
+        var body = { url: useUrl, file_path: usePath, ratio: ratio || '1:1' };
         var d = await _api('/api/assemble/base-process', { method: 'POST', body: JSON.stringify(body) });
         if (!d.ok) throw new Error(d.detail || '预处理失败');
         // 保存处理结果到工作台（临时，等用户确认比例）
@@ -1097,7 +1103,7 @@ async function _processBase(url, filePath, ratio) {
 function _renderBasePreviewPanel(d) {
     var pane = document.getElementById('basePane');
     if (!pane) return;
-    var ratios = ['1:1', '3:4', '4:3', '9:16', '16:9'];
+    var ratios = ['原始', '1:1', '3:4', '4:3', '9:16', '16:9'];
     pane.innerHTML = '' +
       '<div class="suit-base-preview-box">' +
         '<div class="suit-base-preview-title">👁️ 基底预览（' + d.width + '×' + d.height + '）</div>' +
@@ -1105,7 +1111,8 @@ function _renderBasePreviewPanel(d) {
         '<div class="suit-base-ratio-row">' +
           '<span class="suit-base-ratio-label">画幅比例：</span>' +
           ratios.map(function(r) {
-            return '<button class="suit-ratio-btn" data-ratio="' + r + '"' + (r === '1:1' ? ' data-active="1"' : '') + '>' + r + '</button>';
+            var isActive = (r === '1:1' ? ' data-active="1"' : '');
+            return '<button class="suit-ratio-btn" data-ratio="' + (r === '原始' ? 'original' : r) + '"' + isActive + '>' + r + '</button>';
           }).join('') +
         '</div>' +
         '<input class="suit-input" id="wbBaseDesc6" placeholder="描述（例：青年男性，正脸）" value="' + _esc(state.workbench.base_asset_ref.desc || '') + '">' +
@@ -1119,11 +1126,15 @@ function _renderBasePreviewPanel(d) {
         btn.addEventListener('click', async function() {
             pane.querySelectorAll('.suit-ratio-btn').forEach(function(b) { b.removeAttribute('data-active'); });
             btn.setAttribute('data-active', '1');
-            // 重新预处理
-            var d2 = await _processBase(state._baseProcessed.url, state._baseProcessed.file_path, btn.getAttribute('data-ratio'));
+            // v5.50.8: 始终基于原始图重裁（_processBase 内部回退原始图）
+            var d2 = await _processBase('', '', btn.getAttribute('data-ratio'));
             if (d2) {
                 var img = document.getElementById('basePrevImg');
-                if (img) img.src = d2.preview_url;
+                if (img) {
+                    img.src = d2.preview_url;
+                    var t = document.querySelector('.suit-base-preview-title');
+                    if (t) t.textContent = '👁️ 基底预览（' + d2.width + '×' + d2.height + '）';
+                }
             }
         });
     });
@@ -1174,9 +1185,16 @@ function _renderSlots(el) {
     if (baseBody) {
         var b = w.base_asset_ref || {};
         if (b.desc || b.url) {
-            baseBody.innerHTML = '<div class="suit-slot-filled">' +
-              '<span class="suit-slot-filled-icon">🧑</span>' +
-              '<span>' + _esc(b.desc || b.url) + '</span>' +
+            // v5.50.8: 基底槽显示已上传参考图缩略图
+            var imgUrl = b.preview_url || b.url || '';
+            var imgHtml = imgUrl ? '<img src="' + _esc(imgUrl) + '" class="suit-slot-base-img" onerror="this.style.display=\'none\'">' : '';
+            var ratioTag = b.ratio && b.ratio !== 'original' ? '<span class="suit-tag">' + _esc(b.ratio) + ' 裁剪</span>' : (b.ratio === 'original' ? '<span class="suit-tag">原图</span>' : '');
+            baseBody.innerHTML = '<div class="suit-slot-filled suit-slot-base-filled">' +
+              imgHtml +
+              '<div class="suit-slot-base-info">' +
+                '<div class="suit-slot-base-name">' + _esc(b.desc || '基底参考图') + '</div>' +
+                (b.width ? '<div class="suit-slot-base-meta">' + b.width + '×' + b.height + ratioTag + '</div>' : '') +
+              '</div>' +
               '<button class="suit-card-action" data-act="rmbase" title="移除">×</button></div>';
             baseBody.querySelector('[data-act="rmbase"]').addEventListener('click', function() {
                 w.base_asset_ref = {}; _renderSlots(el); _renderPreview(el);

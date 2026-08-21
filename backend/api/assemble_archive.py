@@ -393,13 +393,14 @@ def process_base_image(data: BaseProcessReq, request: Request):
         h = max(0.05, min(1.0, float(crop.get("h"))))
         box = (int(x * W), int(y * H), int((x + w) * W), int((y + h) * H))
         img = img.crop(box)
-    # 4. 按目标比例居中裁剪
+    # 4. 按目标比例居中裁剪（ratio='original' 不裁切，仅缩放）
     ratio_key = data.ratio or "1:1"
-    target = BASE_RATIOS.get(ratio_key)
-    if not target:
-        raise HTTPException(400, f"无效比例 {ratio_key}，支持: {', '.join(BASE_RATIOS.keys())}")
-    tw, th = target
-    img = _center_crop(img, tw, th)
+    if ratio_key != "original":
+        target = BASE_RATIOS.get(ratio_key)
+        if not target:
+            raise HTTPException(400, f"无效比例 {ratio_key}，支持: original/{', '.join(BASE_RATIOS.keys())}")
+        tw, th = target
+        img = _center_crop(img, tw, th)
     # 5. 限制尺寸（等比缩放）
     img = _limit_size(img, MAX_BASE_SIZE)
     # 6. 保存处理结果 + 预览
