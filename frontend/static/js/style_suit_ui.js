@@ -1134,13 +1134,10 @@ function _renderBasePreviewPanel(d) {
     pane.innerHTML = '' +
       '<div class="suit-base-preview-box">' +
         '<div class="suit-base-preview-title">👁️ 基底预览（' + d.width + '×' + d.height + '）</div>' +
-        // v5.50.10: 手动框选裁剪容器（拖拽画框）
-        '<div class="suit-crop-wrap" id="baseCropWrap">' +
+        // v5.50.13: 预览图（只读展示，自由裁切进大图弹窗）
+        '<div class="suit-crop-wrap-static">' +
           '<img src="' + _esc(d.preview_url) + '" class="suit-base-preview-main" id="basePrevImg">' +
-          '<div class="suit-crop-mask" id="baseCropMask"></div>' +
-          '<div class="suit-crop-box" id="baseCropBox"></div>' +
         '</div>' +
-        '<div class="suit-crop-tip">🖱️ 在图上拖拽可手动框选裁剪区域（双击取消框选）</div>' +
         '<div class="suit-base-ratio-row">' +
           '<span class="suit-base-ratio-label">画幅比例：</span>' +
           ratios.map(function(r) {
@@ -1148,23 +1145,18 @@ function _renderBasePreviewPanel(d) {
             return '<button class="suit-ratio-btn" data-ratio="' + (r === '原始' ? 'original' : r) + '"' + isActive + '>' + r + '</button>';
           }).join('') +
         '</div>' +
-        '<div class="suit-crop-actions" id="baseCropActions" style="display:none;">' +
-          '<button class="suit-btn suit-btn-primary" id="wbBaseCropApply" style="flex:1;">✂️ 应用框选裁剪</button>' +
-          '<button class="suit-btn" id="wbBaseCropClear" style="flex:1;">↩️ 取消框选</button>' +
-        '</div>' +
+        '<button class="suit-btn suit-btn-primary" id="wbBaseFreeCrop" style="width:100%;margin-bottom:10px;">✂️ 自由裁切（大图框选）</button>' +
         '<input class="suit-input" id="wbBaseDesc6" placeholder="描述（例：青年男性，正脸）" value="' + _esc(state.workbench.base_asset_ref.desc || '') + '">' +
         '<div class="suit-base-actions">' +
           '<button class="suit-btn suit-btn-primary" id="wbBaseConfirm" style="flex:1;">✅ 确认设为基底</button>' +
           '<button class="suit-btn" id="wbBaseCancel" style="flex:1;">↩️ 重新选择</button>' +
         '</div>' +
-        '<div class="suit-base-hint">💡 可先手动框选区域，再选比例居中裁剪；最长边限制 ' + 1536 + 'px</div>' +
+        '<div class="suit-base-hint">💡 选比例快速裁切，或「自由裁切」在大图弹窗拖拽框选区域</div>' +
       '</div>';
-    _bindCropSelection();
     pane.querySelectorAll('.suit-ratio-btn').forEach(function(btn) {
         btn.addEventListener('click', async function() {
             pane.querySelectorAll('.suit-ratio-btn').forEach(function(b) { b.removeAttribute('data-active'); });
             btn.setAttribute('data-active', '1');
-            _clearCropSelection();
             // v5.50.8: 始终基于原始图重裁（_processBase 内部回退原始图）
             var d2 = await _processBase('', '', btn.getAttribute('data-ratio'));
             if (d2) {
@@ -1177,6 +1169,11 @@ function _renderBasePreviewPanel(d) {
             }
         });
     });
+    // v5.50.13: 自由裁切 → 大图弹窗
+    var freeBtn = pane.querySelector('#wbBaseFreeCrop');
+    if (freeBtn) {
+        freeBtn.addEventListener('click', function() { _openFreeCropModal(); });
+    }
     pane.querySelector('#wbBaseConfirm').addEventListener('click', function() {
         var desc = document.getElementById('wbBaseDesc6').value.trim();
         var d2 = state._baseProcessed;
@@ -1199,15 +1196,50 @@ function _renderBasePreviewPanel(d) {
     });
 }
 
-// ============ 手动框选裁剪（v5.50.10） ============
-function _bindCropSelection() {
-    var wrap = document.getElementById('baseCropWrap');
-    var box = document.getElementById('baseCropBox');
-    var mask = document.getElementById('baseCropMask');
-    if (!wrap || !box || !mask) return;
+// ============ 自由裁切：大图弹窗框选（v5.50.13） ============
+// 弹窗显示原始图（等比缩放），框选坐标直接对应原始图，避免预览图与原始图比例不一致导致的错位
+function _openFreeCropModal() {
+    var orig = state._baseOriginal || {};
+    var origUrl = orig.url || '';
+    if (!origUrl) { _showToast('请先上传图片', true); return; }
+    var html = '<div class="suit-modal-mask" id="freeCropMask" onclick="if(event.target===this)window.STYLE_SUIT._closeFreeCrop()">' +
+      '<div class="suit-modal suit-modal-lg">' +
+        '<div class="suit-modal-head"><span>✂️ 自由裁切（原始图框选）</span>' +
+          '<button class="suit-modal-close" onclick="window.STYLE_SUIT._closeFreeCrop()">×</button></div>' +
+        '<div class="suit-modal-body">' +
+          '<div class="suit-freecrop-wrap" id="freeCropWrap">' +
+            '<img src="' + _esc(origUrl) + '" id="freeCropImg" class="suit-freecrop-img">' +
+            '<div class="suit-crop-mask" id="freeCropMaskLayer"></div>' +
+            '<div class="suit-crop-box" id="freeCropBox"></div>' +
+          '</div>' +
+          '<div class="suit-crop-tip">🖱️ 拖拽框选保留区域 · 双击取消 · 显示当前选中尺寸</div>' +
+          '<div class="suit-freecrop-size" id="freeCropSize">未框选</div>' +
+        '</div>' +
+        '<div class="suit-modal-foot">' +
+          '<button class="suit-btn" onclick="window.STYLE_SUIT._closeFreeCrop()">取消</button>' +
+          '<button class="suit-btn suit-btn-primary" id="freeCropApply">✂️ 应用裁剪</button>' +
+        '</div>' +
+      '</div></div>';
+    var mask = document.createElement('div');
+    mask.innerHTML = html;
+    document.body.appendChild(mask.firstChild);
+    _bindFreeCrop();
+}
+
+function _bindFreeCrop() {
+    var wrap = document.getElementById('freeCropWrap');
+    var img = document.getElementById('freeCropImg');
+    var box = document.getElementById('freeCropBox');
+    var layer = document.getElementById('freeCropMaskLayer');
+    var sizeEl = document.getElementById('freeCropSize');
+    if (!wrap || !img || !box || !layer) return;
     var dragging = false, sx = 0, sy = 0;
-    // 画布相对坐标（0-1）
-    function setCropBox(x1, y1, x2, y2) {
+    var imgRatio = 1;
+    // 图片加载后计算显示比例
+    img.onload = function() {
+        imgRatio = img.naturalWidth / img.naturalHeight;
+    };
+    function setBox(x1, y1, x2, y2) {
         var left = Math.min(x1, x2), top = Math.min(y1, y2);
         var w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
         box.style.left = (left * 100) + '%';
@@ -1215,14 +1247,19 @@ function _bindCropSelection() {
         box.style.width = (w * 100) + '%';
         box.style.height = (h * 100) + '%';
         box.style.display = 'block';
-        mask.style.display = 'block';
+        layer.style.display = 'block';
+        // 显示选中尺寸（按原始图像素）
+        if (sizeEl) {
+            var nw = img.naturalWidth || 0, nh = img.naturalHeight || 0;
+            var pw = Math.round(w * nw), ph = Math.round(h * nh);
+            sizeEl.textContent = '选中区域：' + pw + '×' + ph + 'px';
+        }
     }
-    function hideCrop() {
+    function hideBox() {
         box.style.display = 'none';
-        mask.style.display = 'none';
-        var acts = document.getElementById('baseCropActions');
-        if (acts) acts.style.display = 'none';
-        state._baseCrop = null;
+        layer.style.display = 'none';
+        if (sizeEl) sizeEl.textContent = '未框选';
+        state._freeCrop = null;
     }
     wrap.addEventListener('mousedown', function(e) {
         var rect = wrap.getBoundingClientRect();
@@ -1239,54 +1276,38 @@ function _bindCropSelection() {
         var cy = (e.clientY - rect.top) / rect.height;
         cx = Math.max(0, Math.min(1, cx));
         cy = Math.max(0, Math.min(1, cy));
-        setCropBox(sx, sy, cx, cy);
+        setBox(sx, sy, cx, cy);
     });
     window.addEventListener('mouseup', function() {
         if (!dragging) return;
         dragging = false;
         var left = parseFloat(box.style.left) || 0, top = parseFloat(box.style.top) || 0;
         var w = parseFloat(box.style.width) || 0, h = parseFloat(box.style.height) || 0;
-        // 太小视为误操作（<3%）
-        if (w < 0.03 || h < 0.03) { hideCrop(); return; }
-        state._baseCrop = { x: left / 100, y: top / 100, w: w / 100, h: h / 100 };
-        var acts = document.getElementById('baseCropActions');
-        if (acts) acts.style.display = 'flex';
+        if (w < 0.03 || h < 0.03) { hideBox(); return; }
+        state._freeCrop = { x: left / 100, y: top / 100, w: w / 100, h: h / 100 };
     });
-    // 双击取消框选
-    wrap.addEventListener('dblclick', function() { hideCrop(); });
-    // 应用框选
-    var applyBtn = document.getElementById('wbBaseCropApply');
-    if (applyBtn) {
-        applyBtn.addEventListener('click', async function() {
-            if (!state._baseCrop) { _showToast('请先在图上拖拽框选区域', true); return; }
-            // 框选后基于原始图应用裁剪（ratio=original 不二次裁切）
-            var d2 = await _processBase('', '', 'original', state._baseCrop);
-            if (d2) {
-                hideCrop();
-                var img = document.getElementById('basePrevImg');
-                if (img) img.src = d2.preview_url;
-                var t = document.querySelector('.suit-base-preview-title');
-                if (t) t.textContent = '👁️ 基底预览（' + d2.width + '×' + d2.height + '）';
-                // 重置比例按钮高亮（框选后是自定义区域）
-                document.querySelectorAll('.suit-ratio-btn').forEach(function(b) { b.removeAttribute('data-active'); });
-            }
-        });
-    }
-    var clearBtn = document.getElementById('wbBaseCropClear');
-    if (clearBtn) {
-        clearBtn.addEventListener('click', function() { hideCrop(); });
-    }
+    wrap.addEventListener('dblclick', function() { hideBox(); });
+    document.getElementById('freeCropApply').addEventListener('click', async function() {
+        if (!state._freeCrop) { _showToast('请先在图上拖拽框选区域', true); return; }
+        var d2 = await _processBase('', '', 'original', state._freeCrop);
+        if (d2) {
+            _closeFreeCrop();
+            var img2 = document.getElementById('basePrevImg');
+            if (img2) img2.src = d2.preview_url;
+            var t = document.querySelector('.suit-base-preview-title');
+            if (t) t.textContent = '👁️ 基底预览（' + d2.width + '×' + d2.height + '）';
+            document.querySelectorAll('.suit-ratio-btn').forEach(function(b) { b.removeAttribute('data-active'); });
+        }
+    });
 }
 
-function _clearCropSelection() {
-    var box = document.getElementById('baseCropBox');
-    var mask = document.getElementById('baseCropMask');
-    var acts = document.getElementById('baseCropActions');
-    if (box) box.style.display = 'none';
-    if (mask) mask.style.display = 'none';
-    if (acts) acts.style.display = 'none';
-    state._baseCrop = null;
+function _closeFreeCrop() {
+    var m = document.getElementById('freeCropMask');
+    if (m) m.remove();
+    state._freeCrop = null;
 }
+
+window.STYLE_SUIT._closeFreeCrop = _closeFreeCrop;
 
 async function _assembleSuit(suitId) {
     try {

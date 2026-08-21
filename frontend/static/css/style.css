@@ -4352,3 +4352,10 @@ body.dark-theme .header-divider {
 
 /* ===== v5.50.12: 基底槽重新调整按钮 ===== */
 .suit-slot-base-btns { display: flex; gap: 2px; margin-left: auto; flex-shrink: 0; }
+
+/* ===== v5.50.13: 自由裁切大图弹窗 ===== */
+.suit-freecrop-wrap { position: relative; width: 100%; cursor: crosshair; user-select: none; background: #0f172a; border-radius: 10px; overflow: hidden; }
+.suit-freecrop-img { display: block; width: 100%; max-height: 60vh; object-fit: contain; }
+.suit-freecrop-size { font-size: 12px; color: #818cf8; margin-top: 8px; text-align: center; font-weight: 600; }
+.suit-crop-wrap-static { position: relative; width: 100%; }
+.suit-crop-wrap-static img { display: block; width: 100%; }
