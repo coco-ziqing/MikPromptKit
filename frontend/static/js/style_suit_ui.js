@@ -658,7 +658,20 @@ function _collectEditorBase() {
 
 async function _saveEditor(asNew) {
     var base = _collectEditorBase();
-    if (!base.name) { _showToast('模板名称必填', true); return; }
+    if (!base.name) {
+        // v5.50.32: 自动切到⑤基础信息 tab 并聚焦名称框（用户找不到必填项）
+        var mask = document.getElementById('suitEditorMask');
+        if (mask) {
+            mask.querySelectorAll('.suit-editor-tab').forEach(function(b) { b.classList.remove('active'); });
+            var bt = mask.querySelector('.suit-editor-tab[data-tab="base"]');
+            if (bt) bt.classList.add('active');
+            document.getElementById('suitEditorBody').innerHTML = _editorTab('base');
+            var nm = document.getElementById('edName');
+            if (nm) { nm.classList.add('suit-input-warn'); nm.focus(); }
+        }
+        _showToast('模板名称必填（已切到⑤基础信息，请填写后保存）', true);
+        return;
+    }
     var cfg = _collectEditorConfig();
     cfg.meta = { name: base.name, tags: base.tags, remark: base.remark, cover: base.cover_image };
     try {

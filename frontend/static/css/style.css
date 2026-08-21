@@ -4143,6 +4143,7 @@ body.dark-theme .header-divider {
 .suit-form label { display: block; margin-bottom: 10px; font-size: 12px; color: var(--text-dim, #94a3b8); }
 .suit-input { width: 100%; background: var(--bg-secondary, #1e293b); border: 1px solid var(--border-color, #334155); color: var(--text-color, #e2e8f0); padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-top: 4px; }
 .suit-input:focus { outline: none; border-color: #6366f1; }
+.suit-input-warn { border-color: #ef4444 !important; box-shadow: 0 0 0 2px rgba(239,68,68,.25); }
 .suit-textarea { resize: vertical; min-height: 70px; }
 .suit-color { padding: 3px; height: 38px; }
 .suit-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; }
