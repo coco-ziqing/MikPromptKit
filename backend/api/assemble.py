@@ -86,12 +86,20 @@ def _batch_dict(r, with_tasks=False):
     if with_tasks and d["task_ids"]:
         c = _db()
         try:
-            q = ",".join("?" * len(d["task_ids"]))
-            rows = c.execute(
-                f"SELECT id, task_type, prompt, status, progress, fail_category, error, result_filename FROM card_gen_tasks WHERE id IN ({q})",
-                d["task_ids"],
-            ).fetchall()
-            d["tasks"] = [dict(x) for x in rows]
+            # v5.50.21: task_ids 兼容 [{task_id, part}]（v5.49.0+）与 [int]（旧）
+            id_list = []
+            for x in d["task_ids"]:
+                if isinstance(x, dict):
+                    id_list.append(int(x.get("task_id") or 0))
+                else:
+                    id_list.append(int(x))
+            if id_list:
+                q = ",".join("?" * len(id_list))
+                rows = c.execute(
+                    f"SELECT id, task_type, prompt, status, progress, fail_category, error, result_filename FROM card_gen_tasks WHERE id IN ({q})",
+                    id_list,
+                ).fetchall()
+                d["tasks"] = [dict(x) for x in rows]
         finally:
             c.close()
     return d
