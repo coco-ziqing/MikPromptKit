@@ -665,8 +665,6 @@ async function _openWorkbench() {
     try { if (App._collapseSidebar) App._collapseSidebar(); } catch(e) {}
     var el = document.getElementById('viewAssembleWorkbench');
     await _renderWorkbench(el);
-    // 尝试加载历史装配记录
-    _loadDrafts();
 }
 
 async function _renderWorkbench(el) {
@@ -815,26 +813,213 @@ async function _loadRes(type) {
                 });
             });
         } else {
-            // 素材：占位 + 手动输入
-            list.innerHTML = '<div class="suit-empty">请填写基底素材引用：</div>' +
-              '<div class="suit-form" style="padding:8px;">' +
-              '<input class="suit-input" id="wbBaseDesc" placeholder="描述（例：青年男性，正脸）">' +
-              '<input class="suit-input" id="wbBaseUrl" placeholder="图片 URL（可选）" style="margin-top:6px;">' +
-              '<button class="suit-btn suit-btn-primary" id="wbBaseAdd" style="margin-top:6px;width:100%;">+ 设为基底</button>' +
-              '</div>';
-            document.getElementById('wbBaseAdd').addEventListener('click', function() {
-                var desc = document.getElementById('wbBaseDesc').value.trim();
-                var url = document.getElementById('wbBaseUrl').value.trim();
-                if (!desc && !url) { _showToast('请填写描述或图片 URL', true); return; }
-                state.workbench.base_asset_ref = { source: 'manual', id: 0, url: url, desc: desc };
-                _renderSlots(document.getElementById('viewAssembleWorkbench'));
-                _renderPreview(document.getElementById('viewAssembleWorkbench'));
-                _showToast('基底已设置');
+            // 素材：四种方式（本地文件/粘贴/媒体库/URL+描述）v5.50.5
+            list.innerHTML = '' +
+              '<div class="suit-base-tabs">' +
+                '<button class="suit-base-tab active" data-btab="upload">📁 上传</button>' +
+                '<button class="suit-base-tab" data-btab="paste">📋 粘贴</button>' +
+                '<button class="suit-base-tab" data-btab="lib">🖼️ 媒体库</button>' +
+                '<button class="suit-base-tab" data-btab="url">🔗 URL</button>' +
+              '</div>' +
+              '<div class="suit-base-pane" id="basePane"></div>';
+            _renderBasePane('upload');
+            list.querySelectorAll('.suit-base-tab').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    list.querySelectorAll('.suit-base-tab').forEach(function(b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    _renderBasePane(btn.getAttribute('data-btab'));
+                });
             });
         }
     } catch(e) {
         list.innerHTML = '<div class="suit-empty" style="color:#ef4444;">' + _esc(e.message) + '</div>';
     }
+}
+
+// ============ 基底素材四种上传方式（v5.50.5） ============
+function _renderBasePane(mode) {
+    var pane = document.getElementById('basePane');
+    if (!pane) return;
+    var html = '';
+    if (mode === 'upload') {
+        html = '' +
+          '<div class="suit-dropzone" id="baseDropzone">' +
+            '<div class="suit-dropzone-icon">📁</div>' +
+            '<div class="suit-dropzone-text">点击选择或拖放真人参考图片</div>' +
+            '<div class="suit-dropzone-sub">支持 JPG / PNG / WEBP，≤15MB</div>' +
+          '</div>' +
+          '<input type="file" id="baseFileInput" accept="image/*" style="display:none;">' +
+          '<input class="suit-input" id="wbBaseDesc2" placeholder="描述（例：青年男性，正脸）" style="margin-top:8px;">' +
+          '<button class="suit-btn suit-btn-primary" id="wbBaseUploadBtn" style="margin-top:6px;width:100%;">⬆️ 上传并设为基底</button>';
+    } else if (mode === 'paste') {
+        html = '' +
+          '<div class="suit-dropzone" id="basePasteZone">' +
+            '<div class="suit-dropzone-icon">📋</div>' +
+            '<div class="suit-dropzone-text">Ctrl+V 粘贴剪贴板图片</div>' +
+            '<div class="suit-dropzone-sub">复制图片后点击此处再粘贴</div>' +
+          '</div>' +
+          '<img id="basePastePreview" class="suit-base-preview" style="display:none;">' +
+          '<input class="suit-input" id="wbBaseDesc3" placeholder="描述（可选）" style="margin-top:8px;">' +
+          '<button class="suit-btn suit-btn-primary" id="wbBasePasteBtn" style="margin-top:6px;width:100%;" disabled>⬆️ 粘贴并设为基底</button>';
+    } else if (mode === 'lib') {
+        html = '<div class="suit-empty" id="baseLibLoading">加载媒体库...</div><div id="baseLibGrid" class="suit-base-lib"></div>' +
+          '<input class="suit-input" id="wbBaseDesc4" placeholder="描述（可选）" style="margin-top:8px;">';
+    } else {
+        html = '' +
+          '<div class="suit-form" style="padding:4px;">' +
+            '<label>图片 URL<input class="suit-input" id="wbBaseUrl" placeholder="https://..."></label>' +
+            '<label>描述<input class="suit-input" id="wbBaseDesc5" placeholder="例：青年男性，正脸"></label>' +
+            '<button class="suit-btn suit-btn-primary" id="wbBaseUrlBtn" style="width:100%;">+ 设为基底</button>' +
+          '</div>';
+    }
+    pane.innerHTML = html;
+    _bindBasePane(mode);
+    if (mode === 'lib') _loadMediaLib();
+}
+
+function _bindBasePane(mode) {
+    if (mode === 'upload') {
+        var dz = document.getElementById('baseDropzone');
+        var fi = document.getElementById('baseFileInput');
+        if (!dz || !fi) return;
+        dz.addEventListener('click', function() { fi.click(); });
+        // 拖放
+        dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.add('drag'); });
+        dz.addEventListener('dragleave', function() { dz.classList.remove('drag'); });
+        dz.addEventListener('drop', function(e) {
+            e.preventDefault(); dz.classList.remove('drag');
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) _uploadBaseFile(e.dataTransfer.files[0]);
+        });
+        fi.addEventListener('change', function() {
+            if (fi.files && fi.files[0]) _uploadBaseFile(fi.files[0]);
+        });
+        document.getElementById('wbBaseUploadBtn').addEventListener('click', function() {
+            var desc = document.getElementById('wbBaseDesc2').value.trim();
+            if (!desc) { _showToast('请填写基底描述', true); return; }
+            if (!state.workbench.base_asset_ref || !state.workbench.base_asset_ref.url) { _showToast('请先选择或拖入图片', true); return; }
+            state.workbench.base_asset_ref.desc = desc;
+            _finishBaseSet();
+        });
+    } else if (mode === 'paste') {
+        var zone = document.getElementById('basePasteZone');
+        var prev = document.getElementById('basePastePreview');
+        var btn = document.getElementById('wbBasePasteBtn');
+        if (!zone || !prev || !btn) return;
+        zone.addEventListener('click', function() {
+            // 聚焦后监听 paste
+            zone.focus();
+            _showToast('已就绪：请按 Ctrl+V 粘贴图片');
+        });
+        zone.setAttribute('tabindex', '0');
+        zone.addEventListener('paste', function(e) {
+            var items = (e.clipboardData || {}).items || [];
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].type && items[i].type.indexOf('image') === 0) {
+                    var file = items[i].getAsFile();
+                    if (file) {
+                        _handlePastedFile(file, prev, btn);
+                        return;
+                    }
+                }
+            }
+            _showToast('剪贴板中没有图片', true);
+        });
+        btn.addEventListener('click', function() {
+            var desc = document.getElementById('wbBaseDesc3').value.trim();
+            if (!state.workbench.base_asset_ref || !state.workbench.base_asset_ref.url) { _showToast('请先粘贴图片', true); return; }
+            state.workbench.base_asset_ref.desc = desc || '粘贴图片参考';
+            _finishBaseSet();
+        });
+    } else if (mode === 'url') {
+        document.getElementById('wbBaseUrlBtn').addEventListener('click', function() {
+            var url = document.getElementById('wbBaseUrl').value.trim();
+            var desc = document.getElementById('wbBaseDesc5').value.trim();
+            if (!url) { _showToast('请填写图片 URL', true); return; }
+            state.workbench.base_asset_ref = { source: 'manual', id: 0, url: url, desc: desc || 'URL 参考图' };
+            _finishBaseSet();
+        });
+    }
+}
+
+async function _uploadBaseFile(file) {
+    if (!file.type || file.type.indexOf('image') !== 0) { _showToast('仅支持图片文件', true); return; }
+    var dz = document.getElementById('baseDropzone');
+    if (dz) dz.classList.add('uploading');
+    try {
+        var fd = new FormData();
+        fd.append('file', file);
+        var t = _token();
+        var resp = await fetch('/api/seedance/v2/refs/upload', {
+            method: 'POST', body: fd,
+            headers: t ? { 'Authorization': '***' + t } : {}
+        });
+        var d = await resp.json();
+        if (!resp.ok || !d.ok) { throw new Error((d.detail || '上传失败')); }
+        state.workbench.base_asset_ref = { source: 'upload', id: 0, url: d.url, file_path: d.file_path, desc: '' };
+        if (dz) {
+            dz.innerHTML = '<div class="suit-dropzone-icon">✅</div>' +
+              '<div class="suit-dropzone-text">' + _esc(file.name) + ' 已上传</div>' +
+              '<img src="' + _esc(d.url) + '" class="suit-base-preview" style="display:block;">';
+            dz.classList.remove('uploading');
+        }
+        _showToast('图片已上传，请填写描述后设为基底');
+    } catch(e) {
+        if (dz) { dz.classList.remove('uploading'); dz.innerHTML = '<div class="suit-dropzone-icon">⚠️</div><div class="suit-dropzone-text">上传失败：' + _esc(e.message) + '</div>'; }
+        _showToast('上传失败：' + e.message, true);
+    }
+}
+
+function _handlePastedFile(file, prev, btn) {
+    // 本地预览
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        if (prev) { prev.src = e.target.result; prev.style.display = 'block'; }
+        if (btn) btn.disabled = false;
+    };
+    reader.readAsDataURL(file);
+    // 上传到服务器（等待完成）
+    _uploadBaseFile(file).then(function() {
+        // _uploadBaseFile 已设置 state.workbench.base_asset_ref
+    });
+}
+
+async function _loadMediaLib() {
+    var grid = document.getElementById('baseLibGrid');
+    var loading = document.getElementById('baseLibLoading');
+    if (!grid) return;
+    try {
+        var d = await _api('/api/media/library?page_size=60');
+        var items = (d.items || []).filter(function(x) { return x.media_type === 'image'; });
+        if (loading) loading.style.display = 'none';
+        if (!items.length) { grid.innerHTML = '<div class="suit-empty">媒体库暂无图片</div>'; return; }
+        grid.innerHTML = items.map(function(it) {
+            return '<div class="suit-lib-item" data-url="' + _esc(it.original_url || it.thumbnail_url || '') + '" data-name="' + _esc(it.original_filename || it.filename || '') + '">' +
+              '<img src="' + _esc(it.thumbnail_url || '') + '" loading="lazy" onerror="this.style.visibility=\'hidden\'">' +
+            '</div>';
+        }).join('');
+        grid.querySelectorAll('.suit-lib-item').forEach(function(item) {
+            item.addEventListener('click', function() {
+                grid.querySelectorAll('.suit-lib-item').forEach(function(x) { x.classList.remove('selected'); });
+                item.classList.add('selected');
+                var desc = document.getElementById('wbBaseDesc4').value.trim();
+                state.workbench.base_asset_ref = {
+                    source: 'media_lib', id: 0,
+                    url: item.getAttribute('data-url'),
+                    desc: desc || item.getAttribute('data-name') || '媒体库参考图'
+                };
+                _finishBaseSet();
+            });
+        });
+    } catch(e) {
+        if (loading) loading.style.display = 'none';
+        grid.innerHTML = '<div class="suit-empty" style="color:#ef4444;">' + _esc(e.message) + '</div>';
+    }
+}
+
+function _finishBaseSet() {
+    var el = document.getElementById('viewAssembleWorkbench');
+    _renderSlots(el); _renderPreview(el);
+    _showToast('角色基底已设置');
 }
 
 async function _assembleSuit(suitId) {

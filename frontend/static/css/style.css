@@ -4282,3 +4282,20 @@ body.dark-theme .header-divider {
 .suit-preview-empty { padding: 40px 10px; line-height: 1.8; }
 /* 背包详情面板贴顶 */
 .suit-detail { position: sticky; top: 70px; }
+
+/* ===== v5.50.5: 基底素材四方式上传 ===== */
+.suit-base-tabs { display: flex; gap: 2px; margin-bottom: 8px; }
+.suit-base-tab { flex: 1; background: transparent; border: 1px solid var(--border-color, #334155); color: var(--text-dim, #94a3b8); padding: 6px 0; font-size: 12px; cursor: pointer; border-radius: 6px; }
+.suit-base-tab.active { background: rgba(99,102,241,.15); color: #818cf8; border-color: #6366f1; }
+.suit-dropzone { border: 2px dashed var(--border-color, #475569); border-radius: 10px; padding: 22px 10px; text-align: center; cursor: pointer; transition: all .15s; background: var(--bg-primary, #0f172a); }
+.suit-dropzone:hover, .suit-dropzone.drag { border-color: #6366f1; background: rgba(99,102,241,.06); }
+.suit-dropzone.uploading { opacity: .7; pointer-events: none; }
+.suit-dropzone-icon { font-size: 28px; margin-bottom: 6px; }
+.suit-dropzone-text { font-size: 12px; color: var(--text-color, #e2e8f0); }
+.suit-dropzone-sub { font-size: 10px; color: var(--text-dim, #64748b); margin-top: 4px; }
+.suit-base-preview { max-width: 100%; max-height: 120px; border-radius: 8px; margin-top: 8px; border: 1px solid var(--border-color, #334155); object-fit: contain; }
+.suit-base-lib { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-height: 220px; overflow-y: auto; }
+.suit-lib-item { border: 1px solid var(--border-color, #334155); border-radius: 6px; overflow: hidden; cursor: pointer; aspect-ratio: 1; }
+.suit-lib-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.suit-lib-item:hover { border-color: #6366f1; }
+.suit-lib-item.selected { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,.4); }
