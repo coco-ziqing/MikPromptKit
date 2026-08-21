@@ -4354,8 +4354,8 @@ body.dark-theme .header-divider {
 .suit-slot-base-btns { display: flex; gap: 2px; margin-left: auto; flex-shrink: 0; }
 
 /* ===== v5.50.13: 自由裁切大图弹窗 ===== */
-.suit-freecrop-wrap { position: relative; width: 100%; cursor: crosshair; user-select: none; background: #0f172a; border-radius: 10px; overflow: hidden; }
-.suit-freecrop-img { display: block; width: 100%; max-height: 60vh; object-fit: contain; }
+.suit-freecrop-wrap { position: relative; display: inline-block; width: auto; max-width: 100%; cursor: crosshair; user-select: none; background: #0f172a; border-radius: 10px; overflow: hidden; }
+.suit-freecrop-img { display: block; max-width: 100%; max-height: 60vh; width: auto; height: auto; object-fit: contain; }
 .suit-freecrop-size { font-size: 12px; color: #818cf8; margin-top: 8px; text-align: center; font-weight: 600; }
 .suit-crop-wrap-static { position: relative; width: 100%; }
 .suit-crop-wrap-static img { display: block; width: 100%; }
@@ -4363,3 +4363,6 @@ body.dark-theme .header-divider {
 /* ===== v5.50.14: 自由裁切固定比例规范化 ===== */
 .suit-freecrop-ratios { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 .suit-freecrop-ratios .suit-ratio-btn[data-active] { background: rgba(99,102,241,.2); border-color: #6366f1; color: #818cf8; }
+
+/* ===== v5.50.17: 自由裁切容器贴合图片（修复竖图框选错位） ===== */
+#freeCropMask .suit-modal-body { text-align: center; }
