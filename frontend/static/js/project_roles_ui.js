@@ -577,7 +577,7 @@
       ov.innerHTML = '<div class="pk-auth-modal" style="max-width:720px;width:94vw;" onclick="event.stopPropagation()">' +
         '<h4 style="display:flex;align-items:center;justify-content:space-between;"><span>🤖 角色三视图生成组装器</span>' +
         '<button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById(\'rlTVGen\').remove()">✕</button></h4>' +
-        '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">基于角色设定字段自动组装「正面/侧面/背面」三视图提示词，调用图片生成引擎产出三视图，结果归档到角色档案</div>' +
+        '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">基于角色设定字段自动组装三视图提示词，调用图片生成引擎产出设定图，结果归档到角色档案</div>' +
         '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">' +
         '<div style="flex:1;min-width:150px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">生成引擎</label>' +
         '<select id="rlTVEngine" class="s2-input" style="width:100%;padding:5px 8px;">' +
@@ -586,9 +586,17 @@
         '<option value="libtv">LibTV (在线画布)</option></select></div>' +
         '<div style="flex:0.8;min-width:100px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">画幅</label>' +
         '<select id="rlTVRatio" class="s2-input" style="width:100%;padding:5px 8px;">' +
-        '<option value="1:1">1:1 方形</option><option value="3:4">3:4 竖版</option><option value="2:3">2:3 竖版</option><option value="9:16">9:16 长竖</option></select></div>' +
+        '<option value="1:1">1:1 方形</option><option value="16:9">16:9 横版</option><option value="4:3">4:3 横版</option><option value="3:4">3:4 竖版</option><option value="2:3">2:3 竖版</option><option value="9:16">9:16 长竖</option></select></div>' +
         '<div style="flex:0.8;min-width:100px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">LibTV UUID</label>' +
         '<input id="rlTVUUID" class="s2-input" style="width:100%;padding:5px 8px;" placeholder="选LibTV时填"></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">' +
+        '<div style="flex:0.8;min-width:140px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">布局模式</label>' +
+        '<select id="rlTVLayout" class="s2-input" style="width:100%;padding:5px 8px;" onchange="PK_ROLES._onTVLayoutChange(' + rid + ')">' +
+        '<option value="single">逐视角三张（正/侧/背）</option>' +
+        '<option value="sheet">单图设定表（正面+侧面+背面+脸部特写）</option></select></div>' +
+        '<div style="flex:2;min-width:200px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">风格前缀（可选，如 3D写实国漫风格，UE5渲染，细节超高清）</label>' +
+        '<input id="rlTVStylePrefix" class="s2-input" style="width:100%;padding:5px 8px;" placeholder="留空=不注入风格段" onchange="PK_ROLES._onTVLayoutChange(' + rid + ')"></div>' +
         '</div>' +
         '<div style="font-size:12px;font-weight:600;margin-bottom:4px;">📝 组装提示词预览（可编辑）：</div>' +
         '<div id="rlTVPrompts"></div>' +
@@ -597,29 +605,47 @@
       document.body.appendChild(ov);
       this._loadThreeViewPrompts(rid);
     },
+    _onTVLayoutChange: function (rid) { this._loadThreeViewPrompts(rid); },
     _loadThreeViewPrompts: async function (rid) {
       var self = this;
+      // v5.50.27: 防异步竞态——已提交任务卡时禁止重载；并发重载只允许最新一次渲染
+      self._tvReloadSeq = (self._tvReloadSeq || 0) + 1;
+      var seq = self._tvReloadSeq;
+      if (document.getElementById('rlTVTaskList')) return;
       try {
         var d = await (await fetch('/api/roles/' + rid)).json();
+        // 渲染前复查：期间有新重载或已提交任务卡 → 放弃本次（避免迟到重载覆盖任务卡）
+        if (seq !== self._tvReloadSeq || document.getElementById('rlTVTaskList')) return;
         var role = (d && d.role) || {};
         var settings = role.settings || {};
+        var layout = (document.getElementById('rlTVLayout') || {}).value || 'single';
+        var stylePrefix = ((document.getElementById('rlTVStylePrefix') || {}).value || '').trim();
         var subj = [];
         ['occupation', 'gender', 'age', 'body', 'hairstyle', 'facial', 'clothing', 'accessory', 'temperament', 'style'].forEach(function (k) {
           var v = (settings[k] || '').trim(); if (v) subj.push(v);
         });
-        var base = (role.name || '角色') + (subj.length ? '（' + subj.join('，') + '）' : '') + '，角色三视图设定图，纯白背景，全身立绘，统一角色外观与服装细节，人物比例协调，专业角色设定图风格，高清细节';
-        var views = {
-          front: base + '，正面视角，正面站姿，双手自然下垂，面部与服装正面完整展示',
-          side: base + '，正侧面视角，侧身站姿，展示侧面轮廓与服装侧面细节',
-          back: base + '，背面视角，背身站姿，展示背面服装与发型背面细节'
-        };
+        var subjFull = (role.name || '角色') + (subj.length ? '（' + subj.join('，') + '）' : '');
+        var stylePart = stylePrefix ? stylePrefix + '，' : '';
         var box = document.getElementById('rlTVPrompts');
-        var vnames = { front: '正面', side: '侧面', back: '背面' };
         var h = '';
-        ['front', 'side', 'back'].forEach(function (v) {
-          h += '<div style="margin-bottom:6px;"><label style="font-size:10px;color:var(--text-muted);">' + vnames[v] + '</label>' +
-            '<textarea class="rl-tv-prompt" data-view="' + v + '" style="width:100%;min-height:52px;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;">' + self._esc(views[v]) + '</textarea></div>';
-        });
+        if (layout === 'sheet') {
+          // v5.50.26: 单图四宫格设定表（与后端 _build_three_view_prompts 一致）
+          var sheetPrompt = stylePart + '角色三视图加脸部特写设定表，纯白背景，无阴影，清晰展示正面、侧面、背面标准正交视图，依次并排展示：正面全身站立像、90度侧面全身像、背面全身像、脸部特写，角色：' + subjFull + '，服装、发型、配饰等所有细节在三个视角中完全一致，人物比例协调，构图完整，专业角色设定图风格，高清细节，服装剪裁合身';
+          h += '<div style="margin-bottom:6px;"><label style="font-size:10px;color:var(--text-muted);">🖼 设定表（四格并排）</label>' +
+            '<textarea class="rl-tv-prompt" data-view="sheet" style="width:100%;min-height:88px;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;">' + self._esc(sheetPrompt) + '</textarea></div>';
+        } else {
+          var base = stylePart + subjFull + '，角色三视图设定图，纯白背景，全身立绘，统一角色外观与服装细节，人物比例协调，专业角色设定图风格，高清细节';
+          var views = {
+            front: base + '，正面视角，正面站姿，双手自然下垂，面部与服装正面完整展示',
+            side: base + '，正侧面视角，侧身站姿，展示侧面轮廓与服装侧面细节',
+            back: base + '，背面视角，背身站姿，展示背面服装与发型背面细节'
+          };
+          var vnames = { front: '正面', side: '侧面', back: '背面' };
+          ['front', 'side', 'back'].forEach(function (v) {
+            h += '<div style="margin-bottom:6px;"><label style="font-size:10px;color:var(--text-muted);">' + vnames[v] + '</label>' +
+              '<textarea class="rl-tv-prompt" data-view="' + v + '" style="width:100%;min-height:52px;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;">' + self._esc(views[v]) + '</textarea></div>';
+          });
+        }
         box.innerHTML = h;
       } catch (e) { document.getElementById('rlTVPrompts').innerHTML = '<div style="color:var(--danger);">加载设定失败</div>'; }
     },
@@ -628,12 +654,14 @@
       var engine = document.getElementById('rlTVEngine').value;
       var ratio = document.getElementById('rlTVRatio').value;
       var uuid = document.getElementById('rlTVUUID').value;
+      var layout = document.getElementById('rlTVLayout').value;
+      var stylePrefix = (document.getElementById('rlTVStylePrefix').value || '').trim();
       var prompts = {};
       document.querySelectorAll('.rl-tv-prompt').forEach(function (t) { prompts[t.getAttribute('data-view')] = t.value; });
       var go = document.getElementById('rlTVGo');
       go.disabled = true; go.textContent = '⏳ 提交中...';
       try {
-        var d = await (await fetch('/api/roles/' + rid + '/three-view/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ engine: engine, ratio: ratio, project_uuid: uuid, caption: 'AI三视图', prompts: prompts }) })).json();
+        var d = await (await fetch('/api/roles/' + rid + '/three-view/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ engine: engine, ratio: ratio, project_uuid: uuid, caption: 'AI三视图', prompts: prompts, layout: layout, style_prefix: stylePrefix }) })).json();
         if (!d.ok) { this._toast(d.detail || '生成未完成', 'error'); go.disabled = false; go.textContent = '🚀 生成三视图'; return; }
         // v5.36.46: 任务卡 + 轮询回写（生成完成自动归档到档案区）
         var tasks = d.tasks || [];
@@ -650,7 +678,7 @@
     _tvTaskCards: function (tasks, states) {
       // 任务卡渲染：视图名 + 状态徽章 + 进度条
       var self = this;
-      var vnames = { front: '🖼 正面', side: '🖼 侧面', back: '🖼 背面' };
+      var vnames = { front: '🖼 正面', side: '🖼 侧面', back: '🖼 背面', sheet: '🖼 设定表' };
       return (tasks || []).map(function (t) {
         var s = states[t.task_id] || { status: 'queued', progress: 0, error: '' };
         var badge = '', bar = '';
