@@ -4238,3 +4238,47 @@ body.dark-theme .header-divider {
 .suit-result-agg { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
 .suit-agg-chip { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim, #94a3b8); background: var(--bg-primary, #0f172a); border-radius: 8px; padding: 4px 10px; }
 .suit-agg-chip b { color: var(--text-color, #e2e8f0); }
+
+/* ===== v5.50.3: 布局优化（容器撑满 / 三栏弹性 / 卡片加大） ===== */
+#viewStyleSuit.view-panel, #viewAssembleWorkbench.view-panel, #viewSuitResult.view-panel {
+  min-height: calc(100vh - 120px);
+}
+.suit-bag { padding: 18px 24px; max-width: none; min-height: calc(100vh - 140px); }
+.suit-workbench { padding: 18px 24px; max-width: none; min-height: calc(100vh - 140px); }
+.suit-result { padding: 18px 24px; max-width: none; min-height: calc(100vh - 140px); }
+
+/* 背包：卡片更大 + 网格更宽 */
+.suit-bag-body { grid-template-columns: minmax(0, 1fr) 400px; gap: 18px; }
+.suit-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.suit-cover { height: 150px; }
+.suit-card-name { font-size: 14px; padding: 10px 12px 4px; }
+.suit-card-tags { padding: 0 12px 10px; }
+.suit-card-actions { padding: 8px 10px; }
+.suit-card-action { font-size: 15px; padding: 4px 8px; }
+.suit-detail { padding: 18px; }
+.suit-detail-name { font-size: 18px; }
+
+/* 操作台：三栏弹性（中栏吃满剩余空间） */
+.suit-wb-body { grid-template-columns: 280px minmax(380px, 1fr) 340px; gap: 14px; }
+.suit-wb-left { padding: 12px; }
+.suit-wb-res-list { max-height: calc(100vh - 280px); }
+.suit-wb-right { padding: 12px; }
+.suit-slot { padding: 12px 14px; min-height: 76px; }
+.suit-slot-body { min-height: 44px; }
+.suit-preview { max-height: none; min-height: 200px; }
+
+/* 结果页任务卡更大 */
+.suit-result-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.suit-task-card { padding: 14px; }
+
+/* ===== v5.50.3b: 三栏纵向撑满 ===== */
+.suit-wb-body { align-items: stretch; }
+.suit-wb-left, .suit-wb-right { display: flex; flex-direction: column; }
+.suit-wb-res-list { flex: 1; max-height: none; min-height: 300px; }
+.suit-wb-right .suit-preview { flex: 1; min-height: 240px; }
+.suit-wb-mid { justify-content: flex-start; }
+.suit-slot { flex: 0 0 auto; }
+/* 预览空态引导文案加大 */
+.suit-preview-empty { padding: 40px 10px; line-height: 1.8; }
+/* 背包详情面板贴顶 */
+.suit-detail { position: sticky; top: 70px; }

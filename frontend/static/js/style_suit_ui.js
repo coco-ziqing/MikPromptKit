@@ -124,6 +124,8 @@ window.STYLE_SUIT = {
 // ==================== ① 角色设定集库 ====================
 async function _openBag() {
     _activatePanel('viewStyleSuit');
+    // v5.50.3: 进入页面自动折叠侧边栏，最大化内容区
+    try { if (App._collapseSidebar) App._collapseSidebar(); } catch(e) {}
     var el = document.getElementById('viewStyleSuit');
     el.innerHTML = _bagShell();
     _bindBagEvents(el);
@@ -653,6 +655,8 @@ window.STYLE_SUIT._closeEditor = _closeEditor;
 // ==================== ③ 组装工作台（简化交互版：点击装配） ====================
 async function _openWorkbench() {
     _activatePanel('viewAssembleWorkbench');
+    // v5.50.3: 进入工作台自动折叠侧边栏
+    try { if (App._collapseSidebar) App._collapseSidebar(); } catch(e) {}
     var el = document.getElementById('viewAssembleWorkbench');
     await _renderWorkbench(el);
     // 尝试加载历史装配记录
