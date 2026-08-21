@@ -725,21 +725,21 @@ async function _renderWorkbench(el) {
           '</div>' +
           '<div class="suit-wb-res-list" id="wbResList"><div class="suit-empty">加载中...</div></div>' +
         '</div>' +
-        // 中：四层组装结构
+        // 中：四层组装结构（v5.50.9: 点击层自动切换左侧资源面板）
         '<div class="suit-wb-mid">' +
-          '<div class="suit-slot suit-slot-base" id="slotBase">' +
+          '<div class="suit-slot suit-slot-base" id="slotBase" data-slot="base">' +
             '<div class="suit-slot-label">① 角色基底层 <span class="suit-slot-req">必填</span></div>' +
             '<div class="suit-slot-body" id="slotBaseBody"><div class="suit-slot-empty">点击左侧素材添加角色基底参考</div></div>' +
           '</div>' +
-          '<div class="suit-slot" id="slotRunes">' +
+          '<div class="suit-slot" id="slotRunes" data-slot="cards">' +
             '<div class="suit-slot-label">② 风格词条层 <span class="suit-slot-multi">可叠加 · 排序 · 删除</span></div>' +
             '<div class="suit-slot-body" id="slotRunesBody"><div class="suit-slot-empty">点击左侧词条添加（可叠加）</div></div>' +
           '</div>' +
-          '<div class="suit-slot suit-slot-suit" id="slotSuit">' +
+          '<div class="suit-slot suit-slot-suit" id="slotSuit" data-slot="suits">' +
             '<div class="suit-slot-label">③ 风格模板层 <span class="suit-slot-req">唯一</span></div>' +
             '<div class="suit-slot-body" id="slotSuitBody"><div class="suit-slot-empty">点击左侧模板一键加载全套配置</div></div>' +
           '</div>' +
-          '<div class="suit-slot" id="slotAccessory">' +
+          '<div class="suit-slot" id="slotAccessory" data-slot="accessory">' +
             '<div class="suit-slot-label">④ 视图资产选配 <span class="suit-slot-multi">临时增减视图资产</span></div>' +
             '<div class="suit-slot-body" id="slotAccessoryBody"></div>' +
           '</div>' +
@@ -783,6 +783,29 @@ function _bindWorkbench(el) {
             el.querySelectorAll('.suit-wb-res-tab').forEach(function(b) { b.classList.remove('active'); });
             btn.classList.add('active');
             _loadRes(btn.getAttribute('data-res'));
+        });
+    });
+    // v5.50.9: 点击四层卡槽 → 左侧自动切换到对应资源面板 + 高亮选中
+    el.querySelectorAll('.suit-slot[data-slot]').forEach(function(slot) {
+        slot.addEventListener('click', function(ev) {
+            // 点击卡槽内按钮（移除×等）不触发
+            if (ev.target.closest('.suit-card-action')) return;
+            var key = slot.getAttribute('data-slot');
+            state.selectedSlot = key;
+            el.querySelectorAll('.suit-slot').forEach(function(s) { s.classList.remove('slot-selected'); });
+            slot.classList.add('slot-selected');
+            var resMap = { base: 'base', cards: 'cards', suits: 'suits' };
+            var tabMap = { base: '素材', cards: '词卡', suits: '套装' };
+            var res = resMap[key];
+            if (res) {
+                el.querySelectorAll('.suit-wb-res-tab').forEach(function(b) {
+                    b.classList.toggle('active', b.getAttribute('data-res') === res);
+                });
+                _loadRes(res);
+                if (tabMap[key]) _showToast('已切换资源面板：' + tabMap[key]);
+            } else if (key === 'accessory') {
+                _showToast('视图资产：请勾选右侧产出配件');
+            }
         });
     });
     el.querySelector('#wbBtnRender').addEventListener('click', _submitRender);

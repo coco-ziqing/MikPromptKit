@@ -4335,3 +4335,9 @@ body.dark-theme .header-divider {
 .suit-slot-base-info { flex: 1; min-width: 0; }
 .suit-slot-base-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .suit-slot-base-meta { font-size: 11px; color: var(--text-dim, #94a3b8); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+
+/* ===== v5.50.9: 四层卡槽选中高亮 ===== */
+.suit-slot { cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
+.suit-slot:hover { border-color: #6366f1; }
+.suit-slot.slot-selected { border-color: #6366f1 !important; border-style: solid; box-shadow: 0 0 0 2px rgba(99,102,241,.25); background: rgba(99,102,241,.06); }
+.suit-slot.slot-selected .suit-slot-label { color: #818cf8; }
