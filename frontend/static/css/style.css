@@ -4299,3 +4299,15 @@ body.dark-theme .header-divider {
 .suit-lib-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .suit-lib-item:hover { border-color: #6366f1; }
 .suit-lib-item.selected { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,.4); }
+
+/* ===== v5.50.6: 修复布局集中居中（容器铺满父级，消除左右空白） ===== */
+.suit-bag, .suit-workbench, .suit-result {
+  max-width: none !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+/* 背包页两栏：网格弹性 + 详情固定，吃满全宽 */
+.suit-bag-body { grid-template-columns: minmax(0, 1fr) 400px !important; }
+.suit-grid { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)) !important; }
+/* 操作台三栏弹性吃满 */
+.suit-wb-body { grid-template-columns: 300px minmax(420px, 1fr) 360px !important; }
