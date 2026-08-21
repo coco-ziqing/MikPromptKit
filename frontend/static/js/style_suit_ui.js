@@ -1227,8 +1227,7 @@ function _renderBasePreviewPanel(d) {
             original_url: orig.url || '', original_file_path: orig.file_path || ''
         };
         _finishBaseSet();
-        // v5.50.12: 确认后保留预览面板，可继续调整比例/还原原始
-        _showToast('已设为参考，可继续调整或点「原始」还原');
+        // v5.50.33: 确认参考后不再弹提示（基底槽缩略图即反馈，避免 alert/toast 打扰）
     });
     pane.querySelector('#wbBaseCancel').addEventListener('click', function() {
         state._basePanelRendered = false;
