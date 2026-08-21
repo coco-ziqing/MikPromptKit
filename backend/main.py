@@ -197,6 +197,14 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             log_warn(f"[main] Phase18 迁移跳过: {e}")
 
+        # Phase19: 风格套装系统数据库迁移（幂等）
+        try:
+            from db_migrate_phase19 import run_migration as run_p19_migration
+            run_p19_migration(db)
+            log_info("[main] Phase19 迁移完成")
+        except Exception as e:
+            log_warn(f"[main] Phase19 迁移跳过: {e}")
+
         existing = safe_count_dict("SELECT COUNT(*) as cnt FROM prompts")
         if existing == 0:
             print("[初始化] 导入 %d 条内置提示词..." % get_builtin_count())
