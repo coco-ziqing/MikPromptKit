@@ -891,7 +891,20 @@ async function _loadRes(type) {
                 '<button class="suit-base-tab" data-btab="url">🔗 URL</button>' +
               '</div>' +
               '<div class="suit-base-pane" id="basePane"></div>';
-            _renderBasePane('upload');
+            // v5.50.12: 已有基底且保留原始引用时，恢复预览面板（可继续调整/还原原始）
+            var b = state.workbench.base_asset_ref || {};
+            if (b.url && b.original_url && !state._baseProcessed) {
+                state._baseOriginal = { url: b.original_url, file_path: b.original_file_path };
+                _processBase('', '', 'original');
+            } else if (b.url && b.original_url) {
+                state._baseOriginal = { url: b.original_url, file_path: b.original_file_path };
+                _renderBasePreviewPanel({
+                    preview_url: b.preview_url || b.url, width: b.width || 0, height: b.height || 0,
+                    url: b.url, file_path: b.file_path, ratio: b.ratio || 'original'
+                });
+            } else {
+                _renderBasePane('upload');
+            }
             list.querySelectorAll('.suit-base-tab').forEach(function(btn) {
                 btn.addEventListener('click', function() {
                     list.querySelectorAll('.suit-base-tab').forEach(function(b) { b.classList.remove('active'); });
@@ -1168,13 +1181,18 @@ function _renderBasePreviewPanel(d) {
         var desc = document.getElementById('wbBaseDesc6').value.trim();
         var d2 = state._baseProcessed;
         if (!d2) { _showToast('请先上传图片', true); return; }
+        var orig = state._baseOriginal || {};
         state.workbench.base_asset_ref = {
             source: 'upload', id: 0,
             url: d2.url, file_path: d2.file_path,
             preview_url: d2.preview_url, width: d2.width, height: d2.height,
-            ratio: d2.ratio, desc: desc || '上传参考图'
+            ratio: d2.ratio, desc: desc || '上传参考图',
+            // v5.50.12: 保留原始图引用，可随时还原
+            original_url: orig.url || '', original_file_path: orig.file_path || ''
         };
         _finishBaseSet();
+        // v5.50.12: 确认后保留预览面板，可继续调整比例/还原原始
+        _showToast('已设为基底，可继续调整或点「原始」还原');
     });
     pane.querySelector('#wbBaseCancel').addEventListener('click', function() {
         _renderBasePane('upload');
@@ -1309,10 +1327,30 @@ function _renderSlots(el) {
                 '<div class="suit-slot-base-name">' + _esc(b.desc || '基底参考图') + '</div>' +
                 (b.width ? '<div class="suit-slot-base-meta">' + b.width + '×' + b.height + ratioTag + '</div>' : '') +
               '</div>' +
-              '<button class="suit-card-action" data-act="rmbase" title="移除">×</button></div>';
+              '<div class="suit-slot-base-btns">' +
+                '<button class="suit-card-action" data-act="adjust" title="重新调整裁剪/比例">🖼️</button>' +
+                '<button class="suit-card-action" data-act="rmbase" title="移除">×</button>' +
+              '</div></div>';
             baseBody.querySelector('[data-act="rmbase"]').addEventListener('click', function() {
-                w.base_asset_ref = {}; _renderSlots(el); _renderPreview(el);
+                w.base_asset_ref = {}; state._baseProcessed = null; state._baseOriginal = null;
+                _renderSlots(el); _renderPreview(el);
             });
+            // v5.50.12: 重新调整 → 恢复预览面板（基于原始图）
+            var adjBtn = baseBody.querySelector('[data-act="adjust"]');
+            if (adjBtn) {
+                adjBtn.addEventListener('click', function() {
+                    var ob = w.base_asset_ref || {};
+                    if (ob.original_url) state._baseOriginal = { url: ob.original_url, file_path: ob.original_file_path };
+                    // 切到素材 tab 并恢复预览面板
+                    var el2 = document.getElementById('viewAssembleWorkbench');
+                    if (el2) {
+                        el2.querySelectorAll('.suit-wb-res-tab').forEach(function(t2) {
+                            t2.classList.toggle('active', t2.getAttribute('data-res') === 'base');
+                        });
+                        _loadRes('base');
+                    }
+                });
+            }
         } else {
             baseBody.innerHTML = '<div class="suit-slot-empty">点击左侧素材添加角色基底参考</div>';
         }

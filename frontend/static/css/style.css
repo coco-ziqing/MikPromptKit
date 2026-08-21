@@ -4349,3 +4349,6 @@ body.dark-theme .header-divider {
 .suit-crop-box { position: absolute; border: 2px solid #6366f1; background: rgba(99,102,241,.15); display: none; pointer-events: none; box-shadow: 0 0 0 1px rgba(255,255,255,.4); }
 .suit-crop-tip { font-size: 11px; color: var(--text-dim, #94a3b8); margin: 6px 0; }
 .suit-crop-actions { display: flex; gap: 8px; margin-bottom: 10px; }
+
+/* ===== v5.50.12: 基底槽重新调整按钮 ===== */
+.suit-slot-base-btns { display: flex; gap: 2px; margin-left: auto; flex-shrink: 0; }
