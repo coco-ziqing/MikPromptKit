@@ -17,6 +17,8 @@ import zipfile
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 
+from pydantic import BaseModel
+
 try:
     from paths import get_data_dir
     DATA_DIR = get_data_dir()
@@ -322,3 +324,167 @@ def export_batch_assets(batch_id: int, request: Request):
         raise HTTPException(400, "批次无已完成的资产可导出")
     return FileResponse(zpath, media_type="application/zip",
                         filename=f"rolecard_batch{batch_id}.zip")
+
+
+# ==================== 基底素材预处理（v5.50.7） ====================
+
+BASE_REF_DIR = os.path.join(DATA_DIR, "base_refs")
+os.makedirs(BASE_REF_DIR, exist_ok=True)
+
+# 允许的画幅比例（键 → 裁剪目标宽高比）
+BASE_RATIOS = {
+    "1:1": (1.0, 1.0),
+    "3:4": (0.75, 1.0),
+    "4:3": (1.0, 0.75),
+    "9:16": (0.5625, 1.0),
+    "16:9": (1.0, 0.5625),
+}
+
+MAX_BASE_SIZE = 1536  # 预处理后最大边长（对齐生成平台输入限制）
+
+
+class BaseProcessReq(BaseModel):
+    url: str = ""          # 原图 URL（/api/seedance/v2/refs/file/xxx 或 /api/thumbnails/original/xxx）
+    file_path: str = ""    # 或本地文件路径
+    ratio: str = "1:1"     # 目标比例（1:1/3:4/4:3/9:16/16:9）
+    crop: dict = {}        # 手动裁剪 {x, y, w, h}（可选，0-1 相对值）
+
+
+@router.post("/api/assemble/base-process")
+def process_base_image(data: BaseProcessReq, request: Request):
+    """基底素材预处理：加载 → 可选手动裁剪 → 按目标比例居中裁剪 → 限制尺寸 → 输出预览
+    返回 {url, preview_url, width, height, ratio}，供前端预览与后续生成使用
+    """
+    _auth(request)
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        raise HTTPException(500, "Pillow 未安装")
+    # 1. 定位源图
+    src = None
+    if data.file_path and os.path.isfile(data.file_path):
+        src = data.file_path
+    elif data.url:
+        for prefix, base in [("/api/seedance/v2/refs/file/", os.path.join(DATA_DIR, "video_refs")),
+                             ("/api/thumbnails/original/", ORIGINALS_DIR),
+                             ("/api/thumbnails/file/", THUMB_DIR)]:
+            if prefix in data.url:
+                fname = os.path.basename(data.url.split(prefix)[-1])
+                cand = os.path.join(base, fname)
+                if os.path.isfile(cand):
+                    src = cand
+                    break
+    if not src:
+        raise HTTPException(400, "无法定位源图（需 file_path 或本服务 URL）")
+    # 2. 打开 + EXIF 方向修正
+    try:
+        img = Image.open(src)
+        img = ImageOps.exif_transpose(img)
+        img = img.convert("RGB")
+    except Exception as e:
+        raise HTTPException(400, f"图片解码失败: {e}")
+    # 3. 手动裁剪（相对坐标 0-1）
+    crop = data.crop or {}
+    if crop.get("w") and crop.get("h"):
+        W, H = img.size
+        x = max(0.0, min(1.0, float(crop.get("x") or 0)))
+        y = max(0.0, min(1.0, float(crop.get("y") or 0)))
+        w = max(0.05, min(1.0, float(crop.get("w"))))
+        h = max(0.05, min(1.0, float(crop.get("h"))))
+        box = (int(x * W), int(y * H), int((x + w) * W), int((y + h) * H))
+        img = img.crop(box)
+    # 4. 按目标比例居中裁剪
+    ratio_key = data.ratio or "1:1"
+    target = BASE_RATIOS.get(ratio_key)
+    if not target:
+        raise HTTPException(400, f"无效比例 {ratio_key}，支持: {', '.join(BASE_RATIOS.keys())}")
+    tw, th = target
+    img = _center_crop(img, tw, th)
+    # 5. 限制尺寸（等比缩放）
+    img = _limit_size(img, MAX_BASE_SIZE)
+    # 6. 保存处理结果 + 预览
+    import uuid as _uuid
+    token = _uuid.uuid4().hex[:10]
+    out_name = f"base_{token}.jpg"
+    prev_name = f"base_{token}_prev.jpg"
+    out_path = os.path.join(BASE_REF_DIR, out_name)
+    prev_path = os.path.join(BASE_REF_DIR, prev_name)
+    img.save(out_path, "JPEG", quality=90)
+    prev = _limit_size(img, 640)
+    prev.save(prev_path, "JPEG", quality=82)
+    w, h = img.size
+    return {
+        "ok": True,
+        "file_path": out_path,
+        "url": f"/api/assemble/base-ref/{out_name}",
+        "preview_url": f"/api/assemble/base-ref/{prev_name}",
+        "width": w, "height": h,
+        "ratio": ratio_key,
+    }
+
+
+@router.get("/api/assemble/base-ref/{filename}")
+def serve_base_ref(filename: str):
+    """提供处理后的基底图预览"""
+    safe = os.path.basename(filename)
+    p = os.path.join(BASE_REF_DIR, safe)
+    if not os.path.isfile(p):
+        raise HTTPException(404, "文件不存在")
+    return FileResponse(p, media_type="image/jpeg")
+
+
+def _center_crop(img, target_w_ratio, target_h_ratio):
+    """按目标宽高比居中裁剪"""
+    w, h = img.size
+    target = target_w_ratio / target_h_ratio
+    cur = w / h
+    if cur > target:  # 太宽 → 裁左右
+        new_w = int(h * target)
+        x = (w - new_w) // 2
+        return img.crop((x, 0, x + new_w, h))
+    elif cur < target:  # 太高 → 裁上下
+        new_h = int(w / target)
+        y = (h - new_h) // 2
+        return img.crop((0, y, w, y + new_h))
+    return img
+
+
+def _limit_size(img, max_side):
+    """等比缩放到最大边长"""
+    w, h = img.size
+    if max(w, h) <= max_side:
+        return img
+    scale = max_side / max(w, h)
+    return img.resize((int(w * scale), int(h * scale)), 2)  # LANCZOS
+
+
+# ==================== 生成平台能力清单（v5.50.7） ====================
+
+GENERATION_PLATFORMS = {
+    "dreamina": {
+        "label": "即梦 Dreamina",
+        "engines": ["text2image", "image2image", "upscale", "text2video", "image2video"],
+        "params": {
+            "model_version": ["3.0", "3.1", "4.0", "4.1", "4.5", "4.6", "4.7", "5.0", "5.0Pro"],
+            "ratio": ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
+            "resolution_type": ["1k", "2k", "4k"],
+        },
+    },
+    "comfyui": {
+        "label": "ComfyUI（本机）",
+        "engines": ["text2image", "image2image"],
+        "params": {
+            "workflow_id": "工作流 ID（留空用默认）",
+            "ratio": ["1:1", "3:4", "4:3", "9:16", "16:9"],
+            "size": "1024（基础边长，SD1.5 自动降 512）",
+        },
+    },
+}
+
+
+@router.get("/api/assemble/platforms")
+def list_generation_platforms(request: Request):
+    """生成平台能力清单（前端渲染平台切换器）"""
+    _auth(request)
+    return {"ok": True, "platforms": GENERATION_PLATFORMS,
+            "active": "dreamina", "default": "dreamina"}

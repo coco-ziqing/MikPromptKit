@@ -365,6 +365,7 @@ def _channel_adapt_params(channel: str, ttype: str, params: dict):
 class RenderSubmit(BaseModel):
     draft_id: int
     license_info: dict = {}
+    engine: str = "dreamina"  # v5.50.7: 生成平台（dreamina/comfyui）
 
 
 @router.post("/api/assemble/render")
@@ -406,6 +407,11 @@ def submit_render(data: RenderSubmit, request: Request):
             adapt_hints = []
         params["prompt"] = prompt
         params["channel_hints"] = adapt_hints
+        # v5.50.7: 生成平台引擎写入（_create_tasks 落 engine 列）
+        engine = (data.engine or "dreamina").strip()
+        if engine not in ("dreamina", "comfyui"):
+            engine = "dreamina"
+        params["engine"] = engine
         # 建批次
         now = _now()
         cur = c.execute(

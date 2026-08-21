@@ -346,6 +346,33 @@ function _showContextMenu(x, y, it) {
     }, 10);
 }
 
+// v5.50.7: 词卡预览框（点击词卡项显示内容/缩略图）
+function _showCardPreview(item) {
+    var id = item.getAttribute('data-id');
+    var name = item.getAttribute('data-name') || ('词卡 ' + id);
+    var content = item.getAttribute('data-content') || '';
+    var thumb = item.getAttribute('data-thumb') || '';
+    var html = '<div class="suit-modal-mask" onclick="if(event.target===this)this.remove()"><div class="suit-modal suit-modal-md">' +
+      '<div class="suit-modal-head"><span>📇 词卡预览</span><button class="suit-modal-close" onclick="this.closest(\'.suit-modal-mask\').remove()">×</button></div>' +
+      '<div class="suit-modal-body">' +
+        (thumb ? '<img src="' + _esc(thumb) + '" class="suit-card-preview-img" onerror="this.style.display=\'none\'">' : '') +
+        '<div class="suit-card-preview-name">' + _esc(name) + ' <span class="suit-tag">#' + id + '</span></div>' +
+        '<div class="suit-card-preview-content">' + _esc(content) + '</div>' +
+      '</div>' +
+      '<div class="suit-modal-foot">' +
+        '<button class="suit-btn" onclick="this.closest(\'.suit-modal-mask\').remove()">关闭</button>' +
+        '<button class="suit-btn suit-btn-primary" id="cardPrevAdd">+ 添加到词条层</button>' +
+      '</div></div></div>';
+    var mask = document.createElement('div');
+    mask.innerHTML = html;
+    var modal = mask.firstChild;
+    document.body.appendChild(modal);
+    modal.querySelector('#cardPrevAdd').addEventListener('click', function() {
+        _addRuneCard(parseInt(id, 10));
+        modal.remove();
+    });
+}
+
 function _showDetail(it) {
     state.current = it;
     var el = document.getElementById('viewStyleSuit');
@@ -676,6 +703,13 @@ async function _renderWorkbench(el) {
       '<div class="suit-wb-header">' +
         '<div class="suit-bag-title"><i class="bi bi-tools"></i> 角色组装工作台</div>' +
         '<div class="suit-wb-header-actions">' +
+          '<div class="suit-platform-select">' +
+            '<span class="suit-platform-label">⚙️ 平台</span>' +
+            '<select class="suit-input" id="wbPlatform" style="width:auto;margin:0;">' +
+              '<option value="dreamina">即梦 Dreamina</option>' +
+              '<option value="comfyui">ComfyUI（本机）</option>' +
+            '</select>' +
+          '</div>' +
           '<button class="suit-btn" id="wbBtnDrafts" title="历史装配记录">📋 草稿</button>' +
           '<button class="suit-btn suit-btn-primary" id="wbBtnRender">🚀 提交批量生成</button>' +
         '</div>' +
@@ -768,6 +802,19 @@ function _bindWorkbench(el) {
         state.workbench.channel = this.value;
         _renderPreview(el);
     });
+    // v5.50.7: 生成平台切换
+    var wbPlat = el.querySelector('#wbPlatform');
+    if (wbPlat) {
+        wbPlat.addEventListener('change', function() {
+            state.workbench.platform = this.value;
+            if (this.value === 'comfyui') {
+                _showToast('ComfyUI 平台：模型由工作流节点决定，画幅仅 1:1/3:4/4:3/9:16/16:9');
+            } else {
+                _showToast('即梦平台：支持全画幅与 1k/2k/4k 分辨率');
+            }
+            _renderPreview(el);
+        });
+    }
     el.querySelectorAll('.wbPartCk').forEach(function(ck) {
         ck.addEventListener('change', function() { _renderPreview(el); });
     });
@@ -801,14 +848,21 @@ async function _loadRes(type) {
             groups.forEach(function(g) { (g.cards || []).forEach(function(c) { cards.push(c); }); });
             list.innerHTML = cards.length ? cards.map(function(c, i) {
                 var cid = c.id;
-                return '<div class="suit-res-item suit-res-card" data-id="' + cid + '">' +
+                var thumb = c.thumbnail ? '/api/thumbnails/file/' + c.thumbnail : '';
+                return '<div class="suit-res-item suit-res-card" data-id="' + cid + '" data-name="' + _esc(c.name || ('词卡 ' + cid)) + '" data-content="' + _esc((c.content || '').slice(0, 200)) + '" data-thumb="' + _esc(thumb) + '">' +
+                  (thumb ? '<img src="' + _esc(thumb) + '" class="suit-card-thumb" loading="lazy" onerror="this.style.display=\'none\'">' : '') +
                   '<div class="suit-res-name">📇 ' + _esc(c.name || ('词卡 ' + cid)) + '</div>' +
                   '<div class="suit-res-sub">' + _esc((c.content || '').slice(0, 40)) + '</div>' +
                   '<button class="suit-btn suit-btn-sm suit-res-add">添加</button>' +
                 '</div>';
             }).join('') : '<div class="suit-empty">暂无词卡</div>';
             list.querySelectorAll('.suit-res-card').forEach(function(item) {
-                item.querySelector('.suit-res-add').addEventListener('click', function() {
+                // v5.50.7: 点击卡片显示预览框
+                item.addEventListener('click', function() {
+                    _showCardPreview(item);
+                });
+                item.querySelector('.suit-res-add').addEventListener('click', function(ev) {
+                    ev.stopPropagation();
                     _addRuneCard(parseInt(item.getAttribute('data-id'), 10));
                 });
             });
@@ -962,7 +1016,9 @@ async function _uploadBaseFile(file) {
               '<img src="' + _esc(d.url) + '" class="suit-base-preview" style="display:block;">';
             dz.classList.remove('uploading');
         }
-        _showToast('图片已上传，请填写描述后设为基底');
+        // v5.50.7: 上传后自动预处理（比例裁剪 + 尺寸限制），显示预览与比例选择
+        await _processBase(d.url, d.file_path);
+        _showToast('图片已上传，请选择比例并确认');
     } catch(e) {
         if (dz) { dz.classList.remove('uploading'); dz.innerHTML = '<div class="suit-dropzone-icon">⚠️</div><div class="suit-dropzone-text">上传失败：' + _esc(e.message) + '</div>'; }
         _showToast('上传失败：' + e.message, true);
@@ -1020,6 +1076,72 @@ function _finishBaseSet() {
     var el = document.getElementById('viewAssembleWorkbench');
     _renderSlots(el); _renderPreview(el);
     _showToast('角色基底已设置');
+}
+
+// ============ 基底预处理：比例裁剪 + 尺寸限制 + 预览（v5.50.7） ============
+async function _processBase(url, filePath, ratio) {
+    try {
+        var body = { url: url || '', file_path: filePath || '', ratio: ratio || '1:1' };
+        var d = await _api('/api/assemble/base-process', { method: 'POST', body: JSON.stringify(body) });
+        if (!d.ok) throw new Error(d.detail || '预处理失败');
+        // 保存处理结果到工作台（临时，等用户确认比例）
+        state._baseProcessed = d;
+        if (!ratio) _renderBasePreviewPanel(d);
+        return d;
+    } catch(e) {
+        _showToast('预处理失败：' + e.message, true);
+        return null;
+    }
+}
+
+function _renderBasePreviewPanel(d) {
+    var pane = document.getElementById('basePane');
+    if (!pane) return;
+    var ratios = ['1:1', '3:4', '4:3', '9:16', '16:9'];
+    pane.innerHTML = '' +
+      '<div class="suit-base-preview-box">' +
+        '<div class="suit-base-preview-title">👁️ 基底预览（' + d.width + '×' + d.height + '）</div>' +
+        '<img src="' + _esc(d.preview_url) + '" class="suit-base-preview-main" id="basePrevImg">' +
+        '<div class="suit-base-ratio-row">' +
+          '<span class="suit-base-ratio-label">画幅比例：</span>' +
+          ratios.map(function(r) {
+            return '<button class="suit-ratio-btn" data-ratio="' + r + '"' + (r === '1:1' ? ' data-active="1"' : '') + '>' + r + '</button>';
+          }).join('') +
+        '</div>' +
+        '<input class="suit-input" id="wbBaseDesc6" placeholder="描述（例：青年男性，正脸）" value="' + _esc(state.workbench.base_asset_ref.desc || '') + '">' +
+        '<div class="suit-base-actions">' +
+          '<button class="suit-btn suit-btn-primary" id="wbBaseConfirm" style="flex:1;">✅ 确认设为基底</button>' +
+          '<button class="suit-btn" id="wbBaseCancel" style="flex:1;">↩️ 重新选择</button>' +
+        '</div>' +
+        '<div class="suit-base-hint">💡 将按所选比例居中裁剪，最长边限制 ' + 1536 + 'px（适配生成平台输入）</div>' +
+      '</div>';
+    pane.querySelectorAll('.suit-ratio-btn').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            pane.querySelectorAll('.suit-ratio-btn').forEach(function(b) { b.removeAttribute('data-active'); });
+            btn.setAttribute('data-active', '1');
+            // 重新预处理
+            var d2 = await _processBase(state._baseProcessed.url, state._baseProcessed.file_path, btn.getAttribute('data-ratio'));
+            if (d2) {
+                var img = document.getElementById('basePrevImg');
+                if (img) img.src = d2.preview_url;
+            }
+        });
+    });
+    pane.querySelector('#wbBaseConfirm').addEventListener('click', function() {
+        var desc = document.getElementById('wbBaseDesc6').value.trim();
+        var d2 = state._baseProcessed;
+        if (!d2) { _showToast('请先上传图片', true); return; }
+        state.workbench.base_asset_ref = {
+            source: 'upload', id: 0,
+            url: d2.url, file_path: d2.file_path,
+            preview_url: d2.preview_url, width: d2.width, height: d2.height,
+            ratio: d2.ratio, desc: desc || '上传参考图'
+        };
+        _finishBaseSet();
+    });
+    pane.querySelector('#wbBaseCancel').addEventListener('click', function() {
+        _renderBasePane('upload');
+    });
 }
 
 async function _assembleSuit(suitId) {
@@ -1211,8 +1333,9 @@ async function _showDraftList() {
         html += '</div></div></div>';
         var mask = document.createElement('div');
         mask.innerHTML = html;
-        document.body.appendChild(mask.firstChild);
-        mask.firstChild.querySelectorAll('[data-load]').forEach(function(btn) {
+        var modal = mask.firstChild;
+        document.body.appendChild(modal);
+        modal.querySelectorAll('[data-load]').forEach(function(btn) {
             btn.addEventListener('click', async function() {
                 try {
                     var d2 = await _api('/api/assemble/draft/' + btn.getAttribute('data-load'));
@@ -1228,7 +1351,7 @@ async function _showDraftList() {
                             state.workbench.suit_config = sd.item.config || {};
                         } catch(e2) {}
                     }
-                    mask.firstChild.remove();
+                    modal.remove();
                     var el = document.getElementById('viewAssembleWorkbench');
                     _renderSlots(el); _renderPreview(el); _renderParts(el);
                     _showToast('装配记录已加载');
@@ -1262,7 +1385,7 @@ async function _submitRender() {
             draft = db.item.id;
             state.workbench.draftId = draft;
         }
-        var body = { draft_id: draft, license_info: { authorized: w.channel !== 'real' } };
+        var body = { draft_id: draft, license_info: { authorized: w.channel !== 'real' }, engine: w.platform || 'dreamina' };
         var d = await _api('/api/assemble/render', { method: 'POST', body: JSON.stringify(body) });
         _showToast('生成已提交，批次 #' + d.batch.id + '（' + d.batch.total + ' 个产出项）');
         _openResult(d.batch.id);
@@ -1391,15 +1514,16 @@ async function _composeSheet(batchId, el) {
       '</div></div></div>';
     var mask = document.createElement('div');
     mask.innerHTML = html;
-    document.body.appendChild(mask.firstChild);
-    mask.firstChild.querySelector('#cmGo').addEventListener('click', async function() {
+    var modal = mask.firstChild;
+    document.body.appendChild(modal);
+    modal.querySelector('#cmGo').addEventListener('click', async function() {
         try {
             var body = {
                 template: document.getElementById('cmTpl').value,
                 title_text: document.getElementById('cmTitle').value.trim(),
                 bg_color: document.getElementById('cmBg').value
             };
-            mask.firstChild.remove();
+            modal.remove();
             var d = await _api('/api/assemble/render/' + batchId + '/compose', { method: 'POST', body: JSON.stringify(body) });
             var colorsHtml = (d.colors || []).map(function(c) {
                 return '<span style="display:inline-block;width:22px;height:22px;border-radius:50%;background:' + c.hex + ';border:1px solid #64748b;" title="' + c.hex + ' (' + Math.round(c.ratio * 100) + '%)"></span>';
@@ -1429,8 +1553,9 @@ async function _archiveRole(batchId, el) {
       '</div></div></div>';
     var mask = document.createElement('div');
     mask.innerHTML = html;
-    document.body.appendChild(mask.firstChild);
-    mask.firstChild.querySelector('#arGo').addEventListener('click', async function() {
+    var modal = mask.firstChild;
+    document.body.appendChild(modal);
+    modal.querySelector('#arGo').addEventListener('click', async function() {
         try {
             var body = {
                 master_project_id: parseInt(document.getElementById('arMid').value || '0', 10),
@@ -1438,7 +1563,7 @@ async function _archiveRole(batchId, el) {
             };
             if (!body.master_project_id) { _showToast('请填写总项目 ID', true); return; }
             if (!body.name) { _showToast('请填写角色名称', true); return; }
-            mask.firstChild.remove();
+            modal.remove();
             var d = await _api('/api/assemble/render/' + batchId + '/archive', { method: 'POST', body: JSON.stringify(body) });
             _showToast('归档成功：' + d.name + '（' + d.archived + ' 项资产）');
         } catch(e) { _showToast('归档失败：' + e.message, true); }

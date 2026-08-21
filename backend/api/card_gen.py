@@ -614,12 +614,73 @@ def _activate_task(task_id: int):
         c.close()
 
 
+def _submit_comfyui(task) -> dict:
+    """ComfyUI 引擎：同步调用本服务 /api/comfyui/generate，直接归档
+    返回 {ok: True, done: True, submit_id: 'comfyui:{ts}'} 表示已完成
+    """
+    import time as _t
+    try:
+        import httpx
+    except ImportError:
+        return {"ok": False, "error": "httpx 未安装，无法调用 ComfyUI"}
+    ttype = task.get("task_type") or "text2image"
+    if ttype not in ("text2image", "image2image"):
+        return {"ok": False, "error": f"ComfyUI 暂不支持 {ttype}"}
+    prompt = task.get("prompt") or ""
+    # 读平台配置（server_url）
+    try:
+        from api.comfyui import _get_config as _cf_cfg
+        cfg = _cf_cfg()
+        server = (cfg.get("server_url") or "").strip()
+        if not server:
+            return {"ok": False, "error": "ComfyUI 未配置 server_url（设置 → ComfyUI 配置）"}
+    except Exception:
+        return {"ok": False, "error": "ComfyUI 配置读取失败"}
+    # 心跳检查
+    try:
+        with httpx.Client(timeout=4) as hc:
+            hr = hc.get(server.rstrip("/") + "/system_stats")
+            if hr.status_code != 200:
+                return {"ok": False, "error": "ComfyUI 服务不可达（/system_stats 非 200）"}
+    except Exception:
+        return {"ok": False, "error": "ComfyUI 服务不可达（连接失败）"}
+    # 同步调用本服务 /api/comfyui/generate
+    try:
+        payload = {"prompt": prompt, "workflow_id": (task.get("workflow_id") or ""),
+                   "prompt_id": task.get("card_id") or 0}
+        with httpx.Client(timeout=660) as hc:  # ComfyUI 生成最长 ~10min
+            r = hc.post("http://127.0.0.1:8080/api/comfyui/generate", json=payload, timeout=660)
+            d = r.json()
+    except Exception as e:
+        return {"ok": False, "error": f"ComfyUI 生成调用失败: {e}"}
+    if not d.get("ok"):
+        return {"ok": False, "error": d.get("error") or "ComfyUI 生成失败"}
+    # 归档：读输出图 → _archive_image_result
+    of = d.get("output_file") or ""
+    from api.comfyui import OUTPUTS_DIR as _OUT
+    p = os.path.join(_OUT, os.path.basename(of))
+    if not os.path.isfile(p):
+        return {"ok": False, "error": f"ComfyUI 输出文件缺失: {of}"}
+    try:
+        with open(p, "rb") as f:
+            img_bytes = f.read()
+    except Exception as e:
+        return {"ok": False, "error": f"读取输出失败: {e}"}
+    err = _archive_image_result(task["id"], task["card_id"], img_bytes, f"comfyui:{_t.time()}")
+    if err:
+        return {"ok": False, "error": err}
+    return {"ok": True, "done": True, "submit_id": f"comfyui:{_t.time()}"}
+
 # ==================== worker ====================
 
 def _submit_task(task) -> dict:
     """按 task_type 分发 CLI 提交（--poll 0），返回 {ok, submit_id}"""
     if hasattr(task, "keys"):
         task = dict(task)  # sqlite3.Row → dict（Row 无 .get）
+    # v5.50.7: 平台引擎分发（engine 列，默认 dreamina）
+    engine = (task.get("engine") or "dreamina").strip()
+    if engine == "comfyui":
+        return _submit_comfyui(task)
     from api.dreamina import (dreamina_submit_image2image, dreamina_submit_image2video,
                               dreamina_submit_text2image, dreamina_submit_text2video,
                               dreamina_submit_upscale)
@@ -700,6 +761,10 @@ def _card_gen_worker(task_id: int):
                     _task_update(task_id, status="fail", error=res.get("error", "提交失败"),
                                  progress=100, finished_at=_now_str(),
                                  fail_category=_classify_error(res.get("error", "")))
+                    return
+                # v5.50.7: comfyui 引擎同步完成（done 标记）
+                if res.get("done"):
+                    _task_update(task_id, status="success", progress=100, finished_at=_now_str())
                     return
                 submit_id = res["submit_id"]
                 _task_update(task_id, status="querying", submit_id=submit_id, progress=15)
@@ -834,13 +899,14 @@ def _create_tasks(card_ids, ttype, params, u) -> list:
                 continue
             cur = c.execute(
                 """INSERT INTO card_gen_tasks (card_id, task_type, prompt, source_image, model_version,
-                   ratio, resolution_type, duration, video_resolution, session, creator_id, version)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   ratio, resolution_type, duration, video_resolution, session, creator_id, version, engine)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 [cid, ttype, prompt, card["original_ref"] or "",
                  params.get("model_version", ""), params.get("ratio", ""),
                  params.get("resolution_type", ""), params.get("duration", 5),
                  params.get("video_resolution", ""), params.get("session", 0), u.get("id"),
-                 _card_version(c, cid)])  # v5.38.61: 记录生成时词卡版本（池按版本隔离）
+                 _card_version(c, cid),
+                 params.get("engine", "dreamina")])  # v5.50.7: 平台引擎列（dreamina/comfyui）
             out.append({"card_id": cid, "task_id": cur.lastrowid})
         c.commit()
     finally:
