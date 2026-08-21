@@ -1212,7 +1212,7 @@ function _openFreeCropModal() {
             '<div class="suit-crop-mask" id="freeCropMaskLayer"></div>' +
             '<div class="suit-crop-box" id="freeCropBox"></div>' +
           '</div>' +
-          '<div class="suit-crop-tip">🖱️ 拖拽框选保留区域 · 双击取消 · 框选后可选择固定比例规范化</div>' +
+          '<div class="suit-crop-tip">🖱️ 拖拽框选 · 框内拖动可移动 · 双击取消 · 框选后可选择固定比例规范化（64 对齐）</div>' +
           '<div class="suit-freecrop-size" id="freeCropSize">未框选</div>' +
           // v5.50.14: 固定比例规范化选项（框选后显示）
           '<div class="suit-freecrop-ratios" id="freeCropRatios" style="display:none;">' +
@@ -1240,27 +1240,37 @@ function _bindFreeCrop() {
     var layer = document.getElementById('freeCropMaskLayer');
     var sizeEl = document.getElementById('freeCropSize');
     if (!wrap || !img || !box || !layer) return;
-    var dragging = false, sx = 0, sy = 0;
-    var imgRatio = 1;
-    // 图片加载后计算显示比例
-    img.onload = function() {
-        imgRatio = img.naturalWidth / img.naturalHeight;
-    };
-    function setBox(x1, y1, x2, y2) {
-        var left = Math.min(x1, x2), top = Math.min(y1, y2);
-        var w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
-        box.style.left = (left * 100) + '%';
-        box.style.top = (top * 100) + '%';
+    var dragging = false, moving = false, sx = 0, sy = 0;
+    var moveStart = null;
+    // v5.50.15: 命名函数，避免重复绑定（每次打开弹窗先清理旧监听）
+    if (window.__freeCropBound) {
+        var w2 = window.__freeCropBound;
+        w2.wrap.removeEventListener('mousedown', w2.onDown);
+        w2.wrap.removeEventListener('dblclick', w2.onDbl);
+        window.removeEventListener('mousemove', w2.onMove);
+        window.removeEventListener('mouseup', w2.onUp);
+        window.__freeCropBound = null;
+    }
+    function nw() { return img.naturalWidth || 1000; }
+    function nh() { return img.naturalHeight || 1000; }
+    function setBoxPx(x, y, w, h) {
+        // 防御：clamp 到 0-1，防异常污染
+        x = Math.max(0, Math.min(1, x));
+        y = Math.max(0, Math.min(1, y));
+        w = Math.max(0.02, Math.min(1, w));
+        h = Math.max(0.02, Math.min(1, h));
+        if (x + w > 1) x = 1 - w;
+        if (y + h > 1) y = 1 - h;
+        box.style.left = (x * 100) + '%';
+        box.style.top = (y * 100) + '%';
         box.style.width = (w * 100) + '%';
         box.style.height = (h * 100) + '%';
         box.style.display = 'block';
         layer.style.display = 'block';
-        // 显示选中尺寸（按原始图像素）
-        if (sizeEl) {
-            var nw = img.naturalWidth || 0, nh = img.naturalHeight || 0;
-            var pw = Math.round(w * nw), ph = Math.round(h * nh);
-            sizeEl.textContent = '选中区域：' + pw + '×' + ph + 'px';
-        }
+        if (sizeEl) sizeEl.textContent = '选中区域：' + Math.round(w * nw()) + '×' + Math.round(h * nh()) + 'px';
+    }
+    function setBoxFromCrop(c) {
+        setBoxPx(c.x, c.y, c.w, c.h);
     }
     function hideBox() {
         box.style.display = 'none';
@@ -1270,24 +1280,55 @@ function _bindFreeCrop() {
         if (ratiosEl) ratiosEl.style.display = 'none';
         state._freeCrop = null;
     }
-    wrap.addEventListener('mousedown', function(e) {
+    function isInsideCrop(px, py) {
+        var c = state._freeCrop;
+        if (!c) return false;
+        return px >= c.x && px <= c.x + c.w && py >= c.y && py <= c.y + c.h;
+    }
+    function onDown(e) {
         var rect = wrap.getBoundingClientRect();
         sx = (e.clientX - rect.left) / rect.width;
         sy = (e.clientY - rect.top) / rect.height;
-        dragging = true;
-        box.style.display = 'block';
+        // v5.50.15: 框内按下 → 移动裁剪框；框外 → 新画框
+        if (isInsideCrop(sx, sy)) {
+            moving = true;
+            moveStart = { x: sx - state._freeCrop.x, y: sy - state._freeCrop.y };
+            box.style.cursor = 'move';
+        } else {
+            dragging = true;
+            box.style.display = 'block';
+        }
         e.preventDefault();
-    });
-    window.addEventListener('mousemove', function(e) {
-        if (!dragging) return;
+    }
+    function onMove(e) {
         var rect = wrap.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
         var cx = (e.clientX - rect.left) / rect.width;
         var cy = (e.clientY - rect.top) / rect.height;
         cx = Math.max(0, Math.min(1, cx));
         cy = Math.max(0, Math.min(1, cy));
-        setBox(sx, sy, cx, cy);
-    });
-    window.addEventListener('mouseup', function() {
+        if (moving && state._freeCrop) {
+            // 移动裁剪框（clamp 画布内）
+            var nx = cx - moveStart.x;
+            var ny = cy - moveStart.y;
+            nx = Math.max(0, Math.min(1 - state._freeCrop.w, nx));
+            ny = Math.max(0, Math.min(1 - state._freeCrop.h, ny));
+            state._freeCrop.x = nx;
+            state._freeCrop.y = ny;
+            setBoxFromCrop(state._freeCrop);
+            return;
+        }
+        if (!dragging) return;
+        var lx = Math.min(sx, cx), ty = Math.min(sy, cy);
+        var w = Math.abs(cx - sx), h = Math.abs(cy - sy);
+        setBoxPx(lx, ty, w, h);
+    }
+    function onUp() {
+        if (moving) {
+            moving = false;
+            box.style.cursor = 'crosshair';
+            return;
+        }
         if (!dragging) return;
         dragging = false;
         var left = parseFloat(box.style.left) || 0, top = parseFloat(box.style.top) || 0;
@@ -1297,9 +1338,14 @@ function _bindFreeCrop() {
         // v5.50.14: 框选后显示固定比例规范化选项
         var ratiosEl = document.getElementById('freeCropRatios');
         if (ratiosEl) ratiosEl.style.display = 'flex';
-    });
-    wrap.addEventListener('dblclick', function() { hideBox(); });
-    // v5.50.14: 固定比例规范化（以选框中心为锚，不超画布）
+    }
+    function onDbl() { hideBox(); }
+    wrap.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    wrap.addEventListener('dblclick', onDbl);
+    window.__freeCropBound = { wrap: wrap, onDown: onDown, onMove: onMove, onUp: onUp, onDbl: onDbl };
+    // v5.50.14/15: 固定比例规范化（收拢接近用户尺寸 + 64 对齐 + 中心锚定）
     var ratiosEl = document.getElementById('freeCropRatios');
     if (ratiosEl) {
         ratiosEl.querySelectorAll('[data-fr]').forEach(function(btn) {
@@ -1310,16 +1356,7 @@ function _bindFreeCrop() {
                 btn.setAttribute('data-active', '1');
                 var c = _normalizeCrop(state._freeCrop, key);
                 state._freeCrop = c;
-                // 更新选框显示
-                box.style.left = (c.x * 100) + '%';
-                box.style.top = (c.y * 100) + '%';
-                box.style.width = (c.w * 100) + '%';
-                box.style.height = (c.h * 100) + '%';
-                box.style.display = 'block';
-                layer.style.display = 'block';
-                // 更新尺寸显示
-                var nw = img.naturalWidth || 0, nh = img.naturalHeight || 0;
-                if (sizeEl) sizeEl.textContent = '选中区域：' + Math.round(c.w * nw) + '×' + Math.round(c.h * nh) + 'px';
+                setBoxFromCrop(c);
             });
         });
     }
@@ -1337,8 +1374,7 @@ function _bindFreeCrop() {
     });
 }
 
-// v5.50.14: 框选比例规范化（以中心为锚，目标宽高比，不超画布）
-// 注意：必须用像素坐标计算比例（相对坐标受画布宽高比影响）
+// v5.50.14/15: 框选比例规范化 — 收拢接近用户划定尺寸（保持面积）+ 64 倍数对齐（2的幂次生成规范）+ 中心锚定不超画布
 function _normalizeCrop(crop, ratioKey) {
     var RATIOS = { '1:1': 1, '3:4': 3/4, '4:3': 4/3, '9:16': 9/16, '16:9': 16/9 };
     if (ratioKey === 'original' || !RATIOS[ratioKey]) return crop;
@@ -1346,23 +1382,46 @@ function _normalizeCrop(crop, ratioKey) {
     var img = document.getElementById('freeCropImg');
     var nw = (img && img.naturalWidth) || 1000;
     var nh = (img && img.naturalHeight) || 1000;
-    // 转为像素坐标
+    // 用户框选像素尺寸
+    var uw = crop.w * nw, uh = crop.h * nh;
+    var area = uw * uh;
+    // 在 64 倍数网格上搜索：保持面积接近用户框 + 比例误差最小（2的幂次生成规范）
+    var best = null, bestScore = Infinity;
+    for (var w = 64; w <= nw; w += 64) {
+        var h = Math.round(w / target / 64) * 64;
+        if (h < 64 || h > nh) continue;
+        var ratioErr = Math.abs((w / h) - target) / target;
+        var areaErr = Math.abs(w * h - area) / area;
+        var score = ratioErr * 10 + areaErr;  // 比例优先，面积次之
+        if (score < bestScore) { bestScore = score; best = { w: w, h: h }; }
+    }
+    if (!best) {  // 兜底：取画布内最大 64 对齐
+        var wmax = Math.floor(nw / 64) * 64, hmax = Math.floor(nh / 64) * 64;
+        best = { w: wmax, h: hmax };
+    }
+    var w = best.w, h = best.h;
+    // 中心锚定 + clamp 画布
     var cx = (crop.x + crop.w / 2) * nw;
     var cy = (crop.y + crop.h / 2) * nh;
-    var maxW = Math.min(cx * 2, (nw - cx) * 2);
-    var maxH = Math.min(cy * 2, (nh - cy) * 2);
-    // 像素比例目标：保持接近原框面积（不超画布）
-    var w = Math.min(maxW, maxH * target);
-    var h = w / target;
-    if (h > maxH) { h = maxH; w = h * target; }
-    if (w > maxW) { w = maxW; h = w / target; }
-    // 转回相对坐标
-    return { x: (cx - w / 2) / nw, y: (cy - h / 2) / nh, w: w / nw, h: h / nh };
+    var x = Math.max(0, Math.min(nw - w, cx - w / 2));
+    var y = Math.max(0, Math.min(nh - h, cy - h / 2));
+    return { x: x / nw, y: y / nh, w: w / nw, h: h / nh };
 }
 
 function _closeFreeCrop() {
     var m = document.getElementById('freeCropMask');
     if (m) m.remove();
+    // 清理事件监听，防重复绑定
+    if (window.__freeCropBound) {
+        var w2 = window.__freeCropBound;
+        try {
+            w2.wrap.removeEventListener('mousedown', w2.onDown);
+            w2.wrap.removeEventListener('dblclick', w2.onDbl);
+            window.removeEventListener('mousemove', w2.onMove);
+            window.removeEventListener('mouseup', w2.onUp);
+        } catch(e) {}
+        window.__freeCropBound = null;
+    }
     state._freeCrop = null;
 }
 
