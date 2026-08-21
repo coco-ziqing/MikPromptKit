@@ -790,8 +790,12 @@ def add_asset_from_card(rid: int, data: dict = Body(...), request: Request = Non
 
 
 # 三视图生成组装器：角色设定字段 → 三视图提示词
-def _build_three_view_prompts(settings: dict, name: str = "") -> dict:
-    """组装三视图提示词（正面/侧面/背面），注入角色设定字段"""
+def _build_three_view_prompts(settings: dict, name: str = "", layout: str = "single", style_prefix: str = "") -> dict:
+    """组装三视图提示词，注入角色设定字段
+    layout=single: 逐视角单图（front/side/back 三张，兼容旧行为）
+    layout=sheet: 单图四宫格设定表（正面全身 + 90°侧面全身 + 背面全身 + 脸部特写 并排）
+    style_prefix: 可选风格前缀（如 3D写实国漫风格，UE5渲染，细节超高清）
+    """
     subj_parts = []
     for k in ("gender", "age", "body", "hairstyle", "facial", "clothing", "accessory", "occupation", "temperament", "style"):
         v = (settings.get(k) or "").strip()
@@ -800,7 +804,20 @@ def _build_three_view_prompts(settings: dict, name: str = "") -> dict:
     subj = "，".join(subj_parts) if subj_parts else "一位角色"
     if name:
         subj = f"{name}（{subj}）" if subj_parts else name
-    base = (f"{subj}，角色三视图设定图，纯白背景，全身立绘，"
+    style = (style_prefix or "").strip()
+    style_part = f"{style}，" if style else ""
+    if layout == "sheet":
+        # 单图四宫格设定表：风格 + 图面类型 + 背景 + 布局 + 角色 + 一致性 + 质量收尾
+        prompt = (
+            f"{style_part}角色三视图加脸部特写设定表，纯白背景，无阴影，"
+            f"清晰展示正面、侧面、背面标准正交视图，"
+            f"依次并排展示：正面全身站立像、90度侧面全身像、背面全身像、脸部特写，"
+            f"角色：{subj}，"
+            f"服装、发型、配饰等所有细节在三个视角中完全一致，"
+            f"人物比例协调，构图完整，专业角色设定图风格，高清细节，服装剪裁合身"
+        )
+        return {"sheet": prompt}
+    base = (f"{style_part}{subj}，角色三视图设定图，纯白背景，全身立绘，"
             f"统一角色外观与服装细节，人物比例协调，专业角色设定图风格，高清细节")
     front = f"{base}，正面视角，正面站姿，双手自然下垂，面部与服装正面完整展示"
     side = f"{base}，正侧面视角，侧身站姿，展示侧面轮廓与服装侧面细节"
@@ -820,6 +837,11 @@ def generate_three_view(rid: int, data: dict = Body(...), request: Request = Non
         raise HTTPException(400, "engine 必须是 comfyui/dreamina/libtv")
     if engine == "comfyui":
         raise HTTPException(400, "ComfyUI 三视图生成暂不可用，请使用即梦或 LibTV")
+    # v5.50.26: 布局模式（single 逐视角 / sheet 单图四宫格设定表）+ 风格前缀
+    layout = (data.get("layout") or "single").strip()
+    if layout not in ("single", "sheet"):
+        raise HTTPException(400, "layout 必须是 single/sheet")
+    style_prefix = (data.get("style_prefix") or "").strip()
     _ensure_three_view_task_table()
     c = _db()
     try:
@@ -831,13 +853,13 @@ def generate_three_view(rid: int, data: dict = Body(...), request: Request = Non
     finally:
         c.close()
 
-    prompts = _build_three_view_prompts(settings, name)
+    prompts = _build_three_view_prompts(settings, name, layout=layout, style_prefix=style_prefix)
     # 允许前端微调后的提示词覆盖（保留原有组装逻辑作为默认）
     user_prompts = data.get("prompts") or {}
-    for v in ("front", "side", "back"):
+    for v in prompts.keys():
         if isinstance(user_prompts.get(v), str) and user_prompts[v].strip():
             prompts[v] = user_prompts[v].strip()
-    ratio = data.get("ratio") or "1:1"
+    ratio = data.get("ratio") or ("16:9" if layout == "sheet" else "1:1")
     project_uuid = (data.get("project_uuid") or "").strip()
     if engine == "libtv" and not project_uuid:
         raise HTTPException(400, "LibTV 需要 project_uuid（画布节点 UUID），请在授权中心获取或改用即梦")
@@ -991,7 +1013,7 @@ def _archive_three_view_image(role_id: int, view: str, prompt: str, img_bytes: b
     with open(dest, "wb") as f:
         f.write(img_bytes)
     rel = os.path.relpath(dest, DATA_DIR).replace("\\", "/")
-    vn = {"front": "正面", "side": "侧面", "back": "背面"}.get(view, view)
+    vn = {"front": "正面", "side": "侧面", "back": "背面", "sheet": "设定表"}.get(view, view)
     c = _db()
     try:
         c.execute("""INSERT INTO project_role_asset (project_role_id,asset_kind,filename,rel_path,caption,size)
