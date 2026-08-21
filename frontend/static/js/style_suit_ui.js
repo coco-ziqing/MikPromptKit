@@ -785,7 +785,7 @@ function _bindWorkbench(el) {
             _loadRes(btn.getAttribute('data-res'));
         });
     });
-    // v5.50.9: 点击四层卡槽 → 左侧自动切换到对应资源面板 + 高亮选中
+    // v5.50.9: 点击四层卡槽 → 左侧自动切换到对应资源面板 + 高亮选中（v5.50.11: 去掉 toast 保持流畅）
     el.querySelectorAll('.suit-slot[data-slot]').forEach(function(slot) {
         slot.addEventListener('click', function(ev) {
             // 点击卡槽内按钮（移除×等）不触发
@@ -795,16 +795,12 @@ function _bindWorkbench(el) {
             el.querySelectorAll('.suit-slot').forEach(function(s) { s.classList.remove('slot-selected'); });
             slot.classList.add('slot-selected');
             var resMap = { base: 'base', cards: 'cards', suits: 'suits' };
-            var tabMap = { base: '素材', cards: '词卡', suits: '套装' };
             var res = resMap[key];
             if (res) {
                 el.querySelectorAll('.suit-wb-res-tab').forEach(function(b) {
                     b.classList.toggle('active', b.getAttribute('data-res') === res);
                 });
                 _loadRes(res);
-                if (tabMap[key]) _showToast('已切换资源面板：' + tabMap[key]);
-            } else if (key === 'accessory') {
-                _showToast('视图资产：请勾选右侧产出配件');
             }
         });
     });
@@ -830,12 +826,8 @@ function _bindWorkbench(el) {
     if (wbPlat) {
         wbPlat.addEventListener('change', function() {
             state.workbench.platform = this.value;
-            if (this.value === 'comfyui') {
-                _showToast('ComfyUI 平台：模型由工作流节点决定，画幅仅 1:1/3:4/4:3/9:16/16:9');
-            } else {
-                _showToast('即梦平台：支持全画幅与 1k/2k/4k 分辨率');
-            }
             _renderPreview(el);
+            // v5.50.11: 不弹 toast，预览区即显示平台参数说明
         });
     }
     el.querySelectorAll('.wbPartCk').forEach(function(ck) {
@@ -985,7 +977,6 @@ function _bindBasePane(mode) {
         zone.addEventListener('click', function() {
             // 聚焦后监听 paste
             zone.focus();
-            _showToast('已就绪：请按 Ctrl+V 粘贴图片');
         });
         zone.setAttribute('tabindex', '0');
         zone.addEventListener('paste', function(e) {
@@ -1043,7 +1034,7 @@ async function _uploadBaseFile(file) {
         }
         // v5.50.7: 上传后自动预处理（比例裁剪 + 尺寸限制），显示预览与比例选择
         await _processBase(d.url, d.file_path);
-        _showToast('图片已上传，请选择比例并确认');
+        // v5.50.11: 不弹 toast，预览面板即反馈
     } catch(e) {
         if (dz) { dz.classList.remove('uploading'); dz.innerHTML = '<div class="suit-dropzone-icon">⚠️</div><div class="suit-dropzone-text">上传失败：' + _esc(e.message) + '</div>'; }
         _showToast('上传失败：' + e.message, true);
@@ -1100,7 +1091,7 @@ async function _loadMediaLib() {
 function _finishBaseSet() {
     var el = document.getElementById('viewAssembleWorkbench');
     _renderSlots(el); _renderPreview(el);
-    _showToast('角色基底已设置');
+    // v5.50.11: 不弹 toast，基底槽显示缩略图即反馈
 }
 
 // ============ 基底预处理：比例裁剪 + 尺寸限制 + 预览（v5.50.7） ============
@@ -1260,7 +1251,6 @@ function _bindCropSelection() {
                 if (t) t.textContent = '👁️ 基底预览（' + d2.width + '×' + d2.height + '）';
                 // 重置比例按钮高亮（框选后是自定义区域）
                 document.querySelectorAll('.suit-ratio-btn').forEach(function(b) { b.removeAttribute('data-active'); });
-                _showToast('已应用框选裁剪：' + d2.width + '×' + d2.height);
             }
         });
     }
@@ -1288,7 +1278,7 @@ async function _assembleSuit(suitId) {
         state.workbench.suit_config = it.config || {};
         var el = document.getElementById('viewAssembleWorkbench');
         _renderSlots(el); _renderPreview(el); _renderParts(el);
-        _showToast('风格模板已载入：' + it.name);
+        // v5.50.11: 不弹 toast，模板层填充即反馈
     } catch(e) {
         _showToast(e.message, true);
     }
@@ -1300,7 +1290,6 @@ function _addRuneCard(cardId) {
     w.rune_card_ids.push(cardId);
     var el = document.getElementById('viewAssembleWorkbench');
     _renderSlots(el); _renderPreview(el);
-    _showToast('词条已添加（可继续叠加）');
 }
 
 function _renderSlots(el) {
