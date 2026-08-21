@@ -120,20 +120,42 @@ def _load_word_cards(c, card_ids: list) -> list:
     return [dict(x) for x in rows]
 
 
-def _build_prompt(cfg: dict, rune_cards: list, base_ref: dict) -> str:
-    """组装最终提示词：套装正向词 + 符文词卡内容 + 基底描述"""
-    parts = []
+def _build_prompt(cfg: dict, rune_cards: list, base_ref: dict, rune_texts: list = None) -> str:
+    """组装最终提示词 — seeDream @图像N 参考图规范（v5.50.22）
+    结构: [参考引用段] + [风格词条段] + [符文词条段（词卡+手动文本）] + [约束段]
+    """
     words = cfg.get("style_words", {}) or {}
     pos = (words.get("positive") or "").strip()
+    parts = []
+    # ① 参考引用段：基底图 @图像1（锁角色外观）
+    base_desc = (base_ref or {}).get("desc") or ""
+    if base_ref and (base_ref.get("url") or base_ref.get("file_path")):
+        ref_usage = "参考@图像1作为角色外观参考"
+        if base_desc:
+            ref_usage += f"（{base_desc}）"
+        ref_usage += "，严格保持角色外貌、服装、发型一致"
+        parts.append(ref_usage)
+    # ② 风格词条段（模板固定正向画风词）
     if pos:
         parts.append(pos)
+    # ③ 符文词条段（词卡 + 手动文本叠加）
     for card in rune_cards:
         content = (card.get("content") or card.get("content_zh") or "").strip()
         if content:
             parts.append(content)
-    if base_ref and base_ref.get("desc"):
-        parts.append(f"人物基底参考：{base_ref['desc']}")
-    return "\n".join(parts) if parts else ""
+    for txt in (rune_texts or []):
+        t = str(txt or "").strip()
+        if t:
+            parts.append(t)
+    # ④ 约束兜底（防变形/物理规律）
+    parts.append("人物比例符合现实世界物理规律，构图完整，细节清晰")
+    return "，".join(parts) if parts else ""
+
+
+def _build_negative_prompt(cfg: dict) -> str:
+    """取套装负面词"""
+    words = cfg.get("style_words", {}) or {}
+    return (words.get("negative") or "").strip()
 
 
 def _resolve_output_parts(cfg: dict, accessory_list: list) -> list:
@@ -374,6 +396,7 @@ class RenderSubmit(BaseModel):
     draft_id: int
     license_info: dict = {}
     engine: str = "dreamina"  # v5.50.7: 生成平台（dreamina/comfyui）
+    rune_texts: list[str] = []  # v5.50.22: 手动文本词条（不落草稿表，提交时直接传）
 
 
 @router.post("/api/assemble/render")
@@ -399,7 +422,7 @@ def submit_render(data: RenderSubmit, request: Request):
             raise HTTPException(400, "写实商用通道必须完成授权备案")
         # 组装提示词 + 渲染参数（套装配置 + 会话级覆盖）
         rune_cards = _load_word_cards(c, draft["rune_card_ids"])
-        prompt = _build_prompt(cfg, rune_cards, base)
+        prompt = _build_prompt(cfg, rune_cards, base, data.rune_texts)
         params = dict(cfg.get("render_params") or {})
         params.update(draft["config_override"].get("render_params") or {})
         if not params.get("model_version"):
@@ -415,6 +438,10 @@ def submit_render(data: RenderSubmit, request: Request):
             adapt_hints = []
         params["prompt"] = prompt
         params["channel_hints"] = adapt_hints
+        # v5.50.22: 负面词独立传递
+        neg = _build_negative_prompt(cfg)
+        if neg:
+            params["negative_prompt"] = neg
         # v5.50.7: 生成平台引擎写入（_create_tasks 落 engine 列）
         engine = (data.engine or "dreamina").strip()
         if engine not in ("dreamina", "comfyui"):

@@ -40,7 +40,7 @@ var state = {
     workbench: {            // 组装工作台装配状态（会话级）
         name: '默认装配',
         base_asset_ref: {},
-        rune_card_ids: [],
+        rune_card_ids: [], rune_texts: [],
         suit_id: 0,
         suit_config: null,
         accessory_list: [],
@@ -711,7 +711,7 @@ async function _renderWorkbench(el) {
             '</select>' +
           '</div>' +
           '<button class="suit-btn" id="wbBtnDrafts" title="历史装配记录">📋 草稿</button>' +
-          '<button class="suit-btn suit-btn-primary" id="wbBtnRender">🚀 提交批量生成</button>' +
+          '<button class="suit-btn suit-btn-primary" id="wbBtnRender">🚀 角色生成</button>' +
         '</div>' +
       '</div>' +
       '<div class="suit-wb-body">' +
@@ -769,11 +769,17 @@ async function _renderWorkbench(el) {
           '</div>' +
         '</div>' +
       '</div>' +
+      // v5.50.22: 最下层最终提示词实时预览（参照分镜组装器）
+      '<div class="suit-final-prompt">' +
+        '<div class="suit-final-prompt-head">📝 最终提示词 <span class="suit-final-prompt-tag" id="finalPromptTag">参考@图像1 + 风格词条 + 词卡</span></div>' +
+        '<div class="suit-final-prompt-body" id="finalPromptBody"><div class="suit-slot-empty">装配完成后此处实时显示最终提示词（seeDream @图像N 规范）</div></div>' +
+      '</div>' +
     '</div>';
     _bindWorkbench(el);
     _renderSlots(el);
     _renderPreview(el);
     _renderParts(el);
+    _renderFinalPrompt(el);
     _loadRes('base');
 }
 
@@ -809,11 +815,11 @@ function _bindWorkbench(el) {
     el.querySelector('#wbBtnClear').addEventListener('click', function() {
         if (!_confirm('清空当前组装？')) return;
         state.workbench = {
-            name: '默认装配', base_asset_ref: {}, rune_card_ids: [], suit_id: 0,
+            name: '默认装配', base_asset_ref: {}, rune_card_ids: [], rune_texts: [], suit_id: 0,
             suit_config: null, accessory_list: [], channel: 'virtual',
             config_override: {}, draftId: null
         };
-        _renderSlots(el); _renderPreview(el); _renderParts(el);
+        _renderSlots(el); _renderPreview(el); _renderParts(el); _renderFinalPrompt(el);
         _showToast('已清空');
     });
     el.querySelector('#wbBtnDrafts').addEventListener('click', _showDraftList);
@@ -827,7 +833,11 @@ function _bindWorkbench(el) {
         wbPlat.addEventListener('change', function() {
             state.workbench.platform = this.value;
             _renderPreview(el);
-            // v5.50.11: 不弹 toast，预览区即显示平台参数说明
+            // v5.50.22: 平台切换联动按钮文案（即梦=角色生成）
+            var btn = el.querySelector('#wbBtnRender');
+            if (btn) {
+                btn.innerHTML = this.value === 'comfyui' ? '🚀 提交批量生成' : '🚀 角色生成';
+            }
         });
     }
     el.querySelectorAll('.wbPartCk').forEach(function(ck) {
@@ -1103,7 +1113,7 @@ async function _loadMediaLib() {
 
 function _finishBaseSet() {
     var el = document.getElementById('viewAssembleWorkbench');
-    _renderSlots(el); _renderPreview(el);
+    _renderSlots(el); _renderPreview(el); _renderFinalPrompt(el);
     // v5.50.11: 不弹 toast，基底槽显示缩略图即反馈
 }
 
@@ -1518,7 +1528,7 @@ async function _assembleSuit(suitId) {
         state.workbench.suit_id = suitId;
         state.workbench.suit_config = it.config || {};
         var el = document.getElementById('viewAssembleWorkbench');
-        _renderSlots(el); _renderPreview(el); _renderParts(el);
+        _renderSlots(el); _renderPreview(el); _renderParts(el); _renderFinalPrompt(el);
         // v5.50.11: 不弹 toast，模板层填充即反馈
     } catch(e) {
         _showToast(e.message, true);
@@ -1530,7 +1540,7 @@ function _addRuneCard(cardId) {
     if (w.rune_card_ids.indexOf(cardId) >= 0) { _showToast('该词条已在层中'); return; }
     w.rune_card_ids.push(cardId);
     var el = document.getElementById('viewAssembleWorkbench');
-    _renderSlots(el); _renderPreview(el);
+    _renderSlots(el); _renderPreview(el); _renderFinalPrompt(el);
 }
 
 function _renderSlots(el) {
@@ -1556,7 +1566,7 @@ function _renderSlots(el) {
               '</div></div>';
             baseBody.querySelector('[data-act="rmbase"]').addEventListener('click', function() {
                 w.base_asset_ref = {}; state._baseProcessed = null; state._baseOriginal = null;
-                _renderSlots(el); _renderPreview(el);
+                _renderSlots(el); _renderPreview(el); _renderFinalPrompt(el);
             });
             // v5.50.12: 重新调整 → 恢复预览面板（基于原始图）
             var adjBtn = baseBody.querySelector('[data-act="adjust"]');
@@ -1578,28 +1588,65 @@ function _renderSlots(el) {
             baseBody.innerHTML = '<div class="suit-slot-empty">点击左侧素材添加角色基底参考</div>';
         }
     }
-    // 风格词条
+    // 风格词条（v5.50.22: 支持手动文本词条 + 词卡）
     var runesBody = el.querySelector('#slotRunesBody');
     if (runesBody) {
-        if (!w.rune_card_ids.length) {
-            runesBody.innerHTML = '<div class="suit-slot-empty">点击左侧词条添加（可叠加）</div>';
-        } else {
-            runesBody.innerHTML = w.rune_card_ids.map(function(cid, idx) {
-                return '<div class="suit-rune-chip" data-id="' + cid + '">' +
-                  '<span class="suit-rune-idx">' + (idx + 1) + '</span>' +
-                  '<span class="suit-rune-name">词卡 #' + cid + '</span>' +
-                  '<button class="suit-card-action" data-act="rmrune" data-id="' + cid + '" title="移除">×</button>' +
-                '</div>';
-            }).join('');
-            runesBody.querySelectorAll('[data-act="rmrune"]').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    w.rune_card_ids = w.rune_card_ids.filter(function(x) { return x !== parseInt(btn.getAttribute('data-id'), 10); });
-                    _renderSlots(el); _renderPreview(el);
-                });
-            });
+        var texts = w.rune_texts || [];
+        var chipsHtml = '';
+        var idx = 0;
+        w.rune_card_ids.forEach(function(cid) {
+            idx++;
+            chipsHtml += '<div class="suit-rune-chip" data-id="' + cid + '">' +
+              '<span class="suit-rune-idx">' + idx + '</span>' +
+              '<span class="suit-rune-name">词卡 #' + cid + '</span>' +
+              '<button class="suit-card-action" data-act="rmrune" data-id="' + cid + '" title="移除">×</button></div>';
+        });
+        texts.forEach(function(txt, ti) {
+            idx++;
+            chipsHtml += '<div class="suit-rune-chip suit-rune-text" data-ti="' + ti + '">' +
+              '<span class="suit-rune-idx">' + idx + '</span>' +
+              '<span class="suit-rune-name">' + _esc(txt.length > 20 ? txt.slice(0, 20) + '…' : txt) + '</span>' +
+              '<button class="suit-card-action" data-act="rmtext" data-ti="' + ti + '" title="移除">×</button></div>';
+        });
+        runesBody.innerHTML = chipsHtml +
+          '<div class="suit-rune-input-row">' +
+            '<input class="suit-input" id="runeTextInput" placeholder="手动输入风格词条，回车添加..." style="margin:0;">' +
+            '<button class="suit-btn suit-btn-sm" id="runeTextAdd" style="flex-shrink:0;">+ 添加</button>' +
+          '</div>';
+        if (!idx) {
+            runesBody.innerHTML = '<div class="suit-slot-empty">点击左侧词条添加，或手动输入风格词条（可叠加）</div>' + runesBody.innerHTML;
         }
+        // 词卡移除
+        runesBody.querySelectorAll('[data-act="rmrune"]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                w.rune_card_ids = w.rune_card_ids.filter(function(x) { return x !== parseInt(btn.getAttribute('data-id'), 10); });
+                _renderSlots(el); _renderPreview(el); _renderFinalPrompt(el);
+            });
+        });
+        // 文本词条移除
+        runesBody.querySelectorAll('[data-act="rmtext"]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var ti = parseInt(btn.getAttribute('data-ti'), 10);
+                w.rune_texts = (w.rune_texts || []).filter(function(_, i) { return i !== ti; });
+                _renderSlots(el); _renderPreview(el); _renderFinalPrompt(el);
+            });
+        });
+        // 手动文本添加（回车/按钮）
+        function addRuneText() {
+            var inp = document.getElementById('runeTextInput');
+            if (!inp) return;
+            var v = inp.value.trim();
+            if (!v) { _showToast('请输入词条文本', true); return; }
+            w.rune_texts = w.rune_texts || [];
+            w.rune_texts.push(v);
+            _renderSlots(el); _renderPreview(el); _renderFinalPrompt(el);
+        }
+        var inp = runesBody.querySelector('#runeTextInput');
+        var addBtn = runesBody.querySelector('#runeTextAdd');
+        if (inp) inp.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); addRuneText(); } });
+        if (addBtn) addBtn.addEventListener('click', addRuneText);
     }
-    // 风格模板
+    // 风格模板（v5.50.22: 支持编辑 + 新建）
     var suitBody = el.querySelector('#slotSuitBody');
     if (suitBody) {
         if (w.suit_id && w.suit_config) {
@@ -1607,13 +1654,30 @@ function _renderSlots(el) {
             suitBody.innerHTML = '<div class="suit-slot-filled suit-slot-suit-filled">' +
               '<span class="suit-slot-filled-icon">🎨</span>' +
               '<span>' + _esc(nm) + '</span>' +
-              '<button class="suit-card-action" data-act="rmsuit" title="移除">×</button></div>';
+              '<div class="suit-slot-base-btns">' +
+                '<button class="suit-card-action" data-act="editsuit" title="编辑模板">✏️</button>' +
+                '<button class="suit-card-action" data-act="newsuit" title="新建模板">＋</button>' +
+                '<button class="suit-card-action" data-act="rmsuit" title="移除">×</button>' +
+              '</div></div>';
             suitBody.querySelector('[data-act="rmsuit"]').addEventListener('click', function() {
                 w.suit_id = 0; w.suit_config = null;
-                _renderSlots(el); _renderPreview(el); _renderParts(el);
+                _renderSlots(el); _renderPreview(el); _renderParts(el); _renderFinalPrompt(el);
+            });
+            suitBody.querySelector('[data-act="editsuit"]').addEventListener('click', function() {
+                _openEditor(w.suit_id);
+            });
+            suitBody.querySelector('[data-act="newsuit"]').addEventListener('click', function() {
+                _openEditor(null);
             });
         } else {
-            suitBody.innerHTML = '<div class="suit-slot-empty">点击左侧模板一键加载全套配置</div>';
+            suitBody.innerHTML = '<div class="suit-slot-filled suit-slot-suit-filled" style="border-style:dashed;">' +
+              '<span class="suit-slot-filled-icon">🎨</span>' +
+              '<span>点击左侧模板加载，或新建</span>' +
+              '<div class="suit-slot-base-btns">' +
+                '<button class="suit-card-action" data-act="newsuit" title="新建模板">＋ 新建模板</button>' +
+              '</div></div>';
+            var nb = suitBody.querySelector('[data-act="newsuit"]');
+            if (nb) nb.addEventListener('click', function() { _openEditor(null); });
         }
     }
     // 视图资产
@@ -1684,6 +1748,55 @@ function _renderPreview(el) {
         html += '<div class="suit-preview-warn">⚠️ 生成将真实消耗生成额度，提交前请确认</div>';
     }
     pv.innerHTML = html;
+}
+
+// v5.50.22: 最终提示词实时预览（seeDream @图像N 规范，与后端 _build_prompt 一致）
+function _renderFinalPrompt(el) {
+    var w = state.workbench;
+    var body = document.getElementById('finalPromptBody');
+    if (!body) return;
+    var cfg = w.suit_config || {};
+    var words = cfg.style_words || {};
+    var parts = [];
+    // ① 参考引用段
+    var base = w.base_asset_ref || {};
+    if (base.url || base.file_path) {
+        var ru = '参考@图像1作为角色外观参考';
+        if (base.desc) ru += '（' + base.desc + '）';
+        ru += '，严格保持角色外貌、服装、发型一致';
+        parts.push(ru);
+    }
+    // ② 风格词条段
+    if ((words.positive || '').trim()) parts.push((words.positive || '').trim());
+    // ③ 符文词条段（词卡 + 手动文本）
+    if (w.rune_card_ids.length) {
+        parts.push('词卡×' + w.rune_card_ids.length + '（' + w.rune_card_ids.join('、') + '）');
+    }
+    (w.rune_texts || []).forEach(function(txt) {
+        if (String(txt || '').trim()) parts.push(String(txt).trim());
+    });
+    // ④ 约束段
+    parts.push('人物比例符合现实世界物理规律，构图完整，细节清晰');
+    var tag = document.getElementById('finalPromptTag');
+    if (tag) {
+        var bits = [];
+        if (base.url || base.file_path) bits.push('@图像1 参考');
+        if ((words.positive || '').trim()) bits.push('风格词条');
+        if (w.rune_card_ids.length) bits.push('词卡×' + w.rune_card_ids.length);
+        if ((w.rune_texts || []).length) bits.push('手动词条×' + w.rune_texts.length);
+        tag.textContent = bits.join(' + ') || '空装配';
+    }
+    if (!base.url && !base.file_path && !(words.positive || '').trim() && !w.rune_card_ids.length && !(w.rune_texts || []).length) {
+        body.innerHTML = '<div class="suit-slot-empty">装配完成后此处实时显示最终提示词（seeDream @图像N 规范）</div>';
+        return;
+    }
+    body.innerHTML = parts.map(function(p, i) {
+        return '<div class="suit-final-prompt-line"><span class="suit-final-prompt-idx">' + (i + 1) + '</span>' + _esc(p) + '</div>';
+    }).join('');
+    // 负面词行
+    if ((words.negative || '').trim()) {
+        body.innerHTML += '<div class="suit-final-prompt-line suit-final-prompt-neg"><span class="suit-final-prompt-idx">−</span>负面：' + _esc((words.negative || '').trim()) + '</div>';
+    }
 }
 
 async function _saveDraft() {
@@ -1778,7 +1891,7 @@ async function _submitRender() {
             draft = db.item.id;
             state.workbench.draftId = draft;
         }
-        var body = { draft_id: draft, license_info: { authorized: w.channel !== 'real' }, engine: w.platform || 'dreamina' };
+        var body = { draft_id: draft, license_info: { authorized: w.channel !== 'real' }, engine: w.platform || 'dreamina', rune_texts: w.rune_texts || [] };
         var d = await _api('/api/assemble/render', { method: 'POST', body: JSON.stringify(body) });
         _showToast('生成已提交，批次 #' + d.batch.id + '（' + d.batch.total + ' 个产出项）');
         _openResult(d.batch.id);

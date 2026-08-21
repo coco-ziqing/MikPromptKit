@@ -4377,3 +4377,12 @@ body.dark-theme .header-divider {
 .suit-crop-handle.s  { left: 50%; bottom: -6px; margin-left: -6px; cursor: ns-resize; }
 .suit-crop-handle.sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
 .suit-crop-handle.w  { left: -6px; top: 50%; margin-top: -6px; cursor: ew-resize; }
+
+/* ===== v5.50.22: 最终提示词实时预览栏 ===== */
+.suit-final-prompt { margin-top: 14px; background: var(--bg-secondary, #1e293b); border: 1px solid var(--border-color, #334155); border-radius: 12px; padding: 12px 16px; }
+.suit-final-prompt-head { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; color: #818cf8; margin-bottom: 8px; }
+.suit-final-prompt-tag { font-size: 11px; font-weight: 400; color: var(--text-dim, #94a3b8); background: var(--bg-primary, #0f172a); border-radius: 6px; padding: 2px 8px; }
+.suit-final-prompt-body { background: var(--bg-primary, #0f172a); border-radius: 8px; padding: 10px 12px; max-height: 200px; overflow-y: auto; font-size: 12px; line-height: 1.7; }
+.suit-final-prompt-line { display: flex; gap: 8px; margin-bottom: 4px; color: var(--text-color, #e2e8f0); word-break: break-all; }
+.suit-final-prompt-idx { flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%; background: rgba(99,102,241,.2); color: #818cf8; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; margin-top: 2px; }
+.suit-final-prompt-neg { color: var(--text-dim, #94a3b8); }
