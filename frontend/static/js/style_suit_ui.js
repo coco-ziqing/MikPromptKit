@@ -1104,18 +1104,18 @@ function _finishBaseSet() {
 }
 
 // ============ 基底预处理：比例裁剪 + 尺寸限制 + 预览（v5.50.7） ============
-async function _processBase(url, filePath, ratio) {
+async function _processBase(url, filePath, ratio, crop) {
     try {
         // v5.50.8: 始终基于原始上传图处理（避免叠加裁切）
         var src = state._baseOriginal || {};
         var useUrl = src.url || url || '';
         var usePath = src.file_path || filePath || '';
-        var body = { url: useUrl, file_path: usePath, ratio: ratio || '1:1' };
+        var body = { url: useUrl, file_path: usePath, ratio: ratio || '1:1', crop: crop || {} };
         var d = await _api('/api/assemble/base-process', { method: 'POST', body: JSON.stringify(body) });
         if (!d.ok) throw new Error(d.detail || '预处理失败');
         // 保存处理结果到工作台（临时，等用户确认比例）
         state._baseProcessed = d;
-        if (!ratio) _renderBasePreviewPanel(d);
+        if (!ratio && !crop) _renderBasePreviewPanel(d);
         return d;
     } catch(e) {
         _showToast('预处理失败：' + e.message, true);
@@ -1130,7 +1130,13 @@ function _renderBasePreviewPanel(d) {
     pane.innerHTML = '' +
       '<div class="suit-base-preview-box">' +
         '<div class="suit-base-preview-title">👁️ 基底预览（' + d.width + '×' + d.height + '）</div>' +
-        '<img src="' + _esc(d.preview_url) + '" class="suit-base-preview-main" id="basePrevImg">' +
+        // v5.50.10: 手动框选裁剪容器（拖拽画框）
+        '<div class="suit-crop-wrap" id="baseCropWrap">' +
+          '<img src="' + _esc(d.preview_url) + '" class="suit-base-preview-main" id="basePrevImg">' +
+          '<div class="suit-crop-mask" id="baseCropMask"></div>' +
+          '<div class="suit-crop-box" id="baseCropBox"></div>' +
+        '</div>' +
+        '<div class="suit-crop-tip">🖱️ 在图上拖拽可手动框选裁剪区域（双击取消框选）</div>' +
         '<div class="suit-base-ratio-row">' +
           '<span class="suit-base-ratio-label">画幅比例：</span>' +
           ratios.map(function(r) {
@@ -1138,17 +1144,23 @@ function _renderBasePreviewPanel(d) {
             return '<button class="suit-ratio-btn" data-ratio="' + (r === '原始' ? 'original' : r) + '"' + isActive + '>' + r + '</button>';
           }).join('') +
         '</div>' +
+        '<div class="suit-crop-actions" id="baseCropActions" style="display:none;">' +
+          '<button class="suit-btn suit-btn-primary" id="wbBaseCropApply" style="flex:1;">✂️ 应用框选裁剪</button>' +
+          '<button class="suit-btn" id="wbBaseCropClear" style="flex:1;">↩️ 取消框选</button>' +
+        '</div>' +
         '<input class="suit-input" id="wbBaseDesc6" placeholder="描述（例：青年男性，正脸）" value="' + _esc(state.workbench.base_asset_ref.desc || '') + '">' +
         '<div class="suit-base-actions">' +
           '<button class="suit-btn suit-btn-primary" id="wbBaseConfirm" style="flex:1;">✅ 确认设为基底</button>' +
           '<button class="suit-btn" id="wbBaseCancel" style="flex:1;">↩️ 重新选择</button>' +
         '</div>' +
-        '<div class="suit-base-hint">💡 将按所选比例居中裁剪，最长边限制 ' + 1536 + 'px（适配生成平台输入）</div>' +
+        '<div class="suit-base-hint">💡 可先手动框选区域，再选比例居中裁剪；最长边限制 ' + 1536 + 'px</div>' +
       '</div>';
+    _bindCropSelection();
     pane.querySelectorAll('.suit-ratio-btn').forEach(function(btn) {
         btn.addEventListener('click', async function() {
             pane.querySelectorAll('.suit-ratio-btn').forEach(function(b) { b.removeAttribute('data-active'); });
             btn.setAttribute('data-active', '1');
+            _clearCropSelection();
             // v5.50.8: 始终基于原始图重裁（_processBase 内部回退原始图）
             var d2 = await _processBase('', '', btn.getAttribute('data-ratio'));
             if (d2) {
@@ -1176,6 +1188,96 @@ function _renderBasePreviewPanel(d) {
     pane.querySelector('#wbBaseCancel').addEventListener('click', function() {
         _renderBasePane('upload');
     });
+}
+
+// ============ 手动框选裁剪（v5.50.10） ============
+function _bindCropSelection() {
+    var wrap = document.getElementById('baseCropWrap');
+    var box = document.getElementById('baseCropBox');
+    var mask = document.getElementById('baseCropMask');
+    if (!wrap || !box || !mask) return;
+    var dragging = false, sx = 0, sy = 0;
+    // 画布相对坐标（0-1）
+    function setCropBox(x1, y1, x2, y2) {
+        var left = Math.min(x1, x2), top = Math.min(y1, y2);
+        var w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+        box.style.left = (left * 100) + '%';
+        box.style.top = (top * 100) + '%';
+        box.style.width = (w * 100) + '%';
+        box.style.height = (h * 100) + '%';
+        box.style.display = 'block';
+        mask.style.display = 'block';
+    }
+    function hideCrop() {
+        box.style.display = 'none';
+        mask.style.display = 'none';
+        var acts = document.getElementById('baseCropActions');
+        if (acts) acts.style.display = 'none';
+        state._baseCrop = null;
+    }
+    wrap.addEventListener('mousedown', function(e) {
+        var rect = wrap.getBoundingClientRect();
+        sx = (e.clientX - rect.left) / rect.width;
+        sy = (e.clientY - rect.top) / rect.height;
+        dragging = true;
+        box.style.display = 'block';
+        e.preventDefault();
+    });
+    window.addEventListener('mousemove', function(e) {
+        if (!dragging) return;
+        var rect = wrap.getBoundingClientRect();
+        var cx = (e.clientX - rect.left) / rect.width;
+        var cy = (e.clientY - rect.top) / rect.height;
+        cx = Math.max(0, Math.min(1, cx));
+        cy = Math.max(0, Math.min(1, cy));
+        setCropBox(sx, sy, cx, cy);
+    });
+    window.addEventListener('mouseup', function() {
+        if (!dragging) return;
+        dragging = false;
+        var left = parseFloat(box.style.left) || 0, top = parseFloat(box.style.top) || 0;
+        var w = parseFloat(box.style.width) || 0, h = parseFloat(box.style.height) || 0;
+        // 太小视为误操作（<3%）
+        if (w < 0.03 || h < 0.03) { hideCrop(); return; }
+        state._baseCrop = { x: left / 100, y: top / 100, w: w / 100, h: h / 100 };
+        var acts = document.getElementById('baseCropActions');
+        if (acts) acts.style.display = 'flex';
+    });
+    // 双击取消框选
+    wrap.addEventListener('dblclick', function() { hideCrop(); });
+    // 应用框选
+    var applyBtn = document.getElementById('wbBaseCropApply');
+    if (applyBtn) {
+        applyBtn.addEventListener('click', async function() {
+            if (!state._baseCrop) { _showToast('请先在图上拖拽框选区域', true); return; }
+            // 框选后基于原始图应用裁剪（ratio=original 不二次裁切）
+            var d2 = await _processBase('', '', 'original', state._baseCrop);
+            if (d2) {
+                hideCrop();
+                var img = document.getElementById('basePrevImg');
+                if (img) img.src = d2.preview_url;
+                var t = document.querySelector('.suit-base-preview-title');
+                if (t) t.textContent = '👁️ 基底预览（' + d2.width + '×' + d2.height + '）';
+                // 重置比例按钮高亮（框选后是自定义区域）
+                document.querySelectorAll('.suit-ratio-btn').forEach(function(b) { b.removeAttribute('data-active'); });
+                _showToast('已应用框选裁剪：' + d2.width + '×' + d2.height);
+            }
+        });
+    }
+    var clearBtn = document.getElementById('wbBaseCropClear');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function() { hideCrop(); });
+    }
+}
+
+function _clearCropSelection() {
+    var box = document.getElementById('baseCropBox');
+    var mask = document.getElementById('baseCropMask');
+    var acts = document.getElementById('baseCropActions');
+    if (box) box.style.display = 'none';
+    if (mask) mask.style.display = 'none';
+    if (acts) acts.style.display = 'none';
+    state._baseCrop = null;
 }
 
 async function _assembleSuit(suitId) {
