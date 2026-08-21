@@ -614,45 +614,56 @@ function _renderEditor() {
 }
 
 function _collectEditorConfig() {
+    // v5.50.34: 非激活 tab 的 DOM 不存在 → 用 state.editor 原值兜底（未改动的 tab 保持原样）
+    var e = state.editor || {};
+    var oldCfg = e.config || {};
+    var oldWords = oldCfg.style_words || {};
+    var oldRp = oldCfg.render_params || {};
+    var oldLayout = oldCfg.layout || {};
+    var oldParts = oldCfg.output_parts || [];
+    var curRatio = document.getElementById('edRpRatio') ? document.getElementById('edRpRatio').value : (oldRp.ratio || '1:1');
     var cfg = {
         style_words: {
-            positive: document.getElementById('edWordsPos') ? document.getElementById('edWordsPos').value : '',
-            negative: document.getElementById('edWordsNeg') ? document.getElementById('edWordsNeg').value : ''
+            positive: document.getElementById('edWordsPos') ? document.getElementById('edWordsPos').value : (oldWords.positive || ''),
+            negative: document.getElementById('edWordsNeg') ? document.getElementById('edWordsNeg').value : (oldWords.negative || '')
         },
         render_params: {
-            model_version: document.getElementById('edRpModel') ? document.getElementById('edRpModel').value : '5.0',
-            ratio: document.getElementById('edRpRatio') ? document.getElementById('edRpRatio').value : '1:1',
-            resolution_type: document.getElementById('edRpRes') ? document.getElementById('edRpRes').value : '2k',
-            cfg: parseFloat(document.getElementById('edRpCfg') ? document.getElementById('edRpCfg').value : 5.0),
-            steps: parseInt(document.getElementById('edRpSteps') ? document.getElementById('edRpSteps').value : 25, 10),
-            denoise: parseFloat(document.getElementById('edRpDenoise') ? document.getElementById('edRpDenoise').value : 0.6),
-            sampler: document.getElementById('edRpSampler') ? document.getElementById('edRpSampler').value : '',
-            canvas_size: document.getElementById('edRpRatio') ? document.getElementById('edRpRatio').value : '1:1',
-            layer_render: false
+            model_version: document.getElementById('edRpModel') ? document.getElementById('edRpModel').value : (oldRp.model_version || '5.0'),
+            ratio: curRatio,
+            resolution_type: document.getElementById('edRpRes') ? document.getElementById('edRpRes').value : (oldRp.resolution_type || '2k'),
+            cfg: document.getElementById('edRpCfg') ? parseFloat(document.getElementById('edRpCfg').value) : (oldRp.cfg != null ? oldRp.cfg : 5.0),
+            steps: document.getElementById('edRpSteps') ? parseInt(document.getElementById('edRpSteps').value, 10) : (oldRp.steps != null ? oldRp.steps : 25),
+            denoise: document.getElementById('edRpDenoise') ? parseFloat(document.getElementById('edRpDenoise').value) : (oldRp.denoise != null ? oldRp.denoise : 0.6),
+            sampler: document.getElementById('edRpSampler') ? document.getElementById('edRpSampler').value : (oldRp.sampler || ''),
+            canvas_size: curRatio,
+            layer_render: oldRp.layer_render || false
         },
         output_parts: [],
         layout: {
-            template: document.getElementById('edLayoutTpl') ? document.getElementById('edLayoutTpl').value : 'default',
-            color_card: document.getElementById('edLayoutColor') ? document.getElementById('edLayoutColor').checked : true,
-            title_text: document.getElementById('edLayoutTitle') ? document.getElementById('edLayoutTitle').value : '',
-            bg_color: document.getElementById('edLayoutBg') ? document.getElementById('edLayoutBg').value : '#1a1a2e'
+            template: document.getElementById('edLayoutTpl') ? document.getElementById('edLayoutTpl').value : (oldLayout.template || 'default'),
+            color_card: document.getElementById('edLayoutColor') ? document.getElementById('edLayoutColor').checked : (oldLayout.color_card != null ? oldLayout.color_card : true),
+            title_text: document.getElementById('edLayoutTitle') ? document.getElementById('edLayoutTitle').value : (oldLayout.title_text || ''),
+            bg_color: document.getElementById('edLayoutBg') ? document.getElementById('edLayoutBg').value : (oldLayout.bg_color || '#1a1a2e')
         },
         meta: {}
     };
+    // 输出部件：激活 tab 收集勾选；未激活时保留原值
     document.querySelectorAll('#suitEditorMask .edPartCk:checked').forEach(function(c) { cfg.output_parts.push(c.value); });
-    if (!cfg.output_parts.length) cfg.output_parts = ['main'];
+    if (!cfg.output_parts.length) cfg.output_parts = (oldParts && oldParts.length) ? oldParts.slice() : ['main'];
     return cfg;
 }
 
 function _collectEditorBase() {
-    var name = document.getElementById('edName') ? document.getElementById('edName').value.trim() : '';
-    var tagsStr = document.getElementById('edTags') ? document.getElementById('edTags').value : '';
+    // v5.50.34: 非激活 tab（⑤基础信息）DOM 不存在时用 state.editor 原值兜底
+    var e = state.editor || {};
+    var name = document.getElementById('edName') ? document.getElementById('edName').value.trim() : (e.name || '');
+    var tagsStr = document.getElementById('edTags') ? document.getElementById('edTags').value : ((e.tags || []).join(','));
     var tags = tagsStr.split(/[,，]/).map(function(t) { return t.trim(); }).filter(Boolean);
     return {
         name: name,
         tags: tags,
-        remark: document.getElementById('edRemark') ? document.getElementById('edRemark').value : '',
-        cover_image: document.getElementById('edCover') ? document.getElementById('edCover').value : ''
+        remark: document.getElementById('edRemark') ? document.getElementById('edRemark').value : (e.remark || ''),
+        cover_image: document.getElementById('edCover') ? document.getElementById('edCover').value : (e.cover_image || '')
     };
 }
 
