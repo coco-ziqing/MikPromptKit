@@ -515,6 +515,20 @@ var App = window.App || {
             this._showSidebar();
             this._collapseSidebar();
             // 猴补丁负责具体面板渲染；这里仅做通用清理 + 导航高亮
+        } else if (view === 'style_suit') {
+            // v5.50.4: 角色设定集 — 走 switchView 统一机制（与 character_composer hook 兼容）
+            var ssEl = document.getElementById('viewStyleSuit');
+            if (!ssEl) {
+                ssEl = document.createElement('div');
+                ssEl.id = 'viewStyleSuit';
+                ssEl.className = 'view-panel';
+                document.getElementById('mainContent').appendChild(ssEl);
+            }
+            ssEl.classList.add('active-view');
+            this._hideSearchBox();
+            this._showSidebar();
+            this._collapseSidebar();
+            if (window.STYLE_SUIT && STYLE_SUIT._renderBag) STYLE_SUIT._renderBag();
         } else if (view === 'project_mgmt') {
             // Phase18+: 项目管理插件视图 (com.promptkit.project)
             var pmEl = document.getElementById('viewProjectMgmt');

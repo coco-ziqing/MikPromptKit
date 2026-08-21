@@ -123,10 +123,16 @@ window.STYLE_SUIT = {
 
 // ==================== ① 角色设定集库 ====================
 async function _openBag() {
-    _activatePanel('viewStyleSuit');
+    // v5.50.4: 统一走 App.switchView 机制（与 character_composer hook 兼容）
+    try { App.switchView('style_suit'); } catch(e) { _activatePanel('viewStyleSuit'); }
+}
+
+// 供 App.switchView('style_suit') 分支调用的渲染函数（面板已激活）
+async function _renderBag() {
+    var el = document.getElementById('viewStyleSuit');
+    if (!el) return;
     // v5.50.3: 进入页面自动折叠侧边栏，最大化内容区
     try { if (App._collapseSidebar) App._collapseSidebar(); } catch(e) {}
-    var el = document.getElementById('viewStyleSuit');
     el.innerHTML = _bagShell();
     _bindBagEvents(el);
     await _loadSuits();
@@ -1280,6 +1286,7 @@ async function _exportBatch(batchId) {
 window.STYLE_SUIT = Object.assign(window.STYLE_SUIT || {}, {
     open: _openBag,
     openBag: _openBag,
+    _renderBag: _renderBag,
     openEditor: _openEditor,
     openWorkbench: _openWorkbench,
     openResult: _openResult,
