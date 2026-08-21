@@ -111,7 +111,7 @@ def dreamina_submit_image2image(image_paths: list, prompt: str, model_version: s
             "--generate_num", str(generate_num), "--ratio", ratio,
             "--resolution_type", resolution_type, "--poll", "0"]
     for p in image_paths or []:
-        args += ["--image", p]
+        args += ["--images", p]  # v5.50.31: 即梦 CLI image2image 参数名是 --images（非 --image）
     out, err, code = _dreamina_run(args, timeout=timeout)
     return _parse_submit_result(out, err)
 

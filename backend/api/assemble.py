@@ -8,6 +8,7 @@
 import json
 import os
 import sqlite3
+import threading
 import time
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
@@ -21,7 +22,7 @@ except Exception:
 from jwt_auth import get_current_user
 
 from .style_suits import _db as _suit_db
-from .card_gen import _create_tasks, _team_guard
+from .card_gen import _card_gen_worker, _create_tasks, _team_guard
 
 router = APIRouter(tags=["角色组装"])
 
@@ -397,6 +398,7 @@ class RenderSubmit(BaseModel):
     license_info: dict = {}
     engine: str = "dreamina"  # v5.50.7: 生成平台（dreamina/comfyui）
     rune_texts: list[str] = []  # v5.50.22: 手动文本词条（不落草稿表，提交时直接传）
+    params: dict = {}  # v5.50.30: 提交前用户参数覆盖（model_version/ratio/resolution_type）
 
 
 @router.post("/api/assemble/render")
@@ -425,6 +427,11 @@ def submit_render(data: RenderSubmit, request: Request):
         prompt = _build_prompt(cfg, rune_cards, base, data.rune_texts)
         params = dict(cfg.get("render_params") or {})
         params.update(draft["config_override"].get("render_params") or {})
+        # v5.50.30: 提交时用户显式参数覆盖（最高优先级，前端参数弹窗选择）
+        if isinstance(data.params, dict):
+            for pk, pv in data.params.items():
+                if pv is not None and str(pv).strip() != "":
+                    params[pk] = pv
         if not params.get("model_version"):
             params["model_version"] = "5.0"
         if not params.get("ratio"):
@@ -493,6 +500,8 @@ def submit_render(data: RenderSubmit, request: Request):
             if out:
                 # v5.49.0: task_ids 存对象数组 [{task_id, part}]，归档可还原配件名
                 task_ids.append({"task_id": out[0]["task_id"], "part": part})
+                # v5.50.30: 建任务后立即起 worker（否则任务卡 queued 直到服务重启被 resume 接管）
+                threading.Thread(target=_card_gen_worker, args=(out[0]["task_id"],), daemon=True).start()
         if not task_ids:
             c.execute("UPDATE render_batch SET status='fail', finished_at=? WHERE id=?", [now, batch_id])
             c.commit()

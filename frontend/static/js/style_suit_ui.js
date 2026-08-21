@@ -1881,6 +1881,50 @@ async function _showDraftList() {
     }
 }
 
+// v5.50.30: 提交前参数设置弹窗（dreamina 模式：模型/画幅/分辨率）
+function _openRenderParamsModal(defaults) {
+    return new Promise(function(resolve) {
+        var d = defaults || {};
+        var models = ['3.0', '3.1', '4.0', '4.1', '4.5', '4.6', '4.7', '5.0', '5.0Pro'];
+        var ratios = ['21:9', '16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'];
+        var resols = ['1k', '2k', '4k'];
+        var mkOpts = function(arr, cur) {
+            return arr.map(function(v) { return '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + v + '</option>'; }).join('');
+        };
+        var mid = document.createElement('div');
+        mid.className = 'suit-modal-mask';
+        mid.id = 'renderParamsMask';
+        mid.onclick = function(e) { if (e.target === mid) { mid.remove(); resolve(null); } };
+        mid.innerHTML = '<div class="suit-modal" style="max-width:420px;">' +
+          '<div class="suit-modal-head"><span>⚙️ 生成参数设置</span><button class="suit-btn suit-btn-sm" onclick="document.getElementById(\'renderParamsMask\').remove();window.__rpResolve && window.__rpResolve(null)">✕</button></div>' +
+          '<div class="suit-modal-body" style="display:flex;flex-direction:column;gap:10px;">' +
+            '<div><label style="font-size:11px;color:var(--text-dim,#94a3b8);display:block;margin-bottom:3px;">模型版本（即梦）</label>' +
+              '<select class="suit-input" id="rpModel" style="width:100%;">' + mkOpts(models, d.model_version || '5.0') + '</select></div>' +
+            '<div><label style="font-size:11px;color:var(--text-dim,#94a3b8);display:block;margin-bottom:3px;">画幅比例</label>' +
+              '<select class="suit-input" id="rpRatio" style="width:100%;">' + mkOpts(ratios, d.ratio || '1:1') + '</select></div>' +
+            '<div><label style="font-size:11px;color:var(--text-dim,#94a3b8);display:block;margin-bottom:3px;">分辨率档位</label>' +
+              '<select class="suit-input" id="rpResol" style="width:100%;">' + mkOpts(resols, d.resolution_type || '2k') + '</select></div>' +
+            '<div style="font-size:11px;color:var(--text-dim,#94a3b8);">提示：参数仅对本次生成生效，模型 5.0Pro 生成更精细但更耗时。</div>' +
+          '</div>' +
+          '<div class="suit-modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">' +
+            '<button class="suit-btn" onclick="document.getElementById(\'renderParamsMask\').remove();window.__rpResolve && window.__rpResolve(null)">取消</button>' +
+            '<button class="suit-btn suit-btn-primary" id="rpOk">✅ 确认生成</button>' +
+          '</div></div>';
+        document.body.appendChild(mid);
+        window.__rpResolve = resolve;
+        mid.querySelector('#rpOk').addEventListener('click', function() {
+            var params = {
+                model_version: document.getElementById('rpModel').value,
+                ratio: document.getElementById('rpRatio').value,
+                resolution_type: document.getElementById('rpResol').value
+            };
+            mid.remove();
+            window.__rpResolve = null;
+            resolve(params);
+        });
+    });
+}
+
 async function _submitRender() {
     var w = state.workbench;
     if (!w.base_asset_ref || (!w.base_asset_ref.desc && !w.base_asset_ref.url)) { _showToast('请先设置基底素材（①必填）', true); return; }
@@ -1904,6 +1948,17 @@ async function _submitRender() {
             state.workbench.draftId = draft;
         }
         var body = { draft_id: draft, license_info: { authorized: w.channel !== 'real' }, engine: w.platform || 'dreamina', rune_texts: w.rune_texts || [] };
+        // v5.50.30: 即梦模式提交前弹窗选模型/画幅/分辨率（ComfyUI 走工作流参数，不弹）
+        if ((w.platform || 'dreamina') !== 'comfyui') {
+            var ov = (w.config_override && w.config_override.render_params) || {};
+            var rp = await _openRenderParamsModal({
+                model_version: ov.model_version || '5.0',
+                ratio: ov.ratio || '1:1',
+                resolution_type: ov.resolution_type || '2k'
+            });
+            if (!rp) { _showToast('已取消生成'); return; }
+            body.params = rp;
+        }
         var d = await _api('/api/assemble/render', { method: 'POST', body: JSON.stringify(body) });
         _showToast('生成已提交，批次 #' + d.batch.id + '（' + d.batch.total + ' 个产出项）');
         _openResult(d.batch.id);
