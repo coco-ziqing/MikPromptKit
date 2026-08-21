@@ -743,6 +743,11 @@ async function _renderWorkbench(el) {
             '<div class="suit-slot-label">④ 视图资产选配 <span class="suit-slot-multi">临时增减视图资产</span></div>' +
             '<div class="suit-slot-body" id="slotAccessoryBody"></div>' +
           '</div>' +
+          // v5.50.29: 最终提示词固定在中间栏最底部（不超出左右边栏，切换层常驻）
+          '<div class="suit-final-prompt">' +
+            '<div class="suit-final-prompt-head">📝 最终提示词 <span class="suit-final-prompt-tag" id="finalPromptTag">参考@图像1 + 风格词条 + 词卡</span></div>' +
+            '<div class="suit-final-prompt-body" id="finalPromptBody"><div class="suit-slot-empty">装配完成后此处实时显示最终提示词（seeDream @图像N 规范）</div></div>' +
+          '</div>' +
         '</div>' +
         // 右：实时预览
         '<div class="suit-wb-right">' +
@@ -768,11 +773,6 @@ async function _renderWorkbench(el) {
             '<button class="suit-btn" id="wbBtnClear">🗑️ 清空组装</button>' +
           '</div>' +
         '</div>' +
-      '</div>' +
-      // v5.50.22: 最下层最终提示词实时预览（参照分镜组装器）
-      '<div class="suit-final-prompt">' +
-        '<div class="suit-final-prompt-head">📝 最终提示词 <span class="suit-final-prompt-tag" id="finalPromptTag">参考@图像1 + 风格词条 + 词卡</span></div>' +
-        '<div class="suit-final-prompt-body" id="finalPromptBody"><div class="suit-slot-empty">装配完成后此处实时显示最终提示词（seeDream @图像N 规范）</div></div>' +
       '</div>' +
     '</div>';
     _bindWorkbench(el);
