@@ -539,7 +539,9 @@ def refresh_render_batch(batch_id: int, request: Request):
         r = c.execute("SELECT * FROM render_batch WHERE id=?", [batch_id]).fetchone()
         if not r:
             raise HTTPException(404, "批次不存在")
-        task_ids = json.loads(r["task_ids"] or "[]")
+        # v5.50.24: task_ids 兼容对象数组 [{task_id, part}]（v5.49.0+）与纯 id 列表（旧）
+        raw_ids = json.loads(r["task_ids"] or "[]")
+        task_ids = [x["task_id"] if isinstance(x, dict) else x for x in raw_ids]
         done = fail = 0
         if task_ids:
             q = ",".join("?" * len(task_ids))
