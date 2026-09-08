@@ -1424,3 +1424,34 @@ def repair_missing_posters():
         "ok": True, "total_fixed": total_fixed,
         "fixed_videos": fixed_videos, "fixed_wordcards": fixed_wordcards
     }
+
+
+# ==================== v5.50.42: 多档位缓存清理 ====================
+
+@router.post("/clear-tiers")
+def clear_tier_cache():
+    """清除所有多档位缩略图缓存（*_hd/_md/_sd.jpg），释放磁盘空间。
+    原档缩略图（240×160）不受影响，下次访问对应档位会懒加载重新生成。"""
+    deleted = 0
+    freed = 0
+    try:
+        for f in os.listdir(THUMB_DIR):
+            if not f.lower().endswith('.jpg'):
+                continue
+            base = os.path.splitext(f)[0]
+            if base.endswith('_hd') or base.endswith('_md') or base.endswith('_sd'):
+                fp = os.path.join(THUMB_DIR, f)
+                try:
+                    freed += os.path.getsize(fp)
+                    os.remove(fp)
+                    deleted += 1
+                except Exception:
+                    pass
+    except Exception as e:
+        print('[档位清理] 失败:', e)
+    return {
+        "ok": True,
+        "deleted": deleted,
+        "freed_bytes": freed,
+        "freed_mb": round(freed / 1048576, 2)
+    }

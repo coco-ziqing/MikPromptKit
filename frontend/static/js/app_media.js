@@ -231,6 +231,17 @@ Object.assign(App, {
         this.switchThumbTab(this._thumbnailTab);
     },
 
+    // v5.50.42: 清除多档位缩略图缓存（释放磁盘空间）
+    clearTierCache() {
+        if (!confirm('清除所有多档位缩略图缓存（hd/md/sd）？原档缩略图不受影响，下次访问对应档位会懒加载重新生成。')) return;
+        var self = this;
+        this.fetchJSON('/api/thumbnails/clear-tiers', { method: 'POST' }).then(function (d) {
+            self.showToast('已清除 ' + d.deleted + ' 个档位缓存，释放 ' + d.freed_mb + ' MB', 'success');
+        }).catch(function (e) {
+            self.showToast('清除失败: ' + e.message, 'error');
+        });
+    },
+
     // ============ 拖拽框选 ============
 
     _initThumbDragSelect() {
