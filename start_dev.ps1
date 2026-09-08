@@ -312,6 +312,21 @@ if ($ln0) {
     Write-Host "    服务 PID: $svcPid（已写入 data\server.pid）" -ForegroundColor Gray
 }
 
+# 2026-09-08 加固: 拉起服务看门狗（自愈）——服务崩溃自动重启，单实例防重复
+$wdExisting = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match "watchdog\.ps1" })
+if ($wdExisting.Count -eq 0) {
+    try {
+        $wd = Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$ROOT\watchdog.ps1`"" -WorkingDirectory $ROOT -WindowStyle Hidden -PassThru
+        try { $wd.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal } catch {}
+        Write-Ok "服务看门狗已启动（崩溃自动重启，PID $($wd.Id)）"
+    } catch {
+        Write-Warn "看门狗启动失败（不影响运行，服务仍可手动停止）"
+    }
+} else {
+    Write-Host "    看门狗已在运行（PID $($wdExisting[0].ProcessId)）" -ForegroundColor Gray
+}
+
 # 就绪后短窗二次确认（防"端口一闪而过"的启动即崩）
 Start-Sleep -Seconds 2
 if (-not (netstat -ano | Select-String ":$PORT\s" | Select-String "LISTENING")) {
@@ -366,11 +381,12 @@ if ($healthJson) {
 
 # ---------- 5/5 防火墙检查 + 打开浏览器 ----------
 Write-Step "5/5 网络与浏览器"
+# 2026-09-08 加固: 按 TCP 端口匹配入站规则（原按规则名 PromptKit 匹配，规则名变更即误报）
 $fwText = netsh advfirewall firewall show rule name=all dir=in 2>$null
-if ($fwText -match "PromptKit") {
-    Write-Ok "防火墙入站规则已存在 (PromptKit)"
+if ($fwText -match ":\s*8080\b") {
+    Write-Ok "防火墙入站规则已存在 (TCP $PORT)"
 } else {
-    Write-Warn "未检测到 PromptKit 入站规则，局域网设备可能无法访问；可运行 firewall_open.bat 或管理员放行 TCP $PORT"
+    Write-Warn "未检测到 TCP $PORT 入站规则，局域网设备可能无法访问；可运行 firewall_open.bat 或管理员放行 TCP $PORT"
 }
 
 $lanIPs = @()
