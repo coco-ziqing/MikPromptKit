@@ -817,22 +817,13 @@ Object.assign(App, {
             grids[i].style.gridTemplateColumns = 'repeat(' + cols + ', minmax(170px, 1fr))';
         }
 
-        // 根据列数调整缩略图大小
-        // 1-2列时缩略图尺寸与文字区域比例协调，防止缩略图撑满卡片
-        var thumbW, thumbH;
-        if (cols <= 1)      { thumbW = 480; thumbH = 320; }
-        else if (cols <= 2) { thumbW = 190; thumbH = 127; }
-        else if (cols <= 3) { thumbW = 140; thumbH = 93; }
-        else if (cols <= 4) { thumbW = 110; thumbH = 73; }
-        else if (cols <= 5) { thumbW = 95;  thumbH = 63; }
-        else                { thumbW = 85;  thumbH = 57; }
+        // v5.50.43: 缩略图最大宽度封顶（1-3列大卡不撑满，避免渲染尺寸超档位）
+        // 1-3列卡片很宽，缩略图撑满会达 800~1600px，远超档位分辨率 → 封顶 480px
         var root = document.documentElement;
-        root.style.setProperty('--thumb-w', thumbW + 'px');
-        root.style.setProperty('--thumb-h', thumbH + 'px');
+        root.style.setProperty('--thumb-max', cols <= 3 ? '480px' : '100%');
 
-        // v5.50.39: 列数 → 缩略图分辨率档位（多档位缓存自适应）
-        // 1列=hd(720×480) / 2-3列=md(288×192) / 4列+=sd(192×128)
-        var tier = cols <= 1 ? 'hd' : (cols <= 3 ? 'md' : 'sd');
+        // v5.50.43: 列数 → 缩略图分辨率档位（1-3列=hd 720×480 / 4列=md 600×400 / 5-6列=sd 480×320）
+        var tier = cols <= 3 ? 'hd' : (cols <= 4 ? 'md' : 'sd');
         this.state._thumbTier = tier;
         this._applyThumbTier();
     },

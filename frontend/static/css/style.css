@@ -357,11 +357,13 @@ body.sidebar-collapsed .main-content {
 /* ============ 缩略图 ============ */
 .card-thumb {
     width: 100%;
-    max-width: 100%;
+    max-width: var(--thumb-max, 100%);
     aspect-ratio: 3 / 2;
     border-radius: 8px;
     overflow: visible;
     margin-bottom: 0;
+    margin-left: auto;
+    margin-right: auto;
     position: relative;
     background: var(--hover-bg,#f1f5f9);
     flex-shrink: 0;
