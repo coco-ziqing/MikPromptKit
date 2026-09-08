@@ -829,6 +829,27 @@ Object.assign(App, {
         var root = document.documentElement;
         root.style.setProperty('--thumb-w', thumbW + 'px');
         root.style.setProperty('--thumb-h', thumbH + 'px');
+
+        // v5.50.39: 列数 → 缩略图分辨率档位（多档位缓存自适应）
+        // 1列=hd(720×480) / 2-3列=md(288×192) / 4列+=sd(192×128)
+        var tier = cols <= 1 ? 'hd' : (cols <= 3 ? 'md' : 'sd');
+        this.state._thumbTier = tier;
+        this._applyThumbTier();
+    },
+
+    // v5.50.39: 批量切换词卡网格缩略图档位（切列数自动加载对应分辨率）
+    _applyThumbTier() {
+        var tier = this.state._thumbTier || 'sd';
+        var imgs = document.querySelectorAll('.prompt-grid img[src*="/api/thumbnails/file/"]');
+        for (var i = 0; i < imgs.length; i++) {
+            var el = imgs[i];
+            if (el.getAttribute('data-thumb-tier') === tier) continue;
+            var src = el.getAttribute('src') || '';
+            var clean = src.replace(/[?&]tier=[a-z]+/g, '');
+            var newSrc = clean + (clean.indexOf('?') >= 0 ? '&' : '?') + 'tier=' + tier;
+            el.setAttribute('data-thumb-tier', tier);
+            el.src = newSrc;
+        }
     },
 
     decColumn() {
