@@ -817,13 +817,14 @@ Object.assign(App, {
             grids[i].style.gridTemplateColumns = 'repeat(' + cols + ', minmax(170px, 1fr))';
         }
 
-        // v5.50.43: 缩略图最大宽度封顶（1-3列大卡不撑满，避免渲染尺寸超档位）
-        // 1-3列卡片很宽，缩略图撑满会达 800~1600px，远超档位分辨率 → 封顶 480px
+        // v5.50.44: 缩略图最大宽度封顶（1-2列大卡匹配更大分辨率）
+        // 1列封顶 800px / 2-3列封顶 640px / 4+列撑满卡片
+        var thumbMax = cols <= 1 ? '800px' : (cols <= 3 ? '640px' : '100%');
         var root = document.documentElement;
-        root.style.setProperty('--thumb-max', cols <= 3 ? '480px' : '100%');
+        root.style.setProperty('--thumb-max', thumbMax);
 
-        // v5.50.43: 列数 → 缩略图分辨率档位（1-3列=hd 720×480 / 4列=md 600×400 / 5-6列=sd 480×320）
-        var tier = cols <= 3 ? 'hd' : (cols <= 4 ? 'md' : 'sd');
+        // v5.50.44: 列数 → 缩略图分辨率档位（1列=hd 1200×800 / 2-3列=md 960×640 / 4-6列=sd 600×400）
+        var tier = cols <= 1 ? 'hd' : (cols <= 3 ? 'md' : 'sd');
         this.state._thumbTier = tier;
         this._applyThumbTier();
     },
