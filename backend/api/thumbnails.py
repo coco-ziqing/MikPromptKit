@@ -25,6 +25,80 @@ os.makedirs(THUMB_DIR, exist_ok=True)
 ALLOWED_EXT = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
 THUMB_SIZE = (240, 160)  # 宽 x 高，3:2 比例
 
+# ==================== 多档位缩略图（v5.50.39: 按列数自适应分辨率） ====================
+# 档位 ↔ 缓存分辨率（缓存 ≥ 渲染尺寸 × 1.5，适配 2 倍 Retina）
+TIER_SIZES = {
+    "hd": (720, 480),   # 1 列大卡（渲染 480×320）
+    "md": (288, 192),   # 2-3 列（渲染 190/140）
+    "sd": (192, 128),   # 4-6+ 列（渲染 110/95/85）
+}
+
+
+def _tier_filename(filename, tier):
+    """档位缓存文件名：{name}_hd.jpg"""
+    base, _ext = os.path.splitext(filename)
+    return f"{base}_{tier}.jpg"
+
+
+def _crop_resize_to(img, target_w, target_h):
+    """中心裁剪到 3:2 并缩放到目标尺寸，返回处理后的 Image（失败返回 None）"""
+    try:
+        from PIL import Image as _PIL
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        src_w, src_h = img.size
+        target_ratio = target_w / target_h
+        src_ratio = src_w / src_h
+        if src_ratio > target_ratio:
+            new_w = int(src_h * target_ratio); new_h = src_h
+            offset = (src_w - new_w) // 2
+            img = img.crop((offset, 0, offset + new_w, new_h))
+        else:
+            new_w = src_w; new_h = int(src_w / target_ratio)
+            offset = (src_h - new_h) // 2
+            img = img.crop((0, offset, new_w, offset + new_h))
+        return img.resize((target_w, target_h), _PIL.LANCZOS)
+    except Exception as e:
+        print('[缩略图] 裁剪缩放失败:', e)
+        return None
+
+
+def _find_original_path(safe_name):
+    """查找缩略图对应的原图路径（多档位高清生成的源）。找不到返回 None。"""
+    _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # 1. 直接原图目录
+    p = os.path.join(ORIGINAL_DIR, safe_name)
+    if os.path.exists(p):
+        return p
+    # 2. media_assets 原图映射
+    try:
+        db = get_db()
+        asset = db.execute(
+            "SELECT original_filename FROM media_assets WHERE filename=? OR original_filename=?",
+            [safe_name, safe_name]
+        ).fetchone()
+        if asset and asset["original_filename"]:
+            cand = os.path.join(ORIGINAL_DIR, asset["original_filename"])
+            if os.path.exists(cand):
+                return cand
+    except Exception:
+        pass
+    # 3. 词卡原图目录
+    wc_orig = os.path.join(_root, "data", "wc_media", "originals", safe_name)
+    if os.path.exists(wc_orig):
+        return wc_orig
+    # 4. word_card.original_ref 映射
+    try:
+        db = get_db()
+        card = db.execute("SELECT original_ref FROM word_card WHERE thumbnail=? LIMIT 1", [safe_name]).fetchone()
+        if card and card["original_ref"]:
+            wc_map = os.path.join(_root, "data", "wc_media", "originals", card["original_ref"])
+            if os.path.exists(wc_map):
+                return wc_map
+    except Exception:
+        pass
+    return None
+
 # 原图存储目录
 ORIGINAL_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -231,9 +305,32 @@ def list_thumbnails(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1,
 
 
 @router.get("/file/{filename}")
-def serve_thumbnail(filename: str):
-    """提供缩略图文件 — 主目录 data/thumbnails/ → fallback 词卡目录 data/wc_media/thumbs/"""
+def serve_thumbnail(filename: str, tier: str = Query(None)):
+    """提供缩略图文件 — 主目录 data/thumbnails/ → fallback 词卡目录 data/wc_media/thumbs/
+    支持 ?tier=hd|md|sd 多档位（按需从原图生成对应分辨率缓存，懒加载）。"""
     safe_name = os.path.basename(filename)
+
+    # v5.50.39: 多档位服务（列数自适应分辨率）
+    if tier in TIER_SIZES:
+        tier_name = _tier_filename(safe_name, tier)
+        tier_path = os.path.join(THUMB_DIR, tier_name)
+        if not os.path.exists(tier_path):
+            # 懒加载：从原图生成对应档位缓存
+            orig_path = _find_original_path(safe_name)
+            if orig_path:
+                try:
+                    from PIL import Image
+                    _img = Image.open(orig_path)
+                    _w, _h = TIER_SIZES[tier]
+                    _out = _crop_resize_to(_img, _w, _h)
+                    if _out is not None:
+                        _out.save(tier_path, "JPEG", quality=85)
+                except Exception as e:
+                    print('[档位生成] 失败:', e)
+        if os.path.exists(tier_path):
+            return FileResponse(tier_path, media_type="image/jpeg")
+        # 档位生成失败/无原图 → 降级走原单档逻辑
+
     fpath = os.path.join(THUMB_DIR, safe_name)
     if not os.path.exists(fpath):
         # Phase17: 统一媒体服务 — 回退到词卡缩略图目录
