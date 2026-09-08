@@ -99,6 +99,47 @@ def _find_original_path(safe_name):
         pass
     return None
 
+
+def _find_video_path(safe_name):
+    """从封面文件名查 DB 找到对应视频文件路径（多档位视频封面生成的源）。找不到返回 None。"""
+    _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    video_name = None
+    try:
+        db = get_db()
+        row = db.execute("SELECT filename FROM prompt_videos WHERE poster=?", [safe_name]).fetchone()
+        if row and row["filename"]:
+            video_name = row["filename"]
+        else:
+            row2 = db.execute("SELECT preview_media FROM word_card WHERE thumbnail=? LIMIT 1", [safe_name]).fetchone()
+            if row2 and row2["preview_media"]:
+                video_name = row2["preview_media"]
+    except Exception:
+        pass
+    if not video_name:
+        return None
+    base = os.path.basename(video_name)
+    for d in [os.path.join(_root, "data", "videos"), os.path.join(_root, "data", "wc_media", "videos")]:
+        p = os.path.join(d, base)
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _generate_video_tier(video_path, tier, dest_path):
+    """用 ffmpeg 从视频提取首帧并按档位缩放裁剪为 3:2 封面。"""
+    w, h = TIER_SIZES[tier]
+    try:
+        subprocess.run(
+            ['ffmpeg', '-ss', '0.1', '-i', video_path, '-vframes', '1',
+             '-vf', f'scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}',
+             '-q:v', '2', dest_path, '-y'],
+            capture_output=True, timeout=30
+        )
+        return os.path.exists(dest_path)
+    except Exception as e:
+        print('[视频档位生成] 失败:', e)
+        return False
+
 # 原图存储目录
 ORIGINAL_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -327,6 +368,11 @@ def serve_thumbnail(filename: str, tier: str = Query(None)):
                         _out.save(tier_path, "JPEG", quality=85)
                 except Exception as e:
                     print('[档位生成] 失败:', e)
+            # v5.50.41: 图片原图找不到 → 尝试视频封面（从视频提取帧）
+            if not os.path.exists(tier_path):
+                video_path = _find_video_path(safe_name)
+                if video_path:
+                    _generate_video_tier(video_path, tier, tier_path)
         if os.path.exists(tier_path):
             return FileResponse(tier_path, media_type="image/jpeg")
         # 档位生成失败/无原图 → 降级走原单档逻辑
