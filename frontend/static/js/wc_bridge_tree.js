@@ -618,7 +618,7 @@ var _wcRenderSidebarImpl = function() {
         return;
     }
     
-    var html = '<div style="padding:10px 14px 6px;display:flex;justify-content:space-between;align-items:center;color:var(--text-muted);font-size:12px;letter-spacing:1px;font-weight:600;"><span>查找词组</span><button onclick="event.stopPropagation();App._toggleAllTreeNodes()" title="一键全部折叠/展开" style="font-size:10px;padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;line-height:1.4;">📂 全部折叠</button></div>';
+    var html = '<div style="padding:10px 14px 6px;display:flex;justify-content:space-between;align-items:center;color:var(--text-muted);font-size:12px;letter-spacing:1px;font-weight:600;position:sticky;top:0;z-index:20;background:var(--bg-sidebar);"><span>查找词组</span><button onclick="event.stopPropagation();App._toggleAllTreeNodes()" title="一键全部折叠/展开" style="font-size:10px;padding:2px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-muted);cursor:pointer;line-height:1.4;">📂 全部折叠</button></div>';
     
     // 统一入口：全部词组
     var allActive = this.state.currentGroupId === null ? 'active' : '';
