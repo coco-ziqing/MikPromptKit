@@ -640,6 +640,67 @@ def copy_thumbnail_from_library(card_id: int, data: dict):
     return {"ok": True, "filename": dest_name, "original_ref": orig_name, "source": source}
 
 
+@router.post("/{card_id}/set-thumbnail")
+def set_card_thumbnail_from_pool(card_id: int, data: dict):
+    """从图片池（原图）设为词卡缩略图：定位原图 → 生成缩略图 → 更新 thumbnail/original_ref
+    v5.50.45: 查看原图弹窗图片池「设为缩略图」功能"""
+    filename = (data.get("filename") or "").strip()
+    if not filename:
+        raise HTTPException(400, "缺少 filename")
+    card = safe_fetch_one("SELECT * FROM word_card WHERE id=?", [card_id])
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    base = os.path.basename(filename)
+    # 定位原图（图片池原图所在目录，与 media-pool 的 orig_dirs 对齐）
+    search_dirs = [
+        os.path.join(root, "data", "originals"),
+        os.path.join(root, "data", "wc_media", "originals"),
+        os.path.join(root, "data", "thumbnails"),
+        os.path.join(root, "data", "card_collect", "images"),
+        os.path.join(root, "data", "dreamina_assets", "images"),
+    ]
+    src_path = None
+    for d in search_dirs:
+        p = os.path.join(d, base)
+        if os.path.exists(p):
+            src_path = p
+            break
+    if not src_path:
+        raise HTTPException(404, f"图片文件不存在: {base}")
+
+    # 生成缩略图（320×213，3:2）
+    try:
+        from PIL import Image
+        img = Image.open(src_path)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        TW, TH = 320, 213
+        sw, sh = img.size
+        target_ratio = TW / TH
+        src_ratio = sw / sh
+        if src_ratio > target_ratio:
+            new_w = int(sh * target_ratio)
+            img = img.crop(((sw - new_w) // 2, 0, (sw + new_w) // 2, sh))
+        else:
+            new_h = int(sw / target_ratio)
+            img = img.crop((0, (sh - new_h) // 2, sw, (sh + new_h) // 2))
+        img = img.resize((TW, TH), Image.LANCZOS)
+        dest_name = f"{uuid.uuid4().hex}.jpg"
+        dest_path = os.path.join(WC_THUMB_DIR, dest_name)
+        img.save(dest_path, "JPEG", quality=82)
+    except Exception as e:
+        raise HTTPException(500, f"缩略图生成失败: {str(e)}")
+
+    _safe_remove_media(card["thumbnail"] if card else "", card["preview_media"] if card else "")
+    safe_execute(
+        "UPDATE word_card SET thumbnail=?, original_ref=?, preview_media='', media_type='image', thumb_width=?, thumb_height=?, updated_at=datetime('now','localtime') WHERE id=?",
+        [dest_name, base, TW, TH, card_id]
+    )
+    safe_commit()
+    return {"ok": True, "thumbnail": dest_name, "original_ref": base}
+
+
 @router.post("/{card_id}/thumbnail")
 async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...), keep_original: int = Form(0)):
     """为词卡上传缩略图（自适应多列展示: 320x213 基准 + 原图归档媒体库）

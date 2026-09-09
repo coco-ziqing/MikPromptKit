@@ -341,11 +341,13 @@ Object.assign(App, {
         var h = '<span style="color:#cbd5e1;font-size:11px;margin-right:4px;white-space:nowrap;">🖼 图片池</span>';
         for (var i = 0; i < imageList.length; i++) {
             var it = imageList[i];
+            var fn = (it.url || '').split('/').pop().split('?')[0];
             var isCur = it.url.indexOf(currentFile) >= 0;
             var border = isCur ? 'border:2px solid #10b981;' : 'border:2px solid transparent;opacity:0.72;';
             h += '<span class="img-pool-item" data-url="' + App._escape(it.url || '') + '" title="' + App._escape(it.label || '') + '" style="position:relative;cursor:pointer;display:inline-block;margin-right:5px;border-radius:6px;overflow:hidden;background:#0f172a;' + border + '">' +
                  '<img src="' + App._escape(it.url || '') + '" style="width:56px;height:40px;object-fit:cover;display:block;" onerror="this.style.opacity=0.2">' +
-                 '<span style="position:absolute;bottom:0;left:0;right:0;font-size:8px;background:rgba(0,0,0,0.6);color:#fff;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App._escape((it.label || '').split('·')[0]) + '</span></span>';
+                 '<span style="position:absolute;bottom:0;left:0;right:0;font-size:8px;background:rgba(0,0,0,0.6);color:#fff;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + App._escape((it.label || '').split('·')[0]) + '</span>' +
+                 '<button class="img-pool-setthumb" data-file="' + App._escape(fn) + '" title="设为词卡缩略图" style="position:absolute;top:0;right:0;font-size:9px;background:rgba(99,102,241,0.92);color:#fff;border:none;border-radius:0 0 0 3px;padding:1px 5px;cursor:pointer;">✓缩略图</button></span>';
         }
         box.innerHTML = h;
         box.style.display = 'flex';
@@ -384,6 +386,34 @@ Object.assign(App, {
                 this.style.borderColor = '#10b981'; this.style.opacity = '1';
             });
         });
+        // v5.50.45: 图片池项「设为缩略图」按钮
+        box.querySelectorAll('.img-pool-setthumb').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var file = this.dataset.file;
+                if (file) self._setCardThumbnail(file);
+            });
+        });
+    },
+
+    // v5.50.45: 将图片池中某图设为词卡缩略图
+    _setCardThumbnail(filename) {
+        var cardId = App._viewerCardId || 0;
+        if (!cardId) { App.showToast('无法确定词卡', 'error'); return; }
+        var self = this;
+        App.showToast('正在设为缩略图...', 'info');
+        App.fetchJSON('/api/v4/word-cards/' + cardId + '/set-thumbnail', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: filename })
+        }).then(function (d) {
+            if (d && d.ok) {
+                App.showToast('✅ 已设为词卡缩略图', 'success');
+                if (App.loadPrompts) { try { App.loadPrompts(); } catch (e) {} }
+            } else {
+                App.showToast('设置未完成: ' + (d ? (d.detail || '未知') : '无响应'), 'error');
+            }
+        }).catch(function (e) { App.showToast('设置异常: ' + e.message, 'error'); });
     },
 
     _loadCardVersions(promptId) {
@@ -397,6 +427,8 @@ Object.assign(App, {
         if (!promptId) return;
         App.fetchJSON('/api/seedance/v2/assets/cards/' + promptId + '/versions').then(function(d) {
             if (!d || !d.ok) return;
+            // v5.50.45: 图片池已渲染时不覆盖（图片池优先，异步版本条晚到会覆盖图片池）
+            if (box.querySelector('.img-pool-item')) return;
             var all = [];
             if (d.main) all.push(d.main);
             all = all.concat(d.versions || []);
