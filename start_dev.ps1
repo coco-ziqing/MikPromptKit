@@ -406,6 +406,20 @@ if ($lanIPs.Count) {
 } else {
     Write-Warn "未检测到 IPv4 地址，仅本机可访问"
 }
+# 2026-09-12 加固: 等语义索引重建完成再开浏览器（打开界面时服务仍在 CPU 密集重建索引，叠加前端请求触发硬件蓝屏）
+$idxDone = $false
+$semWait = 0
+while ($semWait -lt 24) {
+    try {
+        $stResp = Invoke-WebRequest -Uri "$URL/api/v2/search/status" -UseBasicParsing -TimeoutSec 5
+        $stJson = $stResp.Content | ConvertFrom-Json
+        if ($stJson.is_indexing -eq $false) { $idxDone = $true; break }
+    } catch {}
+    $semWait++
+    if ($semWait % 4 -eq 0) { Write-Host "      ...等待索引重建完成（已等 $($semWait * 5) 秒）" -ForegroundColor DarkGray }
+    Start-Sleep -Seconds 5
+}
+if ($idxDone) { Write-Ok "语义索引重建完成，打开浏览器" } else { Write-Warn "等待索引重建超时，按当前状态打开浏览器" }
 # 2026-08-20 加固: 浏览器延迟 3 秒打开，避免服务刚就绪+重建启动叠加瞬间负载
 Start-Sleep -Seconds 3
 try { Start-Process $URL } catch { Write-Warn "自动打开浏览器失败，请手动访问 $URL" }
