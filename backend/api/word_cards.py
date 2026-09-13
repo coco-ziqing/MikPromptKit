@@ -662,6 +662,7 @@ def set_card_thumbnail_from_pool(card_id: int, data: dict):
         os.path.join(root, "data", "thumbnails"),
         os.path.join(root, "data", "card_collect", "images"),
         os.path.join(root, "data", "dreamina_assets", "images"),
+        os.path.join(root, "data", "comfyui_outputs"),
     ]
     src_path = None
     for d in search_dirs:
@@ -669,6 +670,21 @@ def set_card_thumbnail_from_pool(card_id: int, data: dict):
         if os.path.exists(p):
             src_path = p
             break
+    if not src_path:
+        # v5.50.51: 文件名非原图名时，通过 media_assets 反查原图（filename/thumbnail 映射到 original_filename）
+        db = get_db()
+        asset = db.execute(
+            "SELECT original_filename, filename FROM media_assets WHERE filename=? OR original_filename=? LIMIT 1",
+            [base, base]
+        ).fetchone()
+        if asset:
+            orig_name = os.path.basename(asset["original_filename"] or asset["filename"])
+            for d in search_dirs:
+                p = os.path.join(d, orig_name)
+                if os.path.exists(p):
+                    src_path = p
+                    base = orig_name
+                    break
     if not src_path:
         raise HTTPException(404, f"图片文件不存在: {base}")
 
@@ -846,7 +862,9 @@ def card_media_pool(card_id: int):
     orig_dirs = [_os.path.join(root, "data", "originals"),
                  _os.path.join(root, "data", "wc_media", "originals"),
                  _os.path.join(root, "data", "thumbnails"),
-                 _os.path.join(root, "data", "card_collect", "images")]
+                 _os.path.join(root, "data", "card_collect", "images"),
+                 _os.path.join(root, "data", "dreamina_assets", "images"),
+                 _os.path.join(root, "data", "comfyui_outputs")]
     vid_dirs = [_os.path.join(root, "data", "wc_media", "videos"),
                 _os.path.join(root, "data", "card_collect", "videos"),
                 _os.path.join(root, "data", "card_gen", "videos"),

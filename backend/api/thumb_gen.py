@@ -66,6 +66,6 @@ def save_generated_image(img_bytes: bytes, prompt_id: int, card_type: str = "wor
             print(f"[{source}] 媒体资产写入失败: {e}")
         safe_commit()
         return {"ok": True, "thumbnail": tf, "thumbnail_url": f"/api/thumbnails/file/{tf}",
-                "width": iw, "height": ih}
+                "width": iw, "height": ih, "original": of}
     except Exception as e:
         return {"ok": False, "error": str(e)}
