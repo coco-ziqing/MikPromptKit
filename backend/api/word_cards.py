@@ -27,6 +27,9 @@ WC_VIDEO_DIR = os.path.join(WC_MEDIA_DIR, "videos")
 for d in [WC_THUMB_DIR, WC_VIDEO_DIR]:
     os.makedirs(d, exist_ok=True)
 
+# 多档位缩略图缓存尺寸（与 api/thumbnails.py 的 TIER_SIZES 保持一致）
+_WC_TIER_SIZES = {"hd": (1200, 800), "md": (960, 640), "sd": (600, 400)}
+
 def _safe_remove_media(thumbnail, preview_media):
     """安全清理旧媒体文件"""
     for fname, directory in [(thumbnail, WC_THUMB_DIR), (preview_media, WC_VIDEO_DIR)]:
@@ -739,6 +742,8 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...), keep
         else:
             new_h = int(sw / target_ratio)
             img = img.crop((0, (sh - new_h) // 2, sw, (sh + new_h) // 2))
+        # v5.50.47: 保留 3:2 高清裁切图（resize 前），keep_orig 手动裁切据此生成高清 tier 档
+        img_crop_hd = img.copy() if keep_orig else None
         img = img.resize((TW, TH), Image.LANCZOS)
         filename = f"{uuid.uuid4().hex}.jpg"
         dest = os.path.join(WC_THUMB_DIR, filename)
@@ -749,6 +754,17 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...), keep
             shutil.copy2(dest, os.path.join(SHARED_THUMB_DIR, filename))
         except Exception as e:
             warn(f"词卡 #{card_id} 缩略图同步到共享媒体库失败: {e}", source="word-cards")
+        # v5.50.47: 手动裁切 → 从高清裁切图预生成 hd/md/sd 档缓存，内容与用户裁切框一致
+        # （否则 serve_thumbnail 懒生成会从 original_ref 旧原图中心裁剪，裁切替换后列表仍显示旧图）
+        if keep_orig and img_crop_hd is not None:
+            base, _x = os.path.splitext(filename)
+            for tier, (tw, th) in _WC_TIER_SIZES.items():
+                tpath = os.path.join(SHARED_THUMB_DIR, f"{base}_{tier}.jpg")
+                try:
+                    _t = img_crop_hd.resize((tw, th), Image.LANCZOS)
+                    _t.save(tpath, "JPEG", quality=85)
+                except Exception as e:
+                    warn(f"词卡 #{card_id} tier={tier} 档缓存生成失败: {e}", source="word-cards")
     except ImportError:
         raise HTTPException(500, "Pillow 未安装")
     except Exception as e:
@@ -762,12 +778,20 @@ async def upload_card_thumbnail(card_id: int, file: UploadFile = File(...), keep
         raise HTTPException(404, "词卡不存在")
     if keep_orig:
         # v5.46.33: 缩略图重设——仅替换缩略图，保留原 original_ref/preview_media（查看原图仍显示原始高清图）
-        # 只清理旧缩略图文件，不动预览媒体
+        # 只清理旧缩略图文件 + 共享副本 + 旧多档位缓存，不动预览媒体
         if card and card["thumbnail"]:
-            try:
-                os.remove(os.path.join(WC_THUMB_DIR, os.path.basename(card["thumbnail"])))
-            except Exception:
-                pass
+            old_name = os.path.basename(card["thumbnail"])
+            old_base, _o = os.path.splitext(old_name)
+            for _d in (WC_THUMB_DIR, SHARED_THUMB_DIR):
+                try:
+                    os.remove(os.path.join(_d, old_name))
+                except Exception:
+                    pass
+                for _tier in _WC_TIER_SIZES:
+                    try:
+                        os.remove(os.path.join(_d, f"{old_base}_{_tier}.jpg"))
+                    except Exception:
+                        pass
         db.execute("UPDATE word_card SET thumbnail=?, thumb_width=?, thumb_height=?, updated_at=datetime('now','localtime') WHERE id=?",
                    [filename, TW, TH, card_id])
     else:

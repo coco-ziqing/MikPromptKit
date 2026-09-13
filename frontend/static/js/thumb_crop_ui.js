@@ -50,12 +50,16 @@
         var sy = (S.boxY - S.oy) / S.scale;
         var sw = S.boxW / S.scale;
         var sh = S.boxH / S.scale;
+        // v5.50.47: 输出高清裁切图（最大 1200px 宽，保持 3:2），后端据此生成高清 tier 档，
+        // 避免 tier 档从旧原图中心裁剪导致裁切替换后列表仍显示旧图
+        var outW = Math.max(320, Math.min(1200, Math.round(sw)));
+        var outH = Math.round(outW * 2 / 3);
         var cv = document.createElement('canvas');
-        cv.width = 320; cv.height = 213;
+        cv.width = outW; cv.height = outH;
         var ctx = cv.getContext('2d');
         ctx.imageSmoothingQuality = 'high';
         try {
-            ctx.drawImage(S.img, sx, sy, sw, sh, 0, 0, 320, 213);
+            ctx.drawImage(S.img, sx, sy, sw, sh, 0, 0, outW, outH);
         } catch (e) {
             if (btn) { btn.disabled = false; btn.textContent = '✅ 生成新缩略图'; }
             App.showToast('裁切失败: ' + e.message, 'error');
