@@ -655,7 +655,8 @@
                     '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">' +
                     '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;"><input type="checkbox" id="cgCheckAll" onchange="App.cardGen.toggleAll(this.checked)" style="accent-color:#6366f1;">全选</label>' +
                     '<button class="btn btn-xs btn-outline" id="cgBatchDel" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.batchDelete()" disabled title="删除选中的生成记录（进行中任务不可选）">🗑 删除选中(0)</button>' +
-                    '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.clearAll()" title="清空全部生成记录（成功/失败；正在进行的保留）">🧹 清空生成记录</button>' +
+                    '<button class="btn btn-xs btn-outline" id="cgClearFail" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.clearFail()" ' + (fai ? '' : 'disabled ') + 'title="清除全部失败任务记录">🧹 清除失败(' + fai + ')</button>' +
+                    '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.cardGen.clearAll()" title="删除全部任务记录（成功/失败；正在进行的保留）">🗑 删除全部</button>' +
                     '</div>';
                 if (!tasks.length) h += '<div style="color:var(--text-muted);font-size:12px;padding:20px;text-align:center;">暂无任务</div>';
                 tasks.forEach(function (t) {
@@ -791,6 +792,23 @@
                 this._pollPanel();
             } else {
                 this._toast((d && d.detail) || '清空未完成', 'error');
+            }
+        },
+        // v5.50.50: 清除全部失败任务（复用 batch-delete，仅删 fail 终态）
+        clearFail: async function () {
+            var d = await App.fetchJSON('/api/card-gen/tasks?status=fail&limit=200');
+            var ids = ((d && d.tasks) || []).map(function (t) { return t.id; });
+            if (!ids.length) { this._toast('没有失败任务', 'info'); return; }
+            if (!confirm('清除全部 ' + ids.length + ' 条失败任务记录？')) return;
+            var r = await App.fetchJSON('/api/card-gen/tasks/batch-delete', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: ids })
+            });
+            if (r && r.ok) {
+                this._toast('🧹 已清除 ' + r.deleted + ' 条失败记录', 'success');
+                this._pollPanel();
+            } else {
+                this._toast((r && r.detail) || '清除失败', 'error');
             }
         },
         // v5.41.1: 全选/取消（仅终态记录）
