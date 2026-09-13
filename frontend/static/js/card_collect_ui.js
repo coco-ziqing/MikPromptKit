@@ -793,6 +793,8 @@
                     if (ov && ov.querySelector('#ccArcGroup')) ov.remove();
                     self._sel = {};
                     self._renderItems(document.getElementById('ccBody'));
+                    // v5.50.49: 归档建词卡后刷新侧边栏分组统计数（含自动新建分组）
+                    try { App.loadGroupTree(); } catch (e) {}
                 } else self._toast((d && d.error) || '归档失败', 'error');
             }).catch(function () { self._toast('归档失败', 'error'); });
         },
