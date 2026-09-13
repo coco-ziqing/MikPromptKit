@@ -164,6 +164,7 @@
                 return '<button class="btn btn-sm ' + (act ? 'btn-primary' : 'btn-secondary') + '" onclick="App._ccFavPool(\'' + k + '\')">' + p[1] + ' <span style="opacity:.7;">' + cnt + '</span></button>';
             }).join('') +
                 '<span style="flex:1;"></span>' +
+                '<button class="btn btn-sm btn-outline-primary" onclick="App._ccFavRefresh()" title="刷新收藏列表（浏览器扩展收藏后点此同步）">🔄 刷新</button>' +
                 '<button class="btn btn-sm btn-outline-danger" onclick="App._ccFavClearPool()" title="清空当前池全部记录（不可恢复）">🗑 清空当前池</button>' +
                 '<button class="btn btn-sm btn-outline-danger" onclick="App._ccFavClearAll()" title="清空网页收藏全部记录（不可恢复）">🗑 清空全部</button>';
         },
@@ -226,6 +227,19 @@
         },
 
         _ccFavSelIds: function () { return Object.keys(this._favSel).map(Number); },
+
+        // v5.50.48: 刷新网页收藏列表（保留勾选状态；浏览器扩展收藏后点刷新或自动轮询同步）
+        _refreshFavList: function (showToast) {
+            var self = this;
+            App.fetchJSON('/api/card-collect/favorites').then(function (d) {
+                self._favAll = (d && d.items) || [];
+                self._renderFavPools(self._favAll);
+                self._renderFavList(self._favAll);
+                if (showToast) self._toast('已刷新收藏列表', 'success');
+            }).catch(function () {
+                if (showToast) self._toast('刷新失败', 'error');
+            });
+        },
 
         _ccFavPool: function (k) {
             this._favPool = k;
@@ -1203,6 +1217,7 @@
                 if (!ov) { clearInterval(self._timer); self._timer = null; return; }
                 if (self._tab === 'tasks') self._fetchTasks();
                 else if (self._tab === 'items') self._fetchItems();
+                else if (self._tab === 'fav') self._refreshFavList(false);
             }, 4000);
         }
     };
@@ -1285,6 +1300,7 @@
     App._ccAddFav = function () { CC._addFav(); };
     App._ccDelFav = function (id) { CC._delFav(id); };
     App._ccCollectFav = function (id) { CC._collectFav(id); };
+App._ccFavRefresh = function () { CC._refreshFavList(true); };
 App._ccFavPool = function (k) { CC._ccFavPool(k); };
 App._ccFavSel = function (id, on) { CC._ccFavSel(id, on); };
 App._ccFavSelAll = function (on) { CC._ccFavSelAll(on); };
