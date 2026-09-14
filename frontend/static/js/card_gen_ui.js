@@ -446,12 +446,19 @@
                 '<button type="button" id="cgTierStd" class="cwl-logview-btn active" onclick="App.cardGen._setPromptTier(\'standard\')" style="font-size:10px;">📄 标准</button>' +
                 '<button type="button" id="cgTierDet" class="cwl-logview-btn" onclick="App.cardGen._setPromptTier(\'detailed\')" style="font-size:10px;">📚 详细</button>' +
                 '</span></div>' +
-                '<textarea id="cgPrompt" style="width:100%;min-height:80px;margin-top:4px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;">' + this._esc((this._cardData(this._curCard) || {}).content || '') + '</textarea>';
+                '<textarea id="cgPrompt" style="width:100%;min-height:80px;margin-top:4px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;">' + this._esc(this._videoPromptDefault()) + '</textarea>';
+        },
+        // v5.50.53: 视频提示词默认值（独立 content_video，空回退图片提示词）
+        _videoPromptDefault: function () {
+            var p = this._cardData(this._curCard) || {};
+            return (p.content_video || '').trim() || (p.content || '').trim();
         },
         // v5.37.13: 提示词档位切换（标准/详细）
         _setPromptTier: function (tier) {
             var p = this._cardData(this._curCard) || {};
-            var val = tier === 'detailed' ? (p.content_detailed || p.content || '') : (p.content || '');
+            var vid = (p.content_video || '').trim();
+            var std = vid || (p.content || '');
+            var val = tier === 'detailed' ? (p.content_detailed || std) : std;
             var ta = document.getElementById('cgPrompt');
             if (ta) ta.value = val;
             var b1 = document.getElementById('cgTierStd');

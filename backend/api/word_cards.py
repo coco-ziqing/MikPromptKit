@@ -1236,7 +1236,7 @@ def rollback_card(card_id: int, data: dict):
     snapshot = json.loads(row["snapshot"])
     _save_version_snapshot(db, card_id)
     # v5.38.61: 单条 UPDATE 恢复所有字段（原逐字段 UPDATE 导致 version 暴涨 13+）
-    fields = ["name", "content", "meaning", "scene", "module", "category", "tags", "icon", "group_id", "sort_order", "card_role", "structured"]
+    fields = ["name", "content", "meaning", "scene", "module", "category", "tags", "icon", "group_id", "sort_order", "card_role", "structured", "content_video"]
     sets = []
     params = []
     for k in fields:
@@ -1274,7 +1274,7 @@ def update_card(card_id: int, data: dict):
         raise HTTPException(404,"词卡不存在")
     _save_version_snapshot(db, card_id)
     fields = []; params = []
-    for k in ["name","content","meaning","scene","module","category","icon","thumbnail","preview_media","media_type","group_id","sort_order","card_role","content_simple","content_detailed","content_simple_en","content_simple_zh","content_detailed_en","content_detailed_zh","content_zh","content_en"]:
+    for k in ["name","content","meaning","scene","module","category","icon","thumbnail","preview_media","media_type","group_id","sort_order","card_role","content_simple","content_detailed","content_simple_en","content_simple_zh","content_detailed_en","content_detailed_zh","content_zh","content_en","content_video"]:
         if data.get(k) is not None: fields.append(f"{k}=?"); params.append(data[k])
     if data.get("tags") is not None: fields.append("tags=?"); params.append(json.dumps(data["tags"], ensure_ascii=False))
     if data.get("structured") is not None: fields.append("structured=?"); params.append(json.dumps(data["structured"], ensure_ascii=False))

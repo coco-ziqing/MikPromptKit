@@ -111,6 +111,8 @@ App.wordEditor._ensureModal = function() {
     '<textarea id="wcEditContent" class="modal-input" rows="4" placeholder="提示词片段 / 关键词 / 描述文本..."></textarea>' +
     '<label>中文提示词 <span style="font-size:9px;color:var(--text-muted);">(可选，卡片中文显示用)</span></label>' +
     '<textarea id="wcEditContentZh" class="modal-input" rows="2" placeholder="中文提示词翻译/对照（可选）"></textarea>' +
+    '<label>视频提示词 <span style="font-size:9px;color:var(--text-muted);">(可选，视频生成专用，独立于图片提示词)</span></label>' +
+    '<textarea id="wcEditContentVideo" class="modal-input" rows="3" placeholder="视频生成提示词（运镜/动作/时序，留空则回退图片提示词）"></textarea>' +
     '<label>释义/说明</label>' +
     '<input id="wcEditMeaning" class="modal-input" placeholder="中文释义或补充说明">' +
     '<label>适用场景</label>' +
@@ -482,6 +484,7 @@ App.wordEditor._loadCard = async function() {
         document.getElementById('wcEditContent').value = this._tiers[this._tier] || '';
         this._updateTierUI();
         document.getElementById('wcEditContentZh').value = c.content_zh || '';
+        document.getElementById('wcEditContentVideo').value = c.content_video || '';
         document.getElementById('wcEditMeaning').value = c.meaning || '';
         document.getElementById('wcEditModule').value = c.module || 'custom';
         document.getElementById('wcEditCategory').value = c.category || '';
@@ -676,6 +679,7 @@ App.wordEditor._save = async function() {
         name: document.getElementById('wcEditName').value.trim(),
         content: content,
         content_zh: document.getElementById('wcEditContentZh').value.trim(),
+        content_video: document.getElementById('wcEditContentVideo').value.trim(),
         content_simple: (tiers.simple || '').trim(),
         content_detailed: (tiers.detailed || '').trim(),
         meaning: document.getElementById('wcEditMeaning').value.trim(),

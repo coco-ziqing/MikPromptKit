@@ -708,6 +708,8 @@ def init_db():
             "ALTER TABLE word_card ADD COLUMN content_simple_zh TEXT DEFAULT ''",
             "ALTER TABLE word_card ADD COLUMN content_detailed_en TEXT DEFAULT ''",
             "ALTER TABLE word_card ADD COLUMN content_detailed_zh TEXT DEFAULT ''",
+            # v5.50.53: 词卡视频生成提示词（独立于图片提示词 content，避免图文提示词混淆）
+            "ALTER TABLE word_card ADD COLUMN content_video TEXT DEFAULT ''",
         ]:
             try:
                 conn.execute(sql)
