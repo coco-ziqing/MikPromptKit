@@ -469,9 +469,9 @@
                 '<div style="display:flex;align-items:center;gap:6px;margin-top:8px;">' +
                 '<label style="font-size:11px;color:var(--text-muted);">提示词</label>' +
                 '<span style="display:flex;gap:2px;border:1px solid var(--border-color);border-radius:8px;padding:1px;margin-left:auto;">' +
-                '<button type="button" id="cgTierSimple" class="cwl-logview-btn" onclick="App.cardGen._setPromptTier(\'simple\')" style="font-size:10px;">📄 简易</button>' +
-                '<button type="button" id="cgTierStd" class="cwl-logview-btn active" onclick="App.cardGen._setPromptTier(\'standard\')" style="font-size:10px;">📋 普通</button>' +
-                '<button type="button" id="cgTierDet" class="cwl-logview-btn" onclick="App.cardGen._setPromptTier(\'detailed\')" style="font-size:10px;">📚 详细</button>' +
+                '<button type="button" id="cgTierSimple" onclick="App.cardGen._setPromptTier(\'simple\')" style="font-size:10px;padding:3px 9px;border:none;background:transparent;color:var(--text-muted);cursor:pointer;border-radius:6px;">📄 简易</button>' +
+                '<button type="button" id="cgTierStd" onclick="App.cardGen._setPromptTier(\'standard\')" style="font-size:10px;padding:3px 9px;border:none;background:rgba(99,102,241,0.14);color:var(--primary);cursor:pointer;border-radius:6px;font-weight:600;">📋 普通</button>' +
+                '<button type="button" id="cgTierDet" onclick="App.cardGen._setPromptTier(\'detailed\')" style="font-size:10px;padding:3px 9px;border:none;background:transparent;color:var(--text-muted);cursor:pointer;border-radius:6px;">📚 详细</button>' +
                 '</span></div>' +
                 '<textarea id="cgPrompt" style="width:100%;min-height:80px;margin-top:4px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;">' + this._esc(this._videoPromptDefault()) + '</textarea>';
         },
@@ -484,7 +484,6 @@
         _setPromptTier: function (tier) {
             var p = this._cardData(this._curCard) || {};
             // v5.50.57: 视频提示词三档独立，空档回退视频普通档(content_video)，最后兜底图片普通档(content)
-            // （不再回退图片对应档，避免图文提示词再次混淆）
             var vid = (p.content_video || '').trim();
             var vMap = {
                 simple: (p.content_video_simple || '').trim(),
@@ -494,10 +493,20 @@
             var val = vMap[tier] || vid || (p.content || '').trim();
             var ta = document.getElementById('cgPrompt');
             if (ta) ta.value = val;
+            // 内联样式高亮（不依赖动态注入的 .cwl-logview-btn.active）
+            var labels = { simple: '简易', standard: '普通', detailed: '详细' };
             var map = { simple: 'cgTierSimple', standard: 'cgTierStd', detailed: 'cgTierDet' };
             for (var k in map) {
                 var b = document.getElementById(map[k]);
-                if (b) b.classList.toggle('active', k === tier);
+                if (!b) continue;
+                var on = k === tier;
+                b.style.background = on ? 'rgba(99,102,241,0.14)' : 'transparent';
+                b.style.color = on ? 'var(--primary)' : 'var(--text-muted)';
+                b.style.fontWeight = on ? '600' : '400';
+            }
+            // 空档提示：该档视频提示词未填写，已回退
+            if (!vMap[tier]) {
+                this._toast('「' + labels[tier] + '」视频提示词未填写，已回退到' + (vid ? '视频普通档' : '图片提示词'), 'info');
             }
         },
         submit: async function (ovId, cardId, taskType) {
