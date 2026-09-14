@@ -330,6 +330,7 @@
             if (taskType === 'image2image' && !hasImg) { this._toast('该词卡无原图，请用文生图', 'error'); return; }
             var isV = taskType === 'text2video' || taskType === 'image2video';
             var isU = taskType === 'upscale';
+            var hasVid = isV && !!p.preview_media;  // v5.50.54: 词卡已有视频产物
             this._curCard = cardId;
             this._curType = taskType;
             var ov = this._modal('');
@@ -338,10 +339,12 @@
                 '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-size:14px;font-weight:600;">' + this._icons[taskType] + ' ' + this._tlabels[taskType] + '生成</span>' +
                 '<button style="border:none;background:none;font-size:16px;color:var(--text-muted);cursor:pointer;" onclick="this.closest(\'.modal-overlay\').remove()">✕</button></div>' +
                 (hasImg ? '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">底图：词卡原图 <img src="/api/thumbnails/original/' + self._esc(p.original_ref || p.thumbnail) + '" style="width:44px;height:32px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-left:4px;"></div>' : '') +
+                (hasVid ? '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">已有视频：<button class="btn btn-xs btn-secondary" onclick="App.openVideoViewer(\'' + self._esc(p.preview_media) + '\', \'\', ' + cardId + ')" title="查看词卡已有视频">▶ 查看</button></div>' : '') +
                 (isV ? this._videoParamsHtml(taskType) : (isU ? this._upscaleParamsHtml() : this._imgParamsHtml(taskType))) +
                 '<div id="cgCost" style="font-size:11px;color:var(--text-muted);margin:6px 0;padding:6px 8px;background:rgba(245,158,11,.06);border:1px dashed rgba(245,158,11,.35);border-radius:8px;">计算中...</div>' +
                 '<div style="font-size:10px;color:#f59e0b;margin:6px 0;">⚠️ 生成消耗即梦积分，提交后自动归档为词卡生成历史</div>' +
                 '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">' +
+                (isV ? '<button class="btn btn-secondary btn-sm" onclick="App.cardGen._openComposer()" title="跳转分镜组装器编辑视频分镜（多镜头/运镜/时序）">📋 分镜组装器</button>' : '') +
                 '<button class="btn btn-secondary btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>' +
                 '<button class="btn btn-primary btn-sm" id="cgGo" onclick="App.cardGen.submit(\'' + ov.id + '\',' + cardId + ',\'' + taskType + '\')">🚀 提交生成</button></div>';
             ov.id = 'cgGen_' + taskType + '_' + cardId;
@@ -349,6 +352,16 @@
             this._loadCredits().then(function () {
                 self._updateCost();
             });
+        },
+        // v5.50.54: 视频生成窗口快捷跳转分镜组装器（多镜头结构化编辑）
+        _openComposer: function () {
+            var ov = document.querySelector('.modal-overlay');
+            if (ov) ov.remove();
+            if (App.seedanceV2 && typeof App.seedanceV2.openStandalone === 'function') {
+                App.seedanceV2.openStandalone();
+            } else {
+                this._toast('分镜组装器不可用', 'error');
+            }
         },
         _sel: function (id, opts, cur) {
             var h = '<select id="' + id + '" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
