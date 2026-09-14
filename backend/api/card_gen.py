@@ -895,10 +895,15 @@ def _create_tasks(card_ids, ttype, params, u) -> list:
     c = _db()
     try:
         for cid in card_ids:
-            card = c.execute("SELECT id, content, original_ref FROM word_card WHERE id=? AND is_deleted=0", [cid]).fetchone()
+            card = c.execute("SELECT id, content, content_video, original_ref FROM word_card WHERE id=? AND is_deleted=0", [cid]).fetchone()
             if not card:
                 continue
-            prompt = (params.get("prompt") or "").strip() or (card["content"] or "")
+            # v5.50.56: 视频任务优先用 content_video（空回退 content），图片任务用 content
+            if ttype in ("text2video", "image2video"):
+                card_prompt = (card["content_video"] or "").strip() or (card["content"] or "")
+            else:
+                card_prompt = (card["content"] or "")
+            prompt = (params.get("prompt") or "").strip() or card_prompt
             if not prompt and ttype in ("text2image", "text2video"):
                 continue
             # v5.50.28: source_image 优先取 params（组装工作台基底图），否则用词卡 original_ref

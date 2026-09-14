@@ -1364,8 +1364,8 @@ def create_card(data: dict):
     if not content: raise HTTPException(400,"词卡内容不能为空")
     db = get_db(); gid = data.get("group_id")
     card_role = data.get('card_role', 'custom')
-    db.execute("INSERT INTO word_card (group_id,name,content,meaning,scene,module,category,tags,icon,thumbnail,preview_media,media_type,structured,card_role,sort_order,is_builtin,source,content_simple,content_detailed) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'{}',?,(SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),0,'manual',?,?)",
-               [gid,(data.get("name") or content)[:60],content,data.get("meaning",""),data.get("scene",""),data.get("module","custom"),data.get("category",""),json.dumps(data.get("tags",[]),ensure_ascii=False),data.get("icon",""),data.get("thumbnail",""),data.get("preview_media",""),data.get("media_type","image"),card_role,gid,data.get("content_simple",""),data.get("content_detailed","")])
+    db.execute("INSERT INTO word_card (group_id,name,content,meaning,scene,module,category,tags,icon,thumbnail,preview_media,media_type,structured,card_role,sort_order,is_builtin,source,content_simple,content_detailed,content_video,content_video_simple,content_video_detailed) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'{}',?,(SELECT COALESCE(MAX(sort_order),0)+1 FROM word_card WHERE group_id=?),0,'manual',?,?,?,?,?)",
+               [gid,(data.get("name") or content)[:60],content,data.get("meaning",""),data.get("scene",""),data.get("module","custom"),data.get("category",""),json.dumps(data.get("tags",[]),ensure_ascii=False),data.get("icon",""),data.get("thumbnail",""),data.get("preview_media",""),data.get("media_type","image"),card_role,gid,data.get("content_simple",""),data.get("content_detailed",""),data.get("content_video",""),data.get("content_video_simple",""),data.get("content_video_detailed","")])
     safe_commit()
     cid = safe_count("SELECT last_insert_rowid()")
     info(f"创建词卡 #{cid} (gid={gid}, 内容长度={len(content)})", source="word-cards", path="/api/v4/word-cards")
