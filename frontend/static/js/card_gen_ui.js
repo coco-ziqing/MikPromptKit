@@ -483,18 +483,15 @@
         // v5.37.13: 提示词档位切换（标准/详细）
         _setPromptTier: function (tier) {
             var p = this._cardData(this._curCard) || {};
-            // v5.50.55: 视频提示词三档（simple/standard/detailed），均空回退图片提示词对应档
+            // v5.50.57: 视频提示词三档独立，空档回退视频普通档(content_video)，最后兜底图片普通档(content)
+            // （不再回退图片对应档，避免图文提示词再次混淆）
+            var vid = (p.content_video || '').trim();
             var vMap = {
                 simple: (p.content_video_simple || '').trim(),
-                standard: (p.content_video || '').trim(),
+                standard: vid,
                 detailed: (p.content_video_detailed || '').trim()
             };
-            var imgMap = {
-                simple: (p.content_simple || '').trim(),
-                standard: (p.content || '').trim(),
-                detailed: (p.content_detailed || '').trim()
-            };
-            var val = vMap[tier] || imgMap[tier] || imgMap.standard || '';
+            var val = vMap[tier] || vid || (p.content || '').trim();
             var ta = document.getElementById('cgPrompt');
             if (ta) ta.value = val;
             var map = { simple: 'cgTierSimple', standard: 'cgTierStd', detailed: 'cgTierDet' };
