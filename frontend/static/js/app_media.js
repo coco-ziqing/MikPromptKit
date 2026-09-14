@@ -1132,7 +1132,13 @@ Object.assign(App, {
         if (!m) return;
         m.style.display = 'none';
         var img = document.getElementById('imageViewerImg');
-        if (img) { img.src = ''; img.style.cssText = ''; }
+        if (img) {
+            // v5.50.52: 先清回调再清 src，避免 src='' 触发 onerror 误弹“图片可能丢失”
+            img.onload = null;
+            img.onerror = null;
+            img.src = '';
+            img.style.cssText = '';
+        }
         var container = document.getElementById('imageViewerContainer');
         if (container) {
             container.onwheel = null;
@@ -1290,7 +1296,7 @@ Object.assign(App, {
         var m = document.getElementById('modalVideoViewer');
         m.style.display = 'none';
         var p = document.getElementById('vidViewerPlayer');
-        if (p) { p.pause(); p.currentTime = 0; p.src = ''; }
+        if (p) { p.onerror = null; p.pause(); p.currentTime = 0; p.src = ''; }
     },
 
     _updateVidTime(player, seek, label) {
