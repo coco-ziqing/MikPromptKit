@@ -51,6 +51,9 @@
         if (p.template_id) {
             h+='<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._showUpdateTemplatePopup('+p.id+','+p.template_id+')" style="color:#7c3aed;border-color:#7c3aed;margin-right:6px;" title="当前组装的提示词操作">📤 更新模版</button>';
         }
+        if (p.source_card_id) {
+            h+='<button class="btn btn-sm btn-outline" onclick="App.seedanceV2._jumpToSourceCard('+p.source_card_id+')" style="color:#3b82f6;border-color:#3b82f6;margin-right:6px;" title="跳转到源词卡（查找参考图来源）">🔗 源词卡</button>';
+        }
         h+='<button class="btn btn-sm btn-success" onclick="App.seedanceV2.saveProject()">💾 保存</button><button class="btn btn-sm btn-danger" onclick="App.seedanceV2.confirmDeleteProject('+(p.id||this.currentProjectId)+')">🗑 删除</button></div></div>';
         // ① 分镜列表（可折叠）
         h+='<div class="s2-section s2-shotlist-section" id="s2ShotListSection"><div class="s2-section-title" onclick="App.seedanceV2._toggleShotList()" title="点击折叠/展开" style="cursor:pointer;">🎬 分镜列表 <span class="s2-badge">'+this.scenes.length+' 镜头</span> <span style="font-size:10px;font-weight:400;color:var(--text-muted);">(点击折叠)</span><button id="s2ToggleAllBtn" class="btn btn-xs btn-outline" onclick="event.stopPropagation();App.seedanceV2._toggleAllScenes()" title="折叠/展开全部子镜头" style="margin-left:auto;font-size:10px;padding:2px 8px;color:#6366f1;border-color:#6366f1;">▶ 折叠全部</button></div><div class="s2-shotlist-body">'+this._buildTimelineHTML()+'<div class="s2-scenes-container" id="s2ScenesContainer"></div></div></div>';

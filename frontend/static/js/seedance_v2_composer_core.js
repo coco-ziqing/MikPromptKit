@@ -313,6 +313,17 @@
 
     App.seedanceV2.openProject=async function(id){this.currentProjectId=id;this._loadVideoTaskCache();this._startVideoNotifyTimer();try{localStorage.setItem('promptkit_seedance_project',id);localStorage.setItem('promptkit_view','seedance');localStorage.setItem('promptkit_seedance_tab','composer');}catch(e){}try{var d=await App.fetchJSON('/api/seedance/v2/projects/'+id);if(!d){App.showToast('加载项目失败: 无响应','error');return;}this.currentProject=d.project;if(window.PK_PRESENCE)PK_PRESENCE.reportLocation('分镜',d.project.name||'',d.project.id||0);this.scenes=d.scenes;this._restoreExtUnitConfig();var editor=document.getElementById('s2Editor');var savedScroll=editor?editor.scrollTop:0;this._renderList();this.renderProjectEditor();this.renderScenes();this.compose();var self=this;requestAnimationFrame(function(){var e=document.getElementById('s2Editor');if(e&&savedScroll>0)e.scrollTop=savedScroll;});}catch(e){App.showToast('加载项目异常: '+e.message,'error');console.warn('openProject error:',e);}};
 
+    App.seedanceV2._jumpToSourceCard = function(cardId){
+        // v5.50.55: 跳回源词卡（定位到词库高亮该词卡）
+        App.fetchJSON('/api/v4/word-cards/'+cardId).then(function(d){
+            var gid=(d&&d.card)?(d.card.group_id||0):0;
+            if(App.cardGen&&App.cardGen.locateCard){App.cardGen.locateCard(cardId,gid);}
+            else{App.showToast('定位功能不可用','error');}
+        }).catch(function(){
+            if(App.cardGen&&App.cardGen.locateCard){App.cardGen.locateCard(cardId,0);}
+        });
+    };
+
     App.seedanceV2.saveProject = async function(){
         if(!this.currentProjectId)return;
         if(this._saving){App.showToast('正在保存，请稍后','warning');return;}

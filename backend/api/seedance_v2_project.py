@@ -4,6 +4,8 @@ Seedance V2 分镜项目模块（Phase 3.5 自 api/seedance_v2.py 拆分）
 路由挂载: 主模块 router.include_router(seedance_v2_project_router)，prefix 同为 /api/seedance/v2
 """
 
+import os
+
 from fastapi import APIRouter, Body, HTTPException, Query
 
 from database import get_db, safe_commit
@@ -11,6 +13,8 @@ from database import get_db, safe_commit
 from .composer_engine import compose_full
 
 router = APIRouter(tags=["seedance-v2-project"])
+
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 # ==================== 总项目（父级） ====================
@@ -257,6 +261,72 @@ def create_project(data: dict = Body(...)):
             safe_commit()
 
     return {"ok": True, "id": cur.lastrowid}
+
+
+def _resolve_card_original(filename: str) -> str:
+    """解析词卡原图文件名到磁盘路径（复用图片池目录）"""
+    base = os.path.basename(filename)
+    dirs = ["originals", "wc_media/originals", "thumbnails", "card_collect/images",
+            "dreamina_assets/images", "comfyui_outputs"]
+    for d in dirs:
+        p = os.path.join(_PROJECT_ROOT, "data", d, base)
+        if os.path.exists(p):
+            return p
+    return ""
+
+
+@router.post("/from-card")
+def create_from_card(data: dict = Body(...)):
+    """从词卡一键创建分镜项目：自动填入参考图 + 视频提示词（v5.50.55）"""
+    card_id = data.get("card_id")
+    if not card_id:
+        raise HTTPException(400, "card_id 必填")
+    db = get_db()
+    card = db.execute("SELECT * FROM word_card WHERE id=? AND is_deleted=0", [card_id]).fetchone()
+    if not card:
+        raise HTTPException(404, "词卡不存在")
+
+    name = (card["name"] or "").strip() or (card["content"] or "")[:20]
+    vid_prompt = (card["content_video"] or card["content"] or "").strip()
+
+    # 1. 创建分镜项目
+    cur = db.execute(
+        "INSERT INTO user_project (name, total_duration, aspect_ratio, resolution, global_style, source_card_id) VALUES (?, 5, '16:9', '720p', '', ?)",
+        [name + " · 视频分镜", card_id]
+    )
+    project_id = cur.lastrowid
+
+    # 2. 第一个镜头填入视频提示词
+    db.execute(
+        "INSERT INTO user_project_scene (project_id, scene_order, start_time, end_time, duration, scene_desc) VALUES (?, 1, 0, 5, 5, ?)",
+        [project_id, vid_prompt]
+    )
+
+    # 3. 词卡原图作为全局场景参考图（幂等建表）
+    db.execute("""CREATE TABLE IF NOT EXISTS seedance_image_refs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        scene_id INTEGER,
+        ref_type TEXT DEFAULT 'character',
+        ref_name TEXT DEFAULT '',
+        source_kind TEXT DEFAULT 'upload',
+        file_path TEXT DEFAULT '',
+        url TEXT DEFAULT '',
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT
+    )""")
+    orig = card["original_ref"] or ""
+    if orig and not orig.startswith("http"):
+        fp = _resolve_card_original(orig)
+        if fp:
+            db.execute(
+                """INSERT INTO seedance_image_refs (project_id, scene_id, ref_type, ref_name, source_kind, file_path, url, sort_order, created_at)
+                   VALUES (?, NULL, 'scene', ?, 'upload', ?, ?, 1, datetime('now','localtime'))""",
+                [project_id, name, fp, f"/api/media/original/{orig}"]
+            )
+
+    safe_commit()
+    return {"ok": True, "id": project_id, "name": name}
 
 
 @router.get("/projects/{project_id}")

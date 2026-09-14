@@ -354,14 +354,27 @@
             });
         },
         // v5.50.54: 视频生成窗口快捷跳转分镜组装器（多镜头结构化编辑）
+        // v5.50.55: 自动从词卡创建分镜项目（填入参考图+视频提示词）
         _openComposer: function () {
+            var self = this;
+            var cardId = this._curCard;
             var ov = document.querySelector('.modal-overlay');
             if (ov) ov.remove();
-            if (App.seedanceV2 && typeof App.seedanceV2.openStandalone === 'function') {
-                App.seedanceV2.openStandalone();
-            } else {
+            if (!App.seedanceV2 || typeof App.seedanceV2.openStandalone !== 'function') {
                 this._toast('分镜组装器不可用', 'error');
+                return;
             }
+            var enter = function (pid) {
+                App.seedanceV2.openStandalone().then(function () {
+                    if (pid) App.seedanceV2.openProject(pid);
+                });
+            };
+            App.fetchJSON('/api/seedance/v2/from-card', { method: 'POST', body: JSON.stringify({ card_id: cardId }) })
+                .then(function (d) {
+                    if (d && d.ok) { self._toast('已从词卡创建分镜项目', 'success'); enter(d.id); }
+                    else enter(null);
+                })
+                .catch(function () { enter(null); });
         },
         _sel: function (id, opts, cur) {
             var h = '<select id="' + id + '" style="font-size:11px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-card);color:var(--text-main);">';
@@ -456,7 +469,8 @@
                 '<div style="display:flex;align-items:center;gap:6px;margin-top:8px;">' +
                 '<label style="font-size:11px;color:var(--text-muted);">提示词</label>' +
                 '<span style="display:flex;gap:2px;border:1px solid var(--border-color);border-radius:8px;padding:1px;margin-left:auto;">' +
-                '<button type="button" id="cgTierStd" class="cwl-logview-btn active" onclick="App.cardGen._setPromptTier(\'standard\')" style="font-size:10px;">📄 标准</button>' +
+                '<button type="button" id="cgTierSimple" class="cwl-logview-btn" onclick="App.cardGen._setPromptTier(\'simple\')" style="font-size:10px;">📄 简易</button>' +
+                '<button type="button" id="cgTierStd" class="cwl-logview-btn active" onclick="App.cardGen._setPromptTier(\'standard\')" style="font-size:10px;">📋 普通</button>' +
                 '<button type="button" id="cgTierDet" class="cwl-logview-btn" onclick="App.cardGen._setPromptTier(\'detailed\')" style="font-size:10px;">📚 详细</button>' +
                 '</span></div>' +
                 '<textarea id="cgPrompt" style="width:100%;min-height:80px;margin-top:4px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;">' + this._esc(this._videoPromptDefault()) + '</textarea>';
@@ -469,15 +483,25 @@
         // v5.37.13: 提示词档位切换（标准/详细）
         _setPromptTier: function (tier) {
             var p = this._cardData(this._curCard) || {};
-            var vid = (p.content_video || '').trim();
-            var std = vid || (p.content || '');
-            var val = tier === 'detailed' ? (p.content_detailed || std) : std;
+            // v5.50.55: 视频提示词三档（simple/standard/detailed），均空回退图片提示词对应档
+            var vMap = {
+                simple: (p.content_video_simple || '').trim(),
+                standard: (p.content_video || '').trim(),
+                detailed: (p.content_video_detailed || '').trim()
+            };
+            var imgMap = {
+                simple: (p.content_simple || '').trim(),
+                standard: (p.content || '').trim(),
+                detailed: (p.content_detailed || '').trim()
+            };
+            var val = vMap[tier] || imgMap[tier] || imgMap.standard || '';
             var ta = document.getElementById('cgPrompt');
             if (ta) ta.value = val;
-            var b1 = document.getElementById('cgTierStd');
-            var b2 = document.getElementById('cgTierDet');
-            if (b1) b1.classList.toggle('active', tier === 'standard');
-            if (b2) b2.classList.toggle('active', tier === 'detailed');
+            var map = { simple: 'cgTierSimple', standard: 'cgTierStd', detailed: 'cgTierDet' };
+            for (var k in map) {
+                var b = document.getElementById(map[k]);
+                if (b) b.classList.toggle('active', k === tier);
+            }
         },
         submit: async function (ovId, cardId, taskType) {
             var ov = document.getElementById(ovId) || document.querySelector('.modal-overlay');

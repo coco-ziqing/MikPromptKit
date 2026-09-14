@@ -710,6 +710,11 @@ def init_db():
             "ALTER TABLE word_card ADD COLUMN content_detailed_zh TEXT DEFAULT ''",
             # v5.50.53: 词卡视频生成提示词（独立于图片提示词 content，避免图文提示词混淆）
             "ALTER TABLE word_card ADD COLUMN content_video TEXT DEFAULT ''",
+            # v5.50.55: 视频提示词三档（简易/普通/详细），对齐图片三档
+            "ALTER TABLE word_card ADD COLUMN content_video_simple TEXT DEFAULT ''",
+            "ALTER TABLE word_card ADD COLUMN content_video_detailed TEXT DEFAULT ''",
+            # v5.50.55: 分镜项目关联源词卡（从词卡创建分镜时记录，支持跳回源词卡）
+            "ALTER TABLE user_project ADD COLUMN source_card_id INTEGER DEFAULT NULL",
         ]:
             try:
                 conn.execute(sql)

@@ -312,6 +312,8 @@ App._wcLoadPrompts = async function() {
                 content_detailed_en: item.content_detailed_en || '',
                 content_detailed_zh: item.content_detailed_zh || '',
                 content_video: item.content_video || '',
+                content_video_simple: item.content_video_simple || '',
+                content_video_detailed: item.content_video_detailed || '',
                 meaning: item.meaning || '',
                 module: item.module || '',
                 category: item.category || '',

@@ -112,6 +112,12 @@ App.wordEditor._ensureModal = function() {
     '<label>中文提示词 <span style="font-size:9px;color:var(--text-muted);">(可选，卡片中文显示用)</span></label>' +
     '<textarea id="wcEditContentZh" class="modal-input" rows="2" placeholder="中文提示词翻译/对照（可选）"></textarea>' +
     '<label>视频提示词 <span style="font-size:9px;color:var(--text-muted);">(可选，视频生成专用，独立于图片提示词)</span></label>' +
+    '<div style="display:flex;gap:4px;margin-bottom:4px;flex-wrap:wrap;align-items:center;">' +
+    '<button type="button" id="wcVideoTierSimple" class="wc-tier-btn" onclick="App.wordEditor._switchVideoTier(\'simple\')" style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-muted);">📄 简易</button>' +
+    '<button type="button" id="wcVideoTierNormal" class="wc-tier-btn" onclick="App.wordEditor._switchVideoTier(\'normal\')" style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid var(--primary);background:var(--primary);color:#fff;">📋 普通</button>' +
+    '<button type="button" id="wcVideoTierDetailed" class="wc-tier-btn" onclick="App.wordEditor._switchVideoTier(\'detailed\')" style="font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-muted);">📚 详细</button>' +
+    '<span id="wcVideoTierHint" style="font-size:9px;color:var(--text-muted);"></span>' +
+    '</div>' +
     '<textarea id="wcEditContentVideo" class="modal-input" rows="3" placeholder="视频生成提示词（运镜/动作/时序，留空则回退图片提示词）"></textarea>' +
     '<label>释义/说明</label>' +
     '<input id="wcEditMeaning" class="modal-input" placeholder="中文释义或补充说明">' +
@@ -484,7 +490,10 @@ App.wordEditor._loadCard = async function() {
         document.getElementById('wcEditContent').value = this._tiers[this._tier] || '';
         this._updateTierUI();
         document.getElementById('wcEditContentZh').value = c.content_zh || '';
-        document.getElementById('wcEditContentVideo').value = c.content_video || '';
+        this._videoTiers = { simple: c.content_video_simple || '', normal: c.content_video || '', detailed: c.content_video_detailed || '' };
+        this._videoTier = 'normal';
+        document.getElementById('wcEditContentVideo').value = this._videoTiers.normal || '';
+        this._updateVideoTierUI();
         document.getElementById('wcEditMeaning').value = c.meaning || '';
         document.getElementById('wcEditModule').value = c.module || 'custom';
         document.getElementById('wcEditCategory').value = c.category || '';
@@ -651,6 +660,29 @@ App.wordEditor._switchTier = function(tier) {
     try { localStorage.setItem('wc_edit_tier', tier); } catch(e) {}
 };
 
+// v5.50.55: 视频提示词三档切换（与图片三档独立）
+App.wordEditor._switchVideoTier = function(tier) {
+    var ta = document.getElementById('wcEditContentVideo');
+    if (ta && this._videoTiers) this._videoTiers[this._videoTier] = ta.value;
+    this._videoTier = tier;
+    if (ta) ta.value = (this._videoTiers && this._videoTiers[tier]) || '';
+    this._updateVideoTierUI();
+};
+
+App.wordEditor._updateVideoTierUI = function() {
+    var hint = document.getElementById('wcVideoTierHint');
+    if (hint) hint.textContent = this._videoTier === 'simple' ? '精简短版' : (this._videoTier === 'detailed' ? '丰富详细版' : '标准版');
+    var map = { simple: 'wcVideoTierSimple', normal: 'wcVideoTierNormal', detailed: 'wcVideoTierDetailed' };
+    for (var k in map) {
+        var b = document.getElementById(map[k]);
+        if (!b) continue;
+        var active = k === this._videoTier;
+        b.style.background = active ? 'var(--primary)' : 'var(--bg-card)';
+        b.style.color = active ? '#fff' : 'var(--text-muted)';
+        b.style.borderColor = active ? 'var(--primary)' : 'var(--border-color)';
+    }
+};
+
 App.wordEditor._updateTierUI = function() {
     var hint = document.getElementById('wcTierHint');
     if (hint) hint.textContent = this._tier === 'simple' ? '精简短版' : (this._tier === 'detailed' ? '丰富详细版' : '标准版');
@@ -674,12 +706,18 @@ App.wordEditor._save = async function() {
     // 保存当前档位值，三档全部提交（未编辑档保留原值）
     if (this._tiers) this._tiers[this._tier] = ta.value;
     var tiers = this._tiers || { simple: '', normal: content, detailed: '' };
+    // v5.50.55: 视频提示词三档收集
+    var vta = document.getElementById('wcEditContentVideo');
+    if (vta && this._videoTiers) this._videoTiers[this._videoTier] = vta.value;
+    var videoTiers = this._videoTiers || { simple: '', normal: '', detailed: '' };
 
     var data = {
         name: document.getElementById('wcEditName').value.trim(),
         content: content,
         content_zh: document.getElementById('wcEditContentZh').value.trim(),
-        content_video: document.getElementById('wcEditContentVideo').value.trim(),
+        content_video: (videoTiers.normal || '').trim(),
+        content_video_simple: (videoTiers.simple || '').trim(),
+        content_video_detailed: (videoTiers.detailed || '').trim(),
         content_simple: (tiers.simple || '').trim(),
         content_detailed: (tiers.detailed || '').trim(),
         meaning: document.getElementById('wcEditMeaning').value.trim(),
