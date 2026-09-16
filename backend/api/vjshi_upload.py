@@ -196,11 +196,138 @@ def _fail_label(cat: str) -> str:
 
 # ==================== 字段自动生成（规则版） ====================
 
+# ==================== 图片生成提示词分析（v5.50.62） ====================
+# 简介初始内容改为：分析词卡的「图片生成提示词」→ 识别画面内容 / 风格 / 运镜
+# → 拼成与视频内容匹配的介绍；AI 优化（Ollama）沿用原有链路，只把输入依据换成图片提示词。
+
+_SEG_SEP = re.compile(r"[，,。；;、\n\r]+")
+_MOTION_KEYS = ("镜头", "延时", "航拍", "运镜", "推近", "推远", "拉近", "拉远", "摇", "旋转",
+                "跟随", "定格", "慢动作", "快动作", "缓缓", "流动", "摇曳", "上升", "下降",
+                "俯拍", "仰拍", "特写", "全景", "中景", "平移", "环绕", "飘落", "坠落")
+_STYLE_KEYS = ("风格", "主义", "作品", "画作", "画", "质感", "色调", "氛围", "艺术", "美学",
+               "渲染", "高清", "画质", "色彩", "光影", "蒸汽波", "赛博", "复古", "胶片", "油画", "3D")
+
+# 运镜/动态词表（长词优先；用于从视频提示词里「只取短词」，不搬原文长句）
+_MOTION_TERMS = ("延时摄影", "慢动作", "固定镜头", "跟随镜头", "环绕镜头", "航拍", "推镜", "拉镜",
+                 "旋转", "定格", "平移", "俯拍", "仰拍", "手持", "升格", "降格", "特写", "全景", "中景",
+                 "缓缓流动", "随风摇曳", "飘落", "坠落", "流动", "摇曳", "转动", "闪烁", "上升", "下降", "绽放")
+
+
+def _match_terms(text, terms, limit=5):
+    """按出现顺序匹配词表，并去掉被更长匹配包含的短词"""
+    text = text or ""
+    hits = sorted({t for t in terms if t in text}, key=lambda t: (text.find(t), -len(t)))
+    out = []
+    for t in hits:
+        if any(t != o and len(o) > len(t) and t in o for o in hits):
+            continue
+        if t not in out:
+            out.append(t)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _analyze_prompt(text):
+    """把提示词按语义粗分为 画面内容 / 风格 / 运镜 三类短语（规则版，不耗 token）"""
+    res = {"content": [], "style": [], "motion": []}
+    for seg in _SEG_SEP.split(text or ""):
+        seg = seg.strip()
+        if len(seg) < 2:
+            continue
+        if any(k in seg for k in _MOTION_KEYS):
+            res["motion"].append(seg)
+        elif any(k in seg for k in _STYLE_KEYS):
+            res["style"].append(seg)
+        else:
+            res["content"].append(seg)
+    for k in res:
+        seen, arr = set(), []
+        for s in res[k]:
+            if s not in seen:
+                seen.add(s)
+                arr.append(s)
+        res[k] = arr
+    return res
+
+
+def _compose_description(src):
+    """由图片生成提示词分析出与视频内容匹配的简介初稿"""
+    img = _analyze_prompt(src.get("image_prompt") or "")
+    vid = _analyze_prompt(src.get("video_prompt") or "")
+    card_name = (src.get("card_name") or "").strip()
+    parts = [f"{card_name[:16]}主题视频素材" if card_name else "AI 生成视频素材"]
+    # 画面内容：优先图片提示词里的实体/场景
+    content = (img["content"] or vid["content"])[:2]
+    if content:
+        parts.append("画面" + "、".join(x[:18] for x in content))
+    # 视觉风格：图片提示词（画风/色调/质感）为主
+    style = (img["style"] or vid["style"])[:3]
+    if style:
+        parts.append("整体呈现" + "、".join(x[:14] for x in style) + "的视觉风格")
+    # 动态表现：从视频/图提示词里只取运镜短词（不搬原文长句）
+    mterms = _match_terms((src.get("video_prompt") or "") + "，" + (src.get("image_prompt") or ""), _MOTION_TERMS)[:4]
+    if mterms:
+        parts.append("动态表现：" + "、".join(mterms))
+    # 兜底：以上不足 60 字时补关键词
+    if len("".join(parts)) < 60:
+        kws = _extract_keywords(src.get("image_prompt") or src.get("video_prompt") or "")
+        if kws:
+            parts.append("包含" + "、".join(kws[:4]) + "等元素")
+    spec = " ".join([x for x in [src.get("model"), f"{src.get('dur')}s" if src.get("dur") else "", src.get("res")] if x])
+    if spec:
+        parts.append(f"规格：{spec}")
+    parts.append("适用于短视频、广告片、宣传片等场景，可商用授权")
+    return "，".join(parts)[:300]
+
+
+def _card_prompts(card_id, gen_task_id):
+    """取词卡图片生成提示词 + 视频提示词 + 规格（AI 简介与 meta 共用）"""
+    c = _db()
+    try:
+        card = c.execute("SELECT name, content, content_video, category, module FROM word_card WHERE id=?", [card_id]).fetchone() if card_id else None
+        gen = c.execute("SELECT prompt, model_version, duration, video_resolution FROM card_gen_tasks WHERE id=?", [gen_task_id]).fetchone() if gen_task_id else None
+    finally:
+        c.close()
+    image = ""
+    if card:
+        image = (card["content"] or "").strip() or (card["content_video"] or "").strip()
+    return {
+        "card_name": (card["name"] if card else "") or "",
+        "image_prompt": image,
+        "video_prompt": (gen["prompt"] if gen else "") or "",
+        "model": (gen["model_version"] if gen else "") or "",
+        "dur": (gen["duration"] if gen else 0) or 0,
+        "res": (gen["video_resolution"] if gen else "") or "",
+        "category": (card["category"] if card else "") or "",
+        "module": (card["module"] if card else "") or "",
+    }
+
+
+def _llm_context(card_id, gen_task_id, fallback_text=""):
+    """拼 AI 简介的输入：以图片生成提示词为主 + 视频运镜/规格（原 AI 优化链路只换了依据）"""
+    src = _card_prompts(card_id, gen_task_id)
+    img, vid = src["image_prompt"], src["video_prompt"]
+    title = src["card_name"] or ""
+    if not img and not vid:
+        return title, (fallback_text or "").strip()[:800]
+    bits = []
+    if img:
+        bits.append("图片生成提示词（画面依据）：" + img[:600])
+    motion = _analyze_prompt(vid)["motion"][:3]
+    if motion:
+        bits.append("视频镜头与动态：" + "、".join(motion)[:200])
+    spec = " ".join([x for x in [src.get("model"), f"{src.get('dur')}s" if src.get("dur") else "", src.get("res")] if x])
+    if spec:
+        bits.append("视频规格：" + spec)
+    return title, "；".join(bits)[:800]
+
+
 def _build_meta(card_id, gen_task_id, video_file):
     """从词卡 + 生成任务生成标题/关键词/简介/分类"""
     c = _db()
     try:
-        card = c.execute("SELECT name, content, category, module FROM word_card WHERE id=?", [card_id]).fetchone() if card_id else None
+        card = c.execute("SELECT name, content, content_video, category, module FROM word_card WHERE id=?", [card_id]).fetchone() if card_id else None
         gen = c.execute("SELECT task_type, prompt, model_version, duration, video_resolution, media_type FROM card_gen_tasks WHERE id=?", [gen_task_id]).fetchone() if gen_task_id else None
     finally:
         c.close()
@@ -218,16 +345,16 @@ def _build_meta(card_id, gen_task_id, video_file):
     kws = keywords[:8]
     while len(kws) < 5:
         kws.append(f"AI{kws[0][:2]}" if kws else "AI视频")
-    # 简介
-    parts = ["AI生成视频素材"]
-    if prompt:
-        parts.append(prompt[:80])
-    model = (gen["model_version"] if gen else "") or ""
-    dur = (gen["duration"] if gen else 0) or 0
-    res = (gen["video_resolution"] if gen else "") or ""
-    if model or dur or res:
-        parts.append(f"（{' '.join([x for x in [model, f'{dur}s' if dur else '', res] if x])}）")
-    description = "，".join(parts)[:200]
+    # 简介：v5.50.62 起以「词卡的图片生成提示词」为依据分析识别生成（不再搬运视频提示词原文）
+    src = {
+        "card_name": card_name,
+        "image_prompt": (card["content"] if card else "") or (card["content_video"] if card else "") or "",
+        "video_prompt": (gen["prompt"] if gen else "") or "",
+        "model": (gen["model_version"] if gen else "") or "",
+        "dur": (gen["duration"] if gen else 0) or 0,
+        "res": (gen["video_resolution"] if gen else "") or "",
+    }
+    description = _compose_description(src)
     # 分类：词卡 category 映射（首期常见类目，实测表单后校准）
     category = _map_category((card["category"] if card else "") or (card["module"] if card else "") or "")
     return {"title": title, "keywords": " ".join(kws), "description": description, "category": category}
@@ -317,22 +444,33 @@ def _headless_mode() -> bool:
     return _get_setting("headless", "0") == "1"
 
 
+def _precheck_enabled() -> bool:
+    """投稿前视频质检开关（默认关闭 v5.50.61 起）
+
+    默认关闭：不再默认替用户做质检与拦截，需要时在弹窗/队列里手动打开。
+    存储键 precheck：'1' 开 / '0' 关。
+    """
+    return _get_setting("precheck", "0") == "1"
+
+
 @router.get("/api/vjshi/settings")
 def vjshi_settings_get(request: Request):
-    """光厂上传设置（浏览器模式等）"""
+    """光厂上传设置（浏览器模式、投稿前质检开关等）"""
     _team_guard(request)
     _ensure_settings_table()
-    return {"ok": True, "headless": _headless_mode()}
+    return {"ok": True, "headless": _headless_mode(), "precheck": _precheck_enabled()}
 
 
 @router.put("/api/vjshi/settings")
 def vjshi_settings_put(request: Request, data: dict = Body(...)):
-    """保存上传设置（headless: bool 有头/无头）"""
+    """保存上传设置（headless: bool 有头/无头；precheck: bool 投稿前质检开关）"""
     _team_guard(request)
     _ensure_settings_table()
     if "headless" in data:
         _set_setting("headless", "1" if data.get("headless") else "0")
-    return {"ok": True, "headless": _headless_mode()}
+    if "precheck" in data:
+        _set_setting("precheck", "1" if data.get("precheck") else "0")
+    return {"ok": True, "headless": _headless_mode(), "precheck": _precheck_enabled()}
 
 
 _CTX_START_LOCK = threading.Lock()   # v5.38.14: 同 profile 并发启动互斥
@@ -394,9 +532,61 @@ def _new_context():
     raise RuntimeError("浏览器启动失败（可能 Chrome 配置被占用，请稍后重试）")
 
 
-def check_login() -> dict:
-    """检测光厂登录态（只读；独立 context，用完关闭）"""
+_LOGIN_CACHE = {"ts": 0.0, "data": None}   # v5.50.64: 登录态缓存（秒级返回值，避免每次开弹窗都拉浏览器）
+_LOGIN_CACHE_TTL = 120                       # 缓存有效期（秒）
+
+
+def _login_cache():
+    """取登录态缓存；首次从 vjshi_settings 恢复（服务重启后仍能显示上次结果）"""
+    if _LOGIN_CACHE.get("data") is None:
+        try:
+            _ensure_settings_table()
+            st = _get_setting("login_state", "")
+            at = _get_setting("login_checked_at", "")
+            if st in ("0", "1") and str(at).isdigit() and int(at) > 0:
+                _LOGIN_CACHE["ts"] = float(at)
+                _LOGIN_CACHE["data"] = {"ok": True, "logged_in": st == "1", "from_disk": True}
+        except Exception:
+            pass
+    return _LOGIN_CACHE
+
+
+def _login_cache_put(data: dict):
+    """写缓存 + 落盘（供跨重启展示）"""
+    _LOGIN_CACHE["ts"] = time.time()
+    _LOGIN_CACHE["data"] = dict(data)
+    try:
+        _set_setting("login_state", "1" if data.get("logged_in") else "0")
+        _set_setting("login_checked_at", str(int(_LOGIN_CACHE["ts"])))
+    except Exception:
+        pass
+
+
+def check_login(force: bool = False) -> dict:
+    """检测光厂登录态
+
+    v5.50.64 优化：
+      - 结果缓存 120s，重复调用直接返回（不再每次拉起 Chrome + 页面导航）
+      - 上传任务进行中时，若有缓存则返回缓存并标记 stale，而不是直接报错
+      - 结果落盘，服务重启后面板仍能显示上次结论
+    """
+    cache = _login_cache()
+    cached = cache.get("data")
+    now = time.time()
+    age = int(now - cache.get("ts", 0)) if cache.get("ts") else 0
+    if cached and not force and age < _LOGIN_CACHE_TTL:
+        d = dict(cached)
+        d["cached"] = True
+        d["age_sec"] = age
+        return d
     if _VJSHI_BUSY.is_set():
+        if cached:
+            d = dict(cached)
+            d["cached"] = True
+            d["stale"] = True
+            d["age_sec"] = age
+            d["note"] = "上传任务进行中，显示上次检测结果"
+            return d
         return {"ok": False, "busy": True, "error": "上传任务进行中，暂无法检测登录"}
     pw = ctx = None
     try:
@@ -405,10 +595,24 @@ def check_login() -> dict:
         page.goto(UPLOAD_URL, wait_until="domcontentloaded", timeout=30000)
         time.sleep(2)
         if "login" in page.url.lower():
-            return {"ok": True, "logged_in": False, "url": page.url}
-        has_file = page.query_selector("input[type=file]") is not None
-        return {"ok": True, "logged_in": True, "has_upload_ui": has_file, "url": page.url}
+            res = {"ok": True, "logged_in": False, "url": page.url}
+        else:
+            has_file = page.query_selector("input[type=file]") is not None
+            res = {"ok": True, "logged_in": True, "has_upload_ui": has_file, "url": page.url}
+        _login_cache_put(res)
+        res = dict(res)
+        res["cached"] = False
+        res["age_sec"] = 0
+        return res
     except Exception as e:
+        # 检测失败不覆盖已有缓存（避免一次网络抖动把“已登录”冲成未知）
+        if cached:
+            d = dict(cached)
+            d["cached"] = True
+            d["stale"] = True
+            d["age_sec"] = age
+            d["note"] = f"检测失败（{type(e).__name__}），显示上次结果"
+            return d
         return {"ok": False, "error": str(e)}
     finally:
         try:
@@ -449,6 +653,25 @@ def _vjshi_log(msg: str):
             f.write(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}\n")
     except Exception:
         pass
+
+
+def _video_quality_gate(video_path: str):
+    """视频质检判定（v5.50.66 抽出便于测试）
+
+    返回 (block, errs, metrics)：
+      block=True  → 应当拦截，任务置 fail（fail_category=video_invalid）
+      block=False → 放行（质检通过，或质检开关关闭时用户选择继续上传）
+
+    与前端 /api/vjshi/precheck-video 共用同一个 precheck 开关，
+    之前后端这里是硬拦，导致「前端关了质检、后端依旧不放过」。
+    """
+    from api.video_quality import check_video
+    vq = check_video(video_path)
+    metrics = vq.get("metrics") or {}
+    if vq.get("ok"):
+        return False, "", metrics
+    errs = "; ".join(i["msg"] for i in (vq.get("issues") or []) if i.get("level") == "error")
+    return bool(_precheck_enabled()), errs, metrics
 
 
 def _llm_description_sync(prompt: str, title: str) -> str:
@@ -538,16 +761,20 @@ def _upload_one(task_id: int):
         if not video_path:
             _task_update(task_id, status="fail", error=f"视频文件不存在: {t['video_file']}", fail_category="file_missing")
             return
-        # v5.40.0 P1: 提交前本地视频质检（时长/分辨率/编码/大小，不合格拦截）
+        # v5.40.0 P1: 提交前本地视频质检（时长/分辨率/编码/大小）
+        # v5.50.66: 与前端共用 precheck 开关——开关关闭时只记录不拦截，交给光厂侧自行校验
+        vq_warn = ""
         try:
-            from api.video_quality import check_video
-            vq = check_video(video_path)
-            if not vq["ok"]:
-                errs = "; ".join(i["msg"] for i in vq.get("issues", []) if i.get("level") == "error")
-                _task_update(task_id, status="fail", error=f"视频质检不通过: {errs}", fail_category="video_invalid")
-                _vjshi_log(f"[任务{task_id}] 视频质检拦截：{errs}")
+            _block, _errs, _metrics = _video_quality_gate(video_path)
+            if _block:
+                _task_update(task_id, status="fail", error=f"视频质检不通过: {_errs}", fail_category="video_invalid")
+                _vjshi_log(f"[任务{task_id}] 视频质检拦截：{_errs}")
                 return
-            _vjshi_log(f"[任务{task_id}] 视频质检通过（{vq['metrics'].get('duration')}s {vq['metrics'].get('width')}x{vq['metrics'].get('height')} {vq['metrics'].get('codec')}）")
+            if _errs:
+                vq_warn = f"质检未通过（质检开关已关闭，按你的选择继续上传）：{_errs}"
+                _vjshi_log(f"[任务{task_id}] 视频质检不通过，但质检开关已关闭 → 放行上传：{_errs}")
+            else:
+                _vjshi_log(f"[任务{task_id}] 视频质检通过（{_metrics.get('duration')}s {_metrics.get('width')}x{_metrics.get('height')} {_metrics.get('codec')}）")
         except Exception as e:
             _vjshi_log(f"[任务{task_id}] 视频质检异常（放行）: {type(e).__name__}: {str(e)[:120]}")
         file_input = page.query_selector(cfg.get("upload_file_selector", "input[type=file]"))
@@ -556,7 +783,7 @@ def _upload_one(task_id: int):
             return
         _human_pause(0.8, 2.0)
         file_input.set_input_files(video_path)
-        _task_update(task_id, status="uploading", error="", progress_note="已选择文件")
+        _task_update(task_id, status="uploading", error="", progress_note=vq_warn or "已选择文件")
         _human_pause(1.0, 2.5)
         # 3. 等待上传完成（轮询进度/上传完成标志，最多 10 分钟）
         _chk("等待上传")
@@ -571,12 +798,14 @@ def _upload_one(task_id: int):
         cur_desc = (t_fill.get("description") or "").strip()
         _is_placeholder = cur_desc.startswith("AI生成视频素材") or not re.search(r"[\u4e00-\u9fff]", cur_desc)
         if len(cur_desc) < 80 or _is_placeholder:
+            # v5.50.62: 生成依据改为词卡的图片生成提示词 + 视频运镜/规格
+            _t_title, _t_ctx = _llm_context(t_fill.get("card_id") or 0, t_fill.get("gen_task_id") or 0, t_fill.get("title") or "")
             # v5.38.22: 失败重试 1 次（Ollama 偶发忙）
-            gen_desc = _llm_description_sync(t_fill.get("title") or "", t_fill.get("title") or "")
+            gen_desc = _llm_description_sync(_t_ctx or (t_fill.get("title") or ""), _t_title or (t_fill.get("title") or ""))
             if not gen_desc:
                 _vjshi_log(f"任务{task_id} 自动简介首次失败，重试中...")
                 time.sleep(3)
-                gen_desc = _llm_description_sync(t_fill.get("title") or "", t_fill.get("title") or "")
+                gen_desc = _llm_description_sync(_t_ctx or (t_fill.get("title") or ""), _t_title or (t_fill.get("title") or ""))
             if gen_desc:
                 t_fill["description"] = gen_desc
                 try:
@@ -607,11 +836,18 @@ def _upload_one(task_id: int):
             time.sleep(1)
         # 5. 完善信息填表
         _chk("信息填表")
-        fill_ok, fill_err = _fill_form(page, t_fill, cfg)
+        fill_ok, fill_err, used_title = _fill_form(page, t_fill, cfg)
         if not fill_ok:
             _vjshi_log(f"[任务{task_id}] 填表失败：{fill_err[:150]}")
             _task_update(task_id, status="fail", error=fill_err, fail_category="form_changed")
             return
+        # v5.50.67: 回写实际采用的素材名称（平台自动识别/AI 推荐的结果），让队列显示真实名称
+        if used_title and used_title != (t_fill.get("title") or ""):
+            try:
+                _task_update(task_id, title=used_title[:60])
+                _vjshi_log(f"[任务{task_id}] 素材名称已回写：{used_title[:40]}")
+            except Exception:
+                pass
         _vjshi_log(f"[任务{task_id}] 表单填写完成（标题/关键词/简介/价格/AI标注/风格）")
         # 5. 提交（v5.38.16: 提交后确认成功/失败，防误报）
         submit_sel = cfg.get("submit", "")
@@ -825,28 +1061,73 @@ def _select_ai_style(page, cfg, text):
         return False
 
 
+def _read_input(page, sel: str) -> str:
+    """安全读取输入框当前值（元素不存在/报错都返回空串）"""
+    if not sel:
+        return ""
+    try:
+        el = page.query_selector(sel)
+        return (el.input_value() or "").strip() if el else ""
+    except Exception:
+        return ""
+
+
+def _pick_title(page_auto: str, ai_value: str, local_value: str):
+    """素材名称优先级（v5.50.67，抽成纯函数便于测试）
+
+    ① 平台自动识别填好的名称  →  ② 光厂「AI 推荐标题」点选结果  →  ③ 本地兜底标题
+    返回 (value, source)
+    """
+    for v, src in ((page_auto, "平台自动识别"), (ai_value, "AI推荐标题"), (local_value, "本地兜底")):
+        v = (v or "").strip()
+        if v:
+            return v, src
+    return "", "无"
+
+
 def _fill_form(page, t, cfg):
-    """按配置填表（真实表单：弹窗内标题/关键词/描述/价格/AI标注/提交；人类节奏）"""
-    # v5.38.15: 标题优先用光厂 AI 推荐（弹窗自动生成的「AI推荐标题」按钮，点第一个）
-    skip_title = False
-    if cfg.get("ai_title", True):
+    """按配置填表（标题/关键词/描述/价格/AI标注/风格）
+
+    返回 (ok, err, used_title)：used_title 是最终实际采用的素材名称，
+    供调用方回写任务记录（v5.50.67）。
+    """
+    # v5.50.67: 素材名称优先用「光厂官方自动识别/推荐」的结果——不再用自拟名称覆盖平台结果
+    title_sel = cfg.get("title", "")
+    page_auto = _read_input(page, title_sel)          # ① 上传完成后平台自动识别填入的名称
+    ai_value = ""
+    if not page_auto and cfg.get("ai_title", True) and title_sel:
         try:
+            # v5.50.67: 标签匹配放宽（AI推荐标题 / 推荐标题 / 自动识别 / 智能识别）
             used_ai = page.evaluate("""() => {
-                const p = Array.from(document.querySelectorAll('p')).find(p => (p.textContent || '').trim() === 'AI推荐标题');
-                if (!p) return false;
-                const btns = Array.from(p.parentElement.querySelectorAll('button'));
-                if (!btns.length) return false;
-                btns[0].click();
-                return true;
+                const labels = ['AI推荐标题', 'AI 推荐标题', '推荐标题', '自动识别', '智能识别', 'AI识别', '智能推荐'];
+                const nodes = Array.from(document.querySelectorAll('p,span,div,label,button'));
+                const hit = nodes.find(el => {
+                    const t = (el.textContent || '').trim();
+                    return t && t.length < 14 && labels.some(l => t === l || t.indexOf(l) === 0);
+                });
+                if (!hit) return false;
+                let box = hit.parentElement;
+                for (let i = 0; i < 4 && box; i++) {
+                    const btns = Array.from(box.querySelectorAll('button')).filter(b => (b.textContent || '').trim());
+                    if (btns.length) { btns[0].click(); return true; }
+                    box = box.parentElement;
+                }
+                return false;
             }""")
             if used_ai:
-                _human_pause(0.6, 1.5)
-                tel = page.query_selector(cfg.get("title", ""))
-                if tel and tel.input_value().strip():
-                    skip_title = True
-                    print(f"[VJSHI] 已用光厂 AI 推荐标题: {tel.input_value().strip()[:30]}")
+                # 点击后等平台回填（异步）
+                for _ in range(10):
+                    _human_pause(0.4, 0.8)
+                    ai_value = _read_input(page, title_sel)
+                    if ai_value:
+                        break
+            else:
+                _vjshi_log("[填表] 未找到「AI 推荐标题/自动识别」区块（页面结构可能变化）")
         except Exception as e:
-            print(f"[VJSHI] AI 推荐标题失败，回退自拟: {e}")
+            _vjshi_log(f"[填表] AI 推荐标题失败，回退自拟: {type(e).__name__}: {str(e)[:120]}")
+    used_title, title_src = _pick_title(page_auto, ai_value, t.get("title") or "")
+    skip_title = title_src in ("平台自动识别", "AI推荐标题")   # 本地兜底时才自己填
+    _vjshi_log(f"[填表] 素材名称来源: {title_src} → {(used_title or '')[:40]}")
     # 标题/描述/价格（直接填写）
     for key, fname, value in [("title", "title", t["title"]),
                               ("description", "description", t["description"]),
@@ -863,7 +1144,7 @@ def _fill_form(page, t, cfg):
                 break
             time.sleep(1)
         if not el:
-            return False, f"未找到字段 {key}（页面结构变化）"
+            return False, f"未找到字段 {key}（页面结构变化）", ""
         try:
             el.click(timeout=3000)
             el.fill("")
@@ -873,11 +1154,14 @@ def _fill_form(page, t, cfg):
                     _human_pause(0.1, 0.4)  # 偶发停顿模拟思考
             _human_pause(0.3, 1.0)
         except Exception as e:
-            return False, f"填写 {key} 失败: {e}"
+            return False, f"填写 {key} 失败: {e}", ""
+    # 兜底：若最终没定下素材名称（本地也没填），直接读页面当前值
+    if not used_title:
+        used_title = _read_input(page, title_sel)
     # 关键词（v5.38.2）：优先点击光厂 AI 推荐备选词，不足手动补足
     kw_ok = _fill_keywords_optimized(page, cfg, t["keywords"])
     if not kw_ok:
-        return False, "关键词填写失败（推荐词/输入框未找到）"
+        return False, "关键词填写失败（推荐词/输入框未找到）", ""
     # AI 生成标注（hasAIGC）/ 循环（isLoop）——光厂 dioa-checkbox 自定义组件，用 JS 点关联 label
     def _check_box(page, sel):
         if not sel:
@@ -927,7 +1211,7 @@ def _fill_form(page, t, cfg):
                 time.sleep(0.3)
         except Exception:
             pass
-    return True, ""
+    return True, "", used_title
 
 
 def _upload_worker(task_id: int):
@@ -1075,9 +1359,10 @@ class VjshiBatchRequest(BaseModel):
 
 
 @router.get("/api/vjshi/login-status")
-def vjshi_login_status(request: Request):
+def vjshi_login_status(request: Request, force: int = Query(0)):
+    """光厂登录态（v5.50.64：默认走 120s 缓存，force=1 强制重新检测）"""
     _team_guard(request)
-    return check_login()
+    return check_login(force=bool(force))
 
 
 # ==================== 团队上传权限（v5.38.3） ====================
@@ -1303,23 +1588,34 @@ def vjshi_catalog_delete(cid: int, request: Request):
 
 @router.post("/api/vjshi/llm-description")
 async def vjshi_llm_description(request: Request, data: dict = Body(...)):
-    """Ollama 生成 300 字内 SEO 素材简介（v5.38.2：描述优化）
-    body: { prompt, title, model? }
+    """Ollama 生成 300 字内 SEO 素材简介（v5.38.2：描述优化；v5.50.62：改为以词卡图片生成提示词为依据）
+    body: { prompt, title, card_id?, gen_task_id?, video_file? }
+    传了 card_id/gen_task_id 时，服务端自行取「图片生成提示词 + 视频运镜/规格」作为依据，
+    前端只需带上标题即可。
     """
     _team_guard(request)
     prompt = (data.get("prompt") or "").strip()[:800]
     title = (data.get("title") or "").strip()[:60]
+    card_id = int(data.get("card_id") or 0)
+    gen_task_id = int(data.get("gen_task_id") or 0)
+    if card_id or gen_task_id:
+        _t, _ctx = _llm_context(card_id, gen_task_id, prompt or title)
+        if _ctx:
+            prompt = _ctx
+        if _t and not title:
+            title = _t
     if not prompt and not title:
         raise HTTPException(400, "prompt 或 title 必填")
     try:
         from ollama_client import ollama_chat, extract_json
         sys_prompt = (
-            "你是视频素材平台的文案优化师。根据视频主题与提示词，写一段 300 字以内的素材简介（中文），"
-            "要求：1) 自然融入核心关键词，便于搜索引擎/平台检索；2) 描述画面内容、风格、适用场景；"
+            "你是视频素材平台的文案优化师。输入是这个视频所依据的『图片生成提示词』及视频运镜/规格信息，"
+            "请据此写一段 300 字以内的中文素材简介，内容需与视频画面一致："
+            "1) 自然融入核心关键词，便于搜索引擎/平台检索；2) 描述画面内容、风格、适用场景；"
             "3) 不要写广告词/联系方式；4) 不要提及 AI 生成以外的生成细节；5) 控制在 150-300 字。"
             "只输出简介正文，不要标题和多余文字。"
         )
-        user_text = f"标题：{title}\n主题/提示词：{prompt}"
+        user_text = f"标题：{title}\n图片生成提示词与视频信息：{prompt}"
         result = await ollama_chat([
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_text}

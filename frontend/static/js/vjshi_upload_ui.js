@@ -103,11 +103,11 @@
                 '<div id="vjLoginHint" style="font-size:11px;padding:6px 8px;border-radius:6px;margin-bottom:8px;border:1px dashed var(--border-color);color:var(--text-muted);">检查登录状态中...</div>' +
                 (videoFile ? '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">视频: ' + self._esc(videoFile) +
                     ' <video id="vjPrevVideo" src="/api/thumbnails/video/' + self._esc(videoFile) + '" style="width:150px;height:84px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-left:4px;cursor:pointer;background:#000;" muted loop preload="metadata" title="点击播放/暂停"></video></div>' : '') +
+                '<div id="vjDraftHint" style="display:none;font-size:11px;padding:6px 8px;border-radius:6px;margin-bottom:8px;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.35);color:#8b5cf6;"></div>' +
+                (videoFile ? '<div style="display:flex;align-items:center;gap:6px;margin:4px 0 2px;font-size:11px;color:var(--text-muted);"><label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="vjQaSw" onchange="App.vjshi.setPrecheck(this.checked)" style="accent-color:#3b82f6;"> 投稿前质检</label><span style="font-size:10px;color:#94a3b8;">关闭后不拦截提交</span></div>' : '') +
                 (videoFile ? '<div id="vjQaBox" style="font-size:11px;margin:4px 0 8px;padding:6px 8px;border-radius:6px;background:rgba(127,127,127,.06);">🔍 视频质检中... <button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;margin-left:6px;" onclick="App.vjshi.recheckQa(this)">🔄 重新质检</button></div>' : '') +
-                '<label style="font-size:11px;color:var(--text-muted);">标题（10-30 字）<span id="vjTitleCnt" style="float:right;font-size:10px;color:#94a3b8;">0/30</span></label>' +
-                '<input id="vjTitle" style="width:100%;margin:4px 0 8px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:12px;" value="' + self._esc(meta.title || '') + '" oninput="App.vjshi.cntTitle(this)">' +
-                '<label style="font-size:11px;color:var(--text-muted);">关键词（空格分隔，≥5 个）<span id="vjKwCnt" style="float:right;font-size:10px;color:#94a3b8;">0 词</span></label>' +
-                '<input id="vjKeywords" style="width:100%;margin:4px 0 8px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:12px;" value="' + self._esc(meta.keywords || '') + '" oninput="App.vjshi.cntKeywords(this)">' +
+                // v5.50.63: 标题/关键词不再让用户填——上传时自动点选光厂「AI 推荐标题 / AI 推荐关键词」
+                '<div style="font-size:11px;color:#10b981;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3);border-radius:6px;padding:6px 8px;margin-bottom:8px;">✅ 标题与关键词由光厂「AI 推荐」自动选择，无需填写 <span style="color:var(--text-muted);">（上传时自动点选平台推荐项）</span></div>' +
                 '<label style="font-size:11px;color:var(--text-muted);">简介（300 字内）<span id="vjDescCnt" style="float:right;font-size:10px;color:#94a3b8;">0/300</span> <button type="button" class="btn btn-xs btn-outline" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;margin-left:6px;" onclick="App.vjshi.llmDesc(this)">✨ AI 优化简介</button></label>' +
                 '<textarea id="vjDesc" style="width:100%;min-height:70px;margin:4px 0 8px;padding:6px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;" oninput="App.vjshi.cntDesc(this)">' + self._esc(meta.description || '') + '</textarea>' +
                 '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">' +
@@ -128,28 +128,45 @@
                     else { pv.pause(); pv.style.outline = 'none'; }
                 };
             }
-            // v5.41.0: 初始计数
-            this.cntTitle(ov.querySelector('#vjTitle'));
-            this.cntKeywords(ov.querySelector('#vjKeywords'));
+            // v5.41.0: 初始计数（标题/关键词已改为平台 AI 推荐，不再计数）
             this.cntDesc(ov.querySelector('#vjDesc'));
             // v5.40.0 P1: 投稿前视频质检（ffprobe 本地解析）
-            if (videoFile) this._runQa(ov, videoFile);
-            // v5.38.6: 检测登录状态（v5.41.0 修复：此前 hint 区未渲染）
-            App.fetchJSON('/api/vjshi/login-status').then(function (d) {
+            // v5.50.62: 记住本次投稿的关联 id，供「✨ AI 优化简介」取图片生成提示词
+            ov._vjIds = { genTaskId: genTaskId || 0, cardId: cardId || 0, videoFile: videoFile || '' };
+            // v5.50.60: 先恢复上次未提交的草稿（误触关闭/刷新不丢编辑内容），再跑计数
+            this._applyDraft(ov, genTaskId, cardId, videoFile);
+            this._bindDraftAutosave(ov, genTaskId, cardId, videoFile);
+            // v5.50.59: 先同步开关状态，再决定是否自动质检
+            var qaSw0 = ov.querySelector('#vjQaSw');
+            if (qaSw0) qaSw0.checked = this.precheckOn();
+            if (videoFile) { if (this.precheckOn()) this._runQa(ov, videoFile); else this._renderQaOff(ov); }
+            // v5.50.64: 登录态展示（默认读 120s 缓存，秒回；点 🔄 才真正重新拉起浏览器检测）
+            var paintLogin = function (d) {
                 var hint = ov.querySelector('#vjLoginHint');
                 if (!hint) return;
-                if (d && d.logged_in) {
-                    hint.innerHTML = '✅ 光厂账户已登录，可继续上传';
+                d = d || {};
+                var age = d.age_sec || 0;
+                var when = age < 5 ? '刚刚' : (age < 60 ? age + ' 秒前' : Math.floor(age / 60) + ' 分钟前');
+                var reBtn = '<button class="btn btn-xs btn-outline" style="font-size:10px;margin-left:6px;" onclick="App.vjshi.recheckLogin(this)">🔄 重新检测</button>';
+                if (d.logged_in) {
+                    hint.innerHTML = '✅ 光厂账户已登录，可继续上传 <span style="font-size:10px;opacity:.75;">（' + (d.cached ? when : '刚刚') + (d.stale ? ' · 上传中，上次结果' : '') + '）</span>' + reBtn;
                     hint.style.background = 'rgba(16,185,129,.08)';
                     hint.style.borderColor = 'rgba(16,185,129,.4)';
                     hint.style.color = '#10b981';
+                } else if (d.busy) {
+                    hint.innerHTML = '⏳ 上传任务进行中，暂不检测登录态' + reBtn;
+                    hint.style.background = 'rgba(245,158,11,.08)';
+                    hint.style.borderColor = 'rgba(245,158,11,.4)';
+                    hint.style.color = '#f59e0b';
                 } else {
-                    hint.innerHTML = '⚠️ 第一步：请先登录光厂账户 <button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;margin-left:6px;" onclick="App.vjshi.openLogin()">🔑 打开登录窗口</button>';
+                    hint.innerHTML = '⚠️ 第一步：请先登录光厂账户 <button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;margin-left:6px;" onclick="App.vjshi.openLogin()">🔑 打开登录窗口</button>' + reBtn;
                     hint.style.background = 'rgba(245,158,11,.08)';
                     hint.style.borderColor = 'rgba(245,158,11,.4)';
                     hint.style.color = '#f59e0b';
                 }
-            }).catch(function () {});
+            };
+            ov._vjPaintLogin = paintLogin;
+            App.fetchJSON('/api/vjshi/login-status').then(paintLogin).catch(function () {});
         },
         // v5.41.0: 重新质检（弹窗内按钮触发）
         recheckQa: function (btn) {
@@ -164,6 +181,8 @@
         },
         _runQa: function (ov, videoFile) {
             var self = this;
+            // v5.50.59: 质检关闭时不做任何阻断，仅保留手动开启入口
+            if (!this.precheckOn()) { this._renderQaOff(ov); return; }
             App.fetchJSON('/api/vjshi/precheck-video', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ video_file: videoFile }), _timeoutMs: 30000
@@ -189,19 +208,7 @@
                 box.style.background = errs.length ? 'rgba(239,68,68,.08)' : (warns.length ? 'rgba(245,158,11,.08)' : 'rgba(16,185,129,.08)');
             }).catch(function () {});
         },
-        // v5.41.0: 字数/词数计数
-        cntTitle: function (el) {
-            if (!el) return;
-            var n = (el.value || '').length;
-            var c = document.getElementById('vjTitleCnt');
-            if (c) { c.textContent = n + '/30'; c.style.color = n > 30 || (n > 0 && n < 10) ? '#ef4444' : '#94a3b8'; }
-        },
-        cntKeywords: function (el) {
-            if (!el) return;
-            var n = (el.value || '').trim() ? (el.value || '').trim().split(/\s+/).length : 0;
-            var c = document.getElementById('vjKwCnt');
-            if (c) { c.textContent = n + ' 词'; c.style.color = n > 0 && n < 5 ? '#ef4444' : '#94a3b8'; }
-        },
+        // v5.50.63: cntTitle / cntKeywords 已移除（标题与关键词改由光厂 AI 推荐，弹窗不再有对应输入框）
         cntDesc: function (el) {
             if (!el) return;
             var n = (el.value || '').length;
@@ -209,24 +216,33 @@
             if (c) { c.textContent = n + '/300'; c.style.color = n > 300 ? '#ef4444' : '#94a3b8'; }
         },
         // v5.38.2: Ollama 生成 300 字内 SEO 简介
+        // v5.50.62: 生成依据改为「该视频所用词卡的图片生成提示词」——带上 card_id/gen_task_id，
+        //           后端自行取图提示词 + 视频运镜/规格，生成与视频内容匹配的介绍
         llmDesc: async function (btn) {
             var self = this;
             var ov = btn.closest('.modal-overlay');
-            var prompt = (ov.querySelector('#vjTitle') || {}).value || '';
             var ta = ov.querySelector('#vjDesc');
             if (!ta) return;
+            var title = (ov.querySelector('#vjTitle') || {}).value || '';
+            var ids = ov._vjIds || {};
             btn.disabled = true; btn.textContent = '⏳ 生成中...';
             try {
                 var d = await App.fetchJSON('/api/vjshi/llm-description', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: prompt, title: prompt }),
-                    _timeoutMs: 60000
+                    body: JSON.stringify({
+                        title: title, prompt: ta.value || title,
+                        card_id: ids.cardId || 0, gen_task_id: ids.genTaskId || 0
+                    }),
+                    _timeoutMs: 90000
                 });
                 btn.disabled = false; btn.textContent = '✨ AI 优化简介';
                 if (d && d.ok && d.description) {
                     ta.value = d.description;
                     this.cntDesc(ta);
-                    this._toast('✅ 简介已优化', 'success');
+                    // v5.50.65: AI 结果是直接赋值，不触发 input/change，必须手动存草稿，
+                    //           否则关窗重开后优化结果丢失
+                    this._saveDraftNow(ov);
+                    this._toast('✅ 简介已优化（已存入草稿，关窗不丢）', 'success');
                 } else {
                     this._toast((d && d.error) || '简介生成未完成（Ollama 未启动或超时）', 'error');
                 }
@@ -238,24 +254,17 @@
         submit: async function (genTaskId, cardId, videoFile, btn) {
             // v5.40.0 P1: 视频质检不通过拦截（v5.41.0: 状态挂弹窗 DOM）
             var ov0 = btn.closest('.modal-overlay');
-            if (ov0 && ov0._vjQaPass === false) { this._toast('视频质检不通过（时长/分辨率等），请先处理视频', 'error'); return; }
+            if (ov0 && ov0._vjQaPass === false && this.precheckOn()) { this._toast('视频质检不通过（时长/分辨率等），请先处理视频', 'error'); return; }
             var ov = btn.closest('.modal-overlay');
             var body = {
                 card_id: cardId, gen_task_id: genTaskId, video_file: videoFile,
-                title: ov.querySelector('#vjTitle').value.trim(),
-                keywords: ov.querySelector('#vjKeywords').value.trim(),
                 description: ov.querySelector('#vjDesc').value.trim(),
                 category: ov.querySelector('#vjCategory').value.trim(),
                 price: parseInt(ov.querySelector('#vjPrice').value, 10) || 10,
                 is_ai: ov.querySelector('#vjIsAi').checked ? 1 : 0
             };
-            // v5.41.0: 标题长度校验（光厂规范 10-30 字）
-            if (!body.title) { this._toast('标题必填', 'error'); return; }
-            if (body.title.length < 10) { this._toast('标题建议 ≥10 字（光厂规范），当前 ' + body.title.length + ' 字', 'error'); return; }
-            if (body.title.length > 30) { this._toast('标题超 30 字（光厂规范），请精简', 'error'); return; }
-            // v5.41.0: 关键词校验（空格分隔 ≥5）
-            var kwN = body.keywords ? body.keywords.split(/\s+/).filter(Boolean).length : 0;
-            if (kwN < 5) { this._toast('关键词需 ≥5 个（空格分隔），当前 ' + kwN + ' 个', 'error'); return; }
+            // v5.50.63: 标题/关键词不再由用户填写（上传时由光厂「AI 推荐」自动选择），
+            //           故取消本地必填/长度/词数拦截，只保留简介长度校验
             if ((body.description || '').length > 300) { this._toast('简介超 300 字，请精简', 'error'); return; }
             btn.disabled = true; btn.textContent = '⏳ 入队中...';
             var d = await App.fetchJSON('/api/vjshi/tasks', {
@@ -263,6 +272,7 @@
             });
             if (d && d.ok) {
                 this._toast('📤 已入队，将逐条上传', 'success');
+                this._dropDraft(this._draftKey(genTaskId, cardId, videoFile));
                 if (ov) ov.remove();
                 this.openPanel();
             } else {
@@ -283,9 +293,11 @@
             ov.innerHTML = '<div class="modal-content" style="max-width:860px;border-radius:14px;padding:16px;max-height:88vh;overflow-y:auto;" onclick="event.stopPropagation()">' +
                 '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-size:14px;font-weight:600;">📤 光厂上传队列</span>' +
                 '<span style="display:flex;gap:6px;">' +
+                '<span id="vjLoginChip" style="display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid var(--border-color);color:var(--text-muted);cursor:pointer;" title="点击强制重新检测光厂登录态" onclick="App.vjshi.checkLogin(1)">🔑 登录态未知</span>' +
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openLogin()" style="font-size:10px;border-color:#f59e0b;color:#f59e0b;">🔑 登录光厂</button>' +
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openBatchSubmit()" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;">📦 批量投稿</button>' +
                 '<button class="btn btn-xs btn-outline" id="vjModeBtn" onclick="App.vjshi.toggleMode()" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;">⚙️ 执行方式</button>' +
+                '<button class="btn btn-xs btn-outline" id="vjQaBtn" onclick="App.vjshi.togglePrecheck()" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;" title="投稿前视频质检开关：开启时不通过会拦截提交；关闭后不质检、不拦截">🔍 质检: 关</button>' +
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openCatalog()" style="font-size:10px;border-color:#10b981;color:#10b981;">📒 上架台账</button>' +
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.openPanel()" style="font-size:10px;">🔄 刷新</button>' +
                 '<button class="btn btn-xs btn-outline" onclick="App.vjshi.clearTasks()" style="font-size:10px;border-color:#ef4444;color:#ef4444;">🗑 清除全部</button>' +
@@ -294,6 +306,7 @@
             document.body.appendChild(ov);
             this._panelOv = ov;
             this._showMode();
+            this.checkLogin(0);   // v5.50.64: 登录态（默认读缓存，秒回）
             this._pollPanel();
         },
         // v5.41.0: 批量审核操作条（多选后显示）
@@ -316,8 +329,10 @@
                 var st = d.state || {};
                 var stats = d.stats || {};
                 // v5.41.0: 状态筛选 tabs（内存态，原位重绘避免叠层）
-                var tab = this._tab || '';
-                var reviewFilter = this._reviewFilter || '';
+                // v5.50.64 修复：回调里 this 不是 VJ（文件里 'use strict' → this 为 undefined），
+                // 之前 this._tab 直接抛异常被 .catch 吞掉 → 面板永远停在「加载中...」
+                var tab = self._tab || '';
+                var reviewFilter = self._reviewFilter || '';
                 if (tab === 'queued') tasks = tasks.filter(function (t) { return t.status === 'queued'; });
                 else if (tab === 'active') tasks = tasks.filter(function (t) { return t.status === 'uploading' || t.status === 'filling'; });
                 else if (tab === 'submitted') tasks = tasks.filter(function (t) { return t.status === 'submitted'; });
@@ -363,8 +378,9 @@
                         (t.video_url ? '<video src="' + t.video_url + '" style="width:72px;height:46px;object-fit:cover;cursor:pointer;" muted loop preload="metadata" title="点击播放/暂停" onclick="this.paused?this.play():this.pause()"></video>' : '🎬') + '</div>' +
                         '<div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:600;">' + self._esc(t.title || t.video_file) + '</div>' +
                         '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">' + self._esc(t.keywords || '') + '</div>' +
-                        // v5.41.0: 执行中进度提示
+                        // v5.50.66: 质检放行等警告在任务结束后仍要可见（progress_note 以「质检未通过」开头）
                         ((t.status === 'uploading' || t.status === 'filling') && t.progress_note ? '<div style="font-size:10px;color:#3b82f6;margin-top:2px;">' + self._esc(t.progress_note) + '</div>' : '') +
+                        ((t.progress_note || '').indexOf('质检未通过') === 0 ? '<div style="font-size:10px;color:#f59e0b;margin-top:2px;">⚠️ ' + self._esc(t.progress_note) + '</div>' : '') +
                         (t.error ? '<div style="font-size:10px;color:#ef4444;margin-top:2px;">' + self._esc(t.error) + '</div>' : '') +
                         self._failBadge(t) +
                         self._reviewFlow(t) +
@@ -382,10 +398,27 @@
                         '<button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#ef4444;color:#ef4444;" onclick="App.vjshi.delTask(' + t.id + ')">🗑</button></div>';
                 });
                 box.innerHTML = h;
+                self._pollFail = 0;
                 // v5.41.0: 后台完成提醒（有活跃任务时启动轻轮询）
                 self._bgWatch(tasks);
                 if (act.length) setTimeout(function () { self._pollPanel(); }, 5000);
-            }).catch(function () { setTimeout(function () { self._pollPanel(); }, 5000); });
+            }).catch(function (err) {
+                // v5.50.64: 异常不再静默吞掉（否则表现为「一直卡在加载中」）
+                self._pollFail = (self._pollFail || 0) + 1;
+                try { console.warn('[vjshi] 队列面板刷新失败', self._pollFail, err); } catch (e) {}
+                if (self._pollFail >= 3) {
+                    var bx = self._panelOv && self._panelOv.querySelector('#vjPanelBody');
+                    if (bx) bx.innerHTML = '<div style="padding:16px;text-align:center;font-size:12px;color:#ef4444;">队列加载失败（已重试 ' + self._pollFail + ' 次）' +
+                        '<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">' + self._esc((err && err.message) || '未知错误') + '</div>' +
+                        '<button class="btn btn-xs btn-outline" style="margin-top:8px;" onclick="App.vjshi.pollAgain()">🔄 重试</button></div>';
+                    return;
+                }
+                setTimeout(function () { self._pollPanel(); }, 5000);
+            });
+        },
+        pollAgain: function () {
+            this._pollFail = 0;
+            this._pollPanel();
         },
         // v5.41.0: 后台完成提醒 — 活跃任务提交成功/失败 → toast（对齐 card_gen 通知模式）
         _bgWatch: function (tasks) {
@@ -562,8 +595,9 @@
                 '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">' +
                 '<input id="vjBKw" placeholder="按关键词/词卡名过滤（可选）" value="' + self._esc(this._batchKw || '') + '" style="flex:1;padding:5px 8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:11px;" onkeydown="if(event.key===\'Enter\')App.vjshi.applyBatchKw(this.value)">' +
                 '<label style="font-size:11px;color:var(--text-muted);">价格 <input id="vjBPrice" type="number" min="1" value="10" style="width:64px;padding:4px 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-input,transparent);color:var(--text-main);font-size:12px;"></label>' +
+                '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);white-space:nowrap;"><input type="checkbox" id="vjBQaSw" onchange="App.vjshi.setPrecheck(this.checked)" style="accent-color:#3b82f6;"> 投稿前质检</label>' +
                 '<button class="btn btn-primary btn-sm" onclick="App.vjshi.batchSubmit()">📤 批量入队</button></div>' +
-                '<div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;">候选 = 生成完成且未投过的视频。入队前自动逐条本地质检（不通过自动跳过）；批量 ≤20 条。</div>' +
+                '<div id="vjBQaHint" style="font-size:10px;color:var(--text-muted);margin-bottom:6px;">候选 = 生成完成且未投过的视频。入队前自动逐条本地质检（不通过自动跳过）；批量 ≤20 条。</div>' +
                 '<div id="vjBatchBody" style="min-height:80px;">加载中...</div></div>';
             document.body.appendChild(ov);
             this._batchOv = ov;
@@ -631,8 +665,11 @@
             var btn = ov.querySelector('.btn-primary');
             if (btn) { btn.disabled = true; btn.textContent = '⏳ 质检入队中...'; }
             // 逐条预检
+            var qaOn = this.precheckOn();
+            if (btn && !qaOn) btn.textContent = '⏳ 入队中...';
             var pass = [], fail = [];
-            for (var i = 0; i < picked.length; i++) {
+            if (!qaOn) pass = picked.slice();
+            for (var i = 0; qaOn && i < picked.length; i++) {
                 try {
                     var q = await App.fetchJSON('/api/vjshi/precheck-video', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -811,9 +848,186 @@
             }
         },
         // 面板打开时显示当前模式
+        // v5.50.59: 投稿前质检开关（用户自主选择；关闭后不自动质检、不拦截提交）
+        // v5.50.61: 投稿前质检开关。默认为关（未从后端读到明确开启时不自动质检、不拦截）
+        precheckOn: function () { return this._precheck === true; },
+        togglePrecheck: function () { this.setPrecheck(!this.precheckOn()); },
+        setPrecheck: function (on) {
+            var self = this;
+            this._precheck = !!on;
+            this._precheckUserSet = true;   // 用户已在本会话显式选择，避免启动期在途的 settings 响应回写覆盖
+            App.fetchJSON('/api/vjshi/settings', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ precheck: !!on })
+            }).catch(function () {});
+            this._syncPrecheckUi();
+            this._toast(on ? '🔍 已开启投稿前质检' : '🔍 已关闭投稿前质检（不再拦截提交）', 'success');
+            // 已打开的投稿弹窗立即生效
+            Array.prototype.forEach.call(document.querySelectorAll('.modal-overlay'), function (o) {
+                if (!o.querySelector('#vjQaBox')) return;
+                var pv = o.querySelector('#vjPrevVideo');
+                if (on && pv && pv.src) self._runQa(o, decodeURIComponent(pv.src.split('/').pop()));
+                else if (!on) self._renderQaOff(o);
+            });
+        },
+        _renderQaOff: function (ov) {
+            var box = ov.querySelector('#vjQaBox');
+            if (!box) return;
+            ov._vjQaPass = null;
+            box.innerHTML = '质检已关闭（不影响提交） <button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#3b82f6;color:#3b82f6;margin-left:4px;" onclick="App.vjshi.setPrecheck(true)">✅ 开启质检</button>';
+            box.style.background = 'rgba(127,127,127,.06)';
+        },
+        _syncPrecheckUi: function () {
+            var on = this.precheckOn();
+            var b = document.getElementById('vjQaBtn');
+            if (b) {
+                b.textContent = on ? '🔍 质检: 开' : '🔍 质检: 关';
+                b.style.borderColor = on ? '#3b82f6' : '#94a3b8';
+                b.style.color = on ? '#3b82f6' : '#94a3b8';
+            }
+            var sw = document.getElementById('vjQaSw');
+            if (sw) sw.checked = on;
+            var sw2 = document.getElementById('vjBQaSw');
+            if (sw2) sw2.checked = on;
+            var hint = document.getElementById('vjBQaHint');
+            if (hint) hint.textContent = on ? '入队前自动逐条本地质检（不通过自动跳过）' : '质检已关闭：勾选的视频将直接入队，不再逐条预检';
+        },
+        // ============ v5.50.60: 投稿弹窗草稿（误触关闭/刷新不丢编辑内容） ============
+        _draftKey: function (genTaskId, cardId, videoFile) {
+            return 'vjDraft:' + (genTaskId || 0) + ':' + (cardId || 0) + ':' + (videoFile || '');
+        },
+        _readDraft: function (key) {
+            try {
+                var raw = localStorage.getItem(key);
+                if (!raw) return null;
+                var d = JSON.parse(raw);
+                if (!d || typeof d !== 'object') return null;
+                // 超过 7 天的旧草稿自动清掉，避免恢复出无关内容
+                if (d.ts && (Date.now() - d.ts) > 7 * 24 * 3600 * 1000) { localStorage.removeItem(key); return null; }
+                return d;
+            } catch (e) { return null; }
+        },
+        _writeDraft: function (key, data) {
+            try { data.ts = Date.now(); localStorage.setItem(key, JSON.stringify(data)); } catch (e) {}
+        },
+        _dropDraft: function (key) { try { localStorage.removeItem(key); } catch (e) {} },
+        _collectDraft: function (ov) {
+            var g = function (sel) { var el = ov.querySelector(sel); return el ? el.value : ''; };
+            var chk = function (sel) { var el = ov.querySelector(sel); return el ? !!el.checked : true; };
+            // v5.50.63: 标题/关键词改由平台 AI 推荐，不再入草稿
+            return {
+                description: g('#vjDesc'),
+                category: g('#vjCategory'), price: g('#vjPrice'), is_ai: chk('#vjIsAi')
+            };
+        },
+        _applyDraft: function (ov, genTaskId, cardId, videoFile) {
+            var key = this._draftKey(genTaskId, cardId, videoFile);
+            ov._vjDraftKey = key;
+            var d = this._readDraft(key);
+            if (!d) return;
+            var set = function (sel, v) { var el = ov.querySelector(sel); if (el && typeof v !== 'undefined' && v !== null) el.value = v; };
+            set('#vjDesc', d.description);
+            set('#vjCategory', d.category);
+            set('#vjPrice', d.price);
+            var ai = ov.querySelector('#vjIsAi');
+            if (ai) ai.checked = !!d.is_ai;
+            // 恢复后重算字数，避免计数与内容不一致
+            this.cntDesc(ov.querySelector('#vjDesc'));
+            var hint = ov.querySelector('#vjDraftHint');
+            if (hint) {
+                hint.style.display = 'block';
+                hint.innerHTML = '📝 已恢复上次未提交的编辑内容 <button class="btn btn-xs btn-outline" style="font-size:10px;border-color:#8b5cf6;color:#8b5cf6;margin-left:6px;" onclick="App.vjshi.dropDraft(this)">🧹 丢弃草稿</button>';
+            }
+        },
+        // 输入实时存草稿；change（失焦）立即落盘，保证误触关闭时最后一次输入不丢
+        _bindDraftAutosave: function (ov, genTaskId, cardId, videoFile) {
+            var self = this;
+            var key = this._draftKey(genTaskId, cardId, videoFile);
+            if (!ov._vjDraftKey) ov._vjDraftKey = key;
+            var timer = null;
+            var save = function () {
+                if (!document.body.contains(ov)) return;
+                self._writeDraft(key, self._collectDraft(ov));
+            };
+            var debounced = function () {
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(save, 400);
+            };
+            ['#vjDesc', '#vjCategory', '#vjPrice', '#vjIsAi'].forEach(function (sel) {
+                var el = ov.querySelector(sel);
+                if (!el) return;
+                el.addEventListener('input', debounced);
+                el.addEventListener('change', save);
+            });
+        },
+        // v5.50.65: 立即落盘（用于程序化改值场景，如 AI 优化简介——set value 不会触发 input/change）
+        _saveDraftNow: function (ov) {
+            if (!ov || !ov._vjDraftKey) return;
+            if (!document.body.contains(ov)) return;
+            this._writeDraft(ov._vjDraftKey, this._collectDraft(ov));
+        },
+        dropDraft: function (btn) {
+            var ov = btn.closest('.modal-overlay');
+            if (!ov) return;
+            this._dropDraft(ov._vjDraftKey);
+            var hint = ov.querySelector('#vjDraftHint');
+            if (hint) { hint.style.display = 'none'; hint.innerHTML = ''; }
+            this._toast('已丢弃草稿', 'success');
+        },
+        // ============ v5.50.64: 登录态展示（队列面板 + 投稿弹窗共用） ============
+        _renderLogin: function (d) {
+            var el = document.getElementById('vjLoginChip');
+            if (!el) return;
+            d = d || {};
+            var age = d.age_sec || 0;
+            var when = age < 5 ? '刚刚' : (age < 60 ? age + ' 秒前' : Math.floor(age / 60) + ' 分钟前');
+            if (d.logged_in === true) {
+                el.innerHTML = '✅ 已登录 <span style="opacity:.7;">· ' + (d.cached ? when : '刚刚') + (d.stale ? '（上传中）' : '') + '</span>';
+                el.style.borderColor = 'rgba(16,185,129,.45)';
+                el.style.color = '#10b981';
+            } else if (d.busy) {
+                el.textContent = '⏳ 上传任务进行中';
+                el.style.borderColor = 'rgba(245,158,11,.45)';
+                el.style.color = '#f59e0b';
+            } else if (d.logged_in === false) {
+                el.innerHTML = '⚠️ 未登录 <span style="opacity:.7;">· ' + (d.cached ? when : '刚刚') + '</span>';
+                el.style.borderColor = 'rgba(239,68,68,.45)';
+                el.style.color = '#ef4444';
+            } else {
+                el.textContent = '⚠️ 登录态检测失败';
+                el.style.borderColor = 'rgba(245,158,11,.45)';
+                el.style.color = '#f59e0b';
+            }
+        },
+        // force 缺省=读缓存（秒回）；force=1 才真拉起浏览器重新检测
+        checkLogin: function (force) {
+            var self = this;
+            var el = document.getElementById('vjLoginChip');
+            if (el) {
+                el.textContent = force ? '🔑 检测中…' : '🔑 读取登录态…';
+                el.style.color = 'var(--text-muted)';
+                el.style.borderColor = 'var(--border-color)';
+            }
+            return App.fetchJSON('/api/vjshi/login-status' + (force ? '?force=1' : ''), { _timeoutMs: force ? 60000 : 15000 })
+                .then(function (d) { self._renderLogin(d); return d; })
+                .catch(function () { self._renderLogin({ ok: false }); return null; });
+        },
+        recheckLogin: function (btn) {
+            var ov = btn && btn.closest ? btn.closest('.modal-overlay') : null;
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ 检测中...'; }
+            App.fetchJSON('/api/vjshi/login-status?force=1', { _timeoutMs: 60000 }).then(function (d) {
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 重新检测'; }
+                if (ov && ov._vjPaintLogin) ov._vjPaintLogin(d);
+            }).catch(function () {
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 重新检测'; }
+                if (ov && ov._vjPaintLogin) ov._vjPaintLogin({ ok: false });
+            });
+        },
         _showMode: function () {
             App.fetchJSON('/api/vjshi/settings').then(function (d) {
                 var b = document.getElementById('vjModeBtn');
+                if (!VJ._precheckUserSet) VJ._precheck = !(d && d.precheck === false);
+                VJ._syncPrecheckUi();
                 if (b) b.textContent = (d && d.headless) ? '⚙️ 执行方式: 后台执行' : '⚙️ 执行方式: 可视执行';
             }).catch(function () {});
         },
@@ -829,6 +1043,7 @@
     App.vjshi = VJ;
     // v5.38.3: 页面加载拉取上传权限（不依赖 _activeTiers 时序；非团队会 403 → false）
     VJ._loadPerm();
+    VJ._showMode();   // v5.50.59: 同步投稿前质检开关等设置（失败静默）
     setInterval(function () { if (VJ._uploadPerm === null) VJ._loadPerm(); }, 5000);
 
     // 投稿按钮注入：任务面板/历史弹窗的视频产物行（由 card_gen_ui 调用）
