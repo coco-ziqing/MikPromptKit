@@ -1255,17 +1255,11 @@ with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as zf:
 ### 当前回归基线
 audit 18 + presence 11 + composer 18 + asset_library 20 + asset_review 21 + DAM 17 = 105/105
 
-## Promoted From Short-Term Memory (2026-08-16)
+## Promoted From Short-Term Memory (2026-08-23)
 
-<!-- openclaw-memory-promotion:memory:memory/2026-08-07-structure-refactor.md:61:62 -->
-- 追加：Phase 2.2 完成（4 commits）: 剩余 TODO: F841×36、E741×7（未使用变量/命名，需人工）；eslint warnings×103（no-redeclare）；E701/E702×677、UP031×44（已豁免）; 教训: ESLint ecmaVersion 需 ≥2020 否则可选链?.误报解析错误 [score=0.820 recalls=0 avg=0.620 source=memory/2026-08-07-structure-refactor.md:61-62]
-<!-- openclaw-memory-promotion:memory:memory/2026-08-07-structure-refactor.md:65:68 -->
-- 追加：Phase 3 完成（2026-08-07 上午）: 3.1(2909a76): F841×36+E741×7 清零 — ruff 1771→0 All checks passed（含密码算法 noqa、副作用调用保留）; 3.2(1d3f85d): GitHub Actions CI（ruff+eslint+结构校验+pytest 4 jobs）; 3.3(957bcfa): pytest 冒烟套件 9 用例（conftest 临时库隔离 PK_DATA_DIR）+ 修复真bug: db_migrate_phase18 seed_default_admin 空密码哈希（全新环境 admin 无法登录）; 3.4(e4a2ffe): scripts/bump_asset_versions.py — ?v= content-hash 自动化（68 处更新） [score=0.820 recalls=0 avg=0.620 source=memory/2026-08-07-structure-refactor.md:65-68]
-<!-- openclaw-memory-promotion:memory:memory/2026-08-07.md:3:5 -->
-- 追加：授权码轮换完成（12:14）: 用户提供新 QQ 邮箱 SMTP 授权码，已更新 .env.mail（UTF-8 无 BOM，不进 git）; SMTP 实测: smtp.qq.com:465 SSL 登录 OK + 测试邮件已发（2547159966@qq.com）; **安全闭环全部完成**：旧码历史清除 + 新码配置验证 [score=0.820 recalls=0 avg=0.620 source=memory/2026-08-07.md:3-5]
-<!-- openclaw-memory-promotion:memory:memory/2026-08-07.md:8:11 -->
-- 追加：巨型文件拆分（12:25 启动）: **P0 comfyui.py**（1104816）: 2668→2009行，拆出 comfyui_ollama.py(128行)+comfyui_batch.py(572行)；依赖主模块工具用函数内延迟 import 破循环；**子路由 prefix 置空防 include 拼接重复**（踩坑）; **P1 seedance_v2.py**（37d394e）: 1807→484行，拆出 seedance_v2_library.py(543行)+seedance_v2_project.py(817行)；跨域 _recalculate_scene_times 顶层 import；parse_prompt docstring 缩进事故（脚本注入误伤）; 每步验证: ruff全绿 + pytest 9/9 + 基线46/46零回归 + OpenAPI 556 不变; 遗留: 前端 4 巨型文件（app_collections 189KB/wc_bridge 137KB/seedance_v2_composer 135KB/comfy_workflow_lib 113KB）需先建分片约定+浏览器回归，建议独立迭代 [score=0.820 recalls=0 avg=0.620 source=memory/2026-08-07.md:8-11]
-<!-- openclaw-memory-promotion:memory:memory/2026-08-07.md:14:17 -->
-- 追加：前端拆分完成（14:14-15:00）: P2a app_collections.js 189KB→4片（e221b58）: 单一IIFE+Object.assign(App,{138方法})零闭包 → 拆片安全; P2b wc_bridge.js 137KB→4片（254b320）: 单一巨型IIFE+84方法挂载，零闭包共享状态（量化验证）；同步script保持app_core前; P2c seedance_v2_composer.js 135KB→3片（ad8addf）: App.seedanceV2={状态}+108方法赋值挂载; P2d comfy_workflow_lib.js 113KB→3片（cb59db2）: 4闭包常量(CWL_*)每片副本+62方法 [score=0.820 recalls=0 avg=0.620 source=memory/2026-08-07.md:14-17]
-<!-- openclaw-memory-promotion:memory:memory/2026-08-07.md:18:20 -->
-- 追加：前端拆分完成（14:14-15:00）: 方法论: 对象方法边界切分(缩进特征)，每片独立IIFE+App就绪重试；node --check+方法数完整性+eslint+加载验证; 遗留: app_tools.js 94KB 为第5大文件（未列入本次4个），可后续拆；comfy/seedance_v2_composer 待浏览器回归; 用户已验证: app_collections + wc_bridge 回归通过 [score=0.820 recalls=0 avg=0.620 source=memory/2026-08-07.md:18-20]
+<!-- openclaw-memory-promotion:memory:memory/2026-08-17.md:31:31 -->
+- 2026-08-17 �� �� ��Ƶ�ʼ졸���񲻿��á����޸� (v5.41.2): **һ�仰��** �û�����Ͷ�嵯����ʾ���ʼ�����ݲ�����(��Ӱ���ύ)���� ���� check_video �ʼ�**��ͨ��**ʱҲ���� ok=false,ǰ��һ����ʾ���񲻿�������ǰ return ���� _vjQaPass δ���� �� �ʼ�������ͬ���� + �󵼡�commit a5806d8�� [score=0.827 recalls=0 avg=0.620 source=memory/2026-08-17.md:31-31]
+<!-- openclaw-memory-promotion:memory:memory/2026-08-17.md:33:36 -->
+- 2026-08-17 �� �� ��Ƶ�ʼ졸���񲻿��á����޸� (v5.41.2): ��� ideo_quality.py:probe ʧ�ܷ��� service_error: True(���֡������쳣���롸�ʼ첻ͨ����); ǰ�� jshi_upload_ui.js _runQa:!d / service_error / �� duration �� ��ʾ���񲻿���(�ɼ����ύ);�ʼ첻ͨ�� �� ��ʾ�ʼ챨��(��ͨ�� N ��+�����嵥)�������ύ(_vjQaPass=false); index.html �� vjshi_upload_ui.js?v=54100002; ��֤:ȱ�ļ� 400 / ������Ƶ ok=true / probe ʧ�� service_error=true;�������� pid 37376 health 200 [score=0.827 recalls=0 avg=0.620 source=memory/2026-08-17.md:33-36]
+<!-- openclaw-memory-promotion:memory:memory/2026-08-17.md:54:57 -->
+- 2026-08-17 �� �� ��Ƶ�鿴�������ʿ�������Ƶ��ʷ���� (v5.41.4): index.html��#vidGenHistory ������ʱ�����Ϸ���; app_media_viewer.js��_loadVidGenHistory���� /api/card-gen/tasks?card_id= ���� success+video��/ _applyVidFile���в���+���� data-filename��/ _activateVidGen��activate API+����ˢ�£�/ _delVidGen��DEL API��ɾ���Զ���ʣ������/��ǰ��ȫɾͣ����; �ӣ�app_media_viewer.js �� App._escape ���� self._esc��self._esc �����ڻ� TypeError���������ļ���������ǰ����ȷ��Ŀ��������и÷���; ��֤���� 3 ��ͬ����Ƶ��¼ API ������ȷ��is_current/duration������������������ [score=0.827 recalls=0 avg=0.620 source=memory/2026-08-17.md:54-57]
