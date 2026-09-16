@@ -101,6 +101,25 @@ backend/_lint_paths.py
 backend/_smoke_test.py
 scripts/_*.py
 tools/_*.py
+backend/_*.py
+backend/scripts/_*
+backend/tests/_*
+# 例外：光厂(vjshi)回归/勘察测试已纳入版本管理（名单需逐个列出，
+# 因为历史上同前缀的 _vjshi_inspect*/_vjshi_dryrun* 是一次性脚本，仍应忽略）
+!backend/tests/_vjdraft_ui_test.js
+!backend/tests/_vjllm_test.py
+!backend/tests/_vjlogin_cache_test.py
+!backend/tests/_vjmeta_test.py
+!backend/tests/_vjpanel_render_test.js
+!backend/tests/_vjqa_default_off.py
+!backend/tests/_vjqa_settings_test.py
+!backend/tests/_vjqa_ui_test.js
+!backend/tests/_vjqc_gate_test.py
+!backend/tests/_vjshi_review_inspect.py
+!backend/tests/_vjstatus.py
+!backend/tests/_vjtasks_dump.json
+!backend/tests/_vjtasks_dump.py
+!backend/tests/_vjtitle_test.py
 
 # === 本地临时目录 ===
 Downloads/
