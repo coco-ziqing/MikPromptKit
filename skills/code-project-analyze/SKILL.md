@@ -11,7 +11,6 @@ metadata:
         "id": "code-project-analyze",
         "zh_name": "源码工程结构化解析Skill",
         "lazy_load": true,
-        "requires": { "bins": ["python"] },
         "slash_commands":
           [
             { "cmd": "/analyze-code", "desc": "完整工程结构化深度解析（锁定 deepseek-v4-pro）" },
@@ -54,10 +53,11 @@ metadata:
 
 ```bash
 cd skills/code-project-analyze/scripts
-python project_analyze_runner.py ../tests/sample_project --input "/analyze-code"      # 完整解析(PRO)
-python project_analyze_runner.py ../tests/sample_project --input "/code-stack-only"  # 技术栈快照(FLASH)
-python project_analyze_runner.py ../tests/sample_project                              # 自动路由
-python project_analyze_runner.py ../tests/sample_project --json                       # 机读JSON
+# 注：本机 PATH 里的 `python` 是 WindowsApps stub（exit 9009 静默失败），必须用上面的绝对路径
+& C:\Users\admin\AppData\Local\Python\bin\python.exe project_analyze_runner.py ../tests/sample_project --input "/analyze-code"      # 完整解析(PRO)
+& C:\Users\admin\AppData\Local\Python\bin\python.exe project_analyze_runner.py ../tests/sample_project --input "/code-stack-only"  # 技术栈快照(FLASH)
+& C:\Users\admin\AppData\Local\Python\bin\python.exe project_analyze_runner.py ../tests/sample_project                              # 自动路由
+& C:\Users\admin\AppData\Local\Python\bin\python.exe project_analyze_runner.py ../tests/sample_project --json                       # 机读JSON
 ```
 
 | 能力 | 实现脚本 |

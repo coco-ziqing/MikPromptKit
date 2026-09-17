@@ -12,7 +12,6 @@ metadata:
         "zh_name": "工程打包&部署优化Skill",
         "env": "本地WebUI打包构建/服务器上线部署 / DeepSeek V4 Pro + V4 Flash 双模型调度",
         "lazy_load": true,
-        "requires": { "bins": ["python"] },
         "slash_commands":
           [
             { "cmd": "/build-opt-full", "desc": "全量构建部署深度优化排查（锁定 deepseek-v4-pro）" },
@@ -88,16 +87,17 @@ metadata:
 cd skills/build-deploy-opt/scripts
 
 # 全量深度优化（PRO）：构建报错 + 配置 + 环境一起分析
-python env_deploy_generator.py --error ../tests/vite-build-error.log --config ../tests/webpack-big-size-config.js --env ../tests/server-deploy-conflict.env --input "/build-opt-full"
+# 注：本机 PATH 里的 `python` 是 WindowsApps stub（exit 9009 静默失败），必须用上面的绝对路径
+& C:\Users\admin\AppData\Local\Python\bin\python.exe env_deploy_generator.py --error ../tests/vite-build-error.log --config ../tests/webpack-big-size-config.js --env ../tests/server-deploy-conflict.env --input "/build-opt-full"
 
 # 轻量校验（FLASH）：只看一个配置
-python env_deploy_generator.py --config ../tests/webpack-big-size-config.js --input "/build-check-quick"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe env_deploy_generator.py --config ../tests/webpack-big-size-config.js --input "/build-check-quick"
 
 # 自动路由（按报错/风险/冲突信号自动选 PRO/FLASH）
-python env_deploy_generator.py --error ../tests/vite-build-error.log
+& C:\Users\admin\AppData\Local\Python\bin\python.exe env_deploy_generator.py --error ../tests/vite-build-error.log
 
 # 机读 JSON
-python env_deploy_generator.py --env ../tests/server-deploy-conflict.env --json
+& C:\Users\admin\AppData\Local\Python\bin\python.exe env_deploy_generator.py --env ../tests/server-deploy-conflict.env --json
 ```
 
 > 单模块亦可独立运行：`build_config_parser.py` / `build_error_fixer.py` / `dep_clean_optimizer.py` / `asset_compress_opt.py` / `model_router_dispatch.py`。

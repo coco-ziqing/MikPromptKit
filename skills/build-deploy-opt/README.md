@@ -11,7 +11,7 @@
 完全隔离的增量挂载，位于工作区技能根：
 
 ```
-C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev\skills\build-deploy-opt\
+C:\Users\admin\prompt-tool-dev\skills\build-deploy-opt\
 ```
 
 - OpenClaw 技能加载 **precedence #1（workspace skills）**，无需任何配置文件改动；
@@ -42,31 +42,32 @@ C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev\skills\build-deploy-opt\
 cd skills/build-deploy-opt/scripts
 
 # 全量深度优化（PRO）—— 多源一起分析
-python env_deploy_generator.py \
+# 注：本机 PATH 里的 `python` 是 WindowsApps stub（exit 9009 静默失败），必须用上面的绝对路径
+& C:\Users\admin\AppData\Local\Python\bin\python.exe env_deploy_generator.py \
   --error ../tests/vite-build-error.log \
   --config ../tests/webpack-big-size-config.js \
   --env ../tests/server-deploy-conflict.env \
   --input "/build-opt-full"
 
 # 轻量校验（FLASH）
-python env_deploy_generator.py --config ../tests/webpack-big-size-config.js --input "/build-check-quick"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe env_deploy_generator.py --config ../tests/webpack-big-size-config.js --input "/build-check-quick"
 
 # 自动路由
-python env_deploy_generator.py --error ../tests/vite-build-error.log
+& C:\Users\admin\AppData\Local\Python\bin\python.exe env_deploy_generator.py --error ../tests/vite-build-error.log
 
 # 机读 JSON
-python env_deploy_generator.py --env ../tests/server-deploy-conflict.env --json
+& C:\Users\admin\AppData\Local\Python\bin\python.exe env_deploy_generator.py --env ../tests/server-deploy-conflict.env --json
 ```
 
 入参均可选，提供哪个就分析哪个：`--config` / `--error` / `--env` / `--package`。
 
 ### 3.2 单模块独立调用
 ```bash
-python build_config_parser.py ../tests/webpack-big-size-config.js   # 仅配置优化缺口
-python build_error_fixer.py   ../tests/vite-build-error.log         # 仅报错根因修复
-python dep_clean_optimizer.py package.json                          # 仅依赖精简
-python asset_compress_opt.py vite                                   # 仅压缩策略
-python model_router_dispatch.py ../tests/vite-build-error.log       # 仅路由决策
+& C:\Users\admin\AppData\Local\Python\bin\python.exe build_config_parser.py ../tests/webpack-big-size-config.js   # 仅配置优化缺口
+& C:\Users\admin\AppData\Local\Python\bin\python.exe build_error_fixer.py   ../tests/vite-build-error.log         # 仅报错根因修复
+& C:\Users\admin\AppData\Local\Python\bin\python.exe dep_clean_optimizer.py package.json                          # 仅依赖精简
+& C:\Users\admin\AppData\Local\Python\bin\python.exe asset_compress_opt.py vite                                   # 仅压缩策略
+& C:\Users\admin\AppData\Local\Python\bin\python.exe model_router_dispatch.py ../tests/vite-build-error.log       # 仅路由决策
 ```
 
 ### 3.3 在对话中使用
@@ -102,8 +103,8 @@ python model_router_dispatch.py ../tests/vite-build-error.log       # 仅路由�
 openclaw skills list | grep build-deploy-opt
 
 # ② 极速配置校验
-python skills/build-deploy-opt/scripts/env_deploy_generator.py --config skills/build-deploy-opt/tests/webpack-big-size-config.js --input "/build-check-quick"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe skills/build-deploy-opt/scripts/env_deploy_generator.py --config skills/build-deploy-opt/tests/webpack-big-size-config.js --input "/build-check-quick"
 
 # ③ 全量构建优化
-python skills/build-deploy-opt/scripts/env_deploy_generator.py --error skills/build-deploy-opt/tests/vite-build-error.log --config skills/build-deploy-opt/tests/webpack-big-size-config.js --env skills/build-deploy-opt/tests/server-deploy-conflict.env --input "/build-opt-full"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe skills/build-deploy-opt/scripts/env_deploy_generator.py --error skills/build-deploy-opt/tests/vite-build-error.log --config skills/build-deploy-opt/tests/webpack-big-size-config.js --env skills/build-deploy-opt/tests/server-deploy-conflict.env --input "/build-opt-full"
 ```

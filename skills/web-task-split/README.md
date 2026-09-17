@@ -11,7 +11,7 @@
 本技能以**完全隔离的增量方式**挂载在工作区技能根：
 
 ```
-C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev\skills\web-task-split\
+C:\Users\admin\prompt-tool-dev\skills\web-task-split\
 ```
 
 - OpenClaw 技能加载 **precedence #1（workspace skills）**，无需任何配置文件改动；
@@ -42,27 +42,28 @@ C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev\skills\web-task-split\
 cd skills/web-task-split/scripts
 
 # 完整项目级深度拆解（PRO）
-python todo_iter_generator.py ../tests/full_complex_webui_req.txt --input "/task-split-full"
+# 注：本机 PATH 里的 `python` 是 WindowsApps stub（exit 9009 静默失败），必须用上面的绝对路径
+& C:\Users\admin\AppData\Local\Python\bin\python.exe todo_iter_generator.py ../tests/full_complex_webui_req.txt --input "/task-split-full"
 
 # 极速单点拆分（FLASH）
-python todo_iter_generator.py ../tests/simple_single_func_req.txt --input "/task-quick"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe todo_iter_generator.py ../tests/simple_single_func_req.txt --input "/task-quick"
 
 # 自动路由（按需求复杂度自动选模型）
-python todo_iter_generator.py ../tests/full_complex_webui_req.txt
+& C:\Users\admin\AppData\Local\Python\bin\python.exe todo_iter_generator.py ../tests/full_complex_webui_req.txt
 
 # 批量多需求文件
-python todo_iter_generator.py ../tests/full_complex_webui_req.txt ../tests/simple_single_func_req.txt
+& C:\Users\admin\AppData\Local\Python\bin\python.exe todo_iter_generator.py ../tests/full_complex_webui_req.txt ../tests/simple_single_func_req.txt
 
 # 机读 JSON
-python todo_iter_generator.py ../tests/simple_single_func_req.txt --json
+& C:\Users\admin\AppData\Local\Python\bin\python.exe todo_iter_generator.py ../tests/simple_single_func_req.txt --json
 ```
 
 ### 3.2 单模块独立调用
 ```bash
-python req_struct_parser.py ../tests/full_complex_webui_req.txt        # 仅结构化需求
-python model_router_dispatch.py ../tests/full_complex_webui_req.txt    # 仅路由决策
-python module_split_analyzer.py ../tests/full_complex_webui_req.txt    # 仅模块拆分+优先级
-python scope_limit_checker.py ../tests/full_complex_webui_req.txt      # 仅边界/防过度开发
+& C:\Users\admin\AppData\Local\Python\bin\python.exe req_struct_parser.py ../tests/full_complex_webui_req.txt        # 仅结构化需求
+& C:\Users\admin\AppData\Local\Python\bin\python.exe model_router_dispatch.py ../tests/full_complex_webui_req.txt    # 仅路由决策
+& C:\Users\admin\AppData\Local\Python\bin\python.exe module_split_analyzer.py ../tests/full_complex_webui_req.txt    # 仅模块拆分+优先级
+& C:\Users\admin\AppData\Local\Python\bin\python.exe scope_limit_checker.py ../tests/full_complex_webui_req.txt      # 仅边界/防过度开发
 ```
 
 ### 3.3 在对话中使用
@@ -98,8 +99,8 @@ python scope_limit_checker.py ../tests/full_complex_webui_req.txt      # 仅边�
 openclaw skills list | grep web-task-split
 
 # ② 极速拆分
-python skills/web-task-split/scripts/todo_iter_generator.py skills/web-task-split/tests/simple_single_func_req.txt --input "/task-quick"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe skills/web-task-split/scripts/todo_iter_generator.py skills/web-task-split/tests/simple_single_func_req.txt --input "/task-quick"
 
 # ③ 完整项目拆解
-python skills/web-task-split/scripts/todo_iter_generator.py skills/web-task-split/tests/full_complex_webui_req.txt --input "/task-split-full"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe skills/web-task-split/scripts/todo_iter_generator.py skills/web-task-split/tests/full_complex_webui_req.txt --input "/task-split-full"
 ```

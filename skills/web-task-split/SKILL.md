@@ -12,7 +12,6 @@ metadata:
         "zh_name": "需求拆解与开发任务拆解Skill",
         "env": "本地WebUI功能迭代开发 / DeepSeek V4 Pro + V4 Flash 双模型调度",
         "lazy_load": true,
-        "requires": { "bins": ["python"] },
         "slash_commands":
           [
             { "cmd": "/task-split-full", "desc": "完整项目级深度需求&任务拆解（锁定 deepseek-v4-pro）" },
@@ -88,16 +87,17 @@ metadata:
 cd skills/web-task-split/scripts
 
 # 完整项目级（PRO，深度规划）
-python todo_iter_generator.py ../tests/full_complex_webui_req.txt --input "/task-split-full"
+# 注：本机 PATH 里的 `python` 是 WindowsApps stub（exit 9009 静默失败），必须用上面的绝对路径
+& C:\Users\admin\AppData\Local\Python\bin\python.exe todo_iter_generator.py ../tests/full_complex_webui_req.txt --input "/task-split-full"
 
 # 极速单点（FLASH，压缩输出）
-python todo_iter_generator.py ../tests/simple_single_func_req.txt --input "/task-quick"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe todo_iter_generator.py ../tests/simple_single_func_req.txt --input "/task-quick"
 
 # 自动路由（不带 --input，按需求复杂度自动选 PRO/FLASH）
-python todo_iter_generator.py ../tests/full_complex_webui_req.txt
+& C:\Users\admin\AppData\Local\Python\bin\python.exe todo_iter_generator.py ../tests/full_complex_webui_req.txt
 
 # 机读 JSON
-python todo_iter_generator.py ../tests/simple_single_func_req.txt --json
+& C:\Users\admin\AppData\Local\Python\bin\python.exe todo_iter_generator.py ../tests/simple_single_func_req.txt --json
 ```
 
 ## 存量环境保护约束（最高优先级）

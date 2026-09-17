@@ -12,7 +12,6 @@ metadata:
         "zh_name": "报错日志智能解析&修复Skill",
         "env": "本地WebUI开发 / DeepSeek V4 Pro + V4 Flash 双模型调度",
         "lazy_load": true,
-        "requires": { "bins": ["python"] },
         "slash_commands":
           [
             { "cmd": "/log-resolve-full", "desc": "深度全链路报错溯源修复（锁定 deepseek-v4-pro）" },
@@ -88,16 +87,17 @@ metadata:
 cd skills/web-log-resolve/scripts
 
 # 深度模式（PRO，全链路）：分析模型崩溃堆栈
-python fix_solution_generator.py ../tests/model_oom_crash.log --input "/log-resolve-full"
+# 注：本机 PATH 里的 `python` 是 WindowsApps stub（exit 9009 静默失败），必须用上面的绝对路径
+& C:\Users\admin\AppData\Local\Python\bin\python.exe fix_solution_generator.py ../tests/model_oom_crash.log --input "/log-resolve-full"
 
 # 极速模式（FLASH，压缩输出）：快速解析前端报错
-python fix_solution_generator.py ../tests/web_front_error.log --input "/log-check-quick"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe fix_solution_generator.py ../tests/web_front_error.log --input "/log-check-quick"
 
 # 批量聚合：多条日志一次导入，自动归并同源故障
-python fix_solution_generator.py ../tests/web_front_error.log ../tests/backend_api_500.log ../tests/model_oom_crash.log
+& C:\Users\admin\AppData\Local\Python\bin\python.exe fix_solution_generator.py ../tests/web_front_error.log ../tests/backend_api_500.log ../tests/model_oom_crash.log
 
 # 机读 JSON 输出
-python fix_solution_generator.py ../tests/backend_api_500.log --json
+& C:\Users\admin\AppData\Local\Python\bin\python.exe fix_solution_generator.py ../tests/backend_api_500.log --json
 ```
 
 > 自动路由：不带 `--input` 时由 `model_router_dispatch.route()` 依据故障标签/关键词/跨模块连锁自动选 PRO 或 FLASH。

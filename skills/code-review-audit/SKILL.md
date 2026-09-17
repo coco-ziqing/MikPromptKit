@@ -11,7 +11,6 @@ metadata:
         "id": "code-review-audit",
         "zh_name": "标准化代码审查Skill",
         "lazy_load": true,
-        "requires": { "bins": ["python"] },
         "slash_commands":
           [
             { "cmd": "/code-review-full", "desc": "完整6维度深度审计（锁定 deepseek-v4-pro）" },

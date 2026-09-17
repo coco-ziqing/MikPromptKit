@@ -1,5 +1,7 @@
+import os
 import sqlite3
-conn = sqlite3.connect(r'C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev\data\prompts.db')
+_BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # ...\MikPromptKit
+conn = sqlite3.connect(os.path.join(_BASE, 'data', 'prompts.db'))
 tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '%fts%' AND name NOT LIKE 'sqlite_%' ORDER BY name").fetchall()
 for t in tables:
     cols = conn.execute(f"PRAGMA table_info('{t[0]}')").fetchall()

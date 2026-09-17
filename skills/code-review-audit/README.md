@@ -14,10 +14,11 @@
 ## 使用教程
 ```bash
 cd skills/code-review-audit/scripts
-python review_runner.py ../tests/sample_review_target.py --input "/code-review-full"
-python review_runner.py ../tests/sample_review_target.py --input "/code-review-quick"
-python review_runner.py ../tests/sample_diff.patch
-python review_runner.py ../tests/sample_review_target.py --json
+# 注：本机 PATH 里的 `python` 是 WindowsApps stub（exit 9009 静默失败），必须用上面的绝对路径
+& C:\Users\admin\AppData\Local\Python\bin\python.exe review_runner.py ../tests/sample_review_target.py --input "/code-review-full"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe review_runner.py ../tests/sample_review_target.py --input "/code-review-quick"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe review_runner.py ../tests/sample_diff.patch
+& C:\Users\admin\AppData\Local\Python\bin\python.exe review_runner.py ../tests/sample_review_target.py --json
 ```
 
 ## 能力->脚本

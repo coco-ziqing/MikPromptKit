@@ -10,7 +10,7 @@
 本技能以 **完全隔离的增量方式** 挂载在工作区技能根：
 
 ```
-C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev\skills\web-log-resolve\
+C:\Users\admin\prompt-tool-dev\skills\web-log-resolve\
 ```
 
 - 属于 OpenClaw 技能加载 **precedence #1（workspace skills）**，无需任何配置文件改动；
@@ -41,31 +41,32 @@ C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev\skills\web-log-resolve\
 cd skills/web-log-resolve/scripts
 
 # 深度溯源（PRO）
-python fix_solution_generator.py ../tests/model_oom_crash.log --input "/log-resolve-full"
+# 注：本机 PATH 里的 `python` 是 WindowsApps stub（exit 9009 静默失败），必须用上面的绝对路径
+& C:\Users\admin\AppData\Local\Python\bin\python.exe fix_solution_generator.py ../tests/model_oom_crash.log --input "/log-resolve-full"
 
 # 极速解析（FLASH）
-python fix_solution_generator.py ../tests/web_front_error.log --input "/log-check-quick"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe fix_solution_generator.py ../tests/web_front_error.log --input "/log-check-quick"
 
 # 自动路由（不带 --input，按日志内容自动选模型）
-python fix_solution_generator.py ../tests/backend_api_500.log
+& C:\Users\admin\AppData\Local\Python\bin\python.exe fix_solution_generator.py ../tests/backend_api_500.log
 
 # 批量多日志聚合（自动归并同源故障）
-python fix_solution_generator.py ../tests/web_front_error.log ../tests/backend_api_500.log ../tests/model_oom_crash.log
+& C:\Users\admin\AppData\Local\Python\bin\python.exe fix_solution_generator.py ../tests/web_front_error.log ../tests/backend_api_500.log ../tests/model_oom_crash.log
 
 # 机读 JSON
-python fix_solution_generator.py ../tests/backend_api_500.log --json
+& C:\Users\admin\AppData\Local\Python\bin\python.exe fix_solution_generator.py ../tests/backend_api_500.log --json
 ```
 
 ### 3.2 单模块独立调用
 ```bash
 # 仅结构化解析
-python log_struct_parser.py ../tests/backend_api_500.log
+& C:\Users\admin\AppData\Local\Python\bin\python.exe log_struct_parser.py ../tests/backend_api_500.log
 
 # 仅查看路由决策
-python model_router_dispatch.py ../tests/model_oom_crash.log --input "/log-check-quick"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe model_router_dispatch.py ../tests/model_oom_crash.log --input "/log-check-quick"
 
 # 仅根因分析
-python root_cause_analyzer.py ../tests/web_front_error.log
+& C:\Users\admin\AppData\Local\Python\bin\python.exe root_cause_analyzer.py ../tests/web_front_error.log
 ```
 
 ### 3.3 在对话中使用
@@ -108,8 +109,8 @@ python root_cause_analyzer.py ../tests/web_front_error.log
 openclaw skills list | grep web-log-resolve
 
 # ② 极速模式
-python skills/web-log-resolve/scripts/fix_solution_generator.py skills/web-log-resolve/tests/web_front_error.log --input "/log-check-quick"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe skills/web-log-resolve/scripts/fix_solution_generator.py skills/web-log-resolve/tests/web_front_error.log --input "/log-check-quick"
 
 # ③ 深度溯源模式
-python skills/web-log-resolve/scripts/fix_solution_generator.py skills/web-log-resolve/tests/model_oom_crash.log --input "/log-resolve-full"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe skills/web-log-resolve/scripts/fix_solution_generator.py skills/web-log-resolve/tests/model_oom_crash.log --input "/log-resolve-full"
 ```

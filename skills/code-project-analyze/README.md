@@ -22,22 +22,23 @@
 cd skills/code-project-analyze/scripts
 
 # 完整解析（PRO）
-python project_analyze_runner.py ../tests/sample_project --input "/analyze-code"
+# 注：本机 PATH 里的 `python` 是 WindowsApps stub（exit 9009 静默失败），必须用上面的绝对路径
+& C:\Users\admin\AppData\Local\Python\bin\python.exe project_analyze_runner.py ../tests/sample_project --input "/analyze-code"
 
 # 技术栈快照（FLASH）
-python project_analyze_runner.py ../tests/sample_project --input "/code-stack-only"
+& C:\Users\admin\AppData\Local\Python\bin\python.exe project_analyze_runner.py ../tests/sample_project --input "/code-stack-only"
 
 # 自动路由（按文件数/跨层/接口数自动选档）
-python project_analyze_runner.py ../tests/sample_project
+& C:\Users\admin\AppData\Local\Python\bin\python.exe project_analyze_runner.py ../tests/sample_project
 
 # 机读 JSON
-python project_analyze_runner.py ../tests/sample_project --json
+& C:\Users\admin\AppData\Local\Python\bin\python.exe project_analyze_runner.py ../tests/sample_project --json
 ```
 
 ### 单模块
 ```bash
-python stack_scanner.py ../tests/sample_project          # 仅扫描技术栈/分层/接口
-python model_router_dispatch.py ../tests/sample_project --input "/analyze-code"   # 仅路由决策
+& C:\Users\admin\AppData\Local\Python\bin\python.exe stack_scanner.py ../tests/sample_project          # 仅扫描技术栈/分层/接口
+& C:\Users\admin\AppData\Local\Python\bin\python.exe model_router_dispatch.py ../tests/sample_project --input "/analyze-code"   # 仅路由决策
 ```
 
 ### 对话中
