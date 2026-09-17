@@ -415,6 +415,11 @@
             content: data.content || '',
             content_zh: data.content_zh || '',
             content_en: data.content_en || '',
+            // v5.50.68 修复：视频提示词三档漏在白名单外——编辑弹窗保存时被 _normalize 丢掉，
+            //            后端 update_card 其实支持这三个字段，导致「视频提示词保存无效」
+            ...(('content_video' in data) ? { content_video: data.content_video || '' } : {}),
+            ...(('content_video_simple' in data) ? { content_video_simple: data.content_video_simple || '' } : {}),
+            ...(('content_video_detailed' in data) ? { content_video_detailed: data.content_video_detailed || '' } : {}),
             ...(('content_simple' in data) ? { content_simple: data.content_simple || '' } : {}),
             ...(('content_detailed' in data) ? { content_detailed: data.content_detailed || '' } : {}),
             ...(('content_simple_en' in data) ? { content_simple_en: data.content_simple_en || '' } : {}),

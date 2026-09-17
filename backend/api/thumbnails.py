@@ -386,6 +386,27 @@ def serve_thumbnail(filename: str, tier: str = Query(None)):
         )
         if os.path.exists(wc_thumb_path):
             return FileResponse(wc_thumb_path, media_type="image/jpeg")
+        # v5.50.69: 回退原图 —— 卡生成的图片产物落在 data/originals/，
+        # 此前 /file/ 只查 thumb 目录，导致生成队列里「生成图片记录」缩略图 404 裂图。
+        # 找到原图后现场生成并缓存标准缩略图；生成失败则直接回原图（宁可大也不裂）。
+        _orig = _find_original_path(safe_name)
+        if _orig and os.path.exists(_orig):
+            _base, _ext = os.path.splitext(safe_name)
+            _cache = os.path.join(THUMB_DIR, _base + ".jpg")
+            if not os.path.exists(_cache):
+                try:
+                    from PIL import Image
+                    _img = Image.open(_orig)
+                    _out = _crop_resize_to(_img, 320, 213)
+                    if _out is not None:
+                        _out.save(_cache, "JPEG", quality=85)
+                except Exception as e:
+                    print('[缩略图] 原图回退生成失败:', e)
+            if os.path.exists(_cache):
+                return FileResponse(_cache, media_type="image/jpeg")
+            _low = _orig.lower()
+            _mt = "image/png" if _low.endswith(".png") else ("image/webp" if _low.endswith(".webp") else "image/jpeg")
+            return FileResponse(_orig, media_type=_mt)
         raise HTTPException(404, "文件不存在")
     # v5.36.20: 按扩展名设置 content-type（PNG/WebP 缩略图不再误标 jpeg 导致浏览器解码失败）
     _lower = safe_name.lower()

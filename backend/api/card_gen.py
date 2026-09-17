@@ -344,6 +344,7 @@ def _poll_dreamina_image(submit_id: str, timeout_sec: int = 900):
     import glob as _glob
     from api.dreamina import _dreamina_run
     deadline = _t.time() + timeout_sec
+    _poll_t0 = _t.time()
     while _t.time() < deadline:
         out, err, code = _dreamina_run(["query_result", "--submit_id=" + str(submit_id)], timeout=60)
         data = None
@@ -404,6 +405,35 @@ def _poll_dreamina_image(submit_id: str, timeout_sec: int = 900):
                 import shutil
                 shutil.rmtree(tmpd, ignore_errors=True)
             return None, "即梦任务成功但未找到图片文件"
+        # v5.50.70: 5.0 模型批量出图的兼容 —— 平台常常先生成 1 张，
+        # 剩余张数需在即梦侧手动确认后才会继续，此时 gen_status 会长时间停在 querying；
+        # 而 worker 是全局串行锁 → 整条生成队列被拖住、迟迟拿不到结果。
+        # 处理：只要平台已给出可下载的图片，就先收下并完成本任务。
+        if status == "querying":
+            _early_url = ""
+            try:
+                _rj = data.get("result_json") or {}
+                for _im in (_rj.get("images") or []):
+                    if _im.get("image_url"):
+                        _early_url = _im["image_url"]
+                        break
+            except Exception:
+                _early_url = ""
+            if _early_url:
+                try:
+                    import httpx
+                    with httpx.Client(timeout=120) as _cl:
+                        _r = _cl.get(_early_url)
+                        if _r.status_code == 200 and _r.content:
+                            print(f"[card_gen] submit {submit_id} 平台已出图（批次未全部完成），先收下首张")
+                            return _r.content, None
+                except Exception:
+                    pass   # 图还没准备好 → 继续轮询
+            if _t.time() - _poll_t0 > 6 * 60:
+                _qs = (data.get("queue_info") or {}).get("queue_status") or ""
+                print(f"[card_gen] submit {submit_id} 已等待 6 分钟仍为 querying"
+                      f"（queue_status={_qs}，可能是平台侧待手动确认剩余张数）")
+                _poll_t0 = _t.time()   # 每 6 分钟提醒一次，不刷屏
         if status == "fail":
             reason = (data.get("fail_reason") or "").strip()
             return None, reason or "即梦生成失败"

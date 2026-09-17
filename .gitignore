@@ -120,6 +120,11 @@ backend/tests/_*
 !backend/tests/_vjtasks_dump.json
 !backend/tests/_vjtasks_dump.py
 !backend/tests/_vjtitle_test.py
+# 词卡/生成队列域回归测试（2026-09-17 新增）
+!backend/tests/_wcedit_video_test.js
+!backend/tests/_wcedit_video_api_test.py
+!backend/tests/_thumb_file_fallback_test.py
+!backend/tests/_cg_partial_image_test.py
 
 # === 本地临时目录 ===
 Downloads/
