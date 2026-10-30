@@ -24,14 +24,19 @@ router = APIRouter(tags=["许可管理"], prefix="/api/license")
 # 路径
 HERE = os.path.dirname(os.path.abspath(__file__))
 # 将 tools/keygen 加入路径以导入独立封装的 keygen 模块
-_TOOLS_KEYGEN = os.path.abspath(os.path.join(HERE, "..", "..", "tools", "keygen"))
-if _TOOLS_KEYGEN not in sys.path:
-    sys.path.insert(0, _TOOLS_KEYGEN)
+# frozen（PyInstaller）模式：keygen 随资源目录打包（_internal/tools/keygen）
 try:
-    from paths import get_data_dir
+    from paths import get_data_dir, get_resource_dir
+    if getattr(sys, "frozen", False):
+        _TOOLS_KEYGEN = os.path.join(get_resource_dir(), "tools", "keygen")
+    else:
+        _TOOLS_KEYGEN = os.path.abspath(os.path.join(HERE, "..", "..", "tools", "keygen"))
     DATA_DIR = get_data_dir()
 except Exception:
+    _TOOLS_KEYGEN = os.path.abspath(os.path.join(HERE, "..", "..", "tools", "keygen"))
     DATA_DIR = os.path.abspath(os.path.join(HERE, "..", "data"))
+if _TOOLS_KEYGEN not in sys.path:
+    sys.path.insert(0, _TOOLS_KEYGEN)
 LICENSE_DIR = os.path.join(DATA_DIR, "licenses")
 os.makedirs(LICENSE_DIR, exist_ok=True)
 

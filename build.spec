@@ -6,7 +6,7 @@ onedir 模式 | 前端打包 | 数据目录外部 | ML依赖排除
 import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent  # 自动解析当前目录，不依赖固定路径
+ROOT = Path(SPECPATH)  # PyInstaller 内置变量，指向 spec 所在目录（不依赖 __file__ 推导）
 block_cipher = None
 
 # ---------- 前端 + 插件 datas ----------

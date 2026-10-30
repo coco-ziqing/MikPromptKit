@@ -686,7 +686,11 @@ def get_status():
 
 FRONTEND_DIR = get_frontend_dir()
 STATIC_DIR = os.path.join(FRONTEND_DIR, "static")
-TOOLS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools")
+# frozen（PyInstaller）模式：tools 随资源目录打包，不能按 __file__ 推导
+if getattr(sys, "frozen", False):
+    TOOLS_DIR = os.path.join(get_resource_dir(), "tools")
+else:
+    TOOLS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools")
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 if os.path.exists(TOOLS_DIR):
