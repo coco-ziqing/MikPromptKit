@@ -100,9 +100,7 @@
 | `BUG_REPORT.md` | 排错手册 |
 | `CAPABILITY.md` | 能力说明 |
 | `AGENTS.md` | Agent 角色规则 |
-| `SOUL.md` | 人格设定 |
-| `IDENTITY.md` | 身份定义 |
-| `USER.md` | 用户信息 |
+| `SOUL.md` / `IDENTITY.md` / `USER.md` | 已上移至工作区根目录 `C:\Users\admin\prompt-tool-dev\`，此处不再保留副本（避免双份设定冲突） |
 | `TOOLS.md` | 工具配置 |
 | `MEMORY.md` | 长期记忆 |
 | `HEARTBEAT.md` | 心跳自检清单 |
