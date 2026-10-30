@@ -10,6 +10,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
 
 from fastapi import APIRouter, Query
 
@@ -184,9 +185,15 @@ async def _probe_comfy_url(url: str, timeout: float = 2.0):
     return None
 
 
-async def _autodetect_comfyui(timeout: float = 2.0):
-    """自动发现 ComfyUI 服务 — 支持桌面版（端口不固定）"""
+# 自动发现结果缓存：避免每次健康检查都做全端口扫描（负结果同样缓存，用 done 标记）
+_COMFY_AUTO_CACHE = {"at": 0.0, "done": False, "result": None}
+_COMFY_AUTO_TTL = 120.0
+
+
+async def _autodetect_comfyui(timeout: float = 2.0, max_total: float = 3.0):
+    """自动发现 ComfyUI 服务 — 支持桌面版（端口不固定），总耗时受 max_total 约束"""
     import subprocess
+    deadline = time.monotonic() + max_total
 
     # ===== 方法1: netstat 扫描所有 127.0.0.1 监听端口 =====
     local_ports = []
@@ -213,10 +220,13 @@ async def _autodetect_comfyui(timeout: float = 2.0):
         if p not in local_ports:
             local_ports.append(p)
 
-    # 逐个探测
+    # 逐个探测（受总耗时上限约束，避免拖慢健康检查）
     for port in local_ports:
+        left = deadline - time.monotonic()
+        if left <= 0.2:
+            break
         url = f"http://127.0.0.1:{port}"
-        result = await _probe_comfy_url(url, timeout=min(timeout, 1.2))
+        result = await _probe_comfy_url(url, timeout=min(timeout, 0.5, left))
         if result:
             result["autodetected"] = True
             return result
@@ -254,14 +264,43 @@ async def _check_comfyui(timeout: float = 5.0) -> dict:
             return {"ok": False, "url": url, "error": f"HTTP {resp.status_code}", "hint": "ComfyUI 服务异常"}
     except Exception as e:
         msg = str(e)
-        if "Connection refused" in msg or "ConnectError" in msg or "NameResolutionError" in msg:
-            # 2) 配置地址不可达 → 自动扫描本地端口
-            auto = await _autodetect_comfyui(timeout=3.0)
+        # httpx 连接类错误文本为 “All connection attempts failed”，异常类型为 ConnectError；
+        # 旧判断只匹配字面量，导致既不触发自动发现、又误报“未知错误”
+        _conn_fail = (
+            "Connection refused" in msg or "ConnectError" in msg
+            or "NameResolutionError" in msg or "All connection attempts failed" in msg
+            or type(e).__name__ in ("ConnectError", "ConnectTimeout", "NetworkError", "ReadTimeout")
+        )
+        if _conn_fail:
+            # 默认端口都不可达 → 服务本就没开，不做全端口扫描（避免健康检查被拖慢）
+            is_custom = url.rstrip("/") != DEFAULT_COMFY_URL.rstrip("/")
+            if not is_custom:
+                return {
+                    "ok": False,
+                    "url": url,
+                    "error": "服务未启动",
+                    "severity": "info",
+                    "hint": f"ComfyUI 未运行（配置地址 {url}）；需要文生图/图生图时启动即可",
+                }
+            # 配置了非默认地址但不可达 → 自动扫描一次（结果缓存 TTL）
+            now = time.monotonic()
+            if _COMFY_AUTO_CACHE["done"] and (now - _COMFY_AUTO_CACHE["at"]) < _COMFY_AUTO_TTL:
+                auto = _COMFY_AUTO_CACHE["result"]
+            else:
+                auto = await _autodetect_comfyui(timeout=1.0, max_total=2.0)
+                _COMFY_AUTO_CACHE.update({"at": time.monotonic(), "done": True, "result": auto})
             if auto:
                 auto["_auto_notice"] = f"配置地址 {url} 不可达，已自动发现 ComfyUI"
                 _save_comfy_url(auto["url"])  # 同步到配置
                 return auto
-            return {"ok": False, "url": url, "error": "连接被拒绝", "hint": "ComfyUI 服务未启动"}
+            # 可选服务未运行：给出准确提示，不当作告警（severity=info）
+            return {
+                "ok": False,
+                "url": url,
+                "error": "服务未启动",
+                "severity": "info",
+                "hint": f"ComfyUI 未运行（配置地址 {url}）；需要文生图/图生图时启动即可",
+            }
         if "timeout" in msg.lower():
             return {"ok": False, "url": url, "error": "连接超时", "hint": f"{timeout}s 内无响应"}
         return {"ok": False, "url": url, "error": msg[:100], "hint": "未知错误"}
@@ -612,6 +651,9 @@ async def health_check(
         if not r:
             continue
         if not r.get("ok") and not r.get("skipped"):
+            # severity=info：可选服务未运行（如 ComfyUI 未启动），不计告警、不影响总体 ok
+            if r.get("severity") == "info":
+                continue
             all_ok = False
             if key in ("db", "port"):
                 error_count += 1

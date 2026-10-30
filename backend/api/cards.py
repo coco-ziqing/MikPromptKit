@@ -18,12 +18,12 @@ router = APIRouter(prefix="/api/v4", tags=["v4-cards"])
 def list_cards(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    card_type: str = Query(None, regex='^(image|video|all)?$'),
+    card_type: str = Query(None, pattern='^(image|video|all)?$'),
     module: str = Query(None),
     search: str = Query(None),
     category: str = Query(None),
-    sort: str = Query('created_at', regex='^(created_at|usage_count|updated_at|name)$'),
-    order: str = Query('desc', regex='^(asc|desc)$')
+    sort: str = Query('created_at', pattern='^(created_at|usage_count|updated_at|name)$'),
+    order: str = Query('desc', pattern='^(asc|desc)$')
 ):
     """统一提示词卡列表（兼容新旧数据）"""
     db = get_db()
@@ -476,7 +476,7 @@ def update_media(media_id: int, data: dict):
 @router.get("/search")
 def unified_search(
     q: str = Query(''),
-    scope: str = Query('all', regex='^(all|cards|library|media)$'),
+    scope: str = Query('all', pattern='^(all|cards|library|media)$'),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100)
 ):
