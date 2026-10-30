@@ -1,5 +1,18 @@
 # Changelog — PromptKit
 
+## v5.50.71 (2026-10-30) — 健康检查降噪 + FastAPI 弃用清理
+
+### 🩺 ComfyUI 健康检查
+- 修复连接错误判定：httpx 报 `All connection attempts failed` / `ConnectError` 时不再落入「未知错误」
+- ComfyUI 未启动时归类为 `severity: info`，不再计入告警（`ok` 不再被拖成 false）
+- 默认端口不可达时跳过全端口扫描；非默认地址自动发现加 120s 结果缓存 + 总耗时上限，避免健康检查被拖慢
+
+### 🧹 FastAPI 弃用清理
+- 7 处 `Query(regex=...)` 改为 `pattern=...`（cards×4 / logs / media / v2）
+- 测试告警从 3729 条降至 3722 条
+
+---
+
 ## v3.1.3 (2026-05-31) — 提示词模板变量
 
 ### 📝 模板变量系统

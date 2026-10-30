@@ -36,7 +36,7 @@ def query_logs(
     search: str = Query(None, description="关键词搜索"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    order: str = Query("desc", regex="^(asc|desc)$")
+    order: str = Query("desc", pattern="^(asc|desc)$")
 ):
     """查询日志"""
     items, total = query(level=level, source=source, search=search, limit=limit, offset=offset, order=order)

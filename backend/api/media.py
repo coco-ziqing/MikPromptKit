@@ -116,7 +116,7 @@ def media_status():
 
 @router.get("/library")
 def media_library(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
-                  media_type: str = Query("", regex="^(image|video|)$")):
+                  media_type: str = Query("", pattern="^(image|video|)$")):
     """分页获取媒体资产库，可按类型筛选"""
     db = get_db()
     where = ""

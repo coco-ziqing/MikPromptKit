@@ -493,7 +493,7 @@ def reorder_wordpack(wid: int, data: dict):
 
 
 @router.get("/wordpacks/{wid}/export")
-def export_wordpack(wid: int, fmt: str = Query("txt", regex="^(txt|json)$")):
+def export_wordpack(wid: int, fmt: str = Query("txt", pattern="^(txt|json)$")):
     """导出词包为 TXT 或 JSON 文件"""
     db = get_db()
     wp = db.execute("SELECT * FROM wordpacks WHERE id=?", [wid]).fetchone()
