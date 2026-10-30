@@ -2,15 +2,19 @@
 
 ## 仓库结构
 ```
-本地仓库:  C:\Users\ASUS\.openclaw\workspace\prompt-tool-dev
-备份仓库:  C:\Users\ASUS\.openclaw\workspace\.backup\prompt-tool-dev.git
+本地仓库:  C:\Users\admin\prompt-tool-dev\MikPromptKit
+远端 origin: https://github.com/coco-ziqing/MikPromptKit.git
 ```
 
-## 分支策略
+## 分支策略（2026-10-30 重置）
 | 分支 | 用途 | 说明 |
 |------|------|------|
-| `master` | 稳定发布版 | 只允许合并 → 打 tag |
-| `dev` | 开发迭代 | 日常开发分支 |
+| `master` | 发布主干 | 唯一长期分支，日常提交直接落在功能分支后合入 |
+| `dev` | 集成镜像 | 与 master 保持同步，不再独立承载旧代码 |
+| `feat/*` `fix/*` | 功能/修复分支 | 从 master 切出，完成后合回并删除 |
+
+> 历史：旧 dev（v5.29.1）已归档为 tag `archive/dev-v5.29.1`，dev 已重置为跟随 master。
+> 不再使用「dev 长期开发 → 合并 master 发布」的旧流程。
 
 ## 版本号规则
 ```
@@ -25,16 +29,18 @@ v3.0.0          ← 当前版本
 
 ### 1. 开始新功能迭代
 ```bash
-git checkout dev
-git commit -m "wip: 功能描述"
+git checkout master && git pull --ff-only
+git checkout -b feat/功能名
+git commit -m "feat: 功能描述"
 ```
 
 ### 2. 完成并发布
 ```bash
 git checkout master
-git merge dev
-git tag -a v3.1.0 -m "v3.1.0 — 功能说明"
-git push backup master --tags
+git merge --no-ff feat/功能名
+git tag -a v5.51.0 -m "v5.51.0 — 功能说明"
+git push origin master --tags
+git branch -f dev master && git push origin dev
 ```
 
 ### 3. 回退到旧版本
@@ -50,9 +56,10 @@ git tag -l                    # 列出所有版本
 ```
 
 ## 备份同步
-自动推送至本地备份仓库 `backup` remote：
+远端 `origin` 即 GitHub 仓库，master / dev / tag 均推送至 origin：
 ```bash
-git push backup --all --tags
+git push origin master --tags
+git push origin dev
 ```
 
 ## 忽略规则 (`.gitignore`)
