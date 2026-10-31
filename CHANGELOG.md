@@ -1,5 +1,21 @@
 # Changelog — PromptKit
 
+## v5.50.72 (2026-10-31) — 词卡加载与缩略图提速
+
+### ⚡ 缩略图缓存
+- `/api/thumbnails/file/*` 统一加 `Cache-Control: public, max-age=31536000, immutable`（文件名内容哈希，可安全长缓存）
+- 二次进入页面图片请求从「每次 50+ 条件请求」降为 0
+
+### 🖼 懒加载
+- 词卡主缩略图补 `loading="lazy"` + `decoding="async"`（视频封面同步补 async）
+- 首屏只拉可见卡片图片，不再一次性并发 50 张
+
+### 🗜 大图压缩
+- 23 张超大缩略图（最大 1MB / 2496×1408）重编码至最长边 640 / q82，6.3MB → 1.2MB
+- 原文件已备份至 `.backup/2026-10-31-thumbs-before/`
+
+---
+
 ## v5.50.71 (2026-10-30) — 健康检查降噪 + FastAPI 弃用清理
 
 ### 🩺 ComfyUI 健康检查

@@ -313,13 +313,13 @@ Object.assign(App, {
                                 ${videoFile
                                     ? `<div class="thumb-video-wrap-preview">`
                                       + (p.thumbnail
-                                          ? `<img class="thumb-video-poster" src="/api/thumbnails/file/${p.thumbnail}" alt="" loading="lazy">`
+                                          ? `<img class="thumb-video-poster" src="/api/thumbnails/file/${p.thumbnail}" alt="" loading="lazy" decoding="async">`
                                           : `<div class="thumb-placeholder thumb-video-placeholder"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg></div>`)
                                       + `<div class="thumb-play-overlay"><svg viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19"/></svg></div>`
                                       + `<video class="thumb-video" src="/api/thumbnails/video/${videoFile}" loop muted playsinline preload="none"></video>`
                                       + `</div>`
                                     : (p.thumbnail
-                                        ? `<img src="/api/thumbnails/file/${p.thumbnail}" alt="缩略图">`
+                                        ? `<img src="/api/thumbnails/file/${p.thumbnail}" alt="缩略图" loading="lazy" decoding="async">`
                                         : `<div class="thumb-placeholder">
                                             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
                                           </div>`
