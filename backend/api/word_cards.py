@@ -1324,7 +1324,8 @@ def _collect_descendant_group_ids(db, group_id):
 def list_cards(page: int = Query(1,ge=1), page_size: int = Query(50,ge=1,le=200),
                group_id: int = Query(None), group_type: str = Query(None),
                module: str = Query(None), search: str = Query(None), category: str = Query(None),
-               sort: str = Query("sort_order"), order: str = Query("asc"), is_builtin: int = Query(None)):
+               sort: str = Query("sort_order"), order: str = Query("asc"), is_builtin: int = Query(None),
+               fields: str = Query("full")):
     db = get_db()
     where = ["wc.is_deleted=0"]; params = []
     if group_id:
@@ -1346,15 +1347,23 @@ def list_cards(page: int = Query(1,ge=1), page_size: int = Query(50,ge=1,le=200)
     sc = {"sort_order":"wc.sort_order","usage_count":"wc.usage_count","updated_at":"wc.updated_at","created_at":"wc.created_at","name":"wc.name"}.get(sort, "wc.sort_order")
     sd = "DESC" if order == "desc" else "ASC"
     total = safe_count_dict(f"SELECT COUNT(*) as c FROM word_card wc WHERE {w}", params, key="c")
-    rows = db.execute(f"SELECT wc.*,wg.name as group_name,wg.group_type as group_type_name,wg.icon as group_icon FROM word_card wc LEFT JOIN word_card_group wg ON wg.id=wc.group_id WHERE {w} ORDER BY {sc} {sd} LIMIT ? OFFSET ?",
+    # fields=grid：网格视图只需渲染字段，避免 40+ 字段整包传输（含 6 种正文变体）
+    if fields == "grid":
+        _sel = ("wc.id,wc.name,wc.content,wc.meaning,wc.tags,wc.icon,wc.usage_count,"
+                "wc.thumbnail,wc.media_type,wc.group_id")
+    else:
+        _sel = "wc.*"
+    rows = db.execute(f"SELECT {_sel},wg.name as group_name,wg.group_type as group_type_name,wg.icon as group_icon FROM word_card wc LEFT JOIN word_card_group wg ON wg.id=wc.group_id WHERE {w} ORDER BY {sc} {sd} LIMIT ? OFFSET ?",
                       params+[page_size, (page-1)*page_size]).fetchall()
     items = []
     for r in rows:
         it = dict(r)
         try: it["tags"] = json.loads(it["tags"]) if isinstance(it["tags"], str) else (it["tags"] or [])
         except (json.JSONDecodeError, TypeError): it["tags"] = []
-        try: it["structured"] = json.loads(it["structured"]) if isinstance(it["structured"], str) else (it["structured"] or {})
-        except (json.JSONDecodeError, TypeError): it["structured"] = {}
+        # fields=grid 投影不包含 structured，仅在存在时解析（否则会 KeyError）
+        if "structured" in it:
+            try: it["structured"] = json.loads(it["structured"]) if isinstance(it["structured"], str) else (it["structured"] or {})
+            except (json.JSONDecodeError, TypeError): it["structured"] = {}
         items.append(it)
     return {"ok":True,"items":items,"total":total,"total_pages":max(1,-(-total//page_size)),"page":page,"page_size":page_size}
 

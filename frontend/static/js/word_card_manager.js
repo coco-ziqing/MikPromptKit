@@ -82,6 +82,7 @@ App.wordCards.load = async function() {
             if (this._search) qs += '&search='+encodeURIComponent(this._search);
             if (this._groupId) qs += '&group_id='+this._groupId;
             qs += '&sort='+this._sort+'&order='+this._order;
+            qs += '&fields=grid';  // v5.50.72: 网格只需渲染字段，载荷约减 80%
             d = await App.fetchJSON('/api/v4/word-cards?'+qs);
         }
         

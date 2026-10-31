@@ -6,6 +6,8 @@ import hashlib
 import json
 import os
 import subprocess
+import threading
+import time
 import uuid
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
@@ -348,11 +350,71 @@ def list_thumbnails(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1,
 # 缩略图文件名基于内容哈希（UUID/hash.jpg），内容不可变 → 允许浏览器长缓存，
 # 避免每次进页面都发 50 个条件请求（304 往返）。
 _THUMB_CACHE_HEADERS = {"Cache-Control": "public, max-age=31536000, immutable"}
+_NO_CACHE_HEADERS = {"Cache-Control": "no-cache"}
 
 
-def _thumb_response(path: str, media_type: str = "image/jpeg"):
-    """缩略图统一响应：带 immutable 长缓存头（ETag/Last-Modified 仍由框架附加）"""
-    return FileResponse(path, media_type=media_type, headers=_THUMB_CACHE_HEADERS)
+def _thumb_response(path: str, media_type: str = "image/jpeg", cacheable: bool = True):
+    """缩略图统一响应：默认 immutable 长缓存；档位未就绪的回退图不可长缓存"""
+    return FileResponse(path, media_type=media_type,
+                        headers=(_THUMB_CACHE_HEADERS if cacheable else _NO_CACHE_HEADERS))
+
+
+# ── 档位后台预生成：请求路径不再执行 Pillow 重活 ──
+_TIER_QUEUE = set()
+_TIER_LOCK = threading.Lock()
+_TIER_WORKER = None
+
+
+def _generate_tier_file(safe_name: str, tier: str) -> bool:
+    """从原图（或视频封面）生成指定档位缓存，成功返回 True"""
+    tier_path = os.path.join(THUMB_DIR, _tier_filename(safe_name, tier))
+    if os.path.exists(tier_path):
+        return True
+    orig_path = _find_original_path(safe_name)
+    if orig_path:
+        try:
+            from PIL import Image
+            _img = Image.open(orig_path)
+            _w, _h = TIER_SIZES[tier]
+            _out = _crop_resize_to(_img, _w, _h)
+            if _out is not None:
+                _out.save(tier_path, "JPEG", quality=85)
+        except Exception as e:
+            print('[档位生成] 失败:', e)
+    if not os.path.exists(tier_path):
+        video_path = _find_video_path(safe_name)
+        if video_path:
+            try:
+                _generate_video_tier(video_path, tier, tier_path)
+            except Exception as e:
+                print('[档位生成-视频] 失败:', e)
+    return os.path.exists(tier_path)
+
+
+def _tier_worker_loop():
+    """后台消费档位生成队列（单线程串行，避免 CPU 抢占）"""
+    while True:
+        try:
+            with _TIER_LOCK:
+                job = _TIER_QUEUE.pop() if _TIER_QUEUE else None
+            if not job:
+                time.sleep(0.4)
+                continue
+            _generate_tier_file(job[0], job[1])
+        except Exception as e:
+            print('[档位预生成] 异常:', e)
+            time.sleep(1.0)
+
+
+def _queue_tier(safe_name: str, tier: str):
+    """将档位生成排入后台队列（去重 + 限量）"""
+    global _TIER_WORKER
+    with _TIER_LOCK:
+        if _TIER_WORKER is None or not _TIER_WORKER.is_alive():
+            _TIER_WORKER = threading.Thread(target=_tier_worker_loop, daemon=True, name="thumb-tier-gen")
+            _TIER_WORKER.start()
+        if len(_TIER_QUEUE) < 200:
+            _TIER_QUEUE.add((safe_name, tier))
 
 
 @router.get("/file/{filename}")
@@ -360,32 +422,19 @@ def serve_thumbnail(filename: str, tier: str = Query(None)):
     """提供缩略图文件 — 主目录 data/thumbnails/ → fallback 词卡目录 data/wc_media/thumbs/
     支持 ?tier=hd|md|sd 多档位（按需从原图生成对应分辨率缓存，懒加载）。"""
     safe_name = os.path.basename(filename)
+    _tier_pending = False
 
     # v5.50.39: 多档位服务（列数自适应分辨率）
     if tier in TIER_SIZES:
         tier_name = _tier_filename(safe_name, tier)
         tier_path = os.path.join(THUMB_DIR, tier_name)
         if not os.path.exists(tier_path):
-            # 懒加载：从原图生成对应档位缓存
-            orig_path = _find_original_path(safe_name)
-            if orig_path:
-                try:
-                    from PIL import Image
-                    _img = Image.open(orig_path)
-                    _w, _h = TIER_SIZES[tier]
-                    _out = _crop_resize_to(_img, _w, _h)
-                    if _out is not None:
-                        _out.save(tier_path, "JPEG", quality=85)
-                except Exception as e:
-                    print('[档位生成] 失败:', e)
-            # v5.50.41: 图片原图找不到 → 尝试视频封面（从视频提取帧）
-            if not os.path.exists(tier_path):
-                video_path = _find_video_path(safe_name)
-                if video_path:
-                    _generate_video_tier(video_path, tier, tier_path)
+            # v5.50.72: 请求内不再跑 Pillow（会阻塞工作线程）——排队后台生成，本次先回退标准图
+            _queue_tier(safe_name, tier)
+            _tier_pending = True
         if os.path.exists(tier_path):
             return _thumb_response(tier_path, "image/jpeg")
-        # 档位生成失败/无原图 → 降级走原单档逻辑
+        # 档位未就绪 → 回退标准图，回退图用 no-cache（不得长缓存）
 
     fpath = os.path.join(THUMB_DIR, safe_name)
     if not os.path.exists(fpath):
@@ -395,7 +444,7 @@ def serve_thumbnail(filename: str, tier: str = Query(None)):
             "data", "wc_media", "thumbs", safe_name
         )
         if os.path.exists(wc_thumb_path):
-            return _thumb_response(wc_thumb_path, "image/jpeg")
+            return _thumb_response(wc_thumb_path, "image/jpeg", cacheable=not _tier_pending)
         # v5.50.69: 回退原图 —— 卡生成的图片产物落在 data/originals/，
         # 此前 /file/ 只查 thumb 目录，导致生成队列里「生成图片记录」缩略图 404 裂图。
         # 找到原图后现场生成并缓存标准缩略图；生成失败则直接回原图（宁可大也不裂）。
@@ -413,18 +462,18 @@ def serve_thumbnail(filename: str, tier: str = Query(None)):
                 except Exception as e:
                     print('[缩略图] 原图回退生成失败:', e)
             if os.path.exists(_cache):
-                return _thumb_response(_cache, "image/jpeg")
+                return _thumb_response(_cache, "image/jpeg", cacheable=not _tier_pending)
             _low = _orig.lower()
             _mt = "image/png" if _low.endswith(".png") else ("image/webp" if _low.endswith(".webp") else "image/jpeg")
-            return _thumb_response(_orig, _mt)
+            return _thumb_response(_orig, _mt, cacheable=not _tier_pending)
         raise HTTPException(404, "文件不存在")
     # v5.36.20: 按扩展名设置 content-type（PNG/WebP 缩略图不再误标 jpeg 导致浏览器解码失败）
     _lower = safe_name.lower()
     if _lower.endswith(".png"):
-        return _thumb_response(fpath, "image/png")
+        return _thumb_response(fpath, "image/png", cacheable=not _tier_pending)
     if _lower.endswith(".webp"):
-        return _thumb_response(fpath, "image/webp")
-    return _thumb_response(fpath, "image/jpeg")
+        return _thumb_response(fpath, "image/webp", cacheable=not _tier_pending)
+    return _thumb_response(fpath, "image/jpeg", cacheable=not _tier_pending)
 
 
 @router.get("/original/{filename}")
