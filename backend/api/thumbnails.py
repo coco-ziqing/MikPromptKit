@@ -345,6 +345,16 @@ def list_thumbnails(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1,
     }
 
 
+# 缩略图文件名基于内容哈希（UUID/hash.jpg），内容不可变 → 允许浏览器长缓存，
+# 避免每次进页面都发 50 个条件请求（304 往返）。
+_THUMB_CACHE_HEADERS = {"Cache-Control": "public, max-age=31536000, immutable"}
+
+
+def _thumb_response(path: str, media_type: str = "image/jpeg"):
+    """缩略图统一响应：带 immutable 长缓存头（ETag/Last-Modified 仍由框架附加）"""
+    return FileResponse(path, media_type=media_type, headers=_THUMB_CACHE_HEADERS)
+
+
 @router.get("/file/{filename}")
 def serve_thumbnail(filename: str, tier: str = Query(None)):
     """提供缩略图文件 — 主目录 data/thumbnails/ → fallback 词卡目录 data/wc_media/thumbs/
@@ -374,7 +384,7 @@ def serve_thumbnail(filename: str, tier: str = Query(None)):
                 if video_path:
                     _generate_video_tier(video_path, tier, tier_path)
         if os.path.exists(tier_path):
-            return FileResponse(tier_path, media_type="image/jpeg")
+            return _thumb_response(tier_path, "image/jpeg")
         # 档位生成失败/无原图 → 降级走原单档逻辑
 
     fpath = os.path.join(THUMB_DIR, safe_name)
@@ -385,7 +395,7 @@ def serve_thumbnail(filename: str, tier: str = Query(None)):
             "data", "wc_media", "thumbs", safe_name
         )
         if os.path.exists(wc_thumb_path):
-            return FileResponse(wc_thumb_path, media_type="image/jpeg")
+            return _thumb_response(wc_thumb_path, "image/jpeg")
         # v5.50.69: 回退原图 —— 卡生成的图片产物落在 data/originals/，
         # 此前 /file/ 只查 thumb 目录，导致生成队列里「生成图片记录」缩略图 404 裂图。
         # 找到原图后现场生成并缓存标准缩略图；生成失败则直接回原图（宁可大也不裂）。
@@ -403,18 +413,18 @@ def serve_thumbnail(filename: str, tier: str = Query(None)):
                 except Exception as e:
                     print('[缩略图] 原图回退生成失败:', e)
             if os.path.exists(_cache):
-                return FileResponse(_cache, media_type="image/jpeg")
+                return _thumb_response(_cache, "image/jpeg")
             _low = _orig.lower()
             _mt = "image/png" if _low.endswith(".png") else ("image/webp" if _low.endswith(".webp") else "image/jpeg")
-            return FileResponse(_orig, media_type=_mt)
+            return _thumb_response(_orig, _mt)
         raise HTTPException(404, "文件不存在")
     # v5.36.20: 按扩展名设置 content-type（PNG/WebP 缩略图不再误标 jpeg 导致浏览器解码失败）
     _lower = safe_name.lower()
     if _lower.endswith(".png"):
-        return FileResponse(fpath, media_type="image/png")
+        return _thumb_response(fpath, "image/png")
     if _lower.endswith(".webp"):
-        return FileResponse(fpath, media_type="image/webp")
-    return FileResponse(fpath, media_type="image/jpeg")
+        return _thumb_response(fpath, "image/webp")
+    return _thumb_response(fpath, "image/jpeg")
 
 
 @router.get("/original/{filename}")
